@@ -1,0 +1,21 @@
+[package]
+name = "flaca"
+version = "0.1.0"
+authors = ["Blobfolio, LLC <hello@blobfolio.com>"]
+
+[dependencies]
+ansi_term = "^0.9"
+chrono = "^0.4"
+indicatif = "^0.10"
+lazy_static = "1.2.0"
+nix = "*"
+
+[dependencies.clap]
+version = "~2.23"
+default-features = false
+features = [ "color" ]
+
+[profile.release]
+lto = true
+panic = "abort"
+opt-level = 3
