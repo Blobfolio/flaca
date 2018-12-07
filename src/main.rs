@@ -184,6 +184,42 @@ impl FlacaFile {
 	}
 
 	/**
+	 * Check Age
+	 */
+	fn check_age(self) -> Result<bool, &'static str> {
+		let mtime: u64 = self.modified_secs()?;
+		let start = SystemTime::now();
+		let elapsed: u64 = match start.duration_since(UNIX_EPOCH) {
+			Ok(x) => x.as_secs(),
+			Err(_) => 0,
+		};
+		let max = *MAX_AGE.lock().unwrap();
+		let min = *MIN_AGE.lock().unwrap();
+		let age = elapsed - mtime;
+
+		if (min > 0 && age < min) || (max > 0 && age > max) {
+			return Err("File too large.");
+		}
+
+		Ok(true)
+	}
+
+	/**
+	 * Check Size
+	 */
+	fn check_size(self) -> Result<bool, &'static str> {
+		let size: u64 = self.size()?;
+		let max = *MAX_SIZE.lock().unwrap();
+		let min = *MIN_SIZE.lock().unwrap();
+
+		if (min > 0 && size < min) || (max > 0 && size > max) {
+			return Err("File too large.");
+		}
+
+		Ok(true)
+	}
+
+	/**
 	 * Chmod
 	 */
 	fn chmod(self, perms: Permissions) -> Result<bool, &'static str> {
@@ -1056,24 +1092,16 @@ fn clean_images(mut images: Vec<String>) -> Vec<FlacaFile> {
 		}
 
 		// Check age if applicable.
-		if *MIN_AGE.lock().unwrap() > 0 || *MAX_AGE.lock().unwrap() > 0 {
-			if let Ok(mtime) = tmp.to_owned().modified_secs() {
-				if (*MIN_AGE.lock().unwrap() > 0 && mtime < *MIN_AGE.lock().unwrap()) || (*MAX_AGE.lock().unwrap() > 0 && mtime > *MAX_AGE.lock().unwrap()) {
-					continue;
-				}
-			}
+		if let Err(_) = tmp.to_owned().check_age() {
+			continue;
 		}
 
 		// Check size if applicable.
-		if *MIN_SIZE.lock().unwrap() > 0 || *MAX_SIZE.lock().unwrap() > 0 {
-			if let Ok(size) = tmp.to_owned().size() {
-				if (*MIN_SIZE.lock().unwrap() > 0 && size < *MIN_SIZE.lock().unwrap()) || (*MAX_SIZE.lock().unwrap() > 0 && size > *MAX_SIZE.lock().unwrap()) {
-					continue;
-				}
-			}
+		if let Err(_) = tmp.to_owned().check_size() {
+			continue;
 		}
 
-		out.push(FlacaFile::new(image.clone()));
+		out.push(tmp);
 	}
 
 	// Done!
