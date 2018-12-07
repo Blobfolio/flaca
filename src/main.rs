@@ -25,7 +25,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Build version.
-const VERSION: &str = "0.1.0";
+const VERSION: &str = "0.2.0";
 
 #[derive(Debug, Default, Clone)]
 struct FlacaFile {
