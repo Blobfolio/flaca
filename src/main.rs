@@ -16,7 +16,7 @@ use indicatif::{HumanDuration, HumanBytes, ProgressBar, ProgressStyle};
 use nix::unistd::{chown, Uid, Gid};
 use std::env::{current_exe, var, temp_dir};
 use std::ffi::OsStr;
-use std::fs::{metadata as Metadata, OpenOptions, copy, remove_file};
+use std::fs::{metadata as Metadata, OpenOptions, Permissions, copy, remove_file, set_permissions};
 use std::io::prelude::*;
 use std::os::unix::fs::MetadataExt;
 use std::path::{PathBuf, Path};
@@ -159,6 +159,19 @@ impl FlacaFile {
 	}
 
 	/**
+	 * File Permissions
+	 */
+	fn permissions(self) -> Result<Permissions, &'static str> {
+		let path = self.as_path();
+
+		if let Ok(x) = path.metadata() {
+			return Ok(x.permissions());
+		}
+
+		Err("File does not exist.")
+	}
+
+	/**
 	 * File Size
 	 */
 	fn size(self) -> Result<u64, &'static str> {
@@ -168,6 +181,21 @@ impl FlacaFile {
 		}
 
 		Err("File does not exist.")
+	}
+
+	/**
+	 * Chmod
+	 */
+	fn chmod(self, perms: Permissions) -> Result<bool, &'static str> {
+		if let Err(_) = set_permissions(self.to_owned().as_path(), perms) {
+			eprintln!(
+				"{} Unable to set ownership of {}.",
+				Yellow.bold().paint("Warning:"),
+				self.to_owned().path,
+			);
+		}
+
+		Ok(true)
 	}
 
 	/**
@@ -392,7 +420,7 @@ fn compress_images() {
 	let progress_images = ProgressBar::new(get_images_len());
 	progress_images.set_style(
 		ProgressStyle::default_bar()
-		.template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+		.template("[{elapsed_precise}] [{bar:40.cyan/blue}]  {pos:.cyan.bold}/{len:.blue.bold}  {percent:.bold}%  {msg}")
 		.progress_chars("##-")
 	);
 
@@ -1159,16 +1187,30 @@ fn compress_image(
 
 		// Replace the original?
 		if false == *DRY_RUN.lock().unwrap() {
+			// Make sure we can grab the owner/group.
 			if let Ok((uid, gid)) = image.to_owned().owner() {
-				if let Err(_) = working1.to_owned().copy(image.to_owned().canonical().unwrap_or("".to_string())) {
-					return Err("No change");
-				}
+				// And permissions.
+				if let Ok(perms) = image.to_owned().permissions() {
+					// First operation: copy it.
+					if let Err(_) = working1.to_owned().copy(image.to_owned().canonical().unwrap_or("".to_string())) {
+						return Err("No change");
+					}
 
-				if let Err(_) = image.chown(uid, gid) {
-					eprintln!(
-						"{} Temporary files left over.",
-						Yellow.bold().paint("Warning:"),
-					);
+					// Fix ownership.
+					if let Err(_) = image.to_owned().chown(uid, gid) {
+						eprintln!(
+							"{} Unable to set file ownership.",
+							Yellow.bold().paint("Warning:"),
+						);
+					}
+
+					// Fix permissions.
+					if let Err(_) = image.to_owned().chmod(perms) {
+						eprintln!(
+							"{} Unable to set file permissions.",
+							Yellow.bold().paint("Warning:"),
+						);
+					}
 				}
 			}
 		}
