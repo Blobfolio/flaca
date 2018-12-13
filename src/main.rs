@@ -27,13 +27,18 @@ use std::os::unix::fs::MetadataExt;
 /// Build version.
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-/// Encoder.
 #[derive(Debug, PartialEq, Copy, Clone)]
+/// Encoder.
 enum FlacaEncoder {
+	/// https://github.com/tjko/jpegoptim
 	Jpegoptim,
+	/// https://github.com/mozilla/mozjpeg
 	Mozjpeg,
+	/// https://github.com/shssoichiro/oxipng
 	Oxipng,
+	/// http://advsys.net/ken/utils.htm
 	Pngout,
+	/// https://github.com/google/zopfli
 	Zopflipng,
 }
 
@@ -54,7 +59,15 @@ impl std::fmt::Display for FlacaEncoder {
 }
 
 impl FlacaEncoder {
-	/// Get path to encoder binary.
+	/// Get path to encoder binary. This might be, in order of
+	/// preference, a user-supplied path, a binary installed to
+	/// Flaca's shared directory (/usr/share/flaca), or an app with the
+	/// right name somewhere under $PATH.
+	///
+	/// # Errors
+	///
+	/// If no app exists, None is returned, and subsequent compression
+	/// might be less compressy.
 	fn bin_path(&self, path: Option<std::path::PathBuf>) -> Option<std::path::PathBuf> {
 		// User-supplied path.
 		if let Some(x) = path {
@@ -98,8 +111,8 @@ impl FlacaEncoder {
 	}
 }
 
-/// Errors.
 #[derive(Debug, PartialEq, Clone)]
+/// Errors.
 enum FlacaError {
 	/// Command failed.
 	CommandFailed,
@@ -148,7 +161,7 @@ impl std::fmt::Display for FlacaError {
 }
 
 impl FlacaError {
-	/// Convert to a String.
+	/// Stringify a FlacaError, possibly with extra reference material.
 	fn to_string(&self, more: Option<String>) -> String {
 		if more.is_some() {
 			if self == &FlacaError::Debug {
@@ -191,7 +204,7 @@ impl FlacaError {
 		std::process::exit(1);
 	}
 
-	/// Debug message.
+	/// Print a debug message to STDOUT or a ProgressBar, if provided.
 	fn debug(&self, more: Option<String>, output: Option<&indicatif::ProgressBar>) {
 		if let Some(x) = output {
 			x.println(format!("{}", self.to_string(more)));
@@ -202,8 +215,8 @@ impl FlacaError {
 	}
 }
 
-/// Image types.
 #[derive(Debug, PartialEq, Copy, Clone)]
+/// Image types.
 enum FlacaImageType {
 	/// JPEG.
 	Jpg,
@@ -225,7 +238,8 @@ impl std::fmt::Display for FlacaImageType {
 }
 
 impl FlacaImageType {
-	/// Get image type by extension.
+	/// Get image type by extension. If the file does not exist or does
+	/// not end in .jpg, .jpeg, or .png, None is returned.
 	fn from(path: std::path::PathBuf) -> Option<FlacaImageType> {
 		lazy_static! {
 			static ref expr: regex::Regex = regex::Regex::new(r"\.(?P<ext>jpe?g|png)$").unwrap();
@@ -250,7 +264,7 @@ impl FlacaImageType {
 		None
 	}
 
-	/// Get encoders for type.
+	/// Get encoders for a given type. Missing binaries are skipped.
 	fn encoders(&self, opts: FlacaSettings) -> Option<Vec<(FlacaEncoder, String)>> {
 		let out: Vec<(FlacaEncoder, String)> = match *self {
 			FlacaImageType::Jpg => {
@@ -308,8 +322,8 @@ impl FlacaImageType {
 	}
 }
 
-/// File.
 #[derive(Debug, Clone)]
+/// File (i.e. an Image).
 struct FlacaFile {
 	/// Path to image file.
 	path: Option<std::path::PathBuf>,
@@ -346,7 +360,8 @@ impl Default for FlacaFile {
 }
 
 impl FlacaFile {
-	/// FlacaFile from path.
+	/// FlacaFile from path. If the file doesn't exist, None is
+	/// returned instead.
 	fn from(path: std::path::PathBuf) -> FlacaFile {
 		if path.is_file() {
 			return FlacaFile { path: Some(path) };
@@ -356,6 +371,11 @@ impl FlacaFile {
 	}
 
 	/// Compress image using available encoders.
+	///
+	/// # Errors
+	///
+	/// If the command fails, file is missing, or any other kind of
+	/// issue pops up, a FlacaError is returned.
 	fn compress(self, opts: FlacaSettings, output: Option<&indicatif::ProgressBar>) -> Result<FlacaResult, FlacaError> {
 		// The file has to exist.
 		if self.path.is_none() {
@@ -587,6 +607,10 @@ impl FlacaFile {
 	}
 
 	/// Generate (Unique) Working Copy.
+	///
+	/// This will attempt to copy the contents of a source image to the
+	/// machine's temporary directory. All compression operations use
+	/// this copy to avoid corruption from killed processes.
 	fn working(self, copy: bool) -> Option<String> {
 		// First we need a unique file.
 		if let Some(ext) = self.to_owned().extension() {
@@ -638,6 +662,7 @@ impl FlacaFile {
 }
 
 #[derive(Debug, Clone)]
+/// Compression results for a FlacaFile.
 struct FlacaResult {
 	/// Source path.
 	path: Option<std::path::PathBuf>,
@@ -673,7 +698,8 @@ impl Default for FlacaResult {
 }
 
 impl FlacaResult {
-	/// Initialize a result object.
+	/// Initialize a result object. This is executed before any encoders
+	/// have been run against a target.
 	fn start(path: std::path::PathBuf, encoders: Vec<FlacaEncoder>) -> Result<FlacaResult, FlacaError> {
 		if ! path.is_file() {
 			FlacaError::FileInvalid.warn(Some(
@@ -727,7 +753,7 @@ impl FlacaResult {
 		Ok(())
 	}
 
-	/// Log results to file.
+	/// Log results to file, if a log path was specified.
 	fn log(&self, log: std::path::PathBuf) {
 		// No path, nothing to do.
 		if self.path.is_none() || self.elapsed.is_none() {
@@ -766,8 +792,8 @@ impl FlacaResult {
 	}
 }
 
-/// Runtime settings.
 #[derive(Debug, Clone)]
+/// Runtime settings.
 struct FlacaSettings {
 	/// Debug messages.
 	debug: bool,
@@ -965,7 +991,7 @@ impl FlacaSettings {
 		out
 	}
 
-	/// Recursive callback to find applicable images.
+	/// Recursive callback to find applicable images given the settings.
 	fn parse_images(&self, files: Vec<std::path::PathBuf>) -> Vec<String> {
 		let mut out = Vec::new();
 
@@ -1137,7 +1163,7 @@ fn get_file_size(path: std::path::PathBuf) -> Option<u64> {
 // File IO Helpers
 // ---------------------------------------------------------------------
 
-/// Copy a file.
+/// Copy a file and optionally set permissions and ownership afterward.
 fn copy_file(
 	from: std::path::PathBuf,
 	to: std::path::PathBuf,
@@ -1224,7 +1250,8 @@ fn get_local_now() -> chrono::DateTime<chrono::Local> {
 // Arg Validation
 // ---------------------------------------------------------------------
 
-/// Args validation for min/max age and size.
+/// Args validation for min/max age and size. If set, the value must be
+/// a positive integer.
 fn validate_args_min_max(x: String) -> Result<(), String> {
     match x.parse::<u64>() {
 		Ok(y) => {
@@ -1238,7 +1265,8 @@ fn validate_args_min_max(x: String) -> Result<(), String> {
 	}
 }
 
-/// Args validation for log path.
+/// Args validation for log path. The path doesn't have to exist, but if
+/// it does it has to be a file.
 fn validate_args_log(x: String) -> Result<(), String> {
     let path = std::path::PathBuf::from(x);
 
@@ -1439,7 +1467,7 @@ fn main() {
 	}
 }
 
-/// Print CLI header.
+/// Print a header for CLI STDOUT.
 fn header(opts: FlacaSettings) {
 	// Don't print if we're supposed to be quiet.
 	if opts.quiet {
@@ -1476,7 +1504,10 @@ fn header(opts: FlacaSettings) {
 	);
 }
 
-/// Process Images
+/// Process Images. This loops all applicable images, runs the available
+/// encoders against each one, and reports progress to STDOUT.
+///
+/// If pretend mode is enabled, no replacements are made to any sources.
 fn process_images(opts: FlacaSettings) {
 	// Set up progress bar.
 	let pb: indicatif::ProgressBar = indicatif::ProgressBar::new(opts.total_images().unwrap_or(0));
@@ -1561,7 +1592,9 @@ fn process_images(opts: FlacaSettings) {
 	}
 }
 
-/// Process Images (Quiet)
+/// Process Images (Quiet). This is the same as process_images(), except
+/// nothing is sent to STDOUT. Errors and warnings potentially still
+/// apply via STDERR.
 fn process_images_quiet(opts: FlacaSettings) {
 	// Loop the images!
 	for i in opts.to_owned().images.unwrap() {
