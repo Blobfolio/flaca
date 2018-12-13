@@ -871,7 +871,12 @@ impl FlacaSettings {
 				None => None,
 			},
 			skip: match args.value_of("skip") {
-				Some(x) => FlacaImageType::from(std::path::PathBuf::from(x)),
+				Some(x) => match x {
+					"jpg" => Some(FlacaImageType::Jpg),
+					"jpeg" => Some(FlacaImageType::Jpg),
+					"png" => Some(FlacaImageType::Png),
+					_ => None,
+				},
 				None => None,
 			},
 			use_jpegoptim: FlacaEncoder::Jpegoptim.bin_path(
