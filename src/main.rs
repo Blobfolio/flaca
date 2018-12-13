@@ -1,6 +1,8 @@
 #![warn(trivial_casts, trivial_numeric_casts, unused_import_braces)]
 #![deny(missing_debug_implementations, missing_copy_implementations)]
 
+
+
 extern crate ansi_term;
 extern crate chrono;
 extern crate clap;
@@ -8,770 +10,1370 @@ extern crate indicatif;
 #[macro_use]
 extern crate lazy_static;
 extern crate nix;
+extern crate regex;
 
-use ansi_term::{Colour::Blue, Colour::Green, Colour::Purple, Colour::Red, Colour::Yellow, Style};
-use chrono::prelude::*;
-use clap::{Arg, App};
-use indicatif::{HumanDuration, HumanBytes, ProgressBar, ProgressStyle};
-use nix::unistd::{chown, Uid, Gid};
-use std::env::{current_exe, var, temp_dir};
-use std::ffi::OsStr;
-use std::fs::{metadata as Metadata, OpenOptions, Permissions, copy, remove_file, set_permissions};
-use std::io::prelude::*;
+
+
+use chrono::TimeZone;
+use std::io::Write;
 use std::os::unix::fs::MetadataExt;
-use std::path::{PathBuf, Path};
-use std::process::{exit, Command, Stdio};
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-// Build version.
-const VERSION: &str = "0.2.0";
 
-#[derive(Debug, Default, Clone)]
+
+// ---------------------------------------------------------------------
+// Definitions
+// ---------------------------------------------------------------------
+
+/// Build version.
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
+/// Encoder.
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum FlacaEncoder {
+	Jpegoptim,
+	Mozjpeg,
+	Oxipng,
+	Pngout,
+	Zopflipng,
+}
+
+impl std::fmt::Display for FlacaEncoder {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		write!(
+			f,
+			"{}",
+			match *self {
+				FlacaEncoder::Jpegoptim => "jpegoptim",
+				FlacaEncoder::Mozjpeg => "MozJPEG",
+				FlacaEncoder::Oxipng => "oxipng",
+				FlacaEncoder::Pngout => "pngout",
+				FlacaEncoder::Zopflipng => "zopflipng",
+			}
+		)
+	}
+}
+
+impl FlacaEncoder {
+	/// Get path to encoder binary.
+	fn bin_path(&self, path: Option<std::path::PathBuf>) -> Option<std::path::PathBuf> {
+		// User-supplied path.
+		if let Some(x) = path {
+			if x.is_file() {
+				return Some(x);
+			}
+		}
+
+		// Flaca bin directory.
+		let bin = format!("{}", match *self {
+			FlacaEncoder::Jpegoptim => "jpegoptim",
+			FlacaEncoder::Mozjpeg => "jpegtran",
+			FlacaEncoder::Oxipng => "oxipng",
+			FlacaEncoder::Pngout => "pngout",
+			FlacaEncoder::Zopflipng => "zopflipng",
+		});
+		let mut test = std::path::PathBuf::from(format!("/usr/share/flaca/{}", bin));
+		if test.is_file() {
+			return Some(test);
+		}
+
+		// MozJPEG has an extra possible path.
+		if "jpegtran" == bin {
+			test = std::path::PathBuf::from("/opt/mozjpeg/bin/jpegtran");
+			if test.is_file() {
+				return Some(test);
+			}
+		}
+
+		// Maybe it is in the user path?
+		if let Ok(path) = std::env::var("PATH") {
+			for p in path.split(":") {
+				let test = std::path::PathBuf::from(format!("{}/{}", p, bin));
+				if test.is_file() {
+					return Some(test);
+				}
+			}
+		}
+
+		None
+	}
+}
+
+/// Errors.
+#[derive(Debug, PartialEq, Clone)]
+enum FlacaError {
+	/// Command failed.
+	CommandFailed,
+	/// Debug message.
+	Debug,
+	/// Invalid file.
+	FileInvalid,
+	/// Could not log results.
+	LogFailed,
+	/// JPEG dependencies are missing.
+	NoDepsJpg,
+	/// PNG dependencies are missing.
+	NoDepsPng,
+	/// No qualifying images were found.
+	NoFiles,
+	/// Unable to set file permissions.
+	PermsFailed,
+	/// Time is meaningless.
+	TimeFailed,
+	/// The temporary directory might contain leftover files.
+	TmpFailed,
+	/// Value must be at least one.
+	UsizeMinMax,
+}
+
+impl std::fmt::Display for FlacaError {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		write!(
+			f,
+			"{}",
+			match *self {
+				FlacaError::CommandFailed => "Command failed.",
+				FlacaError::Debug => "",
+				FlacaError::FileInvalid => "Invalid file.",
+				FlacaError::LogFailed => "Could not log results.",
+				FlacaError::NoDepsJpg => "JPEG dependencies are missing.",
+				FlacaError::NoDepsPng => "PNG dependencies are missing.",
+				FlacaError::NoFiles => "No qualifying images were found.",
+				FlacaError::PermsFailed => "Unable to set file permissions.",
+				FlacaError::TimeFailed => "Time is meaningless.",
+				FlacaError::TmpFailed => "The temporary directory might contain leftover files.",
+				FlacaError::UsizeMinMax => "Value must be at least one.",
+			}
+		)
+	}
+}
+
+impl FlacaError {
+	/// Convert to a String.
+	fn to_string(&self, more: Option<String>) -> String {
+		if more.is_some() {
+			if self == &FlacaError::Debug {
+				return format!(
+					"[{}] {} {}",
+					ansi_term::Colour::Blue.bold().paint(get_local_now().to_rfc3339()),
+					ansi_term::Colour::Blue.bold().paint("Debug:"),
+					more.unwrap()
+				);
+			}
+
+			return format!(
+				"{}\n{} {}",
+				self,
+				ansi_term::Colour::Blue.bold().paint("Reference:"),
+				more.unwrap(),
+			);
+		}
+
+		format!("{}", self)
+	}
+
+	/// Print a warning to STDERR.
+	fn warn(&self, more: Option<String>) {
+		eprintln!(
+			"{} {}\n",
+			ansi_term::Colour::Yellow.bold().paint("Warning"),
+			self.to_string(more),
+		);
+	}
+
+	/// Print an error to STDERR and exit.
+	fn error(&self, more: Option<String>) {
+		eprintln!(
+			"{} {}",
+			ansi_term::Colour::Red.bold().paint("Warning"),
+			self.to_string(more),
+		);
+
+		std::process::exit(1);
+	}
+
+	/// Debug message.
+	fn debug(&self, more: Option<String>, output: Option<&indicatif::ProgressBar>) {
+		if let Some(x) = output {
+			x.println(format!("{}", self.to_string(more)));
+		}
+		else {
+			println!("{}", self.to_string(more));
+		}
+	}
+}
+
+/// Image types.
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum FlacaImageType {
+	/// JPEG.
+	Jpg,
+	/// PNG.
+	Png,
+}
+
+impl std::fmt::Display for FlacaImageType {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		write!(
+			f,
+			"{}",
+			match *self {
+				FlacaImageType::Jpg => "jpg",
+				FlacaImageType::Png => "png",
+			}
+		)
+	}
+}
+
+impl FlacaImageType {
+	/// Get image type by extension.
+	fn from(path: std::path::PathBuf) -> Option<FlacaImageType> {
+		lazy_static! {
+			static ref expr: regex::Regex = regex::Regex::new(r"\.(?P<ext>jpe?g|png)$").unwrap();
+		}
+
+		// Generate a full path.
+		let full = get_file_canonical(path);
+		if full.is_none() {
+			return None;
+		}
+
+		let lower = full.unwrap().to_lowercase();
+		if let Some(matches) = expr.captures(&lower) {
+			return match &matches["ext"] {
+				"jpg" => Some(FlacaImageType::Jpg),
+				"jpeg" => Some(FlacaImageType::Jpg),
+				"png" => Some(FlacaImageType::Png),
+				_ => None
+			};
+		}
+
+		None
+	}
+
+	/// Get encoders for type.
+	fn encoders(&self, opts: FlacaSettings) -> Option<Vec<(FlacaEncoder, String)>> {
+		let out: Vec<(FlacaEncoder, String)> = match *self {
+			FlacaImageType::Jpg => {
+				let mut tmp = Vec::new();
+
+				// MozJPEG.
+				if let Some(x) = opts.use_mozjpeg {
+					if let Some(y) = get_file_canonical(x.to_path_buf()) {
+						tmp.push((FlacaEncoder::Mozjpeg, y));
+					}
+				}
+
+				// jpegoptim.
+				if let Some(x) = opts.use_jpegoptim {
+					if let Some(y) = get_file_canonical(x.to_path_buf()) {
+						tmp.push((FlacaEncoder::Jpegoptim, y));
+					}
+				}
+
+				tmp
+			},
+			FlacaImageType::Png => {
+				let mut tmp = Vec::new();
+
+				// pngout.
+				if let Some(x) = opts.use_pngout {
+					if let Some(y) = get_file_canonical(x.to_path_buf()) {
+						tmp.push((FlacaEncoder::Pngout, y));
+					}
+				}
+
+				// oxipng.
+				if let Some(x) = opts.use_oxipng {
+					if let Some(y) = get_file_canonical(x.to_path_buf()) {
+						tmp.push((FlacaEncoder::Oxipng, y));
+					}
+				}
+
+				// Zopflipng.
+				if let Some(x) = opts.use_zopflipng {
+					if let Some(y) = get_file_canonical(x.to_path_buf()) {
+						tmp.push((FlacaEncoder::Zopflipng, y));
+					}
+				}
+
+				tmp
+			},
+		};
+
+		if out.len() > 0 {
+			return Some(out);
+		}
+
+		None
+	}
+}
+
+/// File.
+#[derive(Debug, Clone)]
 struct FlacaFile {
-	path: String,
+	/// Path to image file.
+	path: Option<std::path::PathBuf>,
+}
+
+impl std::fmt::Display for FlacaFile {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		if self.path.is_some() {
+			if let Some(ref x) = self.path {
+				if let Some(y) = get_file_canonical(x.to_path_buf()) {
+					return write!(
+						f,
+						"{}",
+						y
+					);
+				}
+			}
+		}
+
+		write!(
+			f,
+			"{}",
+			""
+		)
+	}
+}
+
+impl Default for FlacaFile {
+	fn default() -> FlacaFile {
+		FlacaFile {
+			path: None,
+		}
+	}
 }
 
 impl FlacaFile {
-	/**
-	 * Set From Path String
-	 */
-	fn new(path: String) -> FlacaFile {
-		FlacaFile {
-			path: path,
-		}
-	}
-
-	/**
-	 * As Path
-	 */
-	fn as_path(self) -> PathBuf {
-		PathBuf::from(self.path)
-	}
-
-	/**
-	 * Canonical Path
-	 */
-	fn canonical(self) -> Result<String, &'static str> {
-		let path = self.as_path();
-		if let Ok(x) = path.canonicalize() {
-			return Ok(format!("{}", x.display()));
-		}
-
-		Err("File does not exist.")
-	}
-
-	/**
-	 * Encoders
-	 */
-	fn encoders(self) -> Result<Vec<String>, &'static str> {
-		if let Ok(ext) = self.extension() {
-			let mut apps: Vec<String> = Vec::new();
-			if "jpg" == ext {
-				for i in &*JPG_APPS {
-					apps.push(i.clone());
-				}
-			}
-			else {
-				for i in &*PNG_APPS {
-					apps.push(i.clone());
-				}
-			}
-
-			return Ok(apps);
-		}
-
-		Err("No encoders are supported for this file.")
-	}
-
-	/**
-	 * Extension
-	 */
-	fn extension(self) -> Result<String, &'static str> {
-		let path = self.as_path();
-		if let Some(x) = path.extension() {
-			if let Some(y) = OsStr::to_str(x) {
-				let ext: String = y.to_lowercase();
-				if "jpeg" == ext || "jpg" == ext {
-					return Ok("jpg".to_string());
-				}
-				else if "png" == ext {
-					return Ok("png".to_string());
-				}
-			}
-		}
-
-		Err("File is not a JPEG or PNG.")
-	}
-
-	/**
-	 * Modification Time
-	 */
-	fn modified(self) -> Result<SystemTime, &'static str> {
-		let path = self.as_path();
-		if let Ok(x) = path.metadata().unwrap().modified() {
-			return Ok(x);
-		}
-
-		Err("File does not exist.")
-	}
-
-	/**
-	 * Modification Time (seconds)
-	 */
-	fn modified_secs(self) -> Result<u64, &'static str> {
-		if let Ok(x) = self.modified() {
-			if let Ok(y) = x.duration_since(UNIX_EPOCH) {
-				return Ok(y.as_secs());
-			}
-		}
-
-		Err("File does not exist.")
-	}
-
-	/**
-	 * File Name
-	 */
-	fn name(self) -> Result<String, &'static str> {
-		let path = self.as_path();
-		if let Some(x) = path.file_name() {
-			if let Some(y) = OsStr::to_str(x) {
-				return Ok(y.to_string());
-			}
-		}
-
-		Err("File does not exist.")
-	}
-
-	/**
-	 * File Owner
-	 */
-	fn owner(self) -> Result<(Uid, Gid), &'static str> {
-		let path = self.as_path();
-
-		if let Ok(x) = path.metadata() {
-			let uid = Uid::from_raw(x.uid());
-			let gid = Gid::from_raw(x.gid());
-			return Ok((uid, gid));
-		}
-
-		Err("File does not exist.")
-	}
-
-	/**
-	 * File Permissions
-	 */
-	fn permissions(self) -> Result<Permissions, &'static str> {
-		let path = self.as_path();
-
-		if let Ok(x) = path.metadata() {
-			return Ok(x.permissions());
-		}
-
-		Err("File does not exist.")
-	}
-
-	/**
-	 * File Size
-	 */
-	fn size(self) -> Result<u64, &'static str> {
-		let path = self.as_path();
-		if let Ok(x) = path.metadata() {
-			return Ok(x.len());
-		}
-
-		Err("File does not exist.")
-	}
-
-	/**
-	 * Check Age
-	 */
-	fn check_age(self) -> Result<bool, &'static str> {
-		let mtime: u64 = self.modified_secs()?;
-		let start = SystemTime::now();
-		let elapsed: u64 = match start.duration_since(UNIX_EPOCH) {
-			Ok(x) => x.as_secs(),
-			Err(_) => 0,
-		};
-		let max = *MAX_AGE.lock().unwrap();
-		let min = *MIN_AGE.lock().unwrap();
-		let age = elapsed - mtime;
-
-		if (min > 0 && age < min) || (max > 0 && age > max) {
-			return Err("File too large.");
-		}
-
-		Ok(true)
-	}
-
-	/**
-	 * Check Size
-	 */
-	fn check_size(self) -> Result<bool, &'static str> {
-		let size: u64 = self.size()?;
-		let max = *MAX_SIZE.lock().unwrap();
-		let min = *MIN_SIZE.lock().unwrap();
-
-		if (min > 0 && size < min) || (max > 0 && size > max) {
-			return Err("File too large.");
-		}
-
-		Ok(true)
-	}
-
-	/**
-	 * Chmod
-	 */
-	fn chmod(self, perms: Permissions) -> Result<bool, &'static str> {
-		if let Err(_) = set_permissions(self.to_owned().as_path(), perms) {
-			eprintln!(
-				"{} Unable to set ownership of {}.",
-				Yellow.bold().paint("Warning:"),
-				self.to_owned().path,
-			);
-		}
-
-		Ok(true)
-	}
-
-	/**
-	 * Chown
-	 */
-	fn chown(self, uid: Uid, gid: Gid) -> Result<bool, &'static str> {
-		if let Err(_) = chown(&self.to_owned().as_path(), Some(uid), Some(gid)) {
-			eprintln!(
-				"{} Unable to set ownership of {}.",
-				Yellow.bold().paint("Warning:"),
-				self.to_owned().path,
-			);
-		}
-
-		Ok(true)
-	}
-
-	/**
-	 * Copy
-	 */
-	fn copy(self, dest: String) -> Result<FlacaFile, &'static str> {
-		let path = self.as_path();
-		let path2 = Path::new(&dest);
-
+	/// FlacaFile from path.
+	fn from(path: std::path::PathBuf) -> FlacaFile {
 		if path.is_file() {
-			// We might have to delete first.
-			if path2.exists() {
-				if let Err(_) = remove_file(path2) {
-					eprintln!(
-						"{} Could not copy file; destination file exists.",
-						Yellow.bold().paint("Warning:"),
-					);
+			return FlacaFile { path: Some(path) };
+		}
 
-					return Err("File could not be copied.");
+		FlacaFile::default()
+	}
+
+	/// Compress image using available encoders.
+	fn compress(self, opts: FlacaSettings, output: Option<&indicatif::ProgressBar>) -> Result<FlacaResult, FlacaError> {
+		// The file has to exist.
+		if self.path.is_none() {
+			FlacaError::FileInvalid.warn(None);
+			return Err(FlacaError::FileInvalid);
+		}
+
+		// Make sure we can work on this file.
+		let path = self.to_owned().path.unwrap().to_path_buf();
+		let ext = get_file_extension(path.to_path_buf());
+		if ! path.is_file() || ext.is_none() || ext == opts.skip {
+			FlacaError::FileInvalid.warn(get_file_canonical(path.to_owned().to_path_buf()));
+			return Err(FlacaError::FileInvalid);
+		}
+
+		// Pull encoders.
+		let encoders = ext
+			.unwrap()
+			.encoders(opts.to_owned())
+			.unwrap_or(Vec::new());
+
+		// Grab original permissions so we know how to set copies.
+		let perms = get_file_perms(path.to_path_buf());
+		let owner = get_file_owner(path.to_path_buf());
+
+		// Start a result.
+		let mut out = FlacaResult::start(
+			path.to_owned().to_path_buf(),
+			encoders
+				.iter()
+				.map(|x| {
+					let (a, _) = x;
+					a.to_owned()
+				})
+				.collect()
+		)?;
+
+		// Loop our encoders!
+		for (a, b) in encoders {
+			// Just in case the file vanished.
+			if ! path.is_file() {
+				FlacaError::FileInvalid.warn(get_file_canonical(path.to_owned().to_path_buf()));
+				return Err(FlacaError::FileInvalid);
+			}
+
+			if true == opts.debug {
+				FlacaError::Debug.debug(Some(format!(
+					"Running {} at <{}>",
+					a,
+					b,
+				)), output);
+			}
+
+			// Create a working copy.
+			let working1 = self.to_owned().working(true);
+			if working1.is_none() {
+				FlacaError::CommandFailed.warn(Some("Missing working copy.".to_string()));
+				continue;
+			}
+
+			// Some programs need a second, empty path to write to.
+			let mut working2: Option<String> = None;
+
+			// Set up the command.
+			let mut com = std::process::Command::new(b);
+			match a {
+				FlacaEncoder::Jpegoptim => {
+					com.arg("-q");
+					com.arg("-f");
+					com.arg("--strip-all");
+					com.arg("--all-progressive");
+					com.arg(working1.to_owned().unwrap());
+				}
+				FlacaEncoder::Mozjpeg => {
+					working2 = Some(format!("{}.bak", working1.to_owned().unwrap()));
+					com.arg("-copy");
+					com.arg("none");
+					com.arg("-optimize");
+					com.arg("-progressive");
+					com.arg("-outfile");
+					com.arg(working2.to_owned().unwrap());
+					com.arg(working1.to_owned().unwrap());
+				}
+				FlacaEncoder::Oxipng => {
+					com.arg("-s");
+					com.arg("-q");
+					com.arg("--fix");
+					com.arg("-o");
+					com.arg("6");
+					com.arg("-i");
+					com.arg("0");
+					com.arg(working1.to_owned().unwrap());
+				}
+				FlacaEncoder::Pngout => {
+					com.arg(working1.to_owned().unwrap());
+					com.arg("-q");
+				}
+				FlacaEncoder::Zopflipng => {
+					working2 = Some(format!("{}.bak", working1.to_owned().unwrap()));
+					com.arg("-m");
+					com.arg(working1.to_owned().unwrap());
+					com.arg(working2.to_owned().unwrap());
 				}
 			}
 
-			// Try to copy.
-			if let Err(_) = copy(path, path2) {
-				eprintln!(
-					"{} Could not copy file.",
-					Yellow.bold().paint("Warning:"),
-				);
+			// Note the starting size.
+			let size_old: u64 = get_file_size(std::path::PathBuf::from(working1.to_owned().unwrap()))
+				.unwrap_or(0);
 
-				return Err("File could not be copied.");
+			// Run it.
+			if let Err(_) = com
+				.stdout(std::process::Stdio::piped())
+				.stderr(std::process::Stdio::piped())
+				.output() {
+				FlacaError::CommandFailed.warn(Some(
+					format!(
+						"Compress {} with {}.",
+						get_file_canonical(path.to_owned().to_path_buf()).unwrap_or("MISSING".to_string()),
+						a,
+					)
+				));
+
+				continue;
 			}
 
-			// Send a Flaca back-a.
-			return Ok(FlacaFile::new(dest.to_owned()));
-		}
+			// Move working2 to working1 if it exists.
+			if working2.is_some() {
+				if let Err(_) = copy_file(
+					std::path::PathBuf::from(working2.to_owned().unwrap()),
+					std::path::PathBuf::from(working1.to_owned().unwrap()),
+					perms.to_owned(),
+					owner.to_owned(),
+				) {
+					FlacaError::CommandFailed.warn(Some(
+						format!(
+							"Compress {} with {}.",
+							get_file_canonical(path.to_owned().to_path_buf()).unwrap_or("MISSING".to_string()),
+							a,
+						)
+					));
 
-		Err("File does not exist.")
-	}
+					continue;
+				}
 
-	/**
-	 * Remove
-	 */
-	fn remove(self) -> Result<bool, &'static str> {
-		let path = self.as_path();
-		if path.exists() {
-			if let Err(_) = remove_file(path) {
-				return Err("File could not be removed.");
+				if let Err(_) = std::fs::remove_file(std::path::PathBuf::from(working2.to_owned().unwrap())) {
+					FlacaError::TmpFailed.warn(None);
+					let _noop: bool;
+				}
+			}
+
+			// Recheck the size in case something changed.
+			let size_new: u64 = get_file_size(std::path::PathBuf::from(working1.to_owned().unwrap())).unwrap_or(0);
+
+			if true == opts.debug && size_new > 0 && size_old > 0 {
+				FlacaError::Debug.debug(Some(format!(
+					"{} / {}",
+					indicatif::HumanBytes(size_old),
+					match size_new.cmp(&size_old) {
+						std::cmp::Ordering::Less => ansi_term::Colour::Green.bold().paint(indicatif::HumanBytes(size_new).to_string()),
+						std::cmp::Ordering::Equal => ansi_term::Colour::Yellow.bold().paint(indicatif::HumanBytes(size_new).to_string()),
+						std::cmp::Ordering::Greater => ansi_term::Colour::Red.bold().paint(indicatif::HumanBytes(size_new).to_string()),
+					}
+				)), output);
+			}
+
+			// Replace the original image, if applicable.
+			if !opts.pretend && size_new > 0 && size_old > 0 && size_new < size_old {
+				if let Err(_) = copy_file(
+					std::path::PathBuf::from(working1.to_owned().unwrap()),
+					std::path::PathBuf::from(path.to_owned().to_path_buf()),
+					perms.to_owned(),
+					owner.to_owned(),
+				) {
+					FlacaError::CommandFailed.warn(Some(
+						format!(
+							"Compress {}.",
+							get_file_canonical(path.to_owned().to_path_buf()).unwrap_or("MISSING".to_string()),
+						)
+					));
+				}
+			}
+
+			// Clean up the working file.
+			if let Err(_) = std::fs::remove_file(std::path::PathBuf::from(working1.to_owned().unwrap())) {
+				FlacaError::TmpFailed.warn(None);
+				let _noop: bool;
 			}
 		}
 
-		Ok(true)
+		out.finish()?;
+
+		// Log it?
+		if opts.log.is_some() {
+			if true == opts.debug {
+				FlacaError::Debug.debug(Some(format!(
+					"Logging result to <{}>",
+					get_file_name(opts.to_owned().log.unwrap()).unwrap_or("UNKNOWN".to_string()),
+				)), output);
+			}
+
+			out.log(opts.log.unwrap());
+		}
+
+		Ok(out)
 	}
 
-	/**
-	 * Working Copy
-	 *
-	 * Like copy, except the destination is computed automatically.
-	 */
-	fn working_copy(self) -> Result<FlacaFile, &'static str> {
-		// We need a valid extension.
-		if let Ok(ext) = self.to_owned().extension() {
-			let file = self.to_owned().name()?;
-			let mut num: u64 = 0;
-			let dir = PathBuf::from(&temp_dir());
-			if dir.is_dir() {
-				// This is easier if we have a proper string.
-				if let Ok(base) = dir.canonicalize() {
-					// Generate a stub name.
-					let mut out_name: String = format!(
-						"{}/{}.__flaca{}.{}",
-						base.display(),
-						file,
-						num.to_string(),
-						ext
-					);
+	/// Wrapper to obtain canonical path.
+	fn canonical(self) -> Option<String> {
+		match self.path {
+			Some(x) => get_file_canonical(x.to_path_buf()),
+			None => None,
+		}
+	}
 
-					// Repeat until we have a file that is unique.
-					while Path::new(&out_name).exists() {
-						num = num + 1;
+	/// Wrapper to obtain extension.
+	fn extension(self) -> Option<FlacaImageType> {
+		match self.path {
+			Some(x) => get_file_extension(x.to_path_buf()),
+			None => None,
+		}
+	}
 
-						out_name = format!(
+	/// Wrapper to obtain file name.
+	fn name(self) -> Option<String> {
+		match self.path {
+			Some(x) => get_file_name(x.to_path_buf()),
+			None => None,
+		}
+	}
+
+	/// Generate (Unique) Working Copy.
+	fn working(self, copy: bool) -> Option<String> {
+		// First we need a unique file.
+		if let Some(ext) = self.to_owned().extension() {
+			if let Some(name) = self.to_owned().name() {
+				let mut num: u64 = 0;
+				let dir = std::path::PathBuf::from(std::env::temp_dir());
+
+				// This should be a directory.
+				if dir.is_dir() {
+					if let Some(base) = get_file_canonical(dir) {
+						// Guess at a likely unique name.
+						let mut out_name: String = format!(
 							"{}/{}.__flaca{}.{}",
-							base.display(),
-							file,
+							base,
+							name,
 							num.to_string(),
 							ext
 						);
-					}
 
-					if let Ok(x) = self.copy(out_name) {
-						return Ok(x);
+						// Repeat until we have something unique.
+						while std::path::Path::new(&out_name).exists() {
+							num += 1;
+
+							out_name = format!(
+								"{}/{}.__flaca{}.{}",
+								base,
+								name,
+								num.to_string(),
+								ext
+							);
+						}
+
+						// Copy?
+						if true == copy {
+							if let Err(_) = copy_file(self.path.unwrap().to_path_buf(), std::path::PathBuf::from(&out_name), None, None) {
+								return None;
+							}
+						}
+
+						// Done!
+						return Some(out_name);
 					}
 				}
 			}
 		}
 
-		Err("Could not create working copy.")
+		None
 	}
 }
 
-lazy_static! {
-	/// Dry run; do not override any files.
-	static ref DRY_RUN: Mutex<bool> = Mutex::new(false);
+#[derive(Debug, Clone)]
+struct FlacaResult {
+	/// Source path.
+	path: Option<std::path::PathBuf>,
+	/// Encoders being used.
+	encoders: Option<Vec<FlacaEncoder>>,
+	/// Start time.
+	start_time: Option<std::time::SystemTime>,
+	/// End time.
+	end_time: Option<std::time::SystemTime>,
+	/// Start size.
+	start_size: Option<u64>,
+	/// End size.
+	end_size: Option<u64>,
+	/// The elapsed time.
+	elapsed: Option<std::time::Duration>,
+	/// The total bytes saved.
+	saved: Option<u64>,
+}
 
-	/// Images to process.
-	static ref IMAGES: Mutex<Vec<FlacaFile>> = Mutex::new(Vec::new());
+impl Default for FlacaResult {
+	fn default() -> FlacaResult {
+		FlacaResult {
+			path: None,
+			encoders: None,
+			start_time: Some(std::time::SystemTime::now()),
+			end_time: None,
+			start_size: None,
+			end_size: None,
+			elapsed: None,
+			saved: None,
+		}
+	}
+}
 
-	/// Path to log file.
-	static ref LOG: Mutex<String> = Mutex::new("".to_string());
+impl FlacaResult {
+	/// Initialize a result object.
+	fn start(path: std::path::PathBuf, encoders: Vec<FlacaEncoder>) -> Result<FlacaResult, FlacaError> {
+		if ! path.is_file() {
+			FlacaError::FileInvalid.warn(Some(
+				format!(
+					"Compress {}.",
+					"MISSING".to_string(),
+				)
+			));
+			return Err(FlacaError::FileInvalid);
+		}
 
-	/// Maximum file age in seconds.
-	static ref MAX_AGE: Mutex<u64> = Mutex::new(0);
+		let size = get_file_size(path.to_path_buf());
 
-	/// Maximum file size in bytes.
-	static ref MAX_SIZE: Mutex<u64> = Mutex::new(0);
+		Ok(FlacaResult {
+			path: Some(path),
+			start_size: size,
+			encoders: Some(encoders),
+			..FlacaResult::default()
+		})
+	}
 
-	/// Minimum file age in seconds.
-	static ref MIN_AGE: Mutex<u64> = Mutex::new(0);
+	/// Wrap up and report what was done.
+	fn finish(&mut self) -> Result<(), FlacaError> {
+		if self.path.is_none() {
+			FlacaError::FileInvalid.warn(Some(
+				format!(
+					"Compress {}.",
+					"MISSING".to_string(),
+				)
+			));
+			return Err(FlacaError::FileInvalid);
+		}
 
-	/// Minimum file size in bytes.
-	static ref MIN_SIZE: Mutex<u64> = Mutex::new(0);
+		let path = self.to_owned().path.unwrap();
 
+		// Finish time.
+		self.end_time = Some(std::time::SystemTime::now());
+		if self.start_time.is_some() {
+			if let Ok(x) = self.end_time.unwrap().duration_since(self.start_time.unwrap()) {
+				self.elapsed = Some(x);
+			}
+		}
+
+		// Check the size.
+		self.end_size = get_file_size(path.to_path_buf());
+		if self.start_size.is_some() && self.end_size != self.start_size {
+			self.saved = Some(self.start_size.unwrap() - self.end_size.unwrap());
+		}
+
+		// Done!
+		Ok(())
+	}
+
+	/// Log results to file.
+	fn log(&self, log: std::path::PathBuf) {
+		// No path, nothing to do.
+		if self.path.is_none() || self.elapsed.is_none() {
+			return;
+		}
+
+		// Put together a human-readable status string.
+		let status: String = match self.saved {
+			Some(x) => format!(
+				"Saved {} bytes in {} seconds.",
+				x,
+				self.elapsed.unwrap().as_secs(),
+			),
+			None => "No change.".to_string(),
+		};
+
+		let mut file = std::fs::OpenOptions::new()
+			.write(true)
+			.append(true)
+			.create(true)
+			.open(log)
+			.unwrap();
+
+		if let Err(_) = writeln!(
+			file,
+			"{} \"{}\" {} {} {}",
+			get_local_now().to_rfc3339(),
+			get_file_canonical(self.to_owned().path.unwrap()).unwrap(),
+			self.start_size.unwrap_or(0),
+			self.end_size.unwrap_or(0),
+			status,
+		) {
+			FlacaError::LogFailed.warn(get_file_canonical(self.to_owned().path.unwrap()));
+			return;
+		}
+	}
+}
+
+/// Runtime settings.
+#[derive(Debug, Clone)]
+struct FlacaSettings {
+	/// Debug messages.
+	debug: bool,
+	/// Dry run; do not override source files.
+	pretend: bool,
 	/// Suppress STDOUT.
-	static ref QUIET: Mutex<bool> = Mutex::new(false);
+	quiet: bool,
 
-	/// Total disk usage at the end.
-	static ref SIZE_NEW: Mutex<u64> = Mutex::new(0);
+	/// Path to log.
+	log: Option<std::path::PathBuf>,
 
-	/// Total disk usage at the start.
-	static ref SIZE_OLD: Mutex<u64> = Mutex::new(0);
+	/// Ignore files younger than X.
+	min_age: Option<u64>,
+	/// Ignore files older than X.
+	max_age: Option<u64>,
+	/// Ignore files smaller than X.
+	min_size: Option<u64>,
+	/// Ignore files bigger than X.
+	max_size: Option<u64>,
 
-	/// Skip a format (jpg or png) when e.g. recursing directories.
-	static ref SKIP: Mutex<String> = Mutex::new("".to_string());
+	/// Skip a format.
+	skip: Option<FlacaImageType>,
 
 	/// Alternate jpegoptim binary path.
-	static ref JPEGOPTIM: Mutex<String> = Mutex::new("jpegoptim".to_string());
-
+	use_jpegoptim: Option<std::path::PathBuf>,
 	/// Alternate MozJPEG binary path.
-	static ref JPEGTRAN: Mutex<String> = Mutex::new("jpegtran".to_string());
-
-	/// Alternate Oxipng binary path.
-	static ref OXIPNG: Mutex<String> = Mutex::new("oxipng".to_string());
-
+	use_mozjpeg: Option<std::path::PathBuf>,
+	/// Alternate oxipng binary path.
+	use_oxipng: Option<std::path::PathBuf>,
 	/// Alternate pngout binary path.
-	static ref PNGOUT: Mutex<String> = Mutex::new("pngout".to_string());
+	use_pngout: Option<std::path::PathBuf>,
+	/// Alternate zopflipng binary path.
+	use_zopflipng: Option<std::path::PathBuf>,
 
-	/// Alternate Zopflipng binary path.
-	static ref ZOPFLIPNG: Mutex<String> = Mutex::new("zopflipng".to_string());
-
-	// Binaries to run against a PNG, in order.
-	static ref PNG_APPS: Vec<String> = vec![
-		"pngout".to_string(),
-		"oxipng".to_string(),
-		"zopflipng".to_string(),
-	];
-
-	// Binaries to run against a JPEG, in order.
-	static ref JPG_APPS: Vec<String> = vec![
-		"jpegtran".to_string(),
-		"jpegoptim".to_string(),
-	];
+	/// List of images to process; this is built automatically from other options.
+	images: Option<Vec<FlacaFile>>,
 }
 
+impl Default for FlacaSettings {
+	fn default() -> FlacaSettings {
+		FlacaSettings {
+			debug: false,
+			pretend: false,
+			quiet: false,
+			log: None,
+			min_age: None,
+			max_age: None,
+			min_size: None,
+			max_size: None,
+			skip: None,
+			use_jpegoptim: FlacaEncoder::Jpegoptim.bin_path(None),
+			use_mozjpeg: FlacaEncoder::Mozjpeg.bin_path(None),
+			use_oxipng: FlacaEncoder::Oxipng.bin_path(None),
+			use_pngout: FlacaEncoder::Pngout.bin_path(None),
+			use_zopflipng: FlacaEncoder::Zopflipng.bin_path(None),
+			images: None,
+		}
+	}
+}
 
+impl FlacaSettings {
+	/// Parse args into FlacaSettings struct.
+	fn from(args: &clap::ArgMatches) -> FlacaSettings {
+		let debug: bool = args.is_present("debug");
 
-// ---------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------
+		// Most of this can be built straight away.
+		let mut out: FlacaSettings = FlacaSettings {
+			debug: debug,
+			pretend: args.is_present("pretend"),
+			quiet: args.is_present("quiet"),
+			log: match args.value_of("log") {
+				Some(x) => Some(std::path::PathBuf::from(x)),
+				None => None,
+			},
+			min_age: match args.value_of("min_age") {
+				Some(x) => match x.parse::<u64>() {
+					Ok(y) => Some(y * 60),
+					Err(_) => None,
+				},
+				None => None,
+			},
+			max_age: match args.value_of("max_age") {
+				Some(x) => match x.parse::<u64>() {
+					Ok(y) => Some(y * 60),
+					Err(_) => None,
+				},
+				None => None,
+			},
+			min_size: match args.value_of("min_size") {
+				Some(x) => match x.parse::<u64>() {
+					Ok(y) => Some(y),
+					Err(_) => None,
+				},
+				None => None,
+			},
+			max_size: match args.value_of("max_size") {
+				Some(x) => match x.parse::<u64>() {
+					Ok(y) => Some(y),
+					Err(_) => None,
+				},
+				None => None,
+			},
+			skip: match args.value_of("skip") {
+				Some(x) => FlacaImageType::from(std::path::PathBuf::from(x)),
+				None => None,
+			},
+			use_jpegoptim: FlacaEncoder::Jpegoptim.bin_path(
+				match args.value_of("use_jpegoptim") {
+					Some(x) => Some(std::path::PathBuf::from(x)),
+					None => None,
+				}
+			),
+			use_mozjpeg: FlacaEncoder::Mozjpeg.bin_path(
+				match args.value_of("use_mozjpeg") {
+					Some(x) => Some(std::path::PathBuf::from(x)),
+					None => None,
+				}
+			),
+			use_oxipng: FlacaEncoder::Oxipng.bin_path(
+				match args.value_of("use_oxipng") {
+					Some(x) => Some(std::path::PathBuf::from(x)),
+					None => None,
+				}
+			),
+			use_pngout: FlacaEncoder::Pngout.bin_path(
+				match args.value_of("use_pngout") {
+					Some(x) => Some(std::path::PathBuf::from(x)),
+					None => None,
+				}
+			),
+			use_zopflipng: FlacaEncoder::Zopflipng.bin_path(
+				match args.value_of("use_zopflipng") {
+					Some(x) => Some(std::path::PathBuf::from(x)),
+					None => None,
+				}
+			),
+			..Self::default()
+		};
 
-/**
- * Main
- */
-fn main() {
-	// Check program requirements.
-	check_args();
-	check_requirements();
+		// Depending on what is installed on the system, we may not be
+		// able to process certain image types.
+		if Some(FlacaImageType::Jpg) != out.skip && out.use_jpegoptim.is_none() && out.use_mozjpeg.is_none() {
+			// No skip is set, so we can skip JPEGs.
+			if out.skip.is_none() {
+				out.skip = Some(FlacaImageType::Jpg);
+				FlacaError::NoDepsJpg.warn(None);
+			}
+			// Nothing to process means an error.
+			else if Some(FlacaImageType::Png) == out.skip {
+				FlacaError::NoDepsJpg.error(None);
+			}
+		}
+		else if Some(FlacaImageType::Png) != out.skip && out.use_oxipng.is_none() && out.use_pngout.is_none() && out.use_zopflipng.is_none() {
+			// No skip is set, so we can skip JPEGs.
+			if out.skip.is_none() {
+				out.skip = Some(FlacaImageType::Png);
+				FlacaError::NoDepsPng.warn(None);
+			}
+			// Nothing to process means an error.
+			else if Some(FlacaImageType::Jpg) == out.skip {
+				FlacaError::NoDepsPng.error(None);
+			}
+		}
 
-	// Parse runtime arguments.
-	if 0 == get_images_len() {
-		eprintln!(
-			"{} No qualifying images were found.",
-			Red.bold().paint("Error:")
+		// Now we need to see if any images map.
+		let mut images = out.parse_images(
+			args
+				.values_of("INPUT")
+				.unwrap()
+				.map(std::path::PathBuf::from)
+				.collect(),
 		);
 
-		exit(1);
+		// Abort if there were no images.
+		if images.len() < 1 {
+			FlacaError::NoFiles.error(None);
+		}
+
+		// Otherwise sort, dedup, and convert!
+		images.sort();
+		images.dedup();
+		out.images = Some(
+			images
+				.iter()
+				.map(|x| { FlacaFile::from(std::path::PathBuf::from(x)) })
+				.collect()
+			);
+
+		// Done!
+		out
 	}
 
-	// Process!
-	if false == *QUIET.lock().unwrap() {
-		print_header();
-		compress_images();
-	}
-	else {
-		compress_images_quiet();
+	/// Recursive callback to find applicable images.
+	fn parse_images(&self, files: Vec<std::path::PathBuf>) -> Vec<String> {
+		let mut out = Vec::new();
+
+		for image in files {
+			// Recurse directories.
+			if image.is_dir() {
+				let files = image
+					.read_dir()
+					.unwrap()
+					.map(|x| x.unwrap().path().to_owned())
+					.collect();
+				out.extend(self.parse_images(files));
+			}
+			// Just a regular old file.
+			else if image.is_file() {
+				// Should be an expandable path.
+				if let Some(path) = get_file_canonical(image.to_path_buf()) {
+					// Check extension first.
+					if let Some(ext) = FlacaImageType::from(image.to_path_buf()) {
+						// Skipping this type.
+						if self.skip == Some(ext) {
+							continue;
+						}
+
+						// Check file size.
+						if self.min_size.is_some() || self.max_size.is_some() {
+							if let Some(size) = get_file_size(image.to_path_buf()) {
+								if (self.min_size.is_some() && size < self.min_size.unwrap()) || (self.max_size.is_some() && size > self.max_size.unwrap()) {
+									continue;
+								}
+							} else {
+								continue;
+							}
+						}
+
+						// Check file time.
+						if self.min_age.is_some() || self.max_age.is_some() {
+							if let Some(age) = get_file_modified_since(image.to_path_buf()) {
+								if (self.min_age.is_some() && age < self.min_age.unwrap()) || (self.max_age.is_some() && age > self.max_age.unwrap()) {
+									continue;
+								}
+							} else {
+								continue;
+							}
+						}
+
+						out.push(path);
+					}
+				}
+			}
+		}
+
+		// Done!
+		out
 	}
 
-	exit(0);
+	/// Count up found images.
+	fn total_images(&self) -> Option<u64> {
+		if let Some(images) = self.to_owned().images {
+			return Some(images.len() as u64);
+		}
+
+		None
+	}
+
+	/// Count up byte size of found images.
+	fn total_size(&self) -> Option<u64> {
+		if let Some(images) = self.to_owned().images {
+			let mut size: u64 = 0;
+
+			for i in images {
+				if let Some(x) = i.path {
+					if let Some(y) = get_file_size(x.to_path_buf()) {
+						size += y;
+					}
+				}
+			}
+
+			return Some(size);
+		}
+
+		None
+	}
 }
 
-/**
- * Loop W/ Progress
- */
-fn compress_images() {
-	let start = SystemTime::now();
 
-	// Main image thread count.
-	let progress_images = ProgressBar::new(get_images_len());
-	progress_images.set_style(
-		ProgressStyle::default_bar()
-		.template("[{elapsed_precise}] [{bar:40.cyan/blue}]  {pos:.cyan.bold}/{len:.blue.bold}  {percent:.bold}%  {msg}")
-		.progress_chars("##-")
-	);
 
-	// Loop the images!
-	for image in &*IMAGES.lock().unwrap() {
-		// Announce we've started.
-		progress_images.println(format!(
-			"{} {}",
-			Purple.bold().paint(get_local_now().to_rfc3339()),
-			image.to_owned().canonical().unwrap(),
+// ---------------------------------------------------------------------
+// File Stat Helpers
+// ---------------------------------------------------------------------
+
+/// Get a file's canonical path.
+fn get_file_canonical(path: std::path::PathBuf) -> Option<String> {
+	match path.canonicalize() {
+		Ok(x) => Some(format!("{}", x.display())),
+		Err(_) => None,
+	}
+}
+
+/// Get a file's extension.
+fn get_file_extension(path: std::path::PathBuf) -> Option<FlacaImageType> {
+	FlacaImageType::from(path)
+}
+
+/// Get a file's modification time.
+fn get_file_modified(path: std::path::PathBuf) -> Option<std::time::SystemTime> {
+	if let Ok(x) = path.metadata() {
+		if let Ok(y) = x.modified() {
+			return Some(y);
+		}
+	}
+
+	None
+}
+
+/// Get a file's relative (to now) modification time in seconds.
+fn get_file_modified_since(path: std::path::PathBuf) -> Option<u64> {
+	if let Some(x) = get_file_modified(path) {
+		let now = std::time::SystemTime::now();
+		if let Ok(y) = now.duration_since(x) {
+			return Some(y.as_secs());
+		}
+	}
+
+	None
+}
+
+/// Get a file's name.
+fn get_file_name(path: std::path::PathBuf) -> Option<String> {
+	if let Some(x) = path.file_name() {
+		if let Some(y) = std::ffi::OsStr::to_str(x) {
+			return Some(y.to_string());
+		}
+	}
+
+	None
+}
+
+/// Get a file's User ID and Group ID.
+fn get_file_owner(path: std::path::PathBuf) -> Option<(nix::unistd::Uid, nix::unistd::Gid)> {
+	match path.metadata() {
+		Ok(x) => Some((
+			nix::unistd::Uid::from_raw(x.uid()),
+			nix::unistd::Gid::from_raw(x.gid()),
+		)),
+		Err(_) => None,
+	}
+}
+
+/// Get a file's permissions.
+fn get_file_perms(path: std::path::PathBuf) -> Option<std::fs::Permissions> {
+	match path.metadata() {
+		Ok(x) => Some(x.permissions()),
+		Err(_) => None,
+	}
+}
+
+/// Get a file's disk size.
+fn get_file_size(path: std::path::PathBuf) -> Option<u64> {
+	match path.metadata() {
+		Ok(x) => Some(x.len()),
+		Err(_) => None,
+	}
+}
+
+
+
+// ---------------------------------------------------------------------
+// File IO Helpers
+// ---------------------------------------------------------------------
+
+/// Copy a file.
+fn copy_file(
+	from: std::path::PathBuf,
+	to: std::path::PathBuf,
+	perms: Option<std::fs::Permissions>,
+	owner: Option<(nix::unistd::Uid, nix::unistd::Gid)>
+) -> Result<(), FlacaError> {
+	// No file, no copy.
+	if ! from.is_file() {
+		FlacaError::CommandFailed.warn(Some(
+			format!(
+				"Copy {} to {}.",
+				"MISSING".to_string(),
+				get_file_canonical(to.to_path_buf()).unwrap_or("MISSING".to_string()),
+			)
 		));
 
-		let apps = image.to_owned().encoders().unwrap();
-
-		// Keep track of how much we've saved this pass.
-		let mut saved: u64 = 0;
-		let mut elapsed: u64 = 0;
-
-		// Run what needs running.
-		for app in apps {
-			let mut _size_new = SIZE_NEW.lock().unwrap();
-
-			progress_images.tick();
-			if let Ok((rsaved, relapsed)) = compress_image(image.to_owned(), &app) {
-				saved += rsaved;
-				*_size_new -= rsaved;
-
-				let total_saved = *SIZE_OLD.lock().unwrap() - *_size_new;
-				if total_saved > 0 {
-					progress_images.set_message(&format!(
-						"{}",
-						Green.bold().paint(format!("-{}", HumanBytes(total_saved))),
-					));
-				}
-				else {
-					progress_images.set_message("");
-				}
-
-				elapsed += relapsed;
-			}
-		}
-
-		// Log before we move on?
-		if "".to_string() != *LOG.lock().unwrap() {
-			log_image(
-				image.to_owned(),
-				saved,
-				elapsed,
-			);
-		}
-
-		progress_images.inc(1);
+		return Err(FlacaError::FileInvalid);
 	}
 
-	progress_images.finish_and_clear();
+	// We might have to delete the destination.
+	if to.exists() {
+		if let Err(_) = std::fs::remove_file(to.to_path_buf()) {
+			FlacaError::CommandFailed.warn(Some(
+				format!(
+					"Copy {} to {}.",
+					get_file_canonical(from.to_owned().to_path_buf()).unwrap_or("MISSING".to_string()),
+					get_file_canonical(to.to_path_buf()).unwrap_or("MISSING".to_string()),
+				)
+			));
 
-	// We're done!
-	let end = SystemTime::now();
-	let end_since = end.duration_since(start).expect("Time is meaningless.");
-
-	println!(
-		"{} {}",
-		Green.bold().paint("Finished:"),
-		HumanDuration(end_since),
-	);
-
-	if *SIZE_OLD.lock().unwrap() != *SIZE_NEW.lock().unwrap() {
-		println!(
-			"{} {}",
-			Green.bold().paint("Saved:"),
-			HumanBytes(*SIZE_OLD.lock().unwrap() - *SIZE_NEW.lock().unwrap()),
-		);
-	}
-	else {
-		println!(
-			"{} {}",
-			Yellow.bold().paint("Saved:"),
-			"0B",
-		);
-	}
-}
-
-/**
- * Loop w/o Progress
- */
-fn compress_images_quiet() {
-	// Loop the images!
-	for image in &*IMAGES.lock().unwrap() {
-		let apps = image.to_owned().encoders().unwrap();
-
-		// Keep track of how much we've saved this pass.
-		let mut saved: u64 = 0;
-		let mut elapsed: u64 = 0;
-
-		// Run what needs running.
-		for app in apps {
-			let mut _size_new = SIZE_NEW.lock().unwrap();
-
-			if let Ok((rsaved, relapsed)) = compress_image(image.to_owned(), &app) {
-				saved += rsaved;
-				*_size_new -= rsaved;
-
-				elapsed += relapsed;
-			}
-		}
-
-		// Log before we move on?
-		if "".to_string() != *LOG.lock().unwrap() {
-			log_image(
-				image.to_owned(),
-				saved,
-				elapsed,
-			);
+			return Err(FlacaError::CommandFailed);
 		}
 	}
+
+	// Try to copy.
+	if let Err(_) = std::fs::copy(from.to_path_buf(), to.to_path_buf()) {
+		FlacaError::CommandFailed.warn(Some(
+			format!(
+				"Copy {} to {}.",
+				get_file_canonical(from.to_owned().to_path_buf()).unwrap_or("MISSING".to_string()),
+				get_file_canonical(to.to_path_buf()).unwrap_or("MISSING".to_string()),
+			)
+		));
+
+		return Err(FlacaError::CommandFailed);
+	}
+
+	// Set permissions?
+	if let Some(x) = perms {
+		if let Err(_) = std::fs::set_permissions(to.as_path(), x) {
+			FlacaError::PermsFailed.warn(get_file_canonical(from.to_owned().to_path_buf()));
+			return Ok(())
+		}
+	}
+
+	// Set owner?
+	if let Some((uid, gid)) = owner {
+		if let Err(_) = nix::unistd::chown(to.as_path(), Some(uid), Some(gid)) {
+			FlacaError::PermsFailed.warn(get_file_canonical(from.to_owned().to_path_buf()));
+			return Ok(())
+		}
+	}
+
+	Ok(())
 }
 
 
 
 // ---------------------------------------------------------------------
-// Set Up
+// Dates and Time
 // ---------------------------------------------------------------------
 
-/**
- * Check Requirements
- *
- * Flaca is just a launcher; the image encoders must be natively
- * installed on the user's system.
- */
-fn check_requirements() {
-	let mut error: bool = false;
+/// Get current, local time.
+fn get_local_now() -> chrono::DateTime<chrono::Local> {
+	let start = std::time::SystemTime::now();
+	let start_since = start.duration_since(std::time::UNIX_EPOCH).expect("Time is meaningless.");
 
-	let apps = [
-		("jpegoptim", &*JPEGOPTIM.lock().unwrap()),
-		("MozJPEG", &*JPEGTRAN.lock().unwrap()),
-		("oxipng", &*OXIPNG.lock().unwrap()),
-		("pngout", &*PNGOUT.lock().unwrap()),
-		("zopflipng", &*ZOPFLIPNG.lock().unwrap()),
-	];
-
-	for (name, app) in apps.iter() {
-		if false == check_requirement(app) {
-			error = true;
-			eprintln!(
-				"{} {} was not found.",
-				Red.bold().paint("Error:"),
-				Style::new().bold().paint(name.to_string())
-			);
-		}
-	}
-
-	if true == error {
-		exit(1);
-	}
+	chrono::Local.timestamp(start_since.as_secs() as i64, 0)
 }
 
-/**
- * Check Requirement
- *
- * Ensure a given binary is found in the $PATH.
- */
-fn check_requirement(app: &str) -> bool {
-	// This could be a full path.
-	let path = Path::new(app);
-	if path.is_file() {
-		return true;
-	}
 
-	// If not, let's see if it is found in any of the $PATH dirs.
-	if let Ok(path) = var("PATH") {
-		for p in path.split(":") {
-			let p_str = format!("{}/{}", p, app);
-			if Metadata(p_str).is_ok() {
-				return true;
+
+// ---------------------------------------------------------------------
+// Arg Validation
+// ---------------------------------------------------------------------
+
+/// Args validation for min/max age and size.
+fn validate_args_min_max(x: String) -> Result<(), String> {
+    match x.parse::<u64>() {
+		Ok(y) => {
+			if y > 0 {
+				Ok(())
+			} else {
+				Err(FlacaError::UsizeMinMax.to_string(None))
 			}
 		}
+		Err(_) => Err(FlacaError::UsizeMinMax.to_string(None))
+	}
+}
+
+/// Args validation for log path.
+fn validate_args_log(x: String) -> Result<(), String> {
+    let path = std::path::PathBuf::from(x);
+
+	// This can't be a directory. Haha.
+	if path.is_dir() {
+		return Err(FlacaError::FileInvalid.to_string(get_file_canonical(path)));
 	}
 
-	false
+	return Ok(());
 }
 
-/**
- * Get App Command
- */
-fn get_app_path(app: &str) -> String {
-	let path: String;
 
-	match app {
-		"jpegoptim" => path = format!("{}", &*JPEGOPTIM.lock().unwrap()),
-		"jpegtran" => path = format!("{}", &*JPEGTRAN.lock().unwrap()),
-		"oxipng" => path = format!("{}", &*OXIPNG.lock().unwrap()),
-		"pngout" => path = format!("{}", &*PNGOUT.lock().unwrap()),
-		"zopflipng" => path = format!("{}", &*ZOPFLIPNG.lock().unwrap()),
-		_ => {
-			eprintln!(
-				"{} Invalid binary {}.",
-				Red.bold().paint("Error:"),
-				Style::new().bold().paint(app)
-			);
-			exit(1);
-		}
-	};
 
-	path
-}
+// ---------------------------------------------------------------------
+// Binary!
+// ---------------------------------------------------------------------
 
-/**
- * Runtime Arguments
- *
- * This both declares available runtime arguments and helps crunch them
- * into a consistent, usable frame of reference.
- */
-fn check_args() {
+fn main() {
 	// Set up runtime arguments.
-	let args = App::new("Flaca")
+	let args = clap::App::new("Flaca")
 		.version(VERSION)
 		.author("Blobfolio, LLC <hello@blobfolio.com>")
 		.about("Losslessly compress the mierda out of JPEG and PNG images.")
-		.arg(Arg::with_name("dry_run")
+		.arg(clap::Arg::with_name("debug")
 			.short("d")
-			.long("dry_run")
+			.long("debug")
+			.alias("verbose")
+			.conflicts_with("quiet")
+			.help("Print verbose information to STDOUT.")
+		)
+		.arg(clap::Arg::with_name("pretend")
+			.long("pretend")
 			.alias("dry-run")
+			.alias("dry_run")
 			.help("Conduct a trial run without altering your images.")
 		)
-		.arg(Arg::with_name("log")
+		.arg(clap::Arg::with_name("log")
 			.short("l")
 			.long("log")
 			.help("Log operations to this location.")
-			.value_name("PATH")
 			.takes_value(true)
+			.validator(validate_args_log)
+			.value_name("PATH")
 		)
-		.arg(Arg::with_name("min_age")
+		.arg(clap::Arg::with_name("min_age")
 			.long("min_age")
 			.alias("min-age")
 			.help("Ignore files younger than this.")
-			.value_name("MINUTES")
 			.takes_value(true)
-			.validator(check_min_max_args)
+			.validator(validate_args_min_max)
+			.value_name("MINUTES")
 		)
-		.arg(Arg::with_name("max_age")
+		.arg(clap::Arg::with_name("max_age")
 			.long("max_age")
 			.alias("max-age")
 			.help("Ignore files older than this.")
-			.value_name("MINUTES")
 			.takes_value(true)
-			.validator(check_min_max_args)
+			.validator(validate_args_min_max)
+			.value_name("MINUTES")
 		)
-		.arg(Arg::with_name("min_size")
+		.arg(clap::Arg::with_name("min_size")
 			.long("min_size")
 			.alias("min-size")
 			.help("Ignore files smaller than this.")
-			.value_name("BYTES")
 			.takes_value(true)
-			.validator(check_min_max_args)
+			.validator(validate_args_min_max)
+			.value_name("BYTES")
 		)
-		.arg(Arg::with_name("max_size")
+		.arg(clap::Arg::with_name("max_size")
 			.long("max_size")
 			.alias("max-size")
 			.help("Ignore files larger than this.")
-			.value_name("BYTES")
 			.takes_value(true)
-			.validator(check_min_max_args)
+			.validator(validate_args_min_max)
+			.value_name("BYTES")
 		)
-		.arg(Arg::with_name("quiet")
+		.arg(clap::Arg::with_name("quiet")
 			.short("q")
 			.long("quiet")
 			.help("Suppress STDOUT. This has no effect on errors.")
 		)
-		.arg(Arg::with_name("skip")
+		.arg(clap::Arg::with_name("skip")
 			.short("s")
 			.long("skip")
 			.help("Skip images of this type.")
-			.value_name("FORMAT")
-			.takes_value(true)
 			.possible_values(&["jpeg", "jpg", "png"])
+			.takes_value(true)
+			.value_name("FORMAT")
 		)
-		.arg(Arg::with_name("jpegoptim")
-			.long("jpegoptim")
+		.arg(clap::Arg::with_name("use_jpegoptim")
+			.long("use_jpegoptim")
+			.alias("jpegoptim")
+			.alias("use-jpegoptim")
 			.help("Alternate binary path for jpegoptim.")
-			.value_name("BIN")
 			.takes_value(true)
+			.value_name("BIN")
 		)
-		.arg(Arg::with_name("mozjpeg")
-			.long("mozjpeg")
+		.arg(clap::Arg::with_name("use_mozjpeg")
+			.long("use_mozjpeg")
 			.alias("jpegtran")
+			.alias("mozjpeg")
+			.alias("use-jpegtran")
+			.alias("use-mozjpeg")
+			.alias("use_jpegtran")
 			.help("Alternate binary path for MozJPEG.")
-			.value_name("BIN")
 			.takes_value(true)
+			.value_name("BIN")
 		)
-		.arg(Arg::with_name("oxipng")
-			.long("oxipng")
+		.arg(clap::Arg::with_name("use_oxipng")
+			.long("use_oxipng")
+			.alias("oxipng")
+			.alias("use-oxipng")
 			.help("Alternate binary path for oxipng.")
-			.value_name("BIN")
 			.takes_value(true)
+			.value_name("BIN")
 		)
-		.arg(Arg::with_name("pngout")
-			.long("pngout")
+		.arg(clap::Arg::with_name("use_pngout")
+			.long("use_pngout")
+			.alias("pngout")
+			.alias("use-pngout")
 			.help("Alternate binary path for pngout.")
-			.value_name("BIN")
 			.takes_value(true)
+			.value_name("BIN")
 		)
-		.arg(Arg::with_name("zopflipng")
-			.long("zopflipng")
+		.arg(clap::Arg::with_name("use_zopflipng")
+			.long("use_zopflipng")
+			.alias("use-zopflipng")
+			.alias("zopflipng")
 			.help("Alternate binary path for zopflipng.")
-			.value_name("BIN")
 			.takes_value(true)
+			.value_name("BIN")
 		)
-		.arg(Arg::with_name("INPUT")
+		.arg(clap::Arg::with_name("INPUT")
 			.index(1)
 			.help("Images(s) to crunch or where to find them.")
-			.required(true)
 			.multiple(true)
+			.required(true)
 			.use_delimiter(false)
 		)
-		.after_help("REQUIRED OPTIMIZERS:
+		.after_help("OPTIMIZERS:
     jpegoptim <https://github.com/tjko/jpegoptim>
     MozJPEG   <https://github.com/mozilla/mozjpeg>
     oxipng    <https://github.com/shssoichiro/oxipng>
@@ -780,502 +1382,65 @@ fn check_args() {
 		")
 		.get_matches();
 
-	// Dry run.
-	let mut _dry_run = DRY_RUN.lock().unwrap();
-	*_dry_run = args.is_present("dry_run");
+	let opts = FlacaSettings::from(&args);
 
-	// Quiet mode.
-	let mut _quiet = QUIET.lock().unwrap();
-	*_quiet = args.is_present("quiet");
+	// Print header.
+	header(opts.to_owned());
 
-	// Min age.
-	if let Some(x) = args.value_of("min_age") {
-		// This program accepts age in minutes, but internally we will
-		// be using seconds.
-		let mut _min_age = MIN_AGE.lock().unwrap();
-		*_min_age = x.parse::<u64>().unwrap() * 60;
+	// Quiet version.
+	if opts.quiet {
+		process_images_quiet(opts);
 	}
-
-	// Max age.
-	if let Some(x) = args.value_of("max_age") {
-		// This program accepts age in minutes, but internally we will
-		// be using seconds.
-		let mut _max_age = MAX_AGE.lock().unwrap();
-		*_max_age = x.parse::<u64>().unwrap() * 60;
-	}
-
-	// Min size.
-	if let Some(x) = args.value_of("min_size") {
-		let mut _min_size = MIN_SIZE.lock().unwrap();
-		*_min_size = x.parse::<u64>().unwrap();
-	}
-
-	// Max size.
-	if let Some(x) = args.value_of("max_size") {
-		let mut _max_size = MAX_SIZE.lock().unwrap();
-		*_max_size = x.parse::<u64>().unwrap();
-	}
-
-	// Log path.
-	if let Some(x) = args.value_of("log") {
-		let mut _log = LOG.lock().unwrap();
-		*_log = x.parse::<String>().unwrap();
-	}
-
-	// Are we skipping a format?
-	if let Some(x) = args.value_of("skip") {
-		let mut _skip = SKIP.lock().unwrap();
-		*_skip = x.parse::<String>().unwrap();
-		if "jpeg" == *_skip {
-			*_skip = "jpg".to_string();
-		}
-	}
-
-	// Binary paths.
-	let me_dir = &current_exe().unwrap();
-	let flaca_dir = Path::new(me_dir).parent().unwrap();
-	let flaca_dir2 = flaca_dir.join("bin");
-
-	// Assume relative binary directory.
-	let mut bin_dir = Path::new(&flaca_dir2);
-
-	// That failing, there could be a shared folder.
-	if ! bin_dir.is_dir() {
-		bin_dir = Path::new("/usr/share/flaca");
-	}
-
-	// jpegoptim.
-	if let Some(x) = args.value_of("jpegoptim") {
-		let app = PathBuf::from(x);
-		if ! app.is_file() {
-			eprintln!(
-				"{} {} was not found.",
-				Red.bold().paint("Error:"),
-				Style::new().bold().paint(x)
-			);
-
-			exit(1);
-		}
-
-		let mut _jpegoptim = JPEGOPTIM.lock().unwrap();
-		if let Ok(x) = app.canonicalize() {
-			*_jpegoptim = format!("{}", x.display());
-		}
-	}
-	else if bin_dir.is_dir() {
-		let app = bin_dir.join("jpegoptim");
-		if app.is_file() {
-			let mut _jpegoptim = JPEGOPTIM.lock().unwrap();
-			if let Ok(x) = app.canonicalize() {
-				*_jpegoptim = format!("{}", x.display());
-			}
-		}
-	}
-
-	// MozJPEG.
-	if let Some(x) = args.value_of("jpegtran") {
-		let app = PathBuf::from(x);
-		if ! app.is_file() {
-			eprintln!(
-				"{} {} was not found.",
-				Red.bold().paint("Error:"),
-				Style::new().bold().paint(x)
-			);
-
-			exit(1);
-		}
-
-		let mut _jpegtran = JPEGTRAN.lock().unwrap();
-		if let Ok(x) = app.canonicalize() {
-			*_jpegtran = format!("{}", x.display());
-		}
-	}
-	else if bin_dir.is_dir() {
-		let app = bin_dir.join("jpegtran");
-		if app.is_file() {
-			let mut _jpegtran = JPEGTRAN.lock().unwrap();
-			if let Ok(x) = app.canonicalize() {
-				*_jpegtran = format!("{}", x.display());
-			}
-		}
-	}
-	// This one could also be in /opt.
+	// Pretty version.
 	else {
-		let app = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
-		if app.is_file() {
-			let mut _jpegtran = JPEGTRAN.lock().unwrap();
-			if let Ok(x) = app.canonicalize() {
-				*_jpegtran = format!("{}", x.display());
+		if true == opts.debug {
+			FlacaError::Debug.debug(Some("Verbose output coming…".to_string()), None);
+
+			if opts.pretend {
+				FlacaError::Debug.debug(Some("Pretend mode; no files will be overwritten.".to_string()), None);
+			}
+
+			if opts.skip.is_some() {
+				FlacaError::Debug.debug(Some(format!(
+					"Skipping: {} images.",
+					opts.skip.unwrap(),
+				)), None);
+			}
+
+			if opts.min_size.is_some() || opts.max_size.is_some() {
+				FlacaError::Debug.debug(Some(format!(
+					"Looking for images between {} and {} bytes.",
+					opts.min_size.unwrap_or(0),
+					match opts.max_size {
+						Some(x) => x.to_string(),
+						None => "∞".to_string(),
+					},
+				)), None);
+			}
+
+			if opts.min_age.is_some() || opts.max_age.is_some() {
+				FlacaError::Debug.debug(Some(format!(
+					"Looking for images between {} and {} minutes old.",
+					opts.min_age.unwrap_or(0) / 60,
+					match opts.max_age {
+						Some(x) => (x / 60).to_string(),
+						None => "∞".to_string(),
+					},
+				)), None);
 			}
 		}
-	}
 
-	// Oxipng.
-	if let Some(x) = args.value_of("oxipng") {
-		let app = PathBuf::from(x);
-		if ! app.is_file() {
-			eprintln!(
-				"{} {} was not found.",
-				Red.bold().paint("Error:"),
-				Style::new().bold().paint(x)
-			);
-
-			exit(1);
-		}
-
-		let mut _oxipng = OXIPNG.lock().unwrap();
-		if let Ok(x) = app.canonicalize() {
-			*_oxipng = format!("{}", x.display());
-		}
-	}
-	else if bin_dir.is_dir() {
-		let app = bin_dir.join("oxipng");
-		if app.is_file() {
-			let mut _oxipng = OXIPNG.lock().unwrap();
-			if let Ok(x) = app.canonicalize() {
-				*_oxipng = format!("{}", x.display());
-			}
-		}
-	}
-
-	// pngout.
-	if let Some(x) = args.value_of("pngout") {
-		let app = PathBuf::from(x);
-		if ! app.is_file() {
-			eprintln!(
-				"{} {} was not found.",
-				Red.bold().paint("Error:"),
-				Style::new().bold().paint(x)
-			);
-
-			exit(1);
-		}
-
-		let mut _pngout = PNGOUT.lock().unwrap();
-		if let Ok(x) = app.canonicalize() {
-			*_pngout = format!("{}", x.display());
-		}
-	}
-	else if bin_dir.is_dir() {
-		let app = bin_dir.join("pngout");
-		if app.is_file() {
-			let mut _pngout = PNGOUT.lock().unwrap();
-			if let Ok(x) = app.canonicalize() {
-				*_pngout = format!("{}", x.display());
-			}
-		}
-	}
-
-	// Zopflipng.
-	if let Some(x) = args.value_of("zopflipng") {
-		let app = PathBuf::from(x);
-		if ! app.is_file() {
-			eprintln!(
-				"{} {} was not found.",
-				Red.bold().paint("Error:"),
-				Style::new().bold().paint(x)
-			);
-
-			exit(1);
-		}
-
-		let mut _zopflipng = ZOPFLIPNG.lock().unwrap();
-		if let Ok(x) = app.canonicalize() {
-			*_zopflipng = format!("{}", x.display());
-		}
-	}
-	else if bin_dir.is_dir() {
-		let app = bin_dir.join("zopflipng");
-		if app.is_file() {
-			let mut _zopflipng = ZOPFLIPNG.lock().unwrap();
-			if let Ok(x) = app.canonicalize() {
-				*_zopflipng = format!("{}", x.display());
-			}
-		}
-	}
-
-	// Now we have enough information to pull our images.
-	let mut _images = IMAGES.lock().unwrap();
-	*_images = clean_images(check_images(
-		args
-			.values_of("INPUT")
-			.unwrap()
-			.map(PathBuf::from)
-			.collect(),
-	));
-
-	// Let's go through and add up the sizes.
-	let mut _size_old = SIZE_OLD.lock().unwrap();
-	let mut _size_new = SIZE_NEW.lock().unwrap();
-
-	for image in &*_images {
-		if let Ok(size) = image.to_owned().size() {
-			*_size_old += size;
-			*_size_new += size;
-		}
+		process_images(opts);
 	}
 }
 
-/**
- * Callback for Min/Max flags
- *
- * Min/max age and size arguments all work the same way, and if
- * provided, must be greater than 0.
- */
-fn check_min_max_args(x: String) -> Result<(), String> {
-    match x.parse::<u64>() {
-		Ok(y) => {
-			if y > 0 {
-				Ok(())
-			} else {
-				Err("Value must be at least 1.".to_string())
-			}
-		}
-		Err(_) => Err("Value must be at least 1.".to_string())
-	}
-}
-
-/**
- * Collect Images
- *
- * Any number of files or directories could be passed to this app; we
- * need to analyze those and pull out qualifying images.
- */
-fn check_images(files: Vec<PathBuf>) -> Vec<String> {
-	let mut out = Vec::new();
-
-	for image in files {
-		// Recurse directories.
-		if image.is_dir() {
-			let files = image
-				.read_dir()
-				.unwrap()
-				.map(|x| x.unwrap().path().to_owned())
-				.collect();
-			out.extend(check_images(files));
-		}
-		// Just a regular old file.
-		else if image.is_file() {
-			// Push it. We'll check applicability later.
-			out.push(format!("{}", image.canonicalize().unwrap().display()));
-		}
+/// Print CLI header.
+fn header(opts: FlacaSettings) {
+	// Don't print if we're supposed to be quiet.
+	if opts.quiet {
+		return;
 	}
 
-	// Done!
-	out
-}
-
-/**
- * Clean Image List
- *
- * To reduce operations, we'll wait and sort/dedup image paths once at
- * the end of the run.
- */
-fn clean_images(mut images: Vec<String>) -> Vec<FlacaFile> {
-	// Sort and dedup.
-	images.sort();
-	images.dedup();
-
-	// Recompile as a vector of PathBufs.
-	let mut out: Vec<FlacaFile> = Vec::new();
-	for image in &images {
-		let tmp = FlacaFile::new(image.to_string());
-
-		// Check extensions first.
-		if let Ok(ext) = tmp.to_owned().extension() {
-			if ext == *SKIP.lock().unwrap() {
-				continue;
-			}
-		}
-		else {
-			continue;
-		}
-
-		// Check age if applicable.
-		if let Err(_) = tmp.to_owned().check_age() {
-			continue;
-		}
-
-		// Check size if applicable.
-		if let Err(_) = tmp.to_owned().check_size() {
-			continue;
-		}
-
-		out.push(tmp);
-	}
-
-	// Done!
-	out
-}
-
-
-
-// ---------------------------------------------------------------------
-// Compression
-// ---------------------------------------------------------------------
-
-/**
- * Compress Image
- */
-fn compress_image(
-	image: FlacaFile,
-	app: &str,
-) -> Result<(u64, u64), &'static str> {
-	let start = SystemTime::now();
-	let size_old: u64 = image.to_owned().size().unwrap_or(0);
-
-	let working1: FlacaFile = image.to_owned().working_copy().unwrap();
-	let mut working2: String = "".to_string();
-
-	// These apps need a second working path.
-	if "jpegtran" == app || "zopflipng" == app {
-		working2 = format!("{}.bak", working1.to_owned().canonical().unwrap_or("".to_string()));
-	}
-
-	let mut saved: u64 = 0;
-
-	let mut com = Command::new(get_app_path(app));
-	match app {
-		"jpegoptim" => {
-			com.arg("-q");
-			com.arg("-f");
-			com.arg("--strip-all");
-			com.arg("--all-progressive");
-			com.arg(working1.to_owned().canonical().unwrap());
-		}
-		"jpegtran" => {
-			com.arg("-copy");
-			com.arg("none");
-			com.arg("-optimize");
-			com.arg("-progressive");
-			com.arg("-outfile");
-			com.arg(&working2);
-			com.arg(working1.to_owned().canonical().unwrap());
-		}
-		"oxipng" => {
-			com.arg("-s");
-			com.arg("-q");
-			com.arg("--fix");
-			com.arg("-o");
-			com.arg("6");
-			com.arg("-i");
-			com.arg("0");
-			com.arg(working1.to_owned().canonical().unwrap());
-		}
-		"pngout" => {
-			com.arg(working1.to_owned().canonical().unwrap());
-			com.arg("-q");
-		}
-		"zopflipng" => {
-			com.arg("-m");
-			com.arg(working1.to_owned().canonical().unwrap());
-			com.arg(&working2);
-		}
-		_ => {
-			eprintln!(
-				"{} Invalid binary {}.",
-				Red.bold().paint("Error:"),
-				Style::new().bold().paint(app)
-			);
-			exit(1);
-		}
-	}
-
-	// Run it!
-	if let Err(_) = com
-		.stdout(Stdio::piped())
-		.stderr(Stdio::piped())
-		.output() {
-		eprintln!(
-			"{} Could not execute {}.",
-			Red.bold().paint("Error:"),
-			Style::new().bold().paint(app)
-		);
-		exit(1);
-	}
-
-	// We might have to swap working files.
-	if working2 != "" {
-		let tmp = FlacaFile::new(working2);
-		if let Err(_) = tmp.to_owned().copy(working1.to_owned().canonical().unwrap_or("".to_string())) {
-			return Err("No change.")
-		}
-		if let Err(_) = tmp.remove() {
-			eprintln!(
-				"{} Temporary files left over.",
-				Yellow.bold().paint("Warning:"),
-			);
-		}
-	}
-
-	// Calculate size savings.
-	let size_new = working1.to_owned().size().unwrap();
-	if size_new < size_old {
-		saved = size_old - size_new;
-
-		// Replace the original?
-		if false == *DRY_RUN.lock().unwrap() {
-			// Make sure we can grab the owner/group.
-			if let Ok((uid, gid)) = image.to_owned().owner() {
-				// And permissions.
-				if let Ok(perms) = image.to_owned().permissions() {
-					// First operation: copy it.
-					if let Err(_) = working1.to_owned().copy(image.to_owned().canonical().unwrap_or("".to_string())) {
-						return Err("No change");
-					}
-
-					// Fix ownership.
-					if let Err(_) = image.to_owned().chown(uid, gid) {
-						eprintln!(
-							"{} Unable to set file ownership.",
-							Yellow.bold().paint("Warning:"),
-						);
-					}
-
-					// Fix permissions.
-					if let Err(_) = image.to_owned().chmod(perms) {
-						eprintln!(
-							"{} Unable to set file permissions.",
-							Yellow.bold().paint("Warning:"),
-						);
-					}
-				}
-			}
-		}
-	}
-
-	// Remove the working file.
-	if let Err(_) = working1.remove() {
-		eprintln!(
-			"{} Temporary files left over.",
-			Yellow.bold().paint("Warning:"),
-		);
-	}
-
-	// Calculate duration.
-	let end = SystemTime::now();
-	let elapsed: u64 = match end.duration_since(start) {
-		Ok(x) => x.as_secs(),
-		Err(_) => 0,
-	};
-
-	if saved > 0 {
-		return Ok((saved, elapsed));
-	}
-
-	Err("No change.")
-}
-
-
-
-// ---------------------------------------------------------------------
-// Output
-// ---------------------------------------------------------------------
-
-/**
- * Print Header
- */
-fn print_header() {
 	println!(
 "
              ,--._,--.
@@ -1296,85 +1461,107 @@ fn print_header() {
          `
 
 ",
-		Purple.bold().paint("Flaca"),
-		Style::new().bold().paint(format!("v{}", VERSION)),
-		Blue.bold().paint("Images:"),
-		get_images_len(),
-		Blue.bold().paint("Space:"),
-		HumanBytes(*SIZE_OLD.lock().unwrap()),
+		ansi_term::Colour::Purple.bold().paint("Flaca"),
+		ansi_term::Style::new().bold().paint(format!("v{}", VERSION)),
+		ansi_term::Colour::Blue.bold().paint("Images:"),
+		opts.total_images().unwrap_or(0),
+		ansi_term::Colour::Blue.bold().paint("Space:"),
+		indicatif::HumanBytes(opts.total_size().unwrap_or(0)),
 		"Ready, Set, Goat!",
 	);
 }
 
-/**
- * Log Image Details
- *
- * Save image compression activity to log.
- */
-fn log_image(
-	image: FlacaFile,
-	saved: u64,
-	elapsed: u64,
-) {
-	// Assume whatever this was just happened.
-	let datetime = get_local_now();
+/// Process Images
+fn process_images(opts: FlacaSettings) {
+	// Set up progress bar.
+	let pb: indicatif::ProgressBar = indicatif::ProgressBar::new(opts.total_images().unwrap_or(0));
+	pb.set_style(
+		indicatif::ProgressStyle::default_bar()
+			.template("[{elapsed_precise}] [{bar:40.cyan/blue}]  {pos:.cyan.bold}/{len:.blue.bold}  {percent:.bold}%  {msg}")
+			.progress_chars("##-")
+	);
 
-	// Derive the old and new sizes.
-	let size_new: u64 = image.to_owned().size().unwrap_or(0);
-	let size_old: u64 = size_new + saved;
+	// Beginnings.
+	let start_time = std::time::SystemTime::now();
+	let start_size = opts.total_size().unwrap_or(0);
+	let mut total_saved: u64 = 0;
 
-	// Build a simple status.
-	let status: String = "No change.".to_string();
-	if saved > 0 {
-		format!("Saved {} bytes in {} seconds.", saved, elapsed);
+	// Loop the images!
+	for i in opts.to_owned().images.unwrap() {
+		// File went away?
+		if i.path.to_owned().is_none() || ! i.path.to_owned().unwrap().is_file() {
+			FlacaError::FileInvalid.warn(None);
+			continue;
+		}
+
+		// Announce we've started.
+		pb.println(format!(
+			"[{}] {}",
+			ansi_term::Colour::Purple.bold().paint(get_local_now().to_rfc3339()),
+			i.to_owned().canonical().unwrap(),
+		));
+
+		let result = i.compress(opts.to_owned(), Some(&pb));
+
+		// Bump progress.
+		pb.inc(1);
+
+		if result.is_err() {
+			continue;
+		}
+
+		// Print progress.
+		if let Some(x) = result.unwrap().saved {
+			if x > 0 {
+				total_saved += x;
+				pb.set_message(&format!(
+					"{}",
+					ansi_term::Colour::Green.bold().paint(format!(
+						"-{}", indicatif::HumanBytes(total_saved)
+					)),
+				));
+			}
+		}
 	}
 
-	let mut file = OpenOptions::new()
-		.write(true)
-		.append(true)
-		.create(true)
-		.open(Path::new(&*LOG.lock().unwrap().clone()))
-		.unwrap();
+	// Kill the progress bar.
+	pb.finish_and_clear();
 
-    if let Err(_) = writeln!(
-    	file,
-    	"{} \"{}\" {} {} {}",
-		datetime.to_rfc3339(),
-		image.canonical().unwrap(),
-		size_old,
-		size_new,
-		status,
-    ) {
-    	eprintln!(
-			"{} Results could not be written to {}.",
-			Red.bold().paint("Error:"),
-			*LOG.lock().unwrap()
+	// Endings.
+	let end_time = std::time::SystemTime::now();
+	let end_size = opts.total_size().unwrap_or(0);
+	let end_elapsed = end_time.duration_since(start_time).expect(&FlacaError::TimeFailed.to_string(None));
+	let end_saved = start_size - end_size;
+
+	println!(
+		"{} {}",
+		ansi_term::Colour::Green.bold().paint("Finished:"),
+		indicatif::HumanDuration(end_elapsed),
+	);
+
+	// We were able to save some space.
+	if end_saved > 0 {
+		println!(
+			"{} {}",
+			ansi_term::Colour::Green.bold().paint("Saved:"),
+			indicatif::HumanBytes(end_saved),
 		);
-    }
+	}
+	// Nothing changed.
+	else {
+		println!(
+			"{} 0B",
+			ansi_term::Colour::Yellow.bold().paint("Saved:"),
+		);
+	}
 }
 
-
-
-// ---------------------------------------------------------------------
-// Misc Helpers
-// ---------------------------------------------------------------------
-
-/**
- * Get Images Length
- *
- * Rust is being stupid.
- */
-fn get_images_len() -> u64 {
-	let _images = &*IMAGES.lock().unwrap();
-	_images.len() as u64
-}
-
-/**
- * Get Local Now
- */
-fn get_local_now() -> chrono::DateTime<chrono::Local> {
-	let start = SystemTime::now();
-	let start_since = start.duration_since(UNIX_EPOCH).expect("Time is meaningless.");
-
-	Local.timestamp(start_since.as_secs() as i64, 0)
+/// Process Images (Quiet)
+fn process_images_quiet(opts: FlacaSettings) {
+	// Loop the images!
+	for i in opts.to_owned().images.unwrap() {
+		if let Err(_) = i.compress(opts.to_owned(), None) {
+			continue;
+		}
+	}
 }
