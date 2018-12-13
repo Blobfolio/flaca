@@ -1,10 +1,10 @@
 Package: flaca
-Version: 0.2.0
+Version: 0.3.0
 Section: base
 Priority: optional
 Architecture: amd64
 Depends: libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8, jpegoptim, oxipng, pngout, mozjpeg, zopflipng
 Maintainer: Blobfolio LLC <hello@blobfolio.com>
 Homepage: https://github.com/Blobfolio/flaca
-Installed-Size: 2263704
+Installed-Size: 2275944
 Description: Brute-force lossless image compression for JPEG and PNG written in Rust.
