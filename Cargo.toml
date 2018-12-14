@@ -3,7 +3,7 @@ name = "flaca"
 version = "0.3.1"
 authors = ["Blobfolio, LLC <hello@blobfolio.com>"]
 edition = "2018"
-license = "WTFPL <http://www.wtfpl.net/>"
+license = "WTFPL"
 
 [dependencies]
 ansi_term = "^0.9"
