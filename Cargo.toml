@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Blobfolio, LLC <hello@blobfolio.com>"]
 edition = "2018"
 license = "WTFPL"
@@ -11,7 +11,7 @@ chrono = "^0.4"
 lazy_static = "1.2.0"
 nix = "*"
 regex = "*"
-terminal_size = "0.1.8"
+term_size = "^0.3"
 
 [dependencies.clap]
 version = "~2.23"
