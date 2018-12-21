@@ -1,5 +1,13 @@
+// Flaca
+//
+// ©2018 Blobfolio, LLC <hello@blobfolio.com>
+// License: WTFPL <http://www.wtfpl.net>
+
+
+
 #![warn(trivial_casts, trivial_numeric_casts, unused_import_braces)]
 #![deny(missing_debug_implementations, missing_copy_implementations)]
+
 
 
 extern crate ansi_term;
@@ -9,7 +17,7 @@ extern crate clap;
 extern crate lazy_static;
 extern crate nix;
 extern crate regex;
-extern crate terminal_size;
+extern crate term_size;
 
 use chrono::TimeZone;
 use std::io::{Error, ErrorKind, Write};
@@ -33,6 +41,8 @@ type Result<T> = std::result::Result<T, Box<Error>>;
 // ---------------------------------------------------------------------
 
 #[derive(Debug)]
+/// Options contains all of the runtime settings referenced during a
+/// scan.
 struct Options {
 	debug: bool,
 	pretend: bool,
@@ -52,6 +62,7 @@ struct Options {
 }
 
 impl Default for Options {
+	/// Populate default Options.
 	fn default() -> Options {
 		let none_jpegoptim: Option<PathBuf> = None;
 		let none_mozjpeg: Option<PathBuf> = None;
@@ -95,6 +106,7 @@ impl Default for Options {
 }
 
 impl Options {
+	/// Populate Options from a Clap ArgMatches response.
 	fn from(args: &clap::ArgMatches) -> Options {
 		// Most of this can be built straight away.
 		let mut out: Options = Options {
@@ -222,6 +234,8 @@ impl Options {
 		out
 	}
 
+	/// Initialize the Clap CLI magic and populate runtime Options from
+	/// it.
 	fn from_env() -> Options {
 		let args = clap::App::new("Flaca")
 			.version(VERSION)
@@ -397,6 +411,11 @@ impl Options {
 		Options::from(&args)
 	}
 
+	/// Recursively find all applicable image files given the paths
+	/// passed through CLI.
+	///
+	/// Results are returned as canonical Strings for easy sorting and
+	/// deduplication.
 	fn parse_images<P: AsRef<Path>>(&self, files: Vec<P>) -> Vec<String> {
 		let mut out = Vec::new();
 
@@ -453,6 +472,8 @@ impl Options {
 		out
 	}
 
+	/// Print any actionable or non-default runtime Options in effect,
+	/// but only if --debug was one of them.
 	fn debug(&mut self) {
 		// This only applies if we are debugging.
 		if false == self.debug {
@@ -520,10 +541,12 @@ impl Options {
 		}
 	}
 
+	/// Count up the total number of images found.
 	fn total_images(&self) -> u64 {
 		self.raw.len() as u64
 	}
 
+	/// Find the disk size gobbled up by all of the images found.
 	fn total_image_size(&mut self) -> u64 {
 		let mut size: u64 = 0;
 
@@ -541,6 +564,7 @@ impl Options {
 // ---------------------------------------------------------------------
 
 #[derive(Debug, PartialEq, Clone)]
+/// A list of possible image encoders.
 enum Encoder {
 	Jpegoptim,
 	Mozjpeg,
@@ -550,12 +574,14 @@ enum Encoder {
 }
 
 impl std::fmt::Display for Encoder {
+	/// Format encoder as its app file name.
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 		write!(f, "{}", self.as_string())
 	}
 }
 
 impl Encoder {
+	/// Format encoder as its app file name.
 	fn as_string(&self) -> String {
 		match *self {
 			Encoder::Jpegoptim => "jpegoptim".to_string(),
@@ -566,6 +592,7 @@ impl Encoder {
 		}
 	}
 
+	/// Format encoder as its proper app name.
 	fn get_nice_name(&self) -> String {
 		match *self {
 			Encoder::Jpegoptim => "Jpegoptim".to_string(),
@@ -576,6 +603,10 @@ impl Encoder {
 		}
 	}
 
+	/// Format encoder as a path to the local binary, if any.
+	///
+	/// This method accepts a user-specified path, which takes priority
+	/// if present and valid.
 	fn as_path_buf<P: AsRef<Path>>(&self, custom: Option<P>) -> Result<PathBuf> {
 		lazy_static! {
 			static ref paths: Vec<String> = format!("/usr/share/flaca:{}", std::env::var("PATH").unwrap_or("".to_string()))
@@ -629,18 +660,21 @@ impl Encoder {
 // ---------------------------------------------------------------------
 
 #[derive(Debug, PartialEq, Clone, Copy)]
+/// The type of image.
 enum ImageType {
 	Jpg,
 	Png,
 }
 
 impl std::fmt::Display for ImageType {
+	/// Format image type as a file extension.
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 		write!(f, "{}", self.as_string())
 	}
 }
 
 impl ImageType {
+	/// Format image type as a file extension.
 	fn as_string(&self) -> String {
 		match *self {
 			ImageType::Jpg => "jpg".to_string(),
@@ -648,6 +682,7 @@ impl ImageType {
 		}
 	}
 
+	/// Deduce an image type given a file path.
 	fn from<P: AsRef<Path>>(path: P) -> Result<ImageType> {
 		lazy_static! {
 			static ref expr: regex::Regex = regex::Regex::new(r"\.(?P<ext>jpe?g|png)$").unwrap();
@@ -672,6 +707,7 @@ impl ImageType {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+/// The result from a single encoder run over a single image.
 struct ImageResult {
 	path: PathBuf,
 	start_size: u64,
@@ -681,6 +717,7 @@ struct ImageResult {
 }
 
 impl ImageResult {
+	/// Start a new compression session.
 	fn start<P: AsRef<Path>>(path: P) -> Result<ImageResult> {
 		if ! path.as_ref().is_file() {
 			return Err(Error::new(ErrorKind::NotFound, "Invalid file.").into());
@@ -695,6 +732,7 @@ impl ImageResult {
 		})
 	}
 
+	/// Finish a compressoin session.
 	fn finish(&mut self) -> Result<()> {
 		if ! self.path.is_file() {
 			return Err(Error::new(ErrorKind::NotFound, "Invalid file.").into());
@@ -706,6 +744,7 @@ impl ImageResult {
 		Ok(())
 	}
 
+	/// Determine how much space was saved.
 	fn get_saved(&self) -> Result<u64> {
 		if self.end_size > 0 && self.start_size > 0 {
 			if self.start_size > self.end_size {
@@ -718,6 +757,7 @@ impl ImageResult {
 		Err(Error::new(ErrorKind::Other, "The compression operations failed.").into())
 	}
 
+	/// Determine how much time elapsed to reach the result.
 	fn get_elapsed(&self) -> Result<u64> {
 		if self.end_time != self.start_time {
 			if let Ok(y) = self.end_time.duration_since(self.start_time) {
@@ -730,11 +770,13 @@ impl ImageResult {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+/// An image (by path).
 struct Image {
 	path: PathBuf,
 }
 
 impl Default for Image {
+	/// Default image.
 	fn default() -> Image {
 		Image {
 			path: PathBuf::new(),
@@ -743,6 +785,7 @@ impl Default for Image {
 }
 
 impl Image {
+	/// Initialize an image from a path.
 	fn from<P: AsRef<Path>>(path: P) -> Result<Image> {
 		let _ext = get_image_type(path.as_ref())?;
 		Ok(Image {
@@ -751,10 +794,18 @@ impl Image {
 		})
 	}
 
+	/// Whether or not this image exists.
 	fn exists(&self) -> bool {
 		self.path.exists()
 	}
 
+	/// Create a working clone of the image to manipulate with an
+	/// encoder.
+	///
+	/// We want to avoid working on a source directly so as to mitigate
+	/// corruption in the event of an encoder failure, as well as try to
+	/// maintain the original metadata (like modification time) unless
+	/// we actually have a change worth implementing.
 	fn working(&self) -> Result<String> {
 		if ! self.exists() {
 			return Err(Error::new(ErrorKind::NotFound, "Missing image.").into());
@@ -795,6 +846,7 @@ impl Image {
 		Ok(out_name)
 	}
 
+	/// Compress an image with a given encoder at a given path.
 	fn compress<P: AsRef<Path>>(&self, encoder: Encoder, bin: P, replace: bool) -> Result<ImageResult> {
 		let mut result = ImageResult::start(self.path.to_path_buf())?;
 
@@ -898,16 +950,19 @@ impl Image {
 // Paths
 // ---------------------------------------------------------------------
 
+/// Return a canonical path as a String.
 fn get_file_canonical<P: AsRef<Path>>(path: P) -> Result<String> {
 	let x = path.as_ref().canonicalize()?;;
 	Ok(format!("{}", x.display()))
 }
 
+/// Return a file's modification time.
 fn get_file_modified<P: AsRef<Path>>(path: P) -> Result<SystemTime> {
 	let x = path.as_ref().metadata()?.modified()?;
 	Ok(x)
 }
 
+/// Return a file's relative (to now) modification time in seconds.
 fn get_file_modified_since<P: AsRef<Path>>(path: P) -> Result<u64> {
 	let x = get_file_modified(path)?;
 	let now = SystemTime::now();
@@ -918,6 +973,7 @@ fn get_file_modified_since<P: AsRef<Path>>(path: P) -> Result<u64> {
 	Err(Error::new(ErrorKind::NotFound, "Could not get file modification time.").into())
 }
 
+/// Return a file's name.
 fn get_file_name<P: AsRef<Path>>(path: P) -> Result<String> {
 	if let Some(x) = path.as_ref().file_name() {
 		if let Some(y) = std::ffi::OsStr::to_str(x) {
@@ -928,6 +984,7 @@ fn get_file_name<P: AsRef<Path>>(path: P) -> Result<String> {
 	Err(Error::new(ErrorKind::NotFound, "Could not get file name.").into())
 }
 
+/// Return a file's User Id and Group Id.
 fn get_file_owner<P: AsRef<Path>>(path: P) -> Result<(nix::unistd::Uid, nix::unistd::Gid)> {
 	let x = path.as_ref().metadata()?;
 	Ok((
@@ -936,20 +993,24 @@ fn get_file_owner<P: AsRef<Path>>(path: P) -> Result<(nix::unistd::Uid, nix::uni
 	))
 }
 
+/// Return a file's permissions.
 fn get_file_perms<P: AsRef<Path>>(path: P) -> Result<std::fs::Permissions> {
 	let x = path.as_ref().metadata()?;
 	Ok(x.permissions())
 }
 
+/// Return a file's size in bytes.
 fn get_file_size<P: AsRef<Path>>(path: P) -> Result<u64> {
 	let x = path.as_ref().metadata()?;
 	Ok(x.len())
 }
 
+/// Return a file's ImageType.
 fn get_image_type<P: AsRef<Path>>(path: P) -> Result<ImageType> {
 	ImageType::from(path.as_ref())
 }
 
+/// Convert a byte size into a more human-friendly unit, like 2.4MB.
 fn get_nice_size(size: u64) -> String {
 	if size <= 0 {
 		return "0B".to_string();
@@ -971,6 +1032,7 @@ fn get_nice_size(size: u64) -> String {
 	format!("{}B", size)
 }
 
+/// Copy a file, and optionally override permissions and ownership.
 fn copy_file<P: AsRef<Path>>(
 	from: P,
 	to: P,
@@ -1022,6 +1084,7 @@ fn copy_file<P: AsRef<Path>>(
 // Dates and Time
 // ---------------------------------------------------------------------
 
+/// Get a datetime object in the local timezone.
 fn get_local_now() -> chrono::DateTime<chrono::Local> {
 	let start = SystemTime::now();
 	let start_since = start.duration_since(std::time::UNIX_EPOCH).expect("Time is meaningless.");
@@ -1029,6 +1092,8 @@ fn get_local_now() -> chrono::DateTime<chrono::Local> {
 	chrono::Local.timestamp(start_since.as_secs() as i64, 0)
 }
 
+/// Format seconds either as a 00:00:00 counter or broken out into a
+/// list of hours, minutes, etc.
 fn get_nice_time(time: u64, short: bool) -> String {
 	if time <= 0 {
 		if true == short {
@@ -1110,6 +1175,7 @@ fn get_nice_time(time: u64, short: bool) -> String {
 // Output
 // ---------------------------------------------------------------------
 
+/// Print an error and exit.
 fn error(text: Box<Error>) {
 	eprintln!(
 		"{} {}",
@@ -1119,6 +1185,7 @@ fn error(text: Box<Error>) {
 	std::process::exit(1);
 }
 
+/// Print a warning, but do not exit.
 fn warning(text: Box<Error>) {
 	eprintln!(
 		"{} {}",
@@ -1127,6 +1194,7 @@ fn warning(text: Box<Error>) {
 	);
 }
 
+/// Print a notice. This is generally only used when --debug is set.
 fn notice(text: String) {
 	println!(
 		"{} {}",
@@ -1135,11 +1203,14 @@ fn notice(text: String) {
 	);
 }
 
-/// Log results to file, if a log path was specified.
+/// Log the cumulative compression results for an image to a user-
+/// specified location.
 fn log<P: AsRef<Path>>(log_path: P, image_path: P, saved: u64, elapsed: u64) -> Result<()> {
 	let end_size = get_file_size(image_path.as_ref().to_path_buf())?;
 	let start_size = end_size + saved;
 	let image = get_file_canonical(image_path.as_ref().to_path_buf())?;
+
+	// The log is set as a directory; we want a file instead.
 	let log = format!("{}/flaca.log", get_file_canonical(log_path.as_ref().to_path_buf()).unwrap_or(".".to_string()));
 
 	// Put together a human-readable status string.
@@ -1152,12 +1223,14 @@ fn log<P: AsRef<Path>>(log_path: P, image_path: P, saved: u64, elapsed: u64) -> 
 		),
 	};
 
+	// Open/create the log file.
 	let mut file = std::fs::OpenOptions::new()
 		.write(true)
 		.append(true)
 		.create(true)
 		.open(PathBuf::from(log).to_path_buf())?;
 
+	// Append the line.
 	if let Err(_) = writeln!(
 		file,
 		"{} \"{}\" {} {} {}",
@@ -1173,6 +1246,7 @@ fn log<P: AsRef<Path>>(log_path: P, image_path: P, saved: u64, elapsed: u64) -> 
 	Ok(())
 }
 
+/// Return a singular or plural version of a string given a count.
 fn inflect(count: u64, singular: String, plural: String) -> String {
 	match count {
 		1 => singular,
@@ -1180,6 +1254,7 @@ fn inflect(count: u64, singular: String, plural: String) -> String {
 	}
 }
 
+/// Pad a string on the left to ensure a minimum overall length.
 fn pad_left(text: String, pad_length: u64, pad_string: u8) -> String {
 	let text_length: u64 = text.len() as u64;
 	if pad_length <= 0 || pad_length <= text_length {
@@ -1193,6 +1268,7 @@ fn pad_left(text: String, pad_length: u64, pad_string: u8) -> String {
 	)
 }
 
+/// Pad a string on the right to ensure a minimum overall length.
 fn pad_right(text: String, pad_length: u64, pad_string: u8) -> String {
 	let text_length: u64 = text.len() as u64;
 	if pad_length <= 0 || pad_length <= text_length {
@@ -1207,6 +1283,7 @@ fn pad_right(text: String, pad_length: u64, pad_string: u8) -> String {
 }
 
 #[derive(Debug)]
+/// A very simple progress bar.
 struct Progress {
 	tick: u64,
 	total: u64,
@@ -1221,6 +1298,7 @@ struct Progress {
 }
 
 impl Default for Progress {
+	/// Default configurations for a progress bar.
 	fn default() -> Progress {
 		Progress {
 			tick: 0,
@@ -1238,6 +1316,7 @@ impl Default for Progress {
 }
 
 impl Progress {
+	/// Start a new progress bar.
 	fn new(total: u64, show: bool) -> Progress {
 		Progress {
 			total: total,
@@ -1246,6 +1325,7 @@ impl Progress {
 		}
 	}
 
+	/// Set the current tick.
 	fn set_tick(&mut self, mut tick: u64) {
 		if tick > self.total {
 			tick = self.total;
@@ -1257,6 +1337,7 @@ impl Progress {
 		}
 	}
 
+	/// Set or unset a message to append to the end of the line.
 	fn set_msg(&mut self, msg: Option<String>) {
 		if msg != self.msg {
 			self.msg = msg;
@@ -1264,6 +1345,7 @@ impl Progress {
 		}
 	}
 
+	/// Finish a progress bar.
 	fn finish(&mut self) {
 		self.tick = self.total;
 
@@ -1272,6 +1354,11 @@ impl Progress {
 		}
 	}
 
+	/// (Re)draw a progress bar.
+	///
+	/// This triggers automatically any time the contents of the line
+	/// change, but also has to be redone when lines are shifted
+	/// before it, etc.
 	fn redraw(&mut self, force: bool) {
 		// Nothing to redraw if we're hiding the bar.
 		if false == self.show {
@@ -1294,11 +1381,17 @@ impl Progress {
 		eprint!("{}\r", line);
 	}
 
+	/// Insert a line before the progress bar.
+	///
+	/// A special handler is required as any new line sent to STDOUT
+	/// will cover the previous incarnation of the progress bar. We
+	/// need to add a new one.
 	fn prepend(&mut self, text: String) {
 		println!("{}", self.fill_row(text));
 		self.redraw(true);
 	}
 
+	/// Build a line given the progress bar's settings and data.
 	fn get_line(&mut self) -> String {
 		if false == self.show {
 			return "".to_string();
@@ -1329,14 +1422,17 @@ impl Progress {
 		format!("{}", self.fill_row(out.join(" ")))
 	}
 
+	/// Fill a row with whitespace so that it stretches the width of
+	/// the terminal.
 	fn fill_row(&mut self, text: String) -> String {
-		if let Some((terminal_size::Width(w), terminal_size::Height(_))) = terminal_size::terminal_size() {
+		if let Some((w, _)) = term_size::dimensions() {
 			return pad_right(text, w as u64, b' ');
 		}
 
 		return text;
 	}
 
+	/// Get the ### part of the progress bar.
 	fn get_bar(&self) -> String {
 		// Figure out the bar widths.
 		let width: u64 = 40;
@@ -1364,6 +1460,7 @@ impl Progress {
 		)
 	}
 
+	/// Get the elapsed time for the progress bar.
 	fn get_elapsed(&self) -> String {
 		let now = SystemTime::now();
 		if let Ok(y) = now.duration_since(self.start) {
@@ -1373,6 +1470,7 @@ impl Progress {
 		"00:00:00".to_string()
 	}
 
+	/// Get the percent done for the progress bar.
 	fn get_percent(&self) -> String {
 		if 0 == self.total {
 			return "  0%".to_string();
@@ -1381,6 +1479,7 @@ impl Progress {
 		format!("{:>3.*}%", 0, self.tick as f64 / self.total as f64 * 100 as f64)
 	}
 
+	/// Get the done/total for the progress bar.
 	fn get_progress(&self) -> String {
 		let len: u64 = format!("{}", self.total).len() as u64;
 		let done: String = pad_left(format!("{}", self.tick), len, b' ');
@@ -1444,6 +1543,7 @@ fn main() {
 		tmp
 	};
 
+	// Loop the images.
 	for i in &images {
 		num = num + 1;
 
@@ -1469,7 +1569,9 @@ fn main() {
 		let mut i_saved: u64 = 0;
 		let mut i_elapsed: u64 = 0;
 
+		// Loop the encoders.
 		for (encoder, bin) in encoders {
+			// Make sure the image still exists.
 			if ! i.exists() {
 				progress.prepend(format!(
 					"{} {}",
@@ -1482,8 +1584,8 @@ fn main() {
 
 			if true == opts.debug {
 				progress.prepend(format!(
-					"    {} {}",
-					ansi_term::Colour::Purple.bold().paint(encoder.get_nice_name()),
+					"    ↳ Running {} from {}.",
+					ansi_term::Colour::Purple.paint(encoder.get_nice_name()),
 					get_file_canonical(bin.to_path_buf()).unwrap_or("MISSING".to_string())
 				));
 			}
@@ -1505,6 +1607,7 @@ fn main() {
 			}
 		}
 
+		// Log the combined results for this image.
 		if opts.log.is_some() {
 			if let Err(_) = log(opts.log.to_owned().unwrap(), i.path.to_path_buf(), i_saved, i_elapsed) {
 				progress.prepend(format!(
@@ -1561,6 +1664,7 @@ fn main() {
 	}
 }
 
+/// A fun little CLI introductory header.
 fn header(opts: &mut Options) {
 	// Don't print if we're supposed to be quiet.
 	if opts.quiet {
