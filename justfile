@@ -1,14 +1,14 @@
 ##
-# Building Flaca
+# Flaca Makefile
 #
-# This requires "just". See https://github.com/casey/just for more
-# details.
-#
-#
-# USAGE:
+# This contains several scripts for development and release packaging.
+# To run them, install "just" <https://github.com/casey/just> and type:
 #
 # just --list
 # just <task>
+#
+# ©2019 Blobfolio, LLC <hello@blobfolio.com>
+# WTFPL <http://www.wtfpl.net>
 ##
 
 base_dir      = invocation_directory()
