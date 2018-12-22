@@ -10,6 +10,7 @@
 
 
 
+extern crate flaca;
 extern crate ansi_term;
 extern crate chrono;
 extern crate clap;
@@ -1105,11 +1106,11 @@ fn get_nice_time(time: u64, short: bool) -> String {
 
 	// Drill down to days, hours, minutes, and seconds.
 	let mut s: u64 = time;
-	let d: u64 = ((time / 86400) as f64).floor() as u64;
+	let d: u64 = ((s / 86400) as f64).floor() as u64;
 	s -= d * 86400;
-	let h: u64 = ((time / 3600) as f64).floor() as u64;
+	let h: u64 = ((s / 3600) as f64).floor() as u64;
 	s -= h * 3600;
-	let m: u64 = ((time / 60) as f64).floor() as u64;
+	let m: u64 = ((s / 60) as f64).floor() as u64;
 	s -= m * 60;
 
 	// Combine the strings.

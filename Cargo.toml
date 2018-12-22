@@ -18,6 +18,15 @@ version = "~2.23"
 default-features = false
 features = [ "color" ]
 
+[lib]
+name = "flaca"
+path = "src/lib.rs"
+
+[[bin]]
+doc = false
+name = "flaca"
+path = "src/main.rs"
+
 [profile.release]
 lto = true
 panic = "abort"
