@@ -13,7 +13,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 /// An ergonomic path wrapper.
 pub enum Lugar {
 	Path(PathBuf),
@@ -298,3 +298,4 @@ impl<T: Into<PathBuf>> From<T> for Lugar {
 		Lugar::Path(s.into())
 	}
 }
+

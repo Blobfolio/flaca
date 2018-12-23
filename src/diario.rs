@@ -5,16 +5,21 @@
 // ©2018 Blobfolio, LLC <hello@blobfolio.com>
 // License: WTFPL <http://www.wtfpl.net>
 
+use chrono::TimeZone;
+use crate::granjero::Cosecha;
 use crate::lugar::Lugar;
+use crate::mundo::Mundo;
+use crate::VERSION;
 use std::fmt;
-use std::io::Error;
+use std::io::{Error, ErrorKind, Write};
+use std::path::PathBuf;
 use std::time::SystemTime;
 
-// TODO: Log
 // TODO: Progress Bar Bits
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Note {
+#[derive(Clone, Copy, Debug, PartialEq)]
+/// Common notice types.
+pub enum Noticia {
 	Error,
 	Info,
 	Notice,
@@ -22,41 +27,45 @@ pub enum Note {
 	Warning,
 }
 
-impl fmt::Display for Note {
+impl fmt::Display for Noticia {
 	/// Display format.
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match *self {
-			Note::Error => write!(f, "{}", ansi_term::Colour::Red.bold().paint("Error:")),
-			Note::Info => write!(f, "{}", ansi_term::Colour::Cyan.bold().paint("Info:")),
-			Note::Notice => write!(f, "{}", ansi_term::Colour::Purple.bold().paint("Notice:")),
-			Note::Success => write!(f, "{}", ansi_term::Colour::Green.bold().paint("Success:")),
-			Note::Warning => write!(f, "{}", ansi_term::Colour::Yellow.bold().paint("Warning:")),
+			Noticia::Error => write!(f, "{}", ansi_term::Colour::Red.bold().paint("Error:")),
+			Noticia::Info => write!(f, "{}", ansi_term::Colour::Cyan.bold().paint("Info:")),
+			Noticia::Notice => write!(f, "{}", ansi_term::Colour::Purple.bold().paint("Notice:")),
+			Noticia::Success => write!(f, "{}", ansi_term::Colour::Green.bold().paint("Success:")),
+			Noticia::Warning => write!(f, "{}", ansi_term::Colour::Yellow.bold().paint("Warning:")),
 		}
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Verbosity {
+#[derive(Clone, Copy, Debug, PartialEq)]
+/// Reporting verbosity level.
+pub enum Nivel {
 	Debug,
+	List,
 	Standard,
 	Quiet,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 /// An ergonomic path wrapper.
 pub struct Diario {
-	mode: Verbosity,
-	time: SystemTime,
-	msg: String,
-	tick: u64,
-	total: u64,
+	pub mode: Nivel,
+	pub time: SystemTime,
+	pub log: Option<Lugar>,
+	pub msg: String,
+	pub tick: u64,
+	pub total: u64,
 }
 
 impl Default for Diario {
 	fn default() -> Diario {
 		Diario {
-			mode: Verbosity::Standard,
+			mode: Nivel::Standard,
 			time: SystemTime::now(),
+			log: None,
 			msg: "".to_string(),
 			tick: 0,
 			total: 0,
@@ -65,75 +74,100 @@ impl Default for Diario {
 }
 
 impl Diario {
-	pub fn new(verbosity: Verbosity) -> Diario {
+	/// New output driver.
+	pub fn new(verbosity: Nivel, log: Option<Lugar>) -> Diario {
 		Diario {
 			mode: verbosity,
+			log: match log {
+				Some(x) => {
+					if ! x.is_dir() {
+						None
+					} else {
+						Some(x)
+					}
+				},
+				None => None,
+			},
 			..Diario::default()
 		}
 	}
 
+	/// Set the progress bar total.
 	pub fn set_total(&mut self, total: u64) {
 		self.total = total;
 	}
 
+	/// Set the progress bar current tick.
 	pub fn set_tick(&mut self, tick: u64) {
 		self.tick = tick;
 	}
 
+	/// Set the progress bar message.
 	pub fn set_msg(&mut self, msg: String) {
 		self.msg = msg;
 	}
 
+	/// Print an error and exit.
 	pub fn error(&self, text: Error) {
 		eprintln!(
 			"{} {}",
-			Note::Error,
+			Noticia::Error,
 			text,
 		);
 		std::process::exit(1);
 	}
 
+	/// Print an informational tidbit.
 	pub fn info(&self, text: String) {
 		self.progressln(format!(
 			"{} {}",
-			Note::Info,
+			Noticia::Info,
 			text,
 		));
 	}
 
+	/// Print a notice.
 	pub fn notice(&self, text: String) {
 		self.progressln(format!(
 			"{} {}",
-			Note::Notice,
+			Noticia::Notice,
 			text,
 		));
 	}
 
+	/// Print a success.
 	pub fn success(&self, text: String) {
 		self.progressln(format!(
 			"{} {}",
-			Note::Success,
+			Noticia::Success,
 			text,
 		));
 	}
 
+	/// Print a warning.
 	pub fn warning(&self, text: Error) {
 		self.progressln(format!(
 			"{} {}",
-			Note::Warning,
+			Noticia::Warning,
 			text,
 		));
 	}
 
+	/// Print a line to the screen, possibly *before* the progress bar.
 	pub fn progressln(&self, text: String) {
 		println!("{}", text);
 
-		// Redraw progress bar.
-		if self.mode != Verbosity::Quiet {
+		// TODO Redraw progress bar.
+		if
+			self.mode != Nivel::Quiet &&
+			self.mode != Nivel::List &&
+			self.total > 0 &&
+			self.total != self.tick {
 
 		}
 	}
 
+	/// Return a singular or plural string given the count.
 	pub fn inflect(count: u64, singular: String, plural: String) -> String {
 		match count {
 			1 => singular,
@@ -141,6 +175,7 @@ impl Diario {
 		}
 	}
 
+	/// Determine the length of padding needed.
 	fn pad_len(text: &str, mut len: u64) -> u64 {
 		// Use the terminal width if it is higher.
 		if let Some((w, _)) = term_size::dimensions() {
@@ -155,6 +190,7 @@ impl Diario {
 		}
 	}
 
+	/// Pad a string on the left.
 	pub fn pad_left(text: String, pad_length: u64, pad_string: u8) -> String {
 		match Diario::pad_len(&text, pad_length) {
 			0 => text,
@@ -167,6 +203,7 @@ impl Diario {
 		}
 	}
 
+	/// Pad a string on the right.
 	pub fn pad_right(text: String, pad_length: u64, pad_string: u8) -> String {
 		match Diario::pad_len(&text, pad_length) {
 			0 => text,
@@ -260,6 +297,234 @@ impl Diario {
 				let last = out.pop().unwrap_or("".to_string());
 				format!("{}, and {}", out.join(", "), last)
 			},
+		}
+	}
+
+	/// Get a datetime object in the local timezone.
+	pub fn local_now() -> chrono::DateTime<chrono::Local> {
+		let start = SystemTime::now();
+		let start_since = start.duration_since(std::time::UNIX_EPOCH).expect("Time is meaningless.");
+
+		chrono::Local.timestamp(start_since.as_secs() as i64, 0)
+	}
+
+	/// Log compression results for an image.
+	pub fn log(&mut self, result: &mut Cosecha) -> Result<(), Error> {
+		// Only applies if a log destination was specified.
+		if ! self.log.is_some() {
+			return Err(Error::new(ErrorKind::NotFound, "Missing log path."));
+		}
+
+		let root = self.to_owned().log.unwrap().canonical()?;
+		let log = PathBuf::from(format!("{}/{}", root, "flaca.log"));
+
+		let path = result.path.canonical()?;
+		let saved = result.saved();
+		let elapsed = result.elapsed();
+
+		// Generate a human-friendly status based on what took place.
+		let status: String = match saved {
+			0 => "No change.".to_string(),
+			_ => format!(
+				"Saved {} bytes in {} seconds.",
+				saved,
+				elapsed,
+			),
+		};
+
+		// Open/create the log file.
+		let mut file = std::fs::OpenOptions::new()
+			.write(true)
+			.append(true)
+			.create(true)
+			.open(log)?;
+
+		// Append the line.
+		if let Err(_) = writeln!(
+			file,
+			"{} \"{}\" {} {} {}",
+			Diario::local_now().to_rfc3339(),
+			path,
+			result.start_size,
+			result.end_size,
+			status,
+		) {
+			return Err(Error::new(ErrorKind::Other, "Unable to log results.").into());
+		}
+
+		Ok(())
+	}
+
+	/// A fun little CLI introductory header.
+	pub fn header(&self, count: u64, size: u64) {
+		// Don't print if we're supposed to be quiet.
+		if self.mode != Nivel::Quiet && self.mode != Nivel::List {
+			return;
+		}
+
+		println!(
+"
+             ,--._,--.
+           ,'  ,'   ,-`.
+(`-.__    /  ,'   /
+ `.   `--'        \\__,--'-.
+   `--/       ,-.  ______/
+     (o-.     ,o- /
+      `. ;        \\
+       |:          \\    {} {}
+      ,'`       ,   \\
+     (o o ,  --'     :  {} {}
+      \\--','.        ;  {}  {}
+       `;;  :       /
+        ;'  ;  ,' ,'    {}
+        ,','  :  '
+        \\ \\   :
+         `
+
+",
+			ansi_term::Colour::Purple.bold().paint("Flaca"),
+			ansi_term::Style::new().bold().paint(format!("v{}", VERSION)),
+			ansi_term::Colour::Blue.bold().paint("Images:"),
+			count,
+			ansi_term::Colour::Blue.bold().paint("Space:"),
+			Diario::nice_size(size),
+			"Ready, Set, Goat!",
+		);
+	}
+
+	/// Debug runtime settings.
+	pub fn debug(&self, opts: &mut Mundo) {
+		// Don't print if we're supposed to be quiet.
+		if self.mode != Nivel::Debug {
+			return;
+		}
+
+		self.info("Debug enabled; expect verbose output!".to_string());
+		self.info(format!("Flaca started at {}", Diario::local_now().to_rfc3339()));
+
+		match self.to_owned().log {
+			Some(x) => {
+				self.info(format!(
+					"Logging to '{}/flaca.log'.",
+					x.canonical().unwrap_or("MISSING".to_string())
+				));
+			},
+			_ => {},
+		};
+
+		if let Some(x) = opts.skip {
+			self.info(format!("Skipping {} files.", x));
+		}
+
+		if let Some(x) = opts.min_age {
+			self.info(format!(
+				"Skipping files younger than {}.",
+				Diario::nice_time(x, false)
+			));
+		}
+
+		if let Some(x) = opts.max_age {
+			self.info(format!(
+				"Skipping files Older than {}.",
+				Diario::nice_time(x, false)
+			));
+		}
+
+		if let Some(x) = opts.min_size {
+			self.info(format!(
+				"Skipping files smaller than {}.",
+				Diario::nice_size(x)
+			));
+		}
+
+		if let Some(x) = opts.max_size {
+			self.info(format!(
+				"Skipping files larger than {}.",
+				Diario::nice_size(x)
+			));
+		}
+
+		for encoder in opts.jpg.iter() {
+			if let Ok(x) = encoder.cmd_path() {
+				self.info(format!(
+					"Found {} at {}",
+					encoder.name(),
+					x
+				));
+			}
+		}
+
+		for encoder in opts.png.iter() {
+			if let Ok(x) = encoder.cmd_path() {
+				self.info(format!(
+					"Found {} at {}",
+					encoder.name(),
+					x
+				));
+			}
+		}
+	}
+
+	/// List found images and exit.
+	pub fn list(&self, opts: &mut Mundo) {
+		if self.mode != Nivel::List {
+			return;
+		}
+
+		for ref i in &opts.input {
+			if let Ok(x) = i.canonical() {
+				println!("{}", x);
+			}
+		}
+
+		std::process::exit(0);
+	}
+
+	/// Summarize total results.
+	pub fn summarize(&self, count: u64, saved: u64) {
+		// Don't print if we're supposed to be quiet.
+		if self.mode != Nivel::Quiet && self.mode != Nivel::List {
+			return;
+		}
+
+		let end = SystemTime::now();
+		let elapsed: u64 = match end.duration_since(self.time) {
+			Ok(x) => x.as_secs(),
+			_ => 0,
+		};
+
+		// Print a blank line.
+		println!("");
+
+		// Total images.
+		println!(
+			"{} Chewed {} {}.",
+			Noticia::Info,
+			count,
+			Diario::inflect(count, "image".to_string(), "images".to_string()),
+		);
+
+		// Total runtime.
+		println!(
+			"{} Flaca ran for {}.",
+			Noticia::Info,
+			Diario::nice_time(elapsed, false),
+		);
+
+		// Report savings, if any.
+		if saved > 0 {
+			println!(
+				"{} Saved {}!",
+				Noticia::Success,
+				Diario::nice_size(saved),
+			);
+		}
+		else {
+			println!(
+				"{} No space was freed. {}",
+				Noticia::Warning,
+				ansi_term::Colour::Red.bold().paint(":("),
+			);
 		}
 	}
 }

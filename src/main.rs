@@ -10,7 +10,6 @@
 
 
 
-extern crate flaca;
 extern crate ansi_term;
 extern crate chrono;
 extern crate clap;
@@ -25,6 +24,11 @@ use std::io::{Error, ErrorKind, Write};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+
+pub mod lugar;
+pub mod granjero;
+pub mod diario;
+pub mod mundo;
 
 
 
