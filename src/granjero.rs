@@ -1,206 +1,296 @@
 // Flaca: Granjero
 //
-// Encoders and results.
+// Encoders, results, jobs, etc.
 //
 // ©2018 Blobfolio, LLC <hello@blobfolio.com>
 // License: WTFPL <http://www.wtfpl.net>
 
 use crate::lugar::Lugar;
-use std::fmt;
 use std::io::{Error, ErrorKind};
-use std::time::SystemTime;
-use std::path::PathBuf;
 use std::process::Command;
+use std::time::SystemTime;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-/// Image type.
-pub enum Tipo {
-	Jpg,
-	Png,
-}
+/// A path to use when an encoder is missing.
+pub const NO_COMMAND: &str = "/dev/null";
 
-impl fmt::Display for Tipo {
-	/// Display format.
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		match *self {
-			Tipo::Jpg => write!(f, "{}", "jpg"),
-			Tipo::Png => write!(f, "{}", "png"),
-		}
-	}
-}
-
-impl Tipo {
-	/// Deduce an image type from a file extension.
-	pub fn from(path: Lugar) -> Result<Tipo, Error> {
-		let ext = path.extension()?.to_string().to_lowercase();
-
-		if "jpg" == ext || "jpeg" == ext {
-			return Ok(Tipo::Jpg);
-		}
-		else if "png" == ext {
-			return Ok(Tipo::Png);
-		}
-
-		Err(Error::new(ErrorKind::InvalidInput, "Not an image."))
-	}
-}
-
-#[derive(Clone, Debug, PartialEq)]
-/// An image encoder.
+#[derive(Debug, Clone, PartialEq)]
+/// Image encoders.
 pub enum Granjero {
-	Jpegoptim(Option<Lugar>),
-	Mozjpeg(Option<Lugar>),
-	Oxipng(Option<Lugar>),
-	Pngout(Option<Lugar>),
-	Zopflipng(Option<Lugar>),
-}
-
-impl fmt::Display for Granjero {
-	/// Display format.
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "{}", self.cmd_path().unwrap_or("".to_string()))
-	}
+	Jpegoptim(Lugar),
+	MozJPEG(Lugar),
+	Oxipng(Lugar),
+	Pngout(Lugar),
+	Zopflipng(Lugar),
 }
 
 impl Granjero {
-	/// Extract the path to the binary.
-	///
-	/// I am surely missing something; there has got to be a less rote
-	/// way of extracting the () part.
-	pub fn path(&self) -> Lugar {
-		match self.to_owned() {
-			Granjero::Jpegoptim(p) => {
-				if let Some(x) = p {
-					x
-				} else {
-					Lugar::Path("".into())
-				}
-			},
-			Granjero::Mozjpeg(p) => {
-				if let Some(x) = p {
-					x
-				} else {
-					Lugar::Path("".into())
-				}
-			},
-			Granjero::Oxipng(p) => {
-				if let Some(x) = p {
-					x
-				} else {
-					Lugar::Path("".into())
-				}
-			},
-			Granjero::Pngout(p) => {
-				if let Some(x) = p {
-					x
-				} else {
-					Lugar::Path("".into())
-				}
-			},
-			Granjero::Zopflipng(p) => {
-				if let Some(x) = p {
-					x
-				} else {
-					Lugar::Path("".into())
-				}
-			},
-		}
+	// -----------------------------------------------------------------
+	// Init/Conversion
+	// -----------------------------------------------------------------
+
+	/// As String.
+	pub fn as_string(&self) -> String {
+		self.name()
 	}
 
-	/// The command path, as a string.
-	pub fn cmd_path(&self) -> Result<String, Error> {
-		lazy_static! {
-			static ref paths: Vec<String> = format!("/usr/share/flaca:{}", std::env::var("PATH").unwrap_or("".to_string()))
-				.split(":")
-				.map(String::from)
-				.collect();
-		}
+	// -----------------------------------------------------------------
+	// State
+	// -----------------------------------------------------------------
 
-		// We'll need to reference the command name a handful of times.
-		let cmd_name = self.cmd_name();
-
-		// Return a user-specific path if it exists.
-		if let Some(path) = match *self {
-			Granjero::Jpegoptim(ref p) => { p },
-			Granjero::Mozjpeg(ref p) => { p },
-			Granjero::Oxipng(ref p) => { p },
-			Granjero::Pngout(ref p) => { p },
-			Granjero::Zopflipng(ref p) => { p },
-		} {
-			if path.is_file() && path.name().unwrap_or("".to_string()) == self.cmd_name() {
-				if let Ok(y) = path.canonical() {
-					return Ok(y);
-				}
-			}
-		}
-
-		// Check for a right-named file in the right places.
-		for p in paths.iter() {
-			let mut x = Lugar::Path(format!("{}/{}", p, cmd_name).into());
-			if x.is_file() && x.name().unwrap_or("".to_string()) == self.cmd_name() {
-				if let Ok(y) = x.canonical() {
-					return Ok(y);
-				}
-			}
-
-			// MozJPEG might be hiding in a special place. Let's check
-			// this after our share directory.
-			if "jpegtran" == cmd_name && "/usr/share/flaca" == p {
-				x = Lugar::Path("/opt/mozjpeg/bin/jpegtran".into());
-				if x.is_file() {
-					if let Ok(y) = x.canonical() {
-						return Ok(y);
-					}
-				}
-			}
-		}
-
-		Err(Error::new(ErrorKind::NotFound, "Missing encoder."))
+	/// Whether or not the encoder (probably) exists.
+	pub fn is(&self) -> bool {
+		self.__inner().is_file() && self.__inner().has_name(self.bin_name())
 	}
 
-	/// In lieu of being able to actually verify file integrity, we can
-	/// at least make sure the file name matches what is expected.
-	pub fn cmd_name(&self) -> String {
+	/// Is this encoder for JPEG images?
+	pub fn is_for_jpg(&self) -> bool {
 		match *self {
-			Granjero::Jpegoptim(_) => "jpegoptim".to_string(),
-			Granjero::Mozjpeg(_) => "jpegtran".to_string(),
-			Granjero::Oxipng(_) => "oxipng".to_string(),
-			Granjero::Pngout(_) => "pngout".to_string(),
-			Granjero::Zopflipng(_) => "zopflipng".to_string(),
+			Granjero::Jpegoptim(_) => true,
+			Granjero::MozJPEG(_) => true,
+			_ => false,
 		}
 	}
 
-	/// The program name.
+	/// Is this encoder for PNG images?
+	pub fn is_for_png(&self) -> bool {
+		match *self {
+			Granjero::Oxipng(_) => true,
+			Granjero::Pngout(_) => true,
+			Granjero::Zopflipng(_) => true,
+			_ => false,
+		}
+	}
+
+	// -----------------------------------------------------------------
+	// Data
+	// -----------------------------------------------------------------
+
+	/// Return the inner Lugar.
+	fn __inner(&self) -> &Lugar {
+		match *self {
+			Granjero::Jpegoptim(ref p) => p,
+			Granjero::MozJPEG(ref p) => p,
+			Granjero::Oxipng(ref p) => p,
+			Granjero::Pngout(ref p) => p,
+			Granjero::Zopflipng(ref p) => p,
+		}
+	}
+
+	/// Return the inner Lugar mutably.
+	fn __inner_mut(&mut self) -> &mut Lugar {
+		match *self {
+			Granjero::Jpegoptim(ref mut p) => p,
+			Granjero::MozJPEG(ref mut p) => p,
+			Granjero::Oxipng(ref mut p) => p,
+			Granjero::Pngout(ref mut p) => p,
+			Granjero::Zopflipng(ref mut p) => p,
+		}
+	}
+
+	/// Return the path. Similar to command, but it will always match
+	/// something.
+	pub fn path(&self) -> Lugar {
+		if let Ok(x) = self.cmd() {
+			return Lugar::new(x);
+		}
+
+		Lugar::new(NO_COMMAND)
+	}
+
+	/// Return the program name.
 	pub fn name(&self) -> String {
 		match *self {
 			Granjero::Jpegoptim(_) => "Jpegoptim".to_string(),
-			Granjero::Mozjpeg(_) => "MozJPEG".to_string(),
+			Granjero::MozJPEG(_) => "MozJPEG".to_string(),
 			Granjero::Oxipng(_) => "Oxipng".to_string(),
 			Granjero::Pngout(_) => "Pngout".to_string(),
 			Granjero::Zopflipng(_) => "Zopflipng".to_string(),
 		}
 	}
 
-	/// Compress an image using a given encoder.
-	pub fn compress(&self, result: &mut Cosecha) -> Result<(), Error> {
-		// Verify encoder exists.
-		let cmd_path = self.cmd_path()?;
-
-		// Verify the image exists and is an image.
-		if ! result.path.is_file() {
-			return Err(Error::new(ErrorKind::NotFound, "Missing image."));
+	/// Return the binary file name.
+	pub fn bin_name(&self) -> String {
+		match *self {
+			Granjero::MozJPEG(_) => "jpegtran".to_string(),
+			_ => self.name().to_lowercase(),
 		}
+	}
+
+	/// Return the command.
+	///
+	/// This checks for the program in the user-supplied path, then the
+	/// Flaca shared dir (/usr/share/flaca), and finally any directories
+	/// under $PATH. If the program isn't found in any of those, an
+	/// error comes back instead.
+	pub fn cmd(&self) -> Result<String, Error> {
+		// This maybe has a path attached.
+		if self.is() {
+			if let Ok(x) = self.__inner().canonical() {
+				return Ok(x);
+			}
+		}
+
+		match *self {
+			Granjero::Jpegoptim(_) => Granjero::cmd_jpegoptim(),
+			Granjero::MozJPEG(_) => Granjero::cmd_mozjpeg(),
+			Granjero::Oxipng(_) => Granjero::cmd_oxipng(),
+			Granjero::Pngout(_) => Granjero::cmd_pngout(),
+			Granjero::Zopflipng(_) => Granjero::cmd_zopflipng(),
+		}
+	}
+
+	/// Command for Jpegoptim.
+	fn cmd_jpegoptim() -> Result<String, Error> {
+		lazy_static! {
+			static ref path: String = match Granjero::find_cmd("jpegoptim".to_string()) {
+				Ok(x) => x,
+				Err(_) => "".to_string(),
+			};
+		}
+
+		if path.len() > 0 {
+			return Ok(path.to_string());
+		}
+
+		Err(Error::new(ErrorKind::NotFound, "Missing encoder.").into())
+	}
+
+	/// Command for MozJPEG.
+	fn cmd_mozjpeg() -> Result<String, Error> {
+		lazy_static! {
+			static ref path: String =
+				// MozJPEG shares a bin name with a shittier encoder.
+				// For our purposes, we only want to check two places
+				// rather than all $PATH.
+				if Lugar::new("/usr/share/flaca/jpegtran").is_file() {
+					"/usr/share/flaca/jpegtran".to_string()
+				}
+				else if Lugar::new("/opt/mozjpeg/bin/jpegtran").is_file() {
+					"/opt/mozjpeg/bin/jpegtran".to_string()
+				}
+				else {
+					"".to_string()
+				};
+		}
+
+		if path.len() > 0 {
+			return Ok(path.to_string());
+		}
+
+		Err(Error::new(ErrorKind::NotFound, "Missing encoder.").into())
+	}
+
+	/// Command for Oxipng.
+	fn cmd_oxipng() -> Result<String, Error> {
+		lazy_static! {
+			static ref path: String = match Granjero::find_cmd("oxipng".to_string()) {
+				Ok(x) => x,
+				Err(_) => "".to_string(),
+			};
+		}
+
+		if path.len() > 0 {
+			return Ok(path.to_string());
+		}
+
+		Err(Error::new(ErrorKind::NotFound, "Missing encoder.").into())
+	}
+
+	/// Command for Pngout.
+	fn cmd_pngout() -> Result<String, Error> {
+		lazy_static! {
+			static ref path: String = match Granjero::find_cmd("pngout".to_string()) {
+				Ok(x) => x,
+				Err(_) => "".to_string(),
+			};
+		}
+
+		if path.len() > 0 {
+			return Ok(path.to_string());
+		}
+
+		Err(Error::new(ErrorKind::NotFound, "Missing encoder.").into())
+	}
+
+	/// Command for Zopflipng.
+	fn cmd_zopflipng() -> Result<String, Error> {
+		lazy_static! {
+			static ref path: String = match Granjero::find_cmd("zopflipng".to_string()) {
+				Ok(x) => x,
+				Err(_) => "".to_string(),
+			};
+		}
+
+		if path.len() > 0 {
+			return Ok(path.to_string());
+		}
+
+		Err(Error::new(ErrorKind::NotFound, "Missing encoder.").into())
+	}
+
+	/// Reusable wrapper to find a command by name among the usual
+	/// places. If the user supplied a path, that is evaluated prior to
+	/// calling this.
+	fn find_cmd(bin: String) -> Result<String, Error> {
+		let bin_dirs = Lugar::bin_dirs();
+
+		for mut i in bin_dirs {
+			if i.is_dir() {
+				if let Err(_) = i.push(&bin) {
+					continue;
+				}
+
+				if i.is_file() {
+					return Ok(i.canonical()?)
+				}
+			}
+		}
+
+		Err(Error::new(ErrorKind::NotFound, "Missing encoder.").into())
+	}
+
+	// -----------------------------------------------------------------
+	// Operations
+	// -----------------------------------------------------------------
+
+	/// Update the instance path.
+	pub fn set_path(&mut self, mut path: Lugar) -> Result<(), Error> {
+		// Use the no-command path if the path is bad.
+		if ! path.is_file() || ! path.has_name(self.name()) {
+			path = Lugar::new(NO_COMMAND);
+		}
+
+		*self = match *self {
+			Granjero::Jpegoptim(_) => Granjero::Jpegoptim(path),
+			Granjero::MozJPEG(_) => Granjero::MozJPEG(path),
+			Granjero::Oxipng(_) => Granjero::Oxipng(path),
+			Granjero::Pngout(_) => Granjero::Pngout(path),
+			Granjero::Zopflipng(_) => Granjero::Zopflipng(path),
+		};
+
+		Ok(())
+	}
+
+	/// Compress an image.
+	pub fn compress(&self, result: &mut Cosecha) -> Result<(), Error> {
+		// Verify the command exists.
+		let cmd_path = self.cmd()?;
+		let mut path = result.path();
+
+		// The image has to exist too and match this encoder type.
+		if
+			! path.is_image() ||
+			(path.is_jpg() && ! self.is_for_jpg()) ||
+			(path.is_png() && ! self.is_for_png()) {
+			return Err(Error::new(ErrorKind::InvalidInput, "Incorrect file/encoder combination.").into());
+		}
+
+		// Might as well refresh the result.
 		result.update();
 
-		let ext = result.path.extension()?.to_lowercase();
-		if ext != "jpeg" && ext != "jpg" && ext != "png" {
-			return Err(Error::new(ErrorKind::InvalidInput, "Incorrect file type."));
-		}
-
-		// Might as well grab the permissions while we have them.
-		let perms = result.path.perms()?;
-		let owner = result.path.owner()?;
-		let working1 = result.path.clone(None, None)?;
+		let perms = path.perms()?;
+		let owner = path.owner()?;
+		let mut working1 = path.tmp_cp()?;
 		let mut working2: String = "".to_string();
 
 		// Of course, every binary is different.
@@ -213,7 +303,7 @@ impl Granjero {
 				com.arg("--all-progressive");
 				com.arg(working1.canonical()?);
 			},
-			Granjero::Mozjpeg(_) => {
+			Granjero::MozJPEG(_) => {
 				working2 = format!("{}.bak", working1.canonical()?);
 				com.arg("-copy");
 				com.arg("none");
@@ -253,35 +343,42 @@ impl Granjero {
 
 		// Deal with working2 if it exists.
 		if working2.len() > 0 {
-			let tmp = Lugar::Path(working2.into());
-			tmp.migrate(PathBuf::from(working1.canonical()?), None, None)?;
+			let mut tmp = Lugar::new(&working2);
+			tmp.mv(&mut working1, None, None)?;
 		}
 
-		// How is working1 looking?
+		// Replace the original, if needed.
 		let end_size: u64 = working1.size()?;
-		if end_size > 0 && result.end_size > 0 && end_size < result.end_size {
-			working1.migrate(PathBuf::from(result.path.canonical()?), Some(perms), Some(owner))?;
+		if end_size > 0 && result.end_size() > 0 && result.end_size() > end_size {
+			working1.cp(&mut path, Some(perms), Some(owner))?;
 		}
 
+		// Remove the working file.
+		if working1.is_file() {
+			if let Err(_) = working1.rm() {}
+		}
+
+		// Update the results again.
 		result.update();
+
 		Ok(())
 	}
 }
 
 #[derive(Debug)]
-/// A compression result.
+/// Image compression result.
 pub struct Cosecha {
-	pub path: Lugar,
-	pub start_time: SystemTime,
-	pub start_size: u64,
-	pub end_time: SystemTime,
-	pub end_size: u64,
+	path: Lugar,
+	start_time: SystemTime,
+	start_size: u64,
+	end_time: SystemTime,
+	end_size: u64,
 }
 
 impl Default for Cosecha {
 	fn default() -> Cosecha {
 		Cosecha {
-			path: Lugar::Path("".into()),
+			path: Lugar::new(NO_COMMAND),
 			start_time: SystemTime::now(),
 			start_size: 0,
 			end_time: SystemTime::now(),
@@ -291,40 +388,69 @@ impl Default for Cosecha {
 }
 
 impl Cosecha {
-	/// Open a new result.
-	pub fn new(path: Lugar) -> Cosecha {
-		let p = path.canonical().unwrap_or("".to_string());
+	/// Start a new result.
+	pub fn start(path: Lugar) -> Cosecha {
+		if ! path.is_image() {
+			return Cosecha::default();
+		}
 
 		Cosecha {
-			path: Lugar::Path(PathBuf::from(p).to_path_buf()),
+			path: Lugar::new(path.as_path_buf()),
 			start_size: path.size().unwrap_or(0),
 			..Cosecha::default()
 		}
 	}
 
-	/// Time elapsed since result was started.
-	pub fn elapsed(&self) -> u64 {
-		if self.start_time != self.end_time {
-			if let Ok(y) = self.end_time.duration_since(self.start_time) {
-				return y.as_secs();
-			}
-		}
-
-		0
+	/// Update end bits.
+	///
+	/// Results are built over time, so update might be called several
+	/// times. It does not imply an end until Flaca actually stops
+	/// using it.
+	pub fn update(&mut self) {
+		self.end_size = self.path.size().unwrap_or(0);
+		self.end_time = SystemTime::now();
 	}
 
-	/// Amount of space saved since result was first started.
+	/// Return the path.
+	pub fn path(&self) -> Lugar {
+		Lugar::new(self.path.as_path_buf())
+	}
+
+	/// Start time.
+	pub fn start_time(&self) -> SystemTime {
+		self.start_time
+	}
+
+	/// Start size.
+	pub fn start_size(&self) -> u64 {
+		self.start_size
+	}
+
+	/// End time.
+	pub fn end_time(&self) -> SystemTime {
+		self.end_time
+	}
+
+	/// End size.
+	pub fn end_size(&self) -> u64 {
+		self.end_size
+	}
+
+	/// Total saved.
 	pub fn saved(&self) -> u64 {
-		if self.end_size > 0 && self.start_size > 0 && self.end_size < self.start_size {
+		if self.start_size > 0 && self.end_size > 0 && self.start_size > self.end_size {
 			return self.start_size - self.end_size;
 		}
 
 		0
 	}
 
-	/// Recalculate the end state.
-	pub fn update(&mut self) {
-		self.end_size = self.path.size().unwrap_or(0);
-		self.end_time = SystemTime::now();
+	/// Total elapsed.
+	pub fn elapsed(&self) -> u64 {
+		if self.start_time > self.end_time {
+			return Lugar::time_diff(self.end_time, self.start_time).unwrap_or(0);
+		}
+
+		0
 	}
 }

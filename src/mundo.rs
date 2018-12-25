@@ -7,22 +7,43 @@
 
 use crate::VERSION;
 use crate::lugar::Lugar;
-use crate::diario::{Diario, Nivel};
-use crate::granjero::{Granjero, Tipo};
+use crate::granjero::{Granjero, NO_COMMAND};
+use crate::pantalla::{Pantalla, ModeKind};
 use std::path::PathBuf;
+use std::fmt;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// The type of image, either JPEG or PNG.
+pub enum ImageKind {
+	Jpg,
+	Png,
+}
+
+impl fmt::Display for ImageKind {
+	/// Display format.
+	///
+	/// This uses the canonical path when possible, but falls back to
+	/// whatever was used to seed the PathBuf.
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match *self {
+			ImageKind::Jpg => write!(f, "{}", "JPEG"),
+			ImageKind::Png => write!(f, "{}", "PNG"),
+		}
+	}
+}
 
 #[derive(Debug, PartialEq)]
 /// Runtime settings.
 pub struct Mundo {
-	pub min_age: Option<u64>,
-	pub max_age: Option<u64>,
-	pub min_size: Option<u64>,
-	pub max_size: Option<u64>,
-	pub skip: Option<Tipo>,
-	pub jpg: Vec<Granjero>,
-	pub png: Vec<Granjero>,
-	pub input: Vec<Lugar>,
-	pub output: Diario,
+	min_age: Option<u64>,
+	max_age: Option<u64>,
+	min_size: Option<u64>,
+	max_size: Option<u64>,
+	skip: Option<ImageKind>,
+	jpg: Vec<Granjero>,
+	png: Vec<Granjero>,
+	input: Vec<Lugar>,
+	output: Pantalla,
 }
 
 impl Default for Mundo {
@@ -36,15 +57,21 @@ impl Default for Mundo {
 			jpg: Mundo::jpg_encoders(None, None),
 			png: Mundo::png_encoders(None, None, None),
 			input: Vec::new(),
-			output: Diario::default(),
+			output: Pantalla::default(),
 		}
 	}
 }
 
 impl Mundo {
-	/// Parse runtime settings from CLI.
-	pub fn start() -> Mundo {
-		Mundo::from_env(&clap::App::new("Flaca")
+	// -----------------------------------------------------------------
+	// Init/Conversion
+	// -----------------------------------------------------------------
+
+	/// Initialize runtime settings.
+	///
+	/// This uses Clap to parse options, render a help screen, etc.
+	pub fn new() -> Mundo {
+		let args = clap::App::new("Flaca")
 			.version(VERSION)
 			.author("Blobfolio, LLC <hello@blobfolio.com>")
 			.about("Losslessly compress la mierda out of JPEG and PNG images.")
@@ -182,50 +209,34 @@ impl Mundo {
     Pngout    <http://advsys.net/ken/utils.htm>
     Zopflipng <https://github.com/google/zopfli>
 			")
-			.get_matches()
-		)
-	}
+			.get_matches();
 
-	/// Internal helper to parse arguments from CLI.
-	fn from_env(args: &clap::ArgMatches) -> Mundo {
-		// Display verbosity is derived from separate flags.
-		let verbosity: Nivel =
+		// Display mode and CLI args are related, but written
+		// differently.
+		let mode: ModeKind =
 			// Fill the screen with information.
 			if args.is_present("debug") {
-				Nivel::Debug
+				ModeKind::Debug
 			}
 			// Don't print anything to STDOUT.
 			else if args.is_present("quiet") {
-				Nivel::Quiet
+				ModeKind::Quiet
 			}
 			// Print a list of found files and exit.
 			else if args.is_present("list_only") {
-				Nivel::List
+				ModeKind::List
 			}
 			// Show a progress bar.
 			else {
-				Nivel::Standard
+				ModeKind::Standard
 			};
 
-		// Log path should be a directory if provided.
-		let log: Option<Lugar> = match args.value_of("log") {
-			Some(x) => {
-				let tmp = Lugar::Path(x.into());
-				if tmp.is_dir() {
-					Some(tmp)
-				} else {
-					None
-				}
-			},
-			None => None,
-		};
-
 		// Figure out skip early to save some overhead later.
-		let skip: Option<Tipo> = match args.value_of("skip") {
+		let skip: Option<ImageKind> = match args.value_of("skip") {
 			Some(x) => match x {
-				"jpg" => Some(Tipo::Jpg),
-				"jpeg" => Some(Tipo::Jpg),
-				"png" => Some(Tipo::Png),
+				"jpg" => Some(ImageKind::Jpg),
+				"jpeg" => Some(ImageKind::Jpg),
+				"png" => Some(ImageKind::Png),
 				_ => None,
 			},
 			None => None,
@@ -234,60 +245,150 @@ impl Mundo {
 		// We have enough to get going, but still need to collect
 		// images.
 		let mut out: Mundo = Mundo {
-			min_age: Mundo::parse_min_max(args.value_of("min_age")),
-			max_age: Mundo::parse_min_max(args.value_of("max_age")),
-			min_size: Mundo::parse_min_max(args.value_of("min_size")),
-			max_size: Mundo::parse_min_max(args.value_of("max_size")),
+			min_age: Mundo::parse_min_max_age(args.value_of("min_age")),
+			max_age: Mundo::parse_min_max_age(args.value_of("max_age")),
+			min_size: Mundo::parse_min_max_size(args.value_of("min_size")),
+			max_size: Mundo::parse_min_max_size(args.value_of("max_size")),
 			skip: skip,
 			jpg: match skip {
-				Some(Tipo::Jpg) => {
+				Some(ImageKind::Jpg) => {
 					Vec::new()
 				},
 				_ => {
 					Mundo::jpg_encoders(
-						args.value_of("x_jpegoptim").map(|x| Lugar::Path(x.into())),
-						args.value_of("x_mozjpeg").map(|x| Lugar::Path(x.into())),
+						args.value_of("x_jpegoptim").map(|x| Lugar::new(x)),
+						args.value_of("x_mozjpeg").map(|x| Lugar::new(x)),
 					)
 				},
 			},
 			png: match skip {
-				Some(Tipo::Png) => {
+				Some(ImageKind::Png) => {
 					Vec::new()
 				},
 				_ => {
 					Mundo::png_encoders(
-						args.value_of("x_oxipng").map(|x| Lugar::Path(x.into())),
-						args.value_of("x_pngout").map(|x| Lugar::Path(x.into())),
-						args.value_of("x_zopflipng").map(|x| Lugar::Path(x.into())),
+						args.value_of("x_oxipng").map(|x| Lugar::new(x)),
+						args.value_of("x_pngout").map(|x| Lugar::new(x)),
+						args.value_of("x_zopflipng").map(|x| Lugar::new(x)),
 					)
 				},
 			},
 			input: Vec::new(),
-			output: Diario::new(verbosity, log),
+			output: Pantalla::default(),
 		};
 
-		// Now we need to see if any images map.
+		// Set display and logging options.
+		out.output.set_mode(mode);
+		out.output.set_log(args.value_of("log").map(|x| Lugar::new(x)));
+
+		// Recursively find all images. The results are returned as a
+		// simple Vec<String> to make sorting and deduplication easier.
 		let mut images = out.parse_images(
 			args
 				.values_of("INPUT")
 				.unwrap()
-				.map(|x| Lugar::Path(x.into()))
+				.map(|x| Lugar::new(x))
 				.collect(),
 		);
 
-		// Clean up the images a touch for saving, if needed.
+		// Clean up the image list and convert it to Lugar paths.
 		if images.len() > 0 {
 			images.sort();
 			images.dedup();
 
 			out.input = images
 				.iter()
-				.map(|x| Lugar::Path(x.into()))
+				.map(|x| Lugar::new(x))
 				.collect();
 		}
 
 		out
 	}
+
+	// -----------------------------------------------------------------
+	// Data
+	// -----------------------------------------------------------------
+
+	/// Return the minimum age.
+	pub fn min_age(&self) -> Option<u64> {
+		match self.min_age {
+			Some(x) => Some(x),
+			None => None,
+		}
+	}
+
+	/// Return the maximum age.
+	pub fn max_age(&self) -> Option<u64> {
+		match self.max_age {
+			Some(x) => Some(x),
+			None => None,
+		}
+	}
+
+	/// Return the minimum size.
+	pub fn min_size(&self) -> Option<u64> {
+		match self.min_size {
+			Some(x) => Some(x),
+			None => None,
+		}
+	}
+
+	/// Return the maximum size.
+	pub fn max_size(&self) -> Option<u64> {
+		match self.max_size {
+			Some(x) => Some(x),
+			None => None,
+		}
+	}
+
+	/// Return the list of available JPEG encoders.
+	pub fn jpg(&self) -> Vec<Granjero> {
+		self.jpg.clone()
+	}
+
+	/// Return the list of available PNG encoders.
+	pub fn png(&self) -> Vec<Granjero> {
+		self.png.clone()
+	}
+
+	/// Return the format being skipped, if any.
+	pub fn skip(&self) -> Option<ImageKind> {
+		match self.skip {
+			Some(x) => Some(x),
+			None => None,
+		}
+	}
+
+	/// Return the list of images.
+	pub fn images(&self) -> Vec<Lugar> {
+		self.input.clone()
+	}
+
+	pub fn output(&self) -> Pantalla {
+		self.output.clone()
+	}
+
+	/// Return the total number of images found.
+	pub fn total_images(&self) -> u64 {
+		self.input.len() as u64
+	}
+
+	/// Return the total disk size claimed by found images.
+	pub fn total_size(&self) -> u64 {
+		let mut size: u64 = 0;
+
+		for ref i in &self.input {
+			if let Ok(x) = i.size() {
+				size += x;
+			}
+		}
+
+		size
+	}
+
+	// -----------------------------------------------------------------
+	// Misc Helpers
+	// -----------------------------------------------------------------
 
 	/// Build a list of all possible JPEG encoders, factoring user-
 	/// specified paths.
@@ -298,12 +399,12 @@ impl Mundo {
 		// Available JPEG apps.
 		let mut jpg: Vec<Granjero> = Vec::new();
 
-		if let Ok(x) = Granjero::Mozjpeg(mozjpeg).cmd_path() {
-			jpg.push(Granjero::Mozjpeg(Some(Lugar::Path(x.into()))));
+		if let Ok(x) = Granjero::MozJPEG(mozjpeg.unwrap_or(Lugar::new(NO_COMMAND))).cmd() {
+			jpg.push(Granjero::MozJPEG(Lugar::new(x)));
 		}
 
-		if let Ok(x) = Granjero::Jpegoptim(jpegoptim).cmd_path() {
-			jpg.push(Granjero::Jpegoptim(Some(Lugar::Path(x.into()))));
+		if let Ok(x) = Granjero::Jpegoptim(jpegoptim.unwrap_or(Lugar::new(NO_COMMAND))).cmd() {
+			jpg.push(Granjero::Jpegoptim(Lugar::new(x)));
 		}
 
 		jpg
@@ -319,81 +420,19 @@ impl Mundo {
 		// Available PNG apps.
 		let mut png: Vec<Granjero> = Vec::new();
 
-		if let Ok(x) = Granjero::Pngout(pngout).cmd_path() {
-			png.push(Granjero::Pngout(Some(Lugar::Path(x.into()))));
+		if let Ok(x) = Granjero::Pngout(pngout.unwrap_or(Lugar::new(NO_COMMAND))).cmd() {
+			png.push(Granjero::Pngout(Lugar::new(x)));
 		}
 
-		if let Ok(x) = Granjero::Oxipng(oxipng).cmd_path() {
-			png.push(Granjero::Oxipng(Some(Lugar::Path(x.into()))));
+		if let Ok(x) = Granjero::Oxipng(oxipng.unwrap_or(Lugar::new(NO_COMMAND))).cmd() {
+			png.push(Granjero::Oxipng(Lugar::new(x)));
 		}
 
-		if let Ok(x) = Granjero::Zopflipng(zopflipng).cmd_path() {
-			png.push(Granjero::Zopflipng(Some(Lugar::Path(x.into()))));
+		if let Ok(x) = Granjero::Zopflipng(zopflipng.unwrap_or(Lugar::new(NO_COMMAND))).cmd() {
+			png.push(Granjero::Zopflipng(Lugar::new(x)));
 		}
 
 		png
-	}
-
-	/// Recursively find all applicable image files given the paths
-	/// passed through CLI.
-	///
-	/// Results are returned as canonical Strings for easy sorting and
-	/// deduplication.
-	fn parse_images(&self, files: Vec<Lugar>) -> Vec<String> {
-		let mut out = Vec::new();
-
-		for file in files {
-			// Recurse directories.
-			if file.is_dir() {
-				let files = file.path()
-					.unwrap()
-					.read_dir()
-					.unwrap()
-					.map(|x| Lugar::Path(x.unwrap().path().to_owned()))
-					.collect();
-				out.extend(self.parse_images(files));
-			}
-			// Just a regular old file.
-			else if file.is_file() {
-				// Should be an expandable path.
-				if let Ok(path) = file.canonical() {
-					// Check extension first.
-					if let Ok(ext) = Tipo::from(file.to_owned()) {
-						// Skipping this type.
-						if self.skip == Some(ext) {
-							continue;
-						}
-
-						// Check file size.
-						if self.min_size.is_some() || self.max_size.is_some() {
-							if let Ok(size) = file.size() {
-								if (self.min_size.is_some() && size < self.min_size.unwrap()) || (self.max_size.is_some() && size > self.max_size.unwrap()) {
-									continue;
-								}
-							} else {
-								continue;
-							}
-						}
-
-						// Check file time.
-						if self.min_age.is_some() || self.max_age.is_some() {
-							if let Ok(age) = file.mtime_from_now() {
-								if (self.min_age.is_some() && age < self.min_age.unwrap()) || (self.max_age.is_some() && age > self.max_age.unwrap()) {
-									continue;
-								}
-							} else {
-								continue;
-							}
-						}
-
-						out.push(path);
-					}
-				}
-			}
-		}
-
-		// Done!
-		out
 	}
 
 	/// Internal callback to validate min/max age/size args.
@@ -411,8 +450,9 @@ impl Mundo {
 
 	/// Internal callback to cast min/max age/size args.
 	///
-	/// If supplied, the value must be greater than nothing.
-	fn parse_min_max(val: Option<&str>) -> Option<u64> {
+	/// If supplied, the value must be greater than nothing. The CLI
+	/// expects the value in minutes, but internally we use seconds.
+	fn parse_min_max_age(val: Option<&str>) -> Option<u64> {
 		match val
 			.unwrap_or("0")
 			.parse::<u64>() {
@@ -422,21 +462,72 @@ impl Mundo {
 		}
 	}
 
-	/// The total number of images found.
-	pub fn total_images(&self) -> u64 {
-		return self.input.len() as u64;
+	/// Internal callback to cast min/max age/size args.
+	///
+	/// If supplied, the value must be greater than nothing.
+	fn parse_min_max_size(val: Option<&str>) -> Option<u64> {
+		match val
+			.unwrap_or("0")
+			.parse::<u64>() {
+			Ok(0) => None,
+			Ok(y) => Some(y),
+			_ => None,
+		}
 	}
 
-	/// The total disk size taken up by found images.
-	pub fn total_size(&self) -> u64 {
-		let mut size: u64 = 0;
+	/// Recursively find all applicable image files given the paths
+	/// passed through CLI.
+	///
+	/// Results are returned as canonical Strings for easy sorting and
+	/// deduplication.
+	fn parse_images(&self, files: Vec<Lugar>) -> Vec<String> {
+		let mut out = Vec::new();
 
-		for ref i in &self.input {
-			if let Ok(x) = i.size() {
-				size += x;
+		for file in files {
+			// Recurse directories.
+			if file.is_dir() {
+				let files = file.as_path()
+					.read_dir()
+					.unwrap()
+					.map(|x| Lugar::new(x.unwrap().path().to_owned()))
+					.collect();
+				out.extend(self.parse_images(files));
+			}
+			// Just a regular old file.
+			else if
+				file.is_image() &&
+				(Some(ImageKind::Jpg) != self.skip || ! file.is_jpg()) &&
+				(Some(ImageKind::Png) != self.skip || ! file.is_png()) {
+				// The path should be expandable.
+				if let Ok(path) = file.canonical() {
+					// Check file size.
+					if self.min_size.is_some() || self.max_size.is_some() {
+						if let Ok(size) = file.size() {
+							if (self.min_size.is_some() && size < self.min_size.unwrap()) || (self.max_size.is_some() && size > self.max_size.unwrap()) {
+								continue;
+							}
+						} else {
+							continue;
+						}
+					}
+
+					// Check file time.
+					if self.min_age.is_some() || self.max_age.is_some() {
+						if let Ok(age) = file.age() {
+							if (self.min_age.is_some() && age < self.min_age.unwrap()) || (self.max_age.is_some() && age > self.max_age.unwrap()) {
+								continue;
+							}
+						} else {
+							continue;
+						}
+					}
+
+					out.push(path);
+				}
 			}
 		}
 
-		size
+		// Done!
+		out
 	}
 }
