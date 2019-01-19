@@ -12,24 +12,26 @@ Flaca: Settings
 #![deny(missing_debug_implementations)]
 
 use ansi_term::{Style, Colour};
-use crate::imagen::{Imagen, ImagenKind};
+use chrono::Timelike;
+use crate::imagen::{Cosecha, Imagen, ImagenKind};
 use mando::lugar::Lugar;
 use mando::pantalla::Pantalla;
 use rayon::prelude::*;
 use std::error::Error;
 use std::path::PathBuf;
 use std::time::SystemTime;
+use std::sync::Mutex;
 
 
 
 #[derive(Debug, Clone)]
 pub struct Ajustes {
-	display: Pantalla,
 	min_age: u64,
 	max_age: u64,
 	min_size: u64,
 	max_size: u64,
 	skip: ImagenKind,
+	log: Lugar,
 	jpegoptim: Imagen,
 	mozjpeg: Imagen,
 	oxipng: Imagen,
@@ -41,12 +43,12 @@ pub struct Ajustes {
 impl Default for Ajustes {
 	fn default() -> Ajustes {
 		Ajustes {
-			display: Pantalla::new(),
 			min_age: 0,
 			max_age: 0,
 			min_size: 0,
 			max_size: 0,
 			skip: ImagenKind::None,
+			log: Lugar::None,
 			jpegoptim: Imagen::Jpegoptim(Lugar::None),
 			mozjpeg: Imagen::MozJPEG(Lugar::None),
 			oxipng: Imagen::Oxipng(Lugar::None),
@@ -58,7 +60,7 @@ impl Default for Ajustes {
 }
 
 impl Ajustes {
-	pub fn init() -> Ajustes {
+	pub fn init() {
 		let args = clap::App::new("Flaca")
 			.version(env!("CARGO_PKG_VERSION"))
 			.author("Blobfolio, LLC <hello@blobfolio.com>")
@@ -105,7 +107,7 @@ impl Ajustes {
 				.alias("min_age")
 				.help("Ignore files younger than this.")
 				.takes_value(true)
-				.validator(Ajustes::validate_min_max)
+				.validator(validate_min_max)
 				.value_name("MINUTES")
 			)
 			.arg(clap::Arg::with_name("max_age")
@@ -113,7 +115,7 @@ impl Ajustes {
 				.alias("max_age")
 				.help("Ignore files older than this.")
 				.takes_value(true)
-				.validator(Ajustes::validate_min_max)
+				.validator(validate_min_max)
 				.value_name("MINUTES")
 			)
 			.arg(clap::Arg::with_name("min_size")
@@ -121,7 +123,7 @@ impl Ajustes {
 				.alias("min_size")
 				.help("Ignore files smaller than this.")
 				.takes_value(true)
-				.validator(Ajustes::validate_min_max)
+				.validator(validate_min_max)
 				.value_name("BYTES")
 			)
 			.arg(clap::Arg::with_name("max_size")
@@ -129,7 +131,7 @@ impl Ajustes {
 				.alias("max_size")
 				.help("Ignore files larger than this.")
 				.takes_value(true)
-				.validator(Ajustes::validate_min_max)
+				.validator(validate_min_max)
 				.value_name("BYTES")
 			)
 			.arg(clap::Arg::with_name("skip")
@@ -198,6 +200,13 @@ impl Ajustes {
     Zopflipng <https://github.com/google/zopfli>
 			")
 			.get_matches();
+
+		// Configure multi-threading.
+		let num_cpus = num_cpus::get();
+        let thread_count = num_cpus + (num_cpus >> 1);
+		let _ = rayon::ThreadPoolBuilder::new()
+			.num_threads(thread_count)
+			.build_global();
 
 		// Figure out display first.
 		let display: Pantalla =
@@ -292,6 +301,24 @@ impl Ajustes {
 			}
 		}
 
+		// Log path?
+		let log: Lugar = match args.value_of("log") {
+			Some(x) => {
+				let mut tmp: Lugar = Lugar::new(x);
+				if let Err(_) = tmp.push("flaca.log") {
+					tmp = Lugar::None;
+				}
+				tmp
+			},
+			_ => Lugar::None,
+		};
+
+		// Size and age.
+		let min_age: u64 = parse_min_max_age(args.value_of("min_age"));
+		let max_age: u64 = parse_min_max_age(args.value_of("max_age"));
+		let min_size: u64 = parse_min_max_size(args.value_of("min_size"));
+		let max_size: u64 = parse_min_max_size(args.value_of("max_size"));
+
 		// Find images!
 		let raw: Vec<Lugar> = args
 			.values_of("INPUT")
@@ -303,16 +330,45 @@ impl Ajustes {
 			ImagenKind::Jpg => Lugar::walk(&raw, false, true, Some(Ajustes::walk_png)),
 			ImagenKind::Png => Lugar::walk(&raw, false, true, Some(Ajustes::walk_jpg)),
 			ImagenKind::None => Lugar::walk(&raw, false, true, Some(Ajustes::walk_img)),
-		};
+		}
+			.into_par_iter()
+			.filter(|x| {
+				// Filter size.
+				if max_size > 0 || min_size > 0 {
+					let size = x.size().unwrap_or(0);
+					if
+						0 == size ||
+						(max_size > 0 && size > max_size) ||
+						(min_size > 0 && size < min_size)
+					{
+						return false;
+					}
+				}
+
+				// Filter age.
+				if max_age > 0 || min_age > 0 {
+					let age = x.age().unwrap_or(0);
+					if
+						0 == age ||
+						(max_age > 0 && age > max_age) ||
+						(min_age > 0 && age < min_age)
+					{
+						return false;
+					}
+				}
+
+				true
+			})
+			.collect();
 
 		// Our settings!
-		let tmp = Ajustes {
-			display: display,
-			min_age: Ajustes::parse_min_max_age(args.value_of("min_age")),
-			max_age: Ajustes::parse_min_max_age(args.value_of("max_age")),
-			min_size: Ajustes::parse_min_max_size(args.value_of("min_size")),
-			max_size: Ajustes::parse_min_max_size(args.value_of("max_size")),
+		let out = Ajustes {
+			min_age: min_age,
+			max_age: max_age,
+			min_size: min_size,
+			max_size: max_size,
 			skip: skip,
+			log: log,
 			jpegoptim: jpegoptim,
 			mozjpeg: mozjpeg,
 			oxipng: oxipng,
@@ -323,69 +379,333 @@ impl Ajustes {
 
 		// If we are just listing, let's list and die.
 		if args.is_present("list_only") {
-			for v in &tmp.paths {
+			for v in &out.paths {
 				if let Ok(x) = v.path() {
-					tmp.display.plain(x);
+					display.plain(x);
 				}
 			}
 
 			std::process::exit(0);
 		}
 
-		tmp.print_header();
+		out.print_header(&display);
 
 		// No images, nothing to do.
-		if 0 == tmp.paths.len() {
-			tmp.display.error("No qualifying images were found.");
+		if 0 == out.paths.len() {
+			display.error("No qualifying images were found.");
 		}
 
-		tmp
-	}
+		// Debug information?
+		if args.is_present("debug") {
+			display.notice("Debug mode enabled.");
 
-	pub fn compress(&self) -> Result<(u64, u64), Box<dyn Error>> {
-		// Start your engines.
-		let mut saved: u64 = 0;
-		let start_time = SystemTime::now();
+			display.notice(format!("Using {} threads.", thread_count));
 
-		let jpg: Vec<Lugar> =
-			if self.skip != ImagenKind::Jpg {
-				// TODO
+			// Age restrictions.
+			if min_age > 0 {
+				display.notice(format!("Minimum file age: {} seconds.", min_age));
+			}
+
+			if max_age > 0 {
+				display.notice(format!("Maximum file age: {} seconds.", max_age));
+			}
+
+			// Size restrictions.
+			if min_size > 0 {
+				display.notice(format!("Minimum file size: {} bytes.", min_size));
+			}
+
+			if max_size > 0 {
+				display.notice(format!("Maximum file size: {} bytes.", max_size));
+			}
+
+			// Are we skipping?
+			if skip == ImagenKind::Jpg {
+				display.notice("Skipping JPEG images.");
+			}
+			else if skip == ImagenKind::Png {
+				display.notice("Skipping PNG images.");
+			}
+
+			// Are we logging?
+			if out.log.is_some() {
+				display.notice(format!("Logging results to {}.", out.log));
+			}
+
+			// Available encoders.
+			for v in &[&out.jpegoptim, &out.mozjpeg, &out.oxipng, &out.pngout, &out.zopflipng] {
+				let bin = v.bin_path();
+				if bin.is_none() {
+					display.warning(format!("{} is not installed.", v));
+				}
+				else {
+					display.notice(format!("Found {} at {}", v, bin));
+				}
+			}
+
+			display.plain("");
+		}
+
+		// Start compressing!
+		let shared_display = Mutex::new(display);
+		if let Ok((saved, elapsed)) = out.compress(&shared_display) {
+			// Talk about what went right.
+			let display = shared_display.lock().unwrap();
+
+			display.plain("");
+			display.success(format!("Finished in {}", Pantalla::nice_time(elapsed, false)));
+			if saved > 0 {
+				display.success(format!("Saved {}", Pantalla::nice_size(saved)));
 			}
 			else {
-				vec![]
-			};
+				display.warning("No lossless savings were possible.");
+			}
+		}
+		// Compression failed.
+		else {
+			let display = shared_display.lock().unwrap();
+			display.error("Compression failed.");
+		}
+	}
+
+	pub fn compress(&self, shared_display: &Mutex<Pantalla>) -> Result<(u64, u64), Box<dyn Error>> {
+		// Start your engines.
+		let start_time = SystemTime::now();
+
+		// Start the progress bar.
+		display_total(&shared_display, self.paths.len() as u64);
+
+		// Process JPEGs and PNGs in parallel.
+		let jpg_handle = || self.compress_jpgs(&shared_display);
+		let png_handle = || self.compress_pngs(&shared_display);
+		let (result_jpg, result_png) = rayon::join(jpg_handle, png_handle);
+
+		// We're done with parallelization so can stop using tedious
+		// wrapper functions.
+		let mut display = shared_display.lock().unwrap();
+		display.reset_bar();
 
 		// Wrap it up.
+		let saved: u64 = result_jpg + result_png;
 		let elapsed: u64 = Lugar::time_diff(SystemTime::now(), start_time)?;
 		Ok((saved, elapsed))
 	}
 
-	fn validate_min_max(val: String) -> Result<(), String> {
-		if let Ok(x) = val.parse::<u64>() {
-			if x > 0 {
-				return Ok(());
-			}
+	fn compress_jpgs(&self, shared_display: &Mutex<Pantalla>) -> u64 {
+		// If we're skipping JPEGs, there's nothing to do.
+		if self.skip == ImagenKind::Jpg {
+			return 0;
 		}
 
-		Err("Value must be greater than zero.".to_string())
+		// Find valid encoders.
+		let mut encoders: Vec<&Imagen> = Vec::new();
+		if ! self.mozjpeg.bin_path().is_none() {
+			encoders.push(&self.mozjpeg);
+		}
+		if ! self.jpegoptim.bin_path().is_none() {
+			encoders.push(&self.jpegoptim);
+		}
+
+		// If there aren't any encoders, we're done.
+		if 0 == encoders.len() {
+			return 0;
+		}
+
+		// Last thing, find all JPEG images, converting them into result
+		// objects as we go.
+		let mut images: Vec<Cosecha> = self.paths.clone()
+			.into_par_iter()
+			.filter_map(|x| {
+				if x.has_extension("jpg") || x.has_extension("jpeg") {
+					Some(Cosecha::new(x))
+				}
+				else {
+					None
+				}
+			})
+			.collect();
+		if 0 == images.len() {
+			return 0;
+		}
+
+		// Hold our combined savings.
+		let mut saved: u64 = 0;
+
+		// Loop the images.
+		for mut v in &mut images {
+			// Make sure it still exists. The encoders will re-check
+			// this at each pass, but what's one more?
+			if ! v.is_image() {
+				display_tick(&shared_display);
+				continue;
+			}
+
+			// The starting size.
+			v.update();
+
+			display_notice(
+				&shared_display,
+				format!(
+					"{} {:>50} {}",
+					Colour::Cyan.paint("Starting"),
+					Pantalla::shorten_left(format!("{}", v.path()), 50),
+					Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
+				)
+			);
+
+			// Run through each encoder.
+			for e in &encoders {
+				if let Err(_) = e.compress(&mut v) {
+					continue;
+				}
+			}
+
+			// Report savings.
+			if v.saved() > 0 {
+				saved += v.saved();
+
+				display_notice(
+					&shared_display,
+					format!(
+						"{} {:>50} {} {}",
+						Colour::Cyan.paint("Finished"),
+						Pantalla::shorten_left(format!("{}", v.path()), 50),
+						Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
+						Colour::Green.bold().paint(format!(
+							"-{}",
+							Pantalla::nice_size(v.saved())),
+						),
+					)
+				);
+			}
+			// There were no savings, but we can report we finished.
+			else {
+				display_notice(
+					&shared_display,
+					format!(
+						"{} {:>50} {}",
+						Colour::Cyan.paint("Finished"),
+						Pantalla::shorten_left(format!("{}", v.path()), 50),
+						Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
+					)
+				);
+			}
+
+			// Tick and move on.
+			display_tick(&shared_display);
+		}
+
+		saved
 	}
 
-	fn parse_min_max_age(val: Option<&str>) -> u64 {
-		match val
-			.unwrap_or("0")
-			.parse::<u64>() {
-				Ok(y) => y * 60,
-				_ => 0,
-			}
-	}
+	fn compress_pngs(&self, shared_display: &Mutex<Pantalla>) -> u64 {
+		// If we're skipping PNGs, there's nothing to do.
+		if self.skip == ImagenKind::Png {
+			return 0;
+		}
 
-	fn parse_min_max_size(val: Option<&str>) -> u64 {
-		match val
-			.unwrap_or("0")
-			.parse::<u64>() {
-				Ok(y) => y,
-				_ => 0,
+		// Find valid encoders.
+		let mut encoders: Vec<&Imagen> = Vec::new();
+		if ! self.pngout.bin_path().is_none() {
+			encoders.push(&self.pngout);
+		}
+		if ! self.oxipng.bin_path().is_none() {
+			encoders.push(&self.oxipng);
+		}
+		if ! self.zopflipng.bin_path().is_none() {
+			encoders.push(&self.zopflipng);
+		}
+
+		// If there aren't any encoders, we're done.
+		if 0 == encoders.len() {
+			return 0;
+		}
+
+		// Last thing, find all PNG images, converting them into result
+		// objects as we go.
+		let mut images: Vec<Cosecha> = self.paths.clone()
+			.into_par_iter()
+			.filter_map(|x| {
+				if x.has_extension("png") {
+					Some(Cosecha::new(x))
+				}
+				else {
+					None
+				}
+			})
+			.collect();
+		if 0 == images.len() {
+			return 0;
+		}
+
+		// Hold our combined savings.
+		let mut saved: u64 = 0;
+
+		// Loop the images.
+		for mut v in &mut images {
+			// Make sure it still exists. The encoders will re-check
+			// this at each pass, but what's one more?
+			if ! v.is_image() {
+				display_tick(&shared_display);
+				continue;
 			}
+
+			// The starting size.
+			v.update();
+
+			display_notice(
+				&shared_display,
+				format!(
+					"{} {:>50} {}",
+					Colour::Cyan.paint("Starting"),
+					Pantalla::shorten_left(format!("{}", v.path()), 50),
+					Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
+				)
+			);
+
+			// Run through each encoder.
+			for e in &encoders {
+				if let Err(_) = e.compress(&mut v) {
+					continue;
+				}
+			}
+
+			// Report savings.
+			if v.saved() > 0 {
+				saved += v.saved();
+
+				display_notice(
+					&shared_display,
+					format!(
+						"{} {:>50} {} {}",
+						Colour::Cyan.paint("Finished"),
+						Pantalla::shorten_left(format!("{}", v.path()), 50),
+						Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
+						Colour::Green.bold().paint(format!(
+							"-{}",
+							Pantalla::nice_size(v.saved())),
+						),
+					)
+				);
+			}
+			// There were no savings, but we can report we finished.
+			else {
+				display_notice(
+					&shared_display,
+					format!(
+						"{} {:>50} {}",
+						Colour::Cyan.paint("Finished"),
+						Pantalla::shorten_left(format!("{}", v.path()), 50),
+						Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
+					)
+				);
+			}
+
+			// Tick and move on.
+			display_tick(&shared_display);
+		}
+
+		saved
 	}
 
 	fn walk_img(path: &walkdir::DirEntry) -> bool {
@@ -435,16 +755,16 @@ impl Ajustes {
 		}
 	}
 
-	fn print_header(&self) {
+	fn print_header(&self, display: &Pantalla) {
 		// Try to be quiet.
-		if self.display.show_quiet() {
+		if display.show_quiet() {
 			return;
 		}
 
 		let count: u64 = self.paths.len() as u64;
 		let size: u64 = Lugar::du(&self.paths);
 
-		self.display.plain(format!("
+		display.plain(format!("
              ,--._,--.
            ,'  ,'   ,-`.
 (`-.__    /  ,'   /
@@ -469,6 +789,67 @@ impl Ajustes {
 			Colour::Blue.bold().paint("Space:"),
 			Pantalla::nice_size(size),
 			"Ready, Set, Goat!",
+		));
+	}
+}
+
+fn validate_min_max(val: String) -> Result<(), String> {
+	if let Ok(x) = val.parse::<u64>() {
+		if x > 0 {
+			return Ok(());
+		}
+	}
+
+	Err("Value must be greater than zero.".to_string())
+}
+
+fn parse_min_max_age(val: Option<&str>) -> u64 {
+	match val
+		.unwrap_or("0")
+		.parse::<u64>() {
+			Ok(y) => y * 60,
+			_ => 0,
+		}
+}
+
+fn parse_min_max_size(val: Option<&str>) -> u64 {
+	match val
+		.unwrap_or("0")
+		.parse::<u64>() {
+			Ok(y) => y,
+			_ => 0,
+		}
+}
+
+fn display_total(shared_display: &Mutex<Pantalla>, total: u64) {
+	let mut display = shared_display.lock().unwrap();
+	display.set_bar_total(total);
+}
+
+fn display_tick(shared_display: &Mutex<Pantalla>) {
+	let mut display = shared_display.lock().unwrap();
+	display.tick();
+}
+
+fn display_notice<S>(shared_display: &Mutex<Pantalla>, msg: S)
+where S: Into<String> {
+	let display = shared_display.lock().unwrap();
+
+	// We're using plain instead of notice to switch up the formatting
+	// a little bit, but we still want to restrict output to debugged
+	// sessions.
+	if display.show_debug() {
+		let now = Lugar::local_now();
+
+		display.plain(format!(
+			"{} {}",
+			Colour::Purple.paint(format!(
+				"[{:02}:{:02}:{:02}]",
+				now.hour(),
+				now.minute(),
+				now.second(),
+			)),
+			msg.into(),
 		));
 	}
 }

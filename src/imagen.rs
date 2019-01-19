@@ -15,6 +15,7 @@ Flaca: Images
 
 use mando::lugar::Lugar;
 use std::error::Error;
+use std::fmt;
 use std::process::{Command, Stdio};
 use std::time::SystemTime;
 
@@ -106,6 +107,26 @@ impl Cosecha {
 		ImagenKind::None
 	}
 
+	pub fn path(&self) -> Lugar {
+		self.path.clone()
+	}
+
+	pub fn start_size(&self) -> u64 {
+		self.start_size
+	}
+
+	pub fn start_time(&self) -> SystemTime {
+		self.start_time
+	}
+
+	pub fn end_size(&self) -> u64 {
+		self.end_size
+	}
+
+	pub fn end_time(&self) -> SystemTime {
+		self.end_time
+	}
+
 	pub fn saved(&self) -> u64 {
 		if
 			self.start_size > 0 &&
@@ -124,6 +145,18 @@ impl Cosecha {
 }
 
 
+
+impl fmt::Display for Imagen {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match *self {
+			Imagen::Jpegoptim(_) => write!(f, "{}", "Jpegoptim"),
+			Imagen::MozJPEG(_) => write!(f, "{}", "MozJPEG"),
+			Imagen::Oxipng(_) => write!(f, "{}", "Oxipng"),
+			Imagen::Pngout(_) => write!(f, "{}", "Pngout"),
+			Imagen::Zopflipng(_) => write!(f, "{}", "Zopflipng"),
+		}
+	}
+}
 
 impl Imagen {
 	pub fn is_some(&self) -> bool {
@@ -250,9 +283,8 @@ impl Imagen {
 		if end_size > 0 && result.end_size > 0 && end_size < result.end_size {
 			working1.mv(&mut result.path, Some(perms), Some(owner))?;
 		}
-
 		// Remove working file.
-		if working1.is_file() {
+		else if working1.is_file() {
 			if let Err(_) = working1.rm() {}
 		}
 

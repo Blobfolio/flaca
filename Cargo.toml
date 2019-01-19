@@ -16,6 +16,7 @@ ansi_term = "*"
 chrono = "*"
 lazy_static = "*"
 mando = { path = "../mando" }
+num_cpus = "*"
 rayon = "*"
 walkdir = "*"
 
