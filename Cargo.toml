@@ -1,24 +1,31 @@
 [package]
-name = "flaca"
-version = "0.5.0"
 authors = ["Blobfolio, LLC <hello@blobfolio.com>"]
+description = "Losslessly compress la mierda out of JPEG and PNG images."
 edition = "2018"
+exclude = [
+	"tests/*",
+]
 license = "WTFPL"
+name = "flaca"
+publish = false
+repository = "ssh://git@blobfolio.com:3417/flaca"
+version = "0.5.0"
 
 [dependencies]
-ansi_term = "^0.9"
-chrono = "^0.4"
-lazy_static = "1.2.0"
-nix = "*"
-term_size = "^0.3"
+ansi_term = "*"
+chrono = "*"
+lazy_static = "*"
+mando = { path = "../mando" }
+rayon = "*"
+walkdir = "*"
 
 [dependencies.clap]
-version = "~2.23"
+version = "*"
 default-features = false
 features = [ "color" ]
 
 [profile.release]
-lto = true
-panic = "abort"
-opt-level = 3
 debug = false
+lto = true
+opt-level = 3
+panic = "abort"
