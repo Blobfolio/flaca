@@ -22,27 +22,65 @@ use std::time::SystemTime;
 
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// Image kind.
 pub enum ImagenKind {
+	/// JPEG.
 	Jpg,
+	/// PNG.
 	Png,
+	/// Nothing.
 	None,
 }
 
 #[derive(Debug, Clone)]
+/// Image encoder.
 pub enum Imagen {
+	/// Jpegoptim.
+	///
+	/// See: https://github.com/tjko/jpegoptim
 	Jpegoptim(Lugar),
+	/// MozJPEG.
+	///
+	/// We're specifically targetting MozJPEG because of its compression
+	/// gains, however if another jpegtran implementation is installed
+	/// instead, it will be used.
+	///
+	/// See: https://github.com/mozilla/mozjpeg
 	MozJPEG(Lugar),
+	/// Oxipng
+	///
+	/// See: https://github.com/shssoichiro/oxipng
 	Oxipng(Lugar),
+	/// Pngout
+	///
+	/// Oxipng is touted as a replacement for Pngout, and while it is
+	/// much better in almost every way, Pngout has a few proprietary
+	/// tricks up its sleeves. So alas, we must run both.
+	///
+	/// See: http://advsys.net/ken/utils.htm
 	Pngout(Lugar),
+	/// Zopflipng
+	///
+	/// This is technically redundant with Oxipng installed, however
+	/// performance and compression are currently much better in
+	/// natively-built Zopfli binaries than the Rust port used by Oxi.
+	///
+	/// https://github.com/google/zopfli
 	Zopflipng(Lugar),
 }
 
 #[derive(Debug)]
+/// Compression results for a given image.
 pub struct Cosecha {
+	/// Image path.
 	path: Lugar,
+	/// Start time.
 	start_time: SystemTime,
+	/// Start size in bytes.
 	start_size: u64,
+	/// End time (i.e. compression jobs finished).
 	end_time: SystemTime,
+	/// End size in bytes.
 	end_size: u64,
 }
 
@@ -61,6 +99,11 @@ impl Default for Cosecha {
 }
 
 impl Cosecha {
+	// -----------------------------------------------------------------
+	// Init/Tests
+	// -----------------------------------------------------------------
+
+	/// Open a new result.
 	pub fn new(path: Lugar) -> Cosecha {
 		// Initialize with the path assuming it exists and is an image.
 		if
@@ -83,17 +126,16 @@ impl Cosecha {
 		Cosecha::default()
 	}
 
-	pub fn update(&mut self) {
-		if self.is_image() {
-			self.end_size = self.path.size().unwrap_or(0);
-			self.end_time = SystemTime::now();
-		}
-	}
-
+	/// Is Image
+	///
+	/// Double-check the supplied path belongs to an image.
 	pub fn is_image(&self) -> bool {
 		self.as_image_kind() != ImagenKind::None
 	}
 
+	/// As ImagenKind
+	///
+	/// Given the path, which ImagenKind would it be?
 	pub fn as_image_kind(&self) -> ImagenKind {
 		if self.path.is_file() {
 			if self.path.has_extension("jpg") || self.path.has_extension("jpeg") {
@@ -107,26 +149,41 @@ impl Cosecha {
 		ImagenKind::None
 	}
 
+	// -----------------------------------------------------------------
+	// Getters
+	// -----------------------------------------------------------------
+
+	/// Path.
 	pub fn path(&self) -> Lugar {
 		self.path.clone()
 	}
 
-	pub fn start_size(&self) -> u64 {
-		self.start_size
-	}
-
+	/// Start time.
 	pub fn start_time(&self) -> SystemTime {
 		self.start_time
 	}
 
-	pub fn end_size(&self) -> u64 {
-		self.end_size
+	/// Start size in bytes.
+	pub fn start_size(&self) -> u64 {
+		self.start_size
 	}
 
+	/// End time.
 	pub fn end_time(&self) -> SystemTime {
 		self.end_time
 	}
 
+	/// End size in bytes.
+	pub fn end_size(&self) -> u64 {
+		self.end_size
+	}
+
+	/// Time elapsed.
+	pub fn elapsed(&self) -> u64 {
+		Lugar::time_diff(self.start_time, self.end_time).unwrap_or(0)
+	}
+
+	/// Total saved in bytes.
 	pub fn saved(&self) -> u64 {
 		if
 			self.start_size > 0 &&
@@ -139,13 +196,66 @@ impl Cosecha {
 		0
 	}
 
-	pub fn elapsed(&self) -> u64 {
-		Lugar::time_diff(self.start_time, self.end_time).unwrap_or(0)
+	// -----------------------------------------------------------------
+	// Operations
+	// -----------------------------------------------------------------
+
+	/// Log Results to File.
+	pub fn log(&self, log: &Lugar) -> Result<(), Box<dyn std::error::Error>> {
+		// Not supposed to be logging?
+		if ! log.is_some() || log.is_dir() {
+			return Ok(());
+		}
+
+		// Can't log?
+		if ! self.path.is_file() || 0 == self.start_size || 0 == self.end_size {
+			return Err("Could not gather the result information.".into());
+		}
+
+		// Save computed values to variables.
+		let path: String = self.path.path()?;
+		let elapsed: u64 = self.elapsed();
+		let saved: u64 = self.saved();
+
+		// Format a human-readable log message.
+		let msg: String =
+			if saved > 0 {
+				format!("Saved {} bytes in {} seconds.", saved, elapsed)
+			}
+			else {
+				"No change.".into()
+			};
+
+		// Send it on its way!
+		log.append(format!(
+			"{} \"{}\" -- {} {} {} -- {}",
+			Lugar::local_now().to_rfc3339(),
+			path,
+			self.start_size,
+			self.end_size,
+			elapsed,
+			msg
+		))?;
+
+		Ok(())
+	}
+
+	/// Update result.
+	///
+	/// All values are computed; this just recomputes them.
+	pub fn update(&mut self) {
+		if self.is_image() {
+			self.end_size = self.path.size().unwrap_or(0);
+			self.end_time = SystemTime::now();
+		}
 	}
 }
 
 
 
+/// Display
+///
+/// Convert Imagen enums into a human-friendly encoder name.
 impl fmt::Display for Imagen {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match *self {
@@ -159,30 +269,18 @@ impl fmt::Display for Imagen {
 }
 
 impl Imagen {
+	// -----------------------------------------------------------------
+	// Tests
+	// -----------------------------------------------------------------
+
+	/// Whether the encoder has a valid path.
 	pub fn is_some(&self) -> bool {
 		self.bin_path().is_file()
 	}
 
-	pub fn bin_name(&self) -> String {
-		match *self {
-			Imagen::Jpegoptim(_) => "jpegoptim".to_string(),
-			Imagen::MozJPEG(_) => "jpegtran".to_string(),
-			Imagen::Oxipng(_) => "oxipng".to_string(),
-			Imagen::Pngout(_) => "pngout".to_string(),
-			Imagen::Zopflipng(_) => "zopflipng".to_string(),
-		}
-	}
-
-	pub fn bin_path(&self) -> Lugar {
-		match *self {
-			Imagen::Jpegoptim(_) => self.__jpegoptim_path(),
-			Imagen::MozJPEG(_) => self.__mozjpeg_path(),
-			Imagen::Oxipng(_) => self.__oxipng_path(),
-			Imagen::Pngout(_) => self.__pngout_path(),
-			Imagen::Zopflipng(_) => self.__zopflipng_path(),
-		}
-	}
-
+	/// As ImagenKind
+	///
+	/// Which ImagenKind is this encoder for?
 	pub fn as_image_kind(&self) -> ImagenKind {
 		match *self {
 			Imagen::Jpegoptim(_) => ImagenKind::Jpg,
@@ -193,6 +291,37 @@ impl Imagen {
 		}
 	}
 
+	// -----------------------------------------------------------------
+	// Getters
+	// -----------------------------------------------------------------
+
+	/// Binary name.
+	pub fn bin_name(&self) -> String {
+		match *self {
+			Imagen::Jpegoptim(_) => "jpegoptim".to_string(),
+			Imagen::MozJPEG(_) => "jpegtran".to_string(),
+			Imagen::Oxipng(_) => "oxipng".to_string(),
+			Imagen::Pngout(_) => "pngout".to_string(),
+			Imagen::Zopflipng(_) => "zopflipng".to_string(),
+		}
+	}
+
+	/// Binary path.
+	pub fn bin_path(&self) -> Lugar {
+		match *self {
+			Imagen::Jpegoptim(_) => self.__jpegoptim_path(),
+			Imagen::MozJPEG(_) => self.__mozjpeg_path(),
+			Imagen::Oxipng(_) => self.__oxipng_path(),
+			Imagen::Pngout(_) => self.__pngout_path(),
+			Imagen::Zopflipng(_) => self.__zopflipng_path(),
+		}
+	}
+
+	// -----------------------------------------------------------------
+	// Operations
+	// -----------------------------------------------------------------
+
+	/// Compress an image with the encoder.
 	pub fn compress(&self, result: &mut Cosecha) -> Result<(), Box<dyn Error>> {
 		// Make sure we have the encoder.
 		let cmd_path = self.bin_path();
@@ -294,6 +423,11 @@ impl Imagen {
 		Ok(())
 	}
 
+	// -----------------------------------------------------------------
+	// Inner Helpers
+	// -----------------------------------------------------------------
+
+	/// Return the inner path as a reference.
 	fn __inner_ref(&self) -> &Lugar {
 		match *self {
 			Imagen::Jpegoptim(ref x) => x,
@@ -304,16 +438,10 @@ impl Imagen {
 		}
 	}
 
-	fn __inner_ref_mut(&mut self) -> &mut Lugar {
-		match *self {
-			Imagen::Jpegoptim(ref mut x) => x,
-			Imagen::MozJPEG(ref mut x) => x,
-			Imagen::Oxipng(ref mut x) => x,
-			Imagen::Pngout(ref mut x) => x,
-			Imagen::Zopflipng(ref mut x) => x,
-		}
-	}
-
+	/// Jpegoptim binary path.
+	///
+	/// The user-specified path is given priority, but Flaca will also
+	/// check other executable paths.
 	fn __jpegoptim_path(&self) -> Lugar {
 		lazy_static! {
 			static ref JPEGOPTIM: Lugar = {
@@ -341,6 +469,10 @@ impl Imagen {
 		Lugar::None
 	}
 
+	/// MozJPEG binary path.
+	///
+	/// The user-specified path is given priority, but Flaca will also
+	/// check other executable paths.
 	fn __mozjpeg_path(&self) -> Lugar {
 		lazy_static! {
 			static ref MOZJPEG: Lugar = {
@@ -373,6 +505,10 @@ impl Imagen {
 		Lugar::None
 	}
 
+	/// Oxipng binary path.
+	///
+	/// The user-specified path is given priority, but Flaca will also
+	/// check other executable paths.
 	fn __oxipng_path(&self) -> Lugar {
 		lazy_static! {
 			static ref OXIPNG: Lugar = {
@@ -400,6 +536,10 @@ impl Imagen {
 		Lugar::None
 	}
 
+	/// Pngout binary path.
+	///
+	/// The user-specified path is given priority, but Flaca will also
+	/// check other executable paths.
 	fn __pngout_path(&self) -> Lugar {
 		lazy_static! {
 			static ref PNGOUT: Lugar = {
@@ -427,6 +567,10 @@ impl Imagen {
 		Lugar::None
 	}
 
+	/// Zopflipng binary path.
+	///
+	/// The user-specified path is given priority, but Flaca will also
+	/// check other executable paths.
 	fn __zopflipng_path(&self) -> Lugar {
 		lazy_static! {
 			static ref ZOPFLIPNG: Lugar = {

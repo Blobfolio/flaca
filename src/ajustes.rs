@@ -1,6 +1,5 @@
 /*!
 Flaca: Settings
-
 */
 
 #![warn(missing_docs)]
@@ -25,18 +24,31 @@ use std::sync::Mutex;
 
 
 #[derive(Debug, Clone)]
+/// Flaca Runtime Settings.
 pub struct Ajustes {
+	/// Skip files younger than this in minutes.
 	min_age: u64,
+	/// Skip files older than this in minutes.
 	max_age: u64,
+	/// Skip files smaller than this in bytes.
 	min_size: u64,
+	/// Skip files larger than this in bytes.
 	max_size: u64,
+	/// Skip either "jpg" or "png" image formats.
 	skip: ImagenKind,
+	/// A directory to log results to.
 	log: Lugar,
+	/// Location of the Jpegoptim binary.
 	jpegoptim: Imagen,
+	/// Location of the MozJPEG binary.
 	mozjpeg: Imagen,
+	/// Location of the Oxipng binary.
 	oxipng: Imagen,
+	/// Location of the Pngout binary.
 	pngout: Imagen,
+	/// Location of the Zopflipng binary.
 	zopflipng: Imagen,
+	/// Image paths to process.
 	paths: Vec<Lugar>,
 }
 
@@ -60,6 +72,15 @@ impl Default for Ajustes {
 }
 
 impl Ajustes {
+	// -----------------------------------------------------------------
+	// Init
+	// -----------------------------------------------------------------
+
+	/// Initialize Flaca
+	///
+	/// This parses command line arguments, generates help
+	/// documentation, prints results to the screen, etc. It is
+	/// basically our main().
 	pub fn init() {
 		let args = clap::App::new("Flaca")
 			.version(env!("CARGO_PKG_VERSION"))
@@ -327,9 +348,9 @@ impl Ajustes {
 			.collect();
 
 		let images: Vec<Lugar> = match skip {
-			ImagenKind::Jpg => Lugar::walk(&raw, false, true, Some(Ajustes::walk_png)),
-			ImagenKind::Png => Lugar::walk(&raw, false, true, Some(Ajustes::walk_jpg)),
-			ImagenKind::None => Lugar::walk(&raw, false, true, Some(Ajustes::walk_img)),
+			ImagenKind::Jpg => Lugar::walk(&raw, false, true, Some(Ajustes::__walk_png)),
+			ImagenKind::Png => Lugar::walk(&raw, false, true, Some(Ajustes::__walk_jpg)),
+			ImagenKind::None => Lugar::walk(&raw, false, true, Some(Ajustes::__walk_img)),
 		}
 			.into_par_iter()
 			.filter(|x| {
@@ -388,6 +409,7 @@ impl Ajustes {
 			std::process::exit(0);
 		}
 
+		// Print the CLI header.
 		out.print_header(&display);
 
 		// No images, nothing to do.
@@ -395,10 +417,13 @@ impl Ajustes {
 			display.error("No qualifying images were found.");
 		}
 
-		// Debug information?
+		// Debug information? It can be helpful to see what settings are
+		// being applied.
 		if args.is_present("debug") {
+			// Obviously we're debugging.
 			display.notice("Debug mode enabled.");
 
+			// Multithreading!
 			display.notice(format!("Using {} threads.", thread_count));
 
 			// Age restrictions.
@@ -419,7 +444,7 @@ impl Ajustes {
 				display.notice(format!("Maximum file size: {} bytes.", max_size));
 			}
 
-			// Are we skipping?
+			// Are we skipping a format?
 			if skip == ImagenKind::Jpg {
 				display.notice("Skipping JPEG images.");
 			}
@@ -443,41 +468,107 @@ impl Ajustes {
 				}
 			}
 
+			// Give us a blank line.
 			display.plain("");
 		}
 
 		// Start compressing!
 		let shared_display = Mutex::new(display);
 		if let Ok((saved, elapsed)) = out.compress(&shared_display) {
-			// Talk about what went right.
-			let display = shared_display.lock().unwrap();
-
-			display.plain("");
-			display.success(format!("Finished in {}", Pantalla::nice_time(elapsed, false)));
+			// Another blank line.
+			Pantalla::mutex_plain(&shared_display, "");
+			Pantalla::mutex_success(
+				&shared_display,
+				format!("Finished in {}", Pantalla::nice_time(elapsed, false))
+			);
 			if saved > 0 {
-				display.success(format!("Saved {}", Pantalla::nice_size(saved)));
+				Pantalla::mutex_success(
+					&shared_display,
+					format!("Saved {}", Pantalla::nice_size(saved))
+				);
 			}
 			else {
-				display.warning("No lossless savings were possible.");
+				Pantalla::mutex_warning(
+					&shared_display,
+					"No lossless savings were possible."
+				);
 			}
 		}
 		// Compression failed.
 		else {
-			let display = shared_display.lock().unwrap();
-			display.error("Compression failed.");
+			Pantalla::mutex_error(&shared_display, "Compression failed.");
 		}
 	}
 
-	pub fn compress(&self, shared_display: &Mutex<Pantalla>) -> Result<(u64, u64), Box<dyn Error>> {
+	/// Lugar::walk Callback: JPEG and PNG.
+	fn __walk_img(path: &walkdir::DirEntry) -> bool {
+		if path.path().is_file() {
+			path.file_name()
+				.to_str()
+				.map(|s| {
+					let lower = s.to_lowercase();
+
+					lower.ends_with(".png") ||
+					lower.ends_with(".jpg") ||
+					lower.ends_with(".jpeg")
+				})
+				.unwrap_or(false)
+		}
+		else {
+			true
+		}
+	}
+
+	/// Lugar::walk Callback: JPEG.
+	fn __walk_jpg(path: &walkdir::DirEntry) -> bool {
+		if path.path().is_file() {
+			path.file_name()
+				.to_str()
+				.map(|s| {
+					let lower = s.to_lowercase();
+
+					lower.ends_with(".jpg") ||
+					lower.ends_with(".jpeg")
+				})
+				.unwrap_or(false)
+		}
+		else {
+			true
+		}
+	}
+
+	/// Lugar::walk Callback: PNG.
+	fn __walk_png(path: &walkdir::DirEntry) -> bool {
+		if path.path().is_file() {
+			path.file_name()
+				.to_str()
+				.map(|s| s.to_lowercase().ends_with(".png"))
+				.unwrap_or(false)
+		}
+		else {
+			true
+		}
+	}
+
+	// -----------------------------------------------------------------
+	// Compression
+	// -----------------------------------------------------------------
+
+	/// Compress images.
+	///
+	/// JPEG and PNG formats are divided and conquered in separate
+	/// threads. Generally speaking, JPEG processing should go much
+	/// faster.
+	fn compress(&self, shared_display: &Mutex<Pantalla>) -> Result<(u64, u64), Box<dyn Error>> {
 		// Start your engines.
 		let start_time = SystemTime::now();
 
 		// Start the progress bar.
-		display_total(&shared_display, self.paths.len() as u64);
+		Pantalla::mutex_set_bar_total(&shared_display, self.paths.len() as u64);
 
 		// Process JPEGs and PNGs in parallel.
-		let jpg_handle = || self.compress_jpgs(&shared_display);
-		let png_handle = || self.compress_pngs(&shared_display);
+		let jpg_handle = || self.__compress_jpgs(&shared_display);
+		let png_handle = || self.__compress_pngs(&shared_display);
 		let (result_jpg, result_png) = rayon::join(jpg_handle, png_handle);
 
 		// We're done with parallelization so can stop using tedious
@@ -491,7 +582,12 @@ impl Ajustes {
 		Ok((saved, elapsed))
 	}
 
-	fn compress_jpgs(&self, shared_display: &Mutex<Pantalla>) -> u64 {
+	/// Compress the JPEG half.
+	///
+	/// This builds a vector of JPEG sources and figures out which
+	/// encoders are available, then passes that along to the common
+	/// method for handling.
+	fn __compress_jpgs(&self, shared_display: &Mutex<Pantalla>) -> u64 {
 		// If we're skipping JPEGs, there's nothing to do.
 		if self.skip == ImagenKind::Jpg {
 			return 0;
@@ -528,77 +624,15 @@ impl Ajustes {
 			return 0;
 		}
 
-		// Hold our combined savings.
-		let mut saved: u64 = 0;
-
-		// Loop the images.
-		for mut v in &mut images {
-			// Make sure it still exists. The encoders will re-check
-			// this at each pass, but what's one more?
-			if ! v.is_image() {
-				display_tick(&shared_display);
-				continue;
-			}
-
-			// The starting size.
-			v.update();
-
-			display_notice(
-				&shared_display,
-				format!(
-					"{} {:>50} {}",
-					Colour::Cyan.paint("Starting"),
-					Pantalla::shorten_left(format!("{}", v.path()), 50),
-					Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
-				)
-			);
-
-			// Run through each encoder.
-			for e in &encoders {
-				if let Err(_) = e.compress(&mut v) {
-					continue;
-				}
-			}
-
-			// Report savings.
-			if v.saved() > 0 {
-				saved += v.saved();
-
-				display_notice(
-					&shared_display,
-					format!(
-						"{} {:>50} {} {}",
-						Colour::Cyan.paint("Finished"),
-						Pantalla::shorten_left(format!("{}", v.path()), 50),
-						Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
-						Colour::Green.bold().paint(format!(
-							"-{}",
-							Pantalla::nice_size(v.saved())),
-						),
-					)
-				);
-			}
-			// There were no savings, but we can report we finished.
-			else {
-				display_notice(
-					&shared_display,
-					format!(
-						"{} {:>50} {}",
-						Colour::Cyan.paint("Finished"),
-						Pantalla::shorten_left(format!("{}", v.path()), 50),
-						Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
-					)
-				);
-			}
-
-			// Tick and move on.
-			display_tick(&shared_display);
-		}
-
-		saved
+		self.__compress_img(&mut images, &encoders, &shared_display)
 	}
 
-	fn compress_pngs(&self, shared_display: &Mutex<Pantalla>) -> u64 {
+	/// Compress the PNG half.
+	///
+	/// This builds a vector of PNG sources and figures out which
+	/// encoders are available, then passes that along to the common
+	/// method for handling.
+	fn __compress_pngs(&self, shared_display: &Mutex<Pantalla>) -> u64 {
 		// If we're skipping PNGs, there's nothing to do.
 		if self.skip == ImagenKind::Png {
 			return 0;
@@ -638,22 +672,35 @@ impl Ajustes {
 			return 0;
 		}
 
+		self.__compress_img(&mut images, &encoders, &shared_display)
+	}
+
+	/// Common compression routines.
+	///
+	/// This takes a vector of images and encoders and loops the loops.
+	/// Results are sent to CLI and/or file log depending on settings.
+	fn __compress_img(
+		&self,
+		images: &mut Vec<Cosecha>,
+		encoders: &Vec<&Imagen>,
+		shared_display: &Mutex<Pantalla>
+	) -> u64 {
 		// Hold our combined savings.
 		let mut saved: u64 = 0;
 
 		// Loop the images.
-		for mut v in &mut images {
+		for mut v in images {
 			// Make sure it still exists. The encoders will re-check
 			// this at each pass, but what's one more?
 			if ! v.is_image() {
-				display_tick(&shared_display);
+				Pantalla::mutex_tick(&shared_display);
 				continue;
 			}
 
 			// The starting size.
 			v.update();
 
-			display_notice(
+			debug_notice(
 				&shared_display,
 				format!(
 					"{} {:>50} {}",
@@ -664,17 +711,23 @@ impl Ajustes {
 			);
 
 			// Run through each encoder.
-			for e in &encoders {
-				if let Err(_) = e.compress(&mut v) {
+			for e in encoders {
+				if let Err(x) = e.compress(&mut v) {
+					Pantalla::mutex_warning(&shared_display, x.to_string());
 					continue;
 				}
+			}
+
+			// Log the activity, maybe.
+			if let Err(_) = v.log(&self.log) {
+				Pantalla::mutex_warning(&shared_display, "Unable to log results to file");
 			}
 
 			// Report savings.
 			if v.saved() > 0 {
 				saved += v.saved();
 
-				display_notice(
+				debug_notice(
 					&shared_display,
 					format!(
 						"{} {:>50} {} {}",
@@ -690,7 +743,7 @@ impl Ajustes {
 			}
 			// There were no savings, but we can report we finished.
 			else {
-				display_notice(
+				debug_notice(
 					&shared_display,
 					format!(
 						"{} {:>50} {}",
@@ -702,59 +755,20 @@ impl Ajustes {
 			}
 
 			// Tick and move on.
-			display_tick(&shared_display);
+			Pantalla::mutex_tick(&shared_display);
 		}
 
 		saved
 	}
 
-	fn walk_img(path: &walkdir::DirEntry) -> bool {
-		if path.path().is_file() {
-			path.file_name()
-				.to_str()
-				.map(|s| {
-					let lower = s.to_lowercase();
+	// -----------------------------------------------------------------
+	// Misc Output
+	// -----------------------------------------------------------------
 
-					lower.ends_with(".png") ||
-					lower.ends_with(".jpg") ||
-					lower.ends_with(".jpeg")
-				})
-				.unwrap_or(false)
-		}
-		else {
-			true
-		}
-	}
-
-	fn walk_jpg(path: &walkdir::DirEntry) -> bool {
-		if path.path().is_file() {
-			path.file_name()
-				.to_str()
-				.map(|s| {
-					let lower = s.to_lowercase();
-
-					lower.ends_with(".jpg") ||
-					lower.ends_with(".jpeg")
-				})
-				.unwrap_or(false)
-		}
-		else {
-			true
-		}
-	}
-
-	fn walk_png(path: &walkdir::DirEntry) -> bool {
-		if path.path().is_file() {
-			path.file_name()
-				.to_str()
-				.map(|s| s.to_lowercase().ends_with(".png"))
-				.unwrap_or(false)
-		}
-		else {
-			true
-		}
-	}
-
+	/// CLI Header
+	///
+	/// This shows a cute ASCII art goat and some early summary
+	/// information.
 	fn print_header(&self, display: &Pantalla) {
 		// Try to be quiet.
 		if display.show_quiet() {
@@ -793,6 +807,15 @@ impl Ajustes {
 	}
 }
 
+
+
+// ---------------------------------------------------------------------
+// Misc Helpers
+// ---------------------------------------------------------------------
+
+/// Validate CLI Arg Min/Max Value
+///
+/// If present, it has to be u64-able.
 fn validate_min_max(val: String) -> Result<(), String> {
 	if let Ok(x) = val.parse::<u64>() {
 		if x > 0 {
@@ -803,6 +826,9 @@ fn validate_min_max(val: String) -> Result<(), String> {
 	Err("Value must be greater than zero.".to_string())
 }
 
+/// Parse CLI Age Min/Max Value
+///
+/// Age is requested in minutes, but internally we use seconds.
 fn parse_min_max_age(val: Option<&str>) -> u64 {
 	match val
 		.unwrap_or("0")
@@ -812,6 +838,7 @@ fn parse_min_max_age(val: Option<&str>) -> u64 {
 		}
 }
 
+/// Parse CLI Size Min/Max Value
 fn parse_min_max_size(val: Option<&str>) -> u64 {
 	match val
 		.unwrap_or("0")
@@ -821,17 +848,14 @@ fn parse_min_max_size(val: Option<&str>) -> u64 {
 		}
 }
 
-fn display_total(shared_display: &Mutex<Pantalla>, total: u64) {
-	let mut display = shared_display.lock().unwrap();
-	display.set_bar_total(total);
-}
-
-fn display_tick(shared_display: &Mutex<Pantalla>) {
-	let mut display = shared_display.lock().unwrap();
-	display.tick();
-}
-
-fn display_notice<S>(shared_display: &Mutex<Pantalla>, msg: S)
+/// Alternative Debug Notice. (Mutex)
+///
+/// We don't want to use Pantalla's "notice" formatting, but we also
+/// want to avoid printing this unless debugging information has been
+/// requested.
+///
+/// That's fine. Here's our own method.
+fn debug_notice<S>(shared_display: &Mutex<Pantalla>, msg: S)
 where S: Into<String> {
 	let display = shared_display.lock().unwrap();
 

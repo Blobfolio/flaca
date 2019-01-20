@@ -2,7 +2,7 @@
 Flaca is a lossless JPEG and PNG image optimizer.
 
 Or more precisely, it wraps several lossless JPEG and PNG in one simple
-command-line interface to brute-force compression savings.
+command-line interface to brute-force la mierda out of its targets.
 
 For more information, run `flaca --help`.
 */
@@ -28,6 +28,7 @@ use ajustes::Ajustes;
 
 
 
+/// The magic is in the libraries.
 fn main() {
 	Ajustes::init();
 }
