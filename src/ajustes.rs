@@ -340,13 +340,24 @@ impl Ajustes {
 		let min_size: u64 = parse_min_max_size(args.value_of("min_size"));
 		let max_size: u64 = parse_min_max_size(args.value_of("max_size"));
 
-		// Find images!
-		let raw: Vec<Lugar> = args
+		// Clean up raw paths a little bit.
+		let mut raw: Vec<Lugar> = args
 			.values_of("INPUT")
 			.unwrap()
-			.map(|x| Lugar::new(x))
+			.filter_map(|x| {
+				let p: Lugar = Lugar::new(x);
+				if p.is_some() {
+					Some(p)
+				}
+				else {
+					None
+				}
+			})
 			.collect();
+		raw.par_sort();
+		raw.dedup();
 
+		// Find images!
 		let images: Vec<Lugar> = match skip {
 			ImagenKind::Jpg => Lugar::walk(&raw, false, true, Some(Ajustes::__walk_png)),
 			ImagenKind::Png => Lugar::walk(&raw, false, true, Some(Ajustes::__walk_jpg)),
