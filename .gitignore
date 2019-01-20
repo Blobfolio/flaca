@@ -1,4 +1,5 @@
 /bin/
-/target/
 /Cargo.lock
 /flaca.log
+/target/
+/tests/
