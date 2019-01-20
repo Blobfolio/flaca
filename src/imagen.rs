@@ -1,6 +1,5 @@
 /*!
 Flaca: Images
-
 */
 
 #![warn(missing_docs)]
