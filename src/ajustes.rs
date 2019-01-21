@@ -357,9 +357,9 @@ impl Ajustes {
 		raw.par_sort();
 		raw.dedup();
 
-		// Build filters for Unix `find`, starting with extension. This
-		// is much more performant than WalkDir when the file tree is
-		// large, and about the same when it isn't.
+		// Build filters for Unix `find`, starting with extension. It
+		// would be better to use a native Rust implementation like
+		// WalkDir, but traversal peformance blows with large trees.
 		let mut find_args: Vec<String> = match skip {
 			ImagenKind::Jpg => vec!["-iname".to_string(), "*.png".to_string()],
 			ImagenKind::Png => vec![
