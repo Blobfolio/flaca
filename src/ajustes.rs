@@ -346,7 +346,7 @@ impl Ajustes {
 			.unwrap()
 			.filter_map(|x| {
 				let p: Lugar = Lugar::new(x);
-				if p.is_some() {
+				if p.exists() {
 					Some(p)
 				}
 				else {
@@ -357,41 +357,57 @@ impl Ajustes {
 		raw.par_sort();
 		raw.dedup();
 
-		// Find images!
-		let images: Vec<Lugar> = match skip {
-			ImagenKind::Jpg => Lugar::walk(&raw, false, true, Some(Ajustes::__walk_png)),
-			ImagenKind::Png => Lugar::walk(&raw, false, true, Some(Ajustes::__walk_jpg)),
-			ImagenKind::None => Lugar::walk(&raw, false, true, Some(Ajustes::__walk_img)),
+		// Build filters for Unix `find`, starting with extension. This
+		// is much more performant than WalkDir when the file tree is
+		// large, and about the same when it isn't.
+		let mut find_args: Vec<String> = match skip {
+			ImagenKind::Jpg => vec!["-iname".to_string(), "*.png".to_string()],
+			ImagenKind::Png => vec![
+				"(".to_string(),
+				"-iname".to_string(),
+				"*.jpg".to_string(),
+				"-o".to_string(),
+				"-iname".to_string(),
+				"*.jpeg".to_string(),
+				")".to_string(),
+			],
+			ImagenKind::None => vec![
+				"(".to_string(),
+				"-iname".to_string(),
+				"*.jpg".to_string(),
+				"-o".to_string(),
+				"-iname".to_string(),
+				"*.jpeg".to_string(),
+				"-o".to_string(),
+				"-iname".to_string(),
+				"*.png".to_string(),
+				")".to_string(),
+			],
+		};
+
+		// We only want files.
+		find_args.push("-type".to_string());
+		find_args.push("f".to_string());
+
+		// Age.
+		if min_age > 60 {
+			find_args.push("-mmin".to_string());
+			find_args.push(format!("+{}", (min_age / 60) - 1).to_string());
 		}
-			.into_par_iter()
-			.filter(|x| {
-				// Filter size.
-				if max_size > 0 || min_size > 0 {
-					let size = x.size().unwrap_or(0);
-					if
-						0 == size ||
-						(max_size > 0 && size > max_size) ||
-						(min_size > 0 && size < min_size)
-					{
-						return false;
-					}
-				}
+		if max_age > 60 {
+			find_args.push("-mmin".to_string());
+			find_args.push(format!("-{}", (max_age / 60)).to_string());
+		}
 
-				// Filter age.
-				if max_age > 0 || min_age > 0 {
-					let age = x.age().unwrap_or(0);
-					if
-						0 == age ||
-						(max_age > 0 && age > max_age) ||
-						(min_age > 0 && age < min_age)
-					{
-						return false;
-					}
-				}
-
-				true
-			})
-			.collect();
+		// Size.
+		if min_size > 60 {
+			find_args.push("-size".to_string());
+			find_args.push(format!("+{}c", min_size - 1).to_string());
+		}
+		if max_size > 60 {
+			find_args.push("-size".to_string());
+			find_args.push(format!("-{}c", max_size).to_string());
+		}
 
 		// Our settings!
 		let out = Ajustes {
@@ -406,7 +422,7 @@ impl Ajustes {
 			oxipng: oxipng,
 			pngout: pngout,
 			zopflipng: zopflipng,
-			paths: images,
+			paths: Lugar::walk_unix(&raw, &find_args),
 		};
 
 		// If we are just listing, let's list and die.
@@ -508,56 +524,6 @@ impl Ajustes {
 		// Compression failed.
 		else {
 			Pantalla::mutex_error(&shared_display, "Compression failed.");
-		}
-	}
-
-	/// Lugar::walk Callback: JPEG and PNG.
-	fn __walk_img(path: &walkdir::DirEntry) -> bool {
-		if path.path().is_file() {
-			path.file_name()
-				.to_str()
-				.map(|s| {
-					let lower = s.to_lowercase();
-
-					lower.ends_with(".png") ||
-					lower.ends_with(".jpg") ||
-					lower.ends_with(".jpeg")
-				})
-				.unwrap_or(false)
-		}
-		else {
-			true
-		}
-	}
-
-	/// Lugar::walk Callback: JPEG.
-	fn __walk_jpg(path: &walkdir::DirEntry) -> bool {
-		if path.path().is_file() {
-			path.file_name()
-				.to_str()
-				.map(|s| {
-					let lower = s.to_lowercase();
-
-					lower.ends_with(".jpg") ||
-					lower.ends_with(".jpeg")
-				})
-				.unwrap_or(false)
-		}
-		else {
-			true
-		}
-	}
-
-	/// Lugar::walk Callback: PNG.
-	fn __walk_png(path: &walkdir::DirEntry) -> bool {
-		if path.path().is_file() {
-			path.file_name()
-				.to_str()
-				.map(|s| s.to_lowercase().ends_with(".png"))
-				.unwrap_or(false)
-		}
-		else {
-			true
 		}
 	}
 
