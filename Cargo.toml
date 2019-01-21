@@ -9,7 +9,7 @@ license = "WTFPL"
 name = "flaca"
 publish = false
 repository = "ssh://git@blobfolio.com:3417/flaca"
-version = "0.6.1"
+version = "0.6.2"
 
 [dependencies]
 ansi_term = "*"
