@@ -681,10 +681,11 @@ impl Ajustes {
 				&shared_display,
 				format!(
 					"{} {:>50} {}",
-					Colour::Cyan.paint("Starting"),
+					Colour::Cyan.paint("Checking"),
 					Pantalla::shorten_left(format!("{}", v.path()), 50),
 					Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
-				)
+				),
+				true
 			);
 
 			// Run through each encoder.
@@ -708,14 +709,15 @@ impl Ajustes {
 					&shared_display,
 					format!(
 						"{} {:>50} {} {}",
-						Colour::Cyan.paint("Finished"),
+						Colour::Cyan.paint("Crunched"),
 						Pantalla::shorten_left(format!("{}", v.path()), 50),
-						Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
+						Colour::Cyan.paint(Pantalla::nice_size(v.end_size())),
 						Colour::Green.bold().paint(format!(
 							"-{}",
 							Pantalla::nice_size(v.saved())),
 						),
-					)
+					),
+					false
 				);
 			}
 			// There were no savings, but we can report we finished.
@@ -727,7 +729,8 @@ impl Ajustes {
 						Colour::Cyan.paint("Finished"),
 						Pantalla::shorten_left(format!("{}", v.path()), 50),
 						Colour::Cyan.paint(Pantalla::nice_size(v.start_size())),
-					)
+					),
+					false
 				);
 			}
 
@@ -827,19 +830,20 @@ fn parse_min_max_size(val: Option<&str>) -> u64 {
 
 /// Alternative Debug Notice. (Mutex)
 ///
-/// We don't want to use Pantalla's "notice" formatting, but we also
-/// want to avoid printing this unless debugging information has been
-/// requested.
+/// Pantalla's "notice" helper doesn't quite do what we want here as
+/// some information might need to be printed only in Debug Mode, while
+/// other information might need to be printed everywhere but Quiet
+/// Mode.
 ///
-/// That's fine. Here's our own method.
-fn debug_notice<S>(shared_display: &Mutex<Pantalla>, msg: S)
+/// We also want pretty timestamps, so whatever, let's do it manually!
+fn debug_notice<S>(shared_display: &Mutex<Pantalla>, msg: S, force: bool)
 where S: Into<String> {
 	let display = shared_display.lock().unwrap();
 
 	// We're using plain instead of notice to switch up the formatting
 	// a little bit, but we still want to restrict output to debugged
 	// sessions.
-	if display.show_debug() {
+	if force || display.show_debug() {
 		let now = Lugar::local_now();
 
 		display.plain(format!(
