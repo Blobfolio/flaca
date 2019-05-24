@@ -11,17 +11,17 @@
 # WTFPL <http://www.wtfpl.net>
 ##
 
-base_dir      = invocation_directory()
-dist_dir      = base_dir + "/dist"
-target        = base_dir + "/target/release/flaca"
-flaca_dir     = "/usr/share/flaca"
-working_dir   = "/tmp/flaca"
+base_dir      := `echo $PWD`
+dist_dir      := base_dir + "/dist"
+target        := base_dir + "/target/release/flaca"
+flaca_dir     := "/usr/share/flaca"
+working_dir   := "/tmp/flaca"
 
-jpegoptim_url = "https://github.com/tjko/jpegoptim.git"
-mozjpeg_url   = "https://github.com/mozilla/mozjpeg.git"
-oxipng_url    = "https://github.com/shssoichiro/oxipng.git"
-pngout_url    = "http://static.jonof.id.au/dl/kenutils/pngout-20150319-linux-static.tar.gz"
-zopflipng_url = "https://github.com/google/zopfli.git"
+jpegoptim_url := "https://github.com/tjko/jpegoptim.git"
+mozjpeg_url   := "https://github.com/mozilla/mozjpeg.git"
+oxipng_url    := "https://github.com/shssoichiro/oxipng.git"
+pngout_url    := "http://static.jonof.id.au/dl/kenutils/pngout-20150319-linux-static.tar.gz"
+zopflipng_url := "https://github.com/google/zopfli.git"
 
 
 
