@@ -1,0 +1,36 @@
+# Flaca CLI: Settings
+#
+# These settings serve as the default for all users running flaca on
+# this system.
+
+
+
+# Choose a reporting level for CLI output. A value of zero results in a
+# fully quiet experience, while a value of 4 or larger prints absolutely
+# everything.
+#
+# A value between 2–3 is recommended for non-quiet purposes.
+#
+#   0 Quiet
+#   1 Successes and Errors
+#   2 Warnings
+#   3 General Entries
+#   4 Debug Notices
+level: 3
+
+
+
+# The absolute path to Jpegoptim's binary.
+jpegoptim: "/usr/bin/jpegoptim"
+
+# The absolute path to MozJPEG's binary.
+mozjpeg: "/opt/mozjpeg/bin/jpegtran"
+
+# The absolute path to Oxipng's binary.
+oxipng: "/usr/bin/oxipng"
+
+# The absolute path to Pngout's binary.
+pngout: "/usr/bin/pngout"
+
+# The absolute path to Zopflipng's binary.
+zopflipng: "/usr/bin/zopflipng"

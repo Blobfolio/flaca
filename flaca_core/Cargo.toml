@@ -1,0 +1,20 @@
+[package]
+name = "flaca_core"
+version = "1.0.0"
+authors = ["Josh Stoik <josh@blobfolio.com>"]
+edition = "2018"
+description = "Losslessly compress a JPEG or PNG image."
+
+[dependencies]
+chrono = "0.4.*"
+crossbeam-channel = "0.4.*"
+imghdr = "0.7.*"
+lazy_static = "1.4.*"
+nix = "0.15.*"
+rayon = "1.2.*"
+serde_yaml = "0.8.*"
+walkdir = "2.2.*"
+
+[dependencies.serde]
+version = "1.0.*"
+features = ["derive"]

@@ -1,0 +1,20 @@
+[package]
+name = "flaca"
+version = "1.0.0"
+authors = ["Josh Stoik <josh@blobfolio.com>"]
+edition = "2018"
+description = "Losslessly compress JPEG and PNG images."
+
+[dependencies]
+flaca_core = { path = "../flaca_core" }
+ansi-escapes = "0.1.*"
+ansi_term = "0.12.*"
+crossbeam-channel = "0.4.*"
+rayon = "1.2.*"
+strip-ansi-escapes = "0.1.*"
+term_size = "0.3.*"
+
+[dependencies.clap]
+version = "2.33.*"
+default-features = false
+features = [ "color", "suggestions", "wrap_help" ]
