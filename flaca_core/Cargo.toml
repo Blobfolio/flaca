@@ -3,7 +3,7 @@ name = "flaca_core"
 version = "1.0.0"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
-description = "Losslessly compress a JPEG or PNG image."
+description = "Losslessly compress la mierda out of JPEG and PNG images."
 
 [dependencies]
 chrono = "0.4.*"

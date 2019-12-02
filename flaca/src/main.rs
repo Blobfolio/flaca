@@ -95,16 +95,16 @@ fn init_cli() -> (Core, Display, Vec<PathBuf>) {
 	// Initialize Clap first.
 	let args: clap::ArgMatches = clap::App::new("Flaca")
 		.version(env!("CARGO_PKG_VERSION"))
-		.author("Blobfolio, LLC <hello@blobfolio.com>")
-		.about("Losslessly compress la mierda out of JPEG and PNG images.")
+		.author("Blobfolio, LLC. <hello@blobfolio.com>")
+		.about(env!("CARGO_PKG_DESCRIPTION"))
 		.arg(clap::Arg::with_name("dry_run")
 			.long("dry-run")
-			.help("Do a dry run without writing changes to the filesystem.")
+			.help("Test compression without updating the original files.")
 			.takes_value(false)
 		)
 		.arg(clap::Arg::with_name("file_list")
 			.long("file-list")
-			.help("<INPUT> is a text file containing paths (rather than the paths themselves).")
+			.help("Load image paths (and/or directory paths) from the text file passed as <IMAGE PATH(S)>.")
 			.takes_value(false)
 		)
 		.arg(clap::Arg::with_name("level")
@@ -151,17 +151,18 @@ fn init_cli() -> (Core, Display, Vec<PathBuf>) {
 		)
 		.arg(clap::Arg::with_name("INPUT")
 			.index(1)
-			.help("Absolute path(s) to image files and/or directories containing images.")
+			.help("Paths to image files and/or directories with image files, or if --file-list is set, a text file containing same.")
 			.multiple(true)
 			.required(true)
+			.value_name("IMAGE PATH(S)")
 			.use_delimiter(false)
 		)
-		.after_help("OPTIMIZERS:
-	Jpegoptim <https://github.com/tjko/jpegoptim>
-	MozJPEG   <https://github.com/mozilla/mozjpeg>
-	Oxipng    <https://github.com/shssoichiro/oxipng>
-	Pngout    <http://advsys.net/ken/utils.htm>
-	Zopflipng <https://github.com/google/zopfli>
+		.after_help("SUPPORTED OPTIMIZERS:
+    Jpegoptim <https://github.com/tjko/jpegoptim>
+    MozJPEG   <https://github.com/mozilla/mozjpeg>
+    Oxipng    <https://github.com/shssoichiro/oxipng>
+    Pngout    <http://advsys.net/ken/utils.htm>
+    Zopflipng <https://github.com/google/zopfli>
 		")
 		.get_matches();
 

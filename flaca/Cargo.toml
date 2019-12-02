@@ -3,7 +3,7 @@ name = "flaca"
 version = "1.0.0"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
-description = "Losslessly compress JPEG and PNG images."
+description = "Losslessly compress la mierda out of JPEG and PNG images."
 
 [dependencies]
 flaca_core = { path = "../flaca_core" }
