@@ -665,6 +665,11 @@ impl CoreState {
 
 	/// Send Alert.
 	pub fn send(&self, alert: Alert) {
+		// Don't push events that are beyond our interest.
+		if self.level() < alert.level() {
+			return;
+		}
+
 		let ptr = self.sender.clone();
 		let s = ptr.lock().unwrap();
 
