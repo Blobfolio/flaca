@@ -47,7 +47,7 @@ extern crate term_size;
 mod display;
 
 use crate::display::Display;
-use flaca_core::{Core, Config, FlacaError, Format, ImageApp, Reporter};
+use flaca_core::{App, Core, CoreSettings, CoreState, Error, Format};
 use std::fs::File;
 use std::io::{BufReader, BufRead};
 use std::path::{Path, PathBuf};
@@ -58,24 +58,22 @@ use std::sync::{Arc, Mutex};
 fn main() -> Result<(), String> {
 	let (core, display, paths) = init_cli();
 	let arc_display = Arc::new(Mutex::new(display));
-	let arc_config = core.config();
-	let arc_reporter = core.reporter();
+	let arc_state = core.state();
 
 	// No paths?
 	if paths.is_empty() {
-		Display::arc_die(arc_display.clone(), FlacaError::NoImages);
+		Display::arc_die(arc_display.clone(), Error::NoImages);
 	}
 	// Double-dipping somehow?
-	else if Reporter::arc_running(arc_reporter.clone()) {
-		Display::arc_die(arc_display.clone(), FlacaError::AlreadyRunning);
+	else if CoreState::arc_is_running(arc_state.clone()) {
+		Display::arc_die(arc_display.clone(), Error::DoubleRun);
 	}
 
 	// Push the display into its own thread.
 	Display::arc_reset(arc_display.clone());
 	let arc_display2 = arc_display.clone();
-	let arc_config2 = arc_config.clone();
 
-	let display_handle = || Display::arc_watch(arc_display2.clone(), arc_config2.clone());
+	let display_handle = || Display::arc_watch(arc_display2.clone());
 	let core_handle = || core.run(&paths);
 	let (_, core_result) = rayon::join(display_handle, core_handle);
 
@@ -166,9 +164,9 @@ fn init_cli() -> (Core, Display, Vec<PathBuf>) {
 		")
 		.get_matches();
 
-	let config: Config = init_config(&args);
-	let display: Display = Display::new(config.reporter());
-	let core: Core = Core::new(config);
+	let settings: CoreSettings = init_settings(&args);
+	let core: Core = Core::new(settings);
+	let display: Display = Display::new(core.state());
 	let paths: Vec<PathBuf> = init_paths(&args);
 
 	(core, display, paths)
@@ -180,41 +178,41 @@ fn init_cli() -> (Core, Display, Vec<PathBuf>) {
 /// * Flaca defaults
 /// * Global configuration stored at `/etc/flaca.yml`
 /// * Command line arguments
-fn init_config(args: &clap::ArgMatches) -> Config {
+fn init_settings(args: &clap::ArgMatches) -> CoreSettings {
 	// Start with default values stored under `/etc/flaca.yml`.
-	let config: Config = Config::load("/etc/flaca.yml");
+	let mut settings: CoreSettings = CoreSettings::load("/etc/flaca.yml");
 
 	// Turn on dry run?
 	if args.is_present("dry_run") {
-		config.set_dry_run(true);
+		settings.set_dry_run(true);
 	}
 
 	// Set the level?
 	if let Some(x) = args.value_of("level") {
 		if let Ok(x) = x.parse::<u64>() {
-			config.set_level(x as usize);
+			settings.set_level(x as usize);
 		}
 	}
 
 	// Set any app paths?
 	if let Some(x) = args.value_of("x_jpegoptim") {
-		config.set_jpegoptim(ImageApp::try_jpegoptim(x));
+		settings.set_jpegoptim(App::try_jpegoptim(x));
 	}
 	if let Some(x) = args.value_of("x_mozjpeg") {
-		config.set_mozjpeg(ImageApp::try_mozjpeg(x));
+		settings.set_mozjpeg(App::try_mozjpeg(x));
 	}
 	if let Some(x) = args.value_of("x_oxipng") {
-		config.set_oxipng(ImageApp::try_oxipng(x));
+		settings.set_oxipng(App::try_oxipng(x));
 	}
 	if let Some(x) = args.value_of("x_pngout") {
-		config.set_pngout(ImageApp::try_pngout(x));
+		settings.set_pngout(App::try_pngout(x));
 	}
 	if let Some(x) = args.value_of("x_zopflipng") {
-		config.set_zopflipng(ImageApp::try_zopflipng(x));
+		settings.set_zopflipng(App::try_zopflipng(x));
 	}
 
 	// And we're done!
-	config
+	settings
 }
 
 /// Parse Paths From Args.
@@ -248,7 +246,7 @@ fn init_paths(args: &clap::ArgMatches) -> Vec<PathBuf> {
 }
 
 /// Paths From File.
-fn init_paths_from_file<P> (path: P) -> Result<Vec<PathBuf>, FlacaError>
+fn init_paths_from_file<P> (path: P) -> Result<Vec<PathBuf>, Error>
 where P: AsRef<Path> {
 	let input = File::open(path)?;
 	let buffered = BufReader::new(input);
@@ -270,7 +268,7 @@ where P: AsRef<Path> {
 }
 
 /// Parse Paths (From String).
-fn parse_paths(paths: &Vec<String>) -> Result<Vec<PathBuf>, FlacaError> {
+fn parse_paths(paths: &Vec<String>) -> Result<Vec<PathBuf>, Error> {
 	let out: Vec<PathBuf> = paths.iter()
 		.filter_map(|x| {
 			if false == x.is_empty() {
@@ -285,7 +283,7 @@ fn parse_paths(paths: &Vec<String>) -> Result<Vec<PathBuf>, FlacaError> {
 		.collect();
 
 	match out.is_empty() {
-		true => Err(FlacaError::NoImages),
+		true => Err(Error::NoImages),
 		false => Ok(out)
 	}
 }

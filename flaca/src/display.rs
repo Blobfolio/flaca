@@ -4,7 +4,7 @@
 
 use ansi_term::{Colour, Style};
 use crossbeam_channel::{Receiver, unbounded};
-use flaca_core::{Config, FlacaError, Format, LogEntry, LogEntryKind, Reporter};
+use flaca_core::{CoreState, Error, Format, Alert, AlertKind};
 use Format::FormatKind;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -16,14 +16,14 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone)]
 /// A Display.
 pub struct Display {
-	/// The reporter.
-	reporter: Arc<Mutex<Reporter>>,
+	/// The state.
+	state: Arc<Mutex<CoreState>>,
 	/// The starting time.
 	time: Instant,
 	/// Last Log.
-	last: Option<LogEntry>,
+	last: Option<Alert>,
 	/// Receiver.
-	receiver: Receiver<LogEntry>,
+	receiver: Receiver<Alert>,
 	/// Last Tick.
 	tock: String,
 }
@@ -34,12 +34,13 @@ impl Display {
 	// -----------------------------------------------------------------
 
 	/// New.
-	pub fn new(reporter: Arc<Mutex<Reporter>>) -> Display {
+	pub fn new(state: Arc<Mutex<CoreState>>) -> Display {
+		// Open a new channel.
 		let (tx, rx) = unbounded();
-		Reporter::arc_set_sender(reporter.clone(), Some(tx.clone()));
+		CoreState::arc_open_channel(state.clone(), tx.clone());
 
 		Display {
-			reporter: reporter.clone(),
+			state: state.clone(),
 			time: Instant::now(),
 			last: None,
 			receiver: rx,
@@ -49,7 +50,7 @@ impl Display {
 
 	/// Reset.
 	///
-	/// Reset everything but the reporter.
+	/// Reset everything but the state.
 	pub fn reset(&mut self) {
 		self.time = Instant::now();
 		self.last = None;
@@ -63,9 +64,9 @@ impl Display {
 	// -----------------------------------------------------------------
 
 	/// Print Error and Exit.
-	pub fn die(&self, error: FlacaError) {
+	pub fn die(&self, error: Error) {
 		// Print if we aren't being quiet.
-		if 0 < Reporter::arc_level(self.reporter.clone()) {
+		if 0 < CoreState::arc_level(self.state.clone()) {
 			eprintln!(
 				"{} {}",
 				Colour::Red.bold().paint("Error:"),
@@ -78,18 +79,20 @@ impl Display {
 	}
 
 	/// Start Display.
-	pub fn watch(&mut self, config: Arc<Mutex<Config>>) {
+	pub fn watch(&mut self) {
+		let state = self.state.clone();
+
 		// If we're being quiet there's nothing to do.
-		if 0 == Reporter::arc_level(self.reporter.clone()) {
+		if 0 == CoreState::arc_level(state.clone()) {
 			return;
 		}
 
-		// The reporter might not be ready yet.
+		// The state might not be ready yet.
 		let now = Instant::now();
 		let sleep = Duration::from_millis(50);
 		loop {
 			// It's ready.
-			if 0 < Reporter::arc_total(self.reporter.clone()) {
+			if 0 < CoreState::arc_total(state.clone()) {
 				break;
 			}
 			// It has been five seconds; we should quit.
@@ -102,9 +105,9 @@ impl Display {
 		}
 
 		// Print the header.
-		self.print_start(config.clone());
+		self.print_start();
 
-		// Now we can loop at a more leisurely pace while the reporter
+		// Now we can loop at a more leisurely pace while the state
 		// is doing its thing.
 		let sleep = Duration::from_millis(150);
 		loop {
@@ -114,8 +117,8 @@ impl Display {
 			// Rest.
 			thread::sleep(sleep);
 
-			// And break if the reporter has subsequently finished.
-			if false == Reporter::arc_running(self.reporter.clone()) {
+			// And break if the state has subsequently finished.
+			if false == CoreState::arc_is_running(state.clone()) {
 				break;
 			}
 		}
@@ -137,17 +140,17 @@ impl Display {
 		if elapsed != self.tock {
 			self.tock = elapsed;
 			if self.last.is_some() {
-				self.print_bar();
+				&self.print_bar();
 			}
 		}
 
 		while let Ok(log) = self.receiver.try_recv() {
-			self.set_log(log);
+			&self.set_log(log.clone());
 		}
 	}
 
 	/// Update the Log.
-	fn set_log(&mut self, entry: LogEntry) {
+	fn set_log(&mut self, entry: Alert) {
 		// Update and deal with the past.
 		if let Some(old) = self.last.replace(entry.clone()) {
 			print!("{}", ansi_escapes::EraseLines(5));
@@ -176,11 +179,10 @@ impl Display {
 
 	/// Print Progress Bar.
 	fn print_bar(&self) {
-		let done: usize = Reporter::arc_done(self.reporter.clone());
-		let total: usize = Reporter::arc_total(self.reporter.clone());
+		let (ref done, ref total) = CoreState::arc_progress(self.state.clone());
 
 		print!("{}", ansi_escapes::EraseLines(2));
-		println!("{}", Display::format_bar(done, total, self.tock.clone()));
+		println!("{}", Display::format_bar(*done, *total, self.tock.clone()));
 	}
 
 	/// Print Divider.
@@ -194,9 +196,9 @@ impl Display {
 	}
 
 	/// Print Header.
-	fn print_start(&self, config: Arc<Mutex<Config>>) {
+	fn print_start(&self) {
 		// Figure out the total.
-		let total: usize = Reporter::arc_total(self.reporter.clone());
+		let total: usize = CoreState::arc_total(self.state.clone());
 		let label: String = match total {
 			0 => "",
 			_ => "Images:",
@@ -204,12 +206,12 @@ impl Display {
 
 		// And grab the image app list.
 		let apps: String = Format::grammar::oxford_join(
-			Config::arc_image_app_list(config.clone()),
+			CoreState::arc_image_app_list(self.state.clone()),
 			"and"
 		);
 
 		// We'll also want to note dry runs.
-		let dry_run: String = match Reporter::arc_dry_run(self.reporter.clone()) {
+		let dry_run: String = match CoreState::arc_dry_run(self.state.clone()) {
 			true => Colour::Yellow.bold().paint("(This is just a dry run.)").to_string(),
 			false => "".to_string(),
 		};
@@ -257,17 +259,17 @@ impl Display {
 		std::str::from_utf8(&stripped).unwrap_or("").to_string()
 	}
 
-	/// Format LogEntry.
-	fn format_log_entry(entry: LogEntry) -> String {
+	/// Format Alert.
+	fn format_log_entry(entry: Alert) -> String {
 		// This is pretty terrible. Haha. Let's start by gathering the
 		// individual pieces and counting up their lengths.
-		let prefix: String = Display::format_log_entry_prefix(entry.kind);
+		let prefix: String = Display::format_log_entry_prefix(entry.kind());
 		let prefix_len: usize = Display::format_len(&prefix);
 
 		let mut msg: String = Display::format_log_entry_msg(&entry);
 		let mut msg_len: usize = Display::format_len(&msg);
 
-		let mut path: String = match entry.path {
+		let mut path: String = match entry.path() {
 			Some(ref p) => Format::path::as_string(&p),
 			None => "".to_string(),
 		};
@@ -330,39 +332,39 @@ impl Display {
 		}
 	}
 
-	/// Format LogEntry Prefix.
-	fn format_log_entry_prefix(kind: LogEntryKind) -> String {
+	/// Format Alert Prefix.
+	fn format_log_entry_prefix(kind: AlertKind) -> String {
 		match kind {
 			// Debug and log notices are purple.
-			LogEntryKind::Debug | LogEntryKind::Notice => format!(
+			AlertKind::Debug | AlertKind::Notice => format!(
 				"{}",
 				Colour::Purple.bold().paint(kind.prefix())
 			),
 			// Success is green.
-			LogEntryKind::Success => format!(
+			AlertKind::Success => format!(
 				"{}",
 				Colour::Green.bold().paint(kind.prefix())
 			),
 			// Warning is yellow.
-			LogEntryKind::Warning => format!(
+			AlertKind::Warning => format!(
 				"{}",
 				Colour::Yellow.bold().paint(kind.prefix())
 			),
 			// Errors are red.
-			LogEntryKind::Error => format!(
+			AlertKind::Error => format!(
 				"{}",
 				Colour::Red.bold().paint(kind.prefix())
 			),
 			// Pass-through messages have no prefix.
-			LogEntryKind::Other => "".to_string(),
+			AlertKind::Other => "".to_string(),
 		}
 	}
 
-	/// Format LogEntry Message.
-	fn format_log_entry_msg(entry: &LogEntry) -> String {
+	/// Format Alert Message.
+	fn format_log_entry_msg(entry: &Alert) -> String {
 		// Build the message part.
-		let mut msg: String = entry.msg.to_string();
-		if let Some(saved) = entry.saved {
+		let mut msg: String = entry.msg();
+		if let Some(saved) = entry.saved() {
 			match saved {
 				0 => msg = format!("{} No change.", msg),
 				_ => msg = format!("{} Saved {}!", msg, Format::path::human_size(saved)),
@@ -372,21 +374,21 @@ impl Display {
 		msg.trim().to_string()
 	}
 
-	/// Format LogEntry Date.
-	fn format_log_entry_date(entry: &LogEntry) -> String {
-		format!("{}", entry.date.format("%T")).trim().to_string()
+	/// Format Alert Date.
+	fn format_log_entry_date(entry: &Alert) -> String {
+		format!("{}", entry.date().format("%T")).trim().to_string()
 	}
 
-	/// Format LogEntry Date.
-	fn format_old_log_entry_date(entry: &LogEntry) -> String {
-		format!("{}", entry.date.format("%F %T")).trim().to_string()
+	/// Format Alert Date.
+	fn format_old_log_entry_date(entry: &Alert) -> String {
+		format!("{}", entry.date().format("%F %T")).trim().to_string()
 	}
 
-	/// Format Old LogEntry.
+	/// Format Old Alert.
 	///
 	/// We have a different display style for older records.
-	fn format_old_log_entry(entry: LogEntry) -> String {
-		let prefix: String = Display::strip_styles(entry.kind.prefix());
+	fn format_old_log_entry(entry: Alert) -> String {
+		let prefix: String = Display::strip_styles(entry.kind().prefix());
 		let prefix_len: usize = Display::format_len(&prefix);
 
 		let mut msg: String = Display::strip_styles(Display::format_log_entry_msg(&entry));
@@ -414,7 +416,7 @@ impl Display {
 		);
 
 		// The path, if any, will be moved to a new line.
-		let mut path: String = match entry.path {
+		let mut path: String = match entry.path() {
 			Some(ref p) => Format::path::as_string(&p),
 			None => return line1,
 		};
@@ -519,7 +521,7 @@ impl Display {
 	// -----------------------------------------------------------------
 
 	/// Print Error and Exit.
-	pub fn arc_die(display: Arc<Mutex<Display>>, error: FlacaError) {
+	pub fn arc_die(display: Arc<Mutex<Display>>, error: Error) {
 		let d = display.lock().unwrap();
 		d.die(error)
 	}
@@ -531,8 +533,8 @@ impl Display {
 	}
 
 	/// Watch.
-	pub fn arc_watch(display: Arc<Mutex<Display>>, config: Arc<Mutex<Config>>) {
+	pub fn arc_watch(display: Arc<Mutex<Display>>) {
 		let mut d = display.lock().unwrap();
-		d.watch(config);
+		d.watch();
 	}
 }
