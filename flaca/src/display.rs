@@ -144,6 +144,7 @@ impl Display {
 			}
 		}
 
+		// Pick up any messages that have come along.
 		while let Ok(log) = self.receiver.try_recv() {
 			&self.set_log(log.clone());
 		}
