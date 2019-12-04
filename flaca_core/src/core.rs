@@ -21,7 +21,6 @@ use std::sync::{Arc, Mutex};
 /// The Core.
 pub struct Core {
 	/// The Configuration.
-	// config: Arc<Mutex<Config>>,
 	inner: Arc<Mutex<CoreState>>,
 }
 
