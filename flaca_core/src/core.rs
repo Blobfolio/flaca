@@ -89,10 +89,10 @@ impl Core {
 		CoreState::arc_set_total(self.inner.clone(), jpegs_len + pngs_len);
 
 		// Hold our results.
-		self._run_queues(&jpegs, &pngs);
+		let saved: usize = self._run_queues(&jpegs, &pngs);
 
 		// Send the final log.
-		let after: usize = format::path::file_sizes(&jpegs) + format::path::file_sizes(&pngs);
+		let after: usize = before - saved;
 		CoreState::arc_stop(self.inner.clone(), before, after);
 
 		// Return the results!
@@ -152,7 +152,7 @@ impl Core {
 	}
 
 	/// Run Queues.
-	fn _run_queues(&self, jpegs: &Vec<PathBuf>, pngs: &Vec<PathBuf>) {
+	fn _run_queues(&self, jpegs: &Vec<PathBuf>, pngs: &Vec<PathBuf>) -> usize {
 		// If JPEGs are empty, we can just worry about PNGs.
 		if true == jpegs.is_empty() {
 			return Self::_run_queue(
@@ -184,7 +184,8 @@ impl Core {
 			ImageKind::Png
 		);
 
-		let _ = rayon::join(jpeg_handle, png_handle);
+		let (total1, total2) = rayon::join(jpeg_handle, png_handle);
+		return total1 + total2;
 	}
 
 	/// Run Queue.
@@ -192,7 +193,7 @@ impl Core {
 		state: Arc<Mutex<CoreState>>,
 		queue: &Vec<PathBuf>,
 		kind: ImageKind
-	) {
+	) -> usize {
 		let queue_len: usize = queue.len();
 		let apps: Vec<App> = CoreState::arc_image_apps(state.clone(), kind).unwrap();
 
@@ -225,10 +226,15 @@ impl Core {
 		}
 
 		// Loop!
+		let mut saved: usize = 0;
 		for path in queue.as_slice() {
-			if let Err(_) = Self::_run_image(state.clone(), &path, &apps) {}
+			if let Ok(s) = Self::_run_image(state.clone(), &path, &apps) {
+				saved = saved + s;
+			}
 			CoreState::arc_inc_done(state.clone());
 		}
+
+		saved
 	}
 
 	/// Run Single Image.
@@ -236,7 +242,7 @@ impl Core {
 		state: Arc<Mutex<CoreState>>,
 		path: P,
 		apps: &Vec<App>
-	) -> Result<(), Error>
+	) -> Result<usize, Error>
 	where P: AsRef<Path> {
 		// Note our starting size.
 		let start_size: usize = format::path::file_size(&path);
@@ -302,6 +308,10 @@ impl Core {
 
 		// Our ending size.
 		let end_size: usize = format::path::file_size(&path);
+		let diff = match 0 < end_size && end_size < start_size {
+			true => start_size - end_size,
+			false => 0,
+		};
 
 		// If this was a dry run, we can delete the temporary file.
 		if true == dry_run && path.exists() {
@@ -318,7 +328,7 @@ impl Core {
 			)
 		);
 
-		Ok(())
+		Ok(diff)
 	}
 }
 
