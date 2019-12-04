@@ -185,4 +185,15 @@ impl Alert {
 			_ => None,
 		}
 	}
+
+	/// Saved.
+	pub fn saved(&self) -> Option<usize> {
+		match self.size {
+			Some((ref b, ref a)) => match 0 < *a && a < b {
+				true => Some(b - a),
+				false => Some(0),
+			},
+			_ => None,
+		}
+	}
 }
