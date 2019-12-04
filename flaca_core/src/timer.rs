@@ -3,6 +3,8 @@
 */
 
 use crate::alert::{Alert, AlertKind};
+use crate::error::Error;
+use crate::format::{self, FormatKind};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -93,12 +95,28 @@ impl Timer {
 		path: Option<PathBuf>,
 		size: Option<(usize, usize)>,
 	) -> Alert {
+		// Can't stop before we've started.
+		if self.time.is_none() {
+			return Alert::from(Error::NullAlert);
+		}
+
+
+		// Improve the message using elapsed.
+		let nice_elapsed: String = format::time::human_elapsed(self.time.unwrap_or(Instant::now()), FormatKind::Long);
+		let msg: String = match "0 seconds" == nice_elapsed {
+			true => format!("Finished {}.", self.name.clone()),
+			false => format!("Finished {} in {}.", self.name.clone(), nice_elapsed),
+		};
+
+		// Grab the elapsed time.
 		let elapsed = self.elapsed();
+
+		// Let's stop the clock.
 		self.time = None;
 
 		Alert::new(
 			kind,
-			format!("Finished {}.", self.name.clone()),
+			&msg,
 			path,
 			Some(elapsed),
 			size,
