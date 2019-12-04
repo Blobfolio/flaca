@@ -2,7 +2,7 @@
 # Formatting Helpers: Files
 */
 
-use crate::error::FlacaError;
+use crate::error::Error;
 use crate::image::ImageKind;
 use nix::unistd::{self, Uid, Gid};
 use rayon::prelude::*;
@@ -58,11 +58,11 @@ where P: AsRef<Path> {
 ///
 /// If a file already exists at this path, the name will be mutated
 /// slightly to ensure uniqueness.
-pub fn as_unique_pathbuf<P> (path: P) -> Result<PathBuf, FlacaError>
+pub fn as_unique_pathbuf<P> (path: P) -> Result<PathBuf, Error>
 where P: AsRef<Path> {
 	// We can't do anything if the full path is itself a directory.
 	if path.as_ref().is_dir() {
-		return Err(FlacaError::InvalidPath);
+		return Err(Error::InvalidPath(as_string(&path)));
 	}
 
 	// The directory must already exist.
@@ -89,7 +89,7 @@ where P: AsRef<Path> {
 		}
 	}
 
-	Err(FlacaError::new("Unable to find a unique name."))
+	Err(Error::new("Unable to find a unique name."))
 }
 
 
@@ -154,6 +154,13 @@ where P: AsRef<Path> {
 	0
 }
 
+/// Sum File Sizes
+pub fn file_sizes(paths: &Vec<PathBuf>) -> usize {
+	paths.par_iter()
+		.map(|ref x| file_size(&x))
+		.sum()
+}
+
 /// Human-Readable Size.
 ///
 /// Convert a numerical byte size into a string with the best unit
@@ -215,15 +222,15 @@ where P: AsRef<Path> {
 }
 
 /// Parent Directory.
-pub fn parent_dir<P> (path: P) -> Result<PathBuf, FlacaError>
+pub fn parent_dir<P> (path: P) -> Result<PathBuf, Error>
 where P: AsRef<Path> {
 	let dir = path.as_ref()
 		.parent()
-		.ok_or(FlacaError::InvalidPath)?;
+		.ok_or(Error::InvalidPath(as_string(&path)))?;
 
 	match dir.is_dir() {
 		true => Ok(abs_pathbuf(&dir)),
-		false => Err(FlacaError::InvalidPath),
+		false => Err(Error::InvalidPath(as_string(&path))),
 	}
 }
 
@@ -305,12 +312,15 @@ where P: AsRef<Path> {
 /// The destination should be a complete file path pointing to a
 /// directory that already exists. If the destination file itself
 /// already exists, it will be overwritten.
-pub fn copy_file<P1, P2> (from: P1, to: P2) -> Result<(), FlacaError>
+pub fn copy_file<P1, P2> (from: P1, to: P2) -> Result<(), Error>
 where P1: AsRef<Path>, P2: AsRef<Path> {
 	// The current path must be a file, and the destination must not be
 	// a directory.
-	if false == from.as_ref().is_file() || true == to.as_ref().is_dir() {
-		return Err(FlacaError::InvalidPath);
+	if false == from.as_ref().is_file() {
+		return Err(Error::InvalidPath(as_string(&from)));
+	}
+	else if true == to.as_ref().is_dir() {
+		return Err(Error::InvalidPath(as_string(&to)));
 	}
 
 	// The target directory must already exist too.
@@ -322,7 +332,7 @@ where P1: AsRef<Path>, P2: AsRef<Path> {
 	// We should have a proper file now.
 	let path: PathBuf = abs_pathbuf(&to);
 	if false == path.is_file() {
-		return Err(FlacaError::FileCopy);
+		return Err(Error::IOCopy(as_string(&from), as_string(&to)));
 	}
 
 	// Make sure the permissions and ownership are correct.
@@ -347,11 +357,14 @@ where P1: AsRef<Path>, P2: AsRef<Path> {
 /// permissions of the destination are left as were.
 ///
 /// Obviously both paths must exist.
-pub fn copy_file_bytes<P1, P2> (from: P1, to: P2) -> Result<(), FlacaError>
+pub fn copy_file_bytes<P1, P2> (from: P1, to: P2) -> Result<(), Error>
 where P1: AsRef<Path>, P2: AsRef<Path> {
 	// Both paths must exist and be files.
-	if false == from.as_ref().is_file() || false == to.as_ref().is_file() {
-		return Err(FlacaError::InvalidPath);
+	if false == from.as_ref().is_file() {
+		return Err(Error::InvalidPath(as_string(&from)));
+	}
+	else if false == to.as_ref().is_file() {
+		return Err(Error::InvalidPath(as_string(&to)));
 	}
 
 	if to.as_ref().exists() {
@@ -391,11 +404,11 @@ where P1: AsRef<Path>, P2: AsRef<Path> {
 /// Delete File.
 ///
 /// Remove a file from the file system.
-pub fn delete_file<P> (path: P) -> Result<(), FlacaError>
+pub fn delete_file<P> (path: P) -> Result<(), Error>
 where P: AsRef<Path> {
 	// Only for files!
 	if false == path.as_ref().is_file() {
-		return Err(FlacaError::InvalidPath);
+		return Err(Error::InvalidPath(as_string(&path)));
 	}
 
 	fs::remove_file(&path).map_err(|x| x.into())
@@ -444,7 +457,7 @@ where S: Into<OsString> {
 /// For a little atomicity, this method will first copy the source
 /// to the destination (along with its ownership and permissions)
 /// and then delete the source.
-pub fn move_file<P1, P2> (from: P1, to: P2) -> Result<(), FlacaError>
+pub fn move_file<P1, P2> (from: P1, to: P2) -> Result<(), Error>
 where P1: AsRef<Path>, P2: AsRef<Path> {
 	// Copy first.
 	copy_file(&from, &to)?;
@@ -462,7 +475,7 @@ where P1: AsRef<Path>, P2: AsRef<Path> {
 /// of the destination are left as were.
 ///
 /// Both source and destination must exist.
-pub fn move_file_bytes<P1, P2> (from: P1, to: P2) -> Result<(), FlacaError>
+pub fn move_file_bytes<P1, P2> (from: P1, to: P2) -> Result<(), Error>
 where P1: AsRef<Path>, P2: AsRef<Path> {
 	// Copy first.
 	copy_file_bytes(&from, &to)?;
@@ -479,10 +492,10 @@ where P1: AsRef<Path>, P2: AsRef<Path> {
 /// This method copies a path to a temporary location safe for
 /// future meddling. The temporary location is returned unless the
 /// operation failed, in which case an error is returned.
-pub fn tmp_copy_file<P> (path: P) -> Result<PathBuf, FlacaError>
+pub fn tmp_copy_file<P> (path: P) -> Result<PathBuf, Error>
 where P: AsRef<Path> {
 	if false == path.as_ref().is_file() {
-		return Err(FlacaError::NotImage);
+		return Err(Error::InvalidPath(as_string(&path)));
 	}
 
 	// Build a destination path.
@@ -505,10 +518,10 @@ where P: AsRef<Path> {
 }
 
 /// Recursive Image Walker.
-pub fn walk(paths: &Vec<PathBuf>) -> Result<Vec<PathBuf>, FlacaError> {
+pub fn walk(paths: &Vec<PathBuf>) -> Result<Vec<PathBuf>, Error> {
 	// Early abort if there are no paths.
 	if true == paths.is_empty() {
-		return Err(FlacaError::NoImages);
+		return Err(Error::NoImages);
 	}
 
 	// Hold the results.
@@ -546,7 +559,7 @@ pub fn walk(paths: &Vec<PathBuf>) -> Result<Vec<PathBuf>, FlacaError> {
 
 	// If we didn't turn anything up, we're done.
 	if out.is_empty() {
-		return Err(FlacaError::NoImages);
+		return Err(Error::NoImages);
 	}
 	// If there is more than one result, let's make sure the list is
 	// sorted and deduplicated.
@@ -660,6 +673,12 @@ mod tests {
 			let (path, expected) = *d;
 			assert_eq!(file_size(path), expected);
 		}
+
+		// Let's also make sure the file_sizes() method works.
+		assert_eq!(
+			file_sizes(&vec![PathBuf::from("./tests/assets/01.jpg"), PathBuf::from("./tests/assets/01.png")]),
+			386663 + 211427
+		);
 	}
 
 	#[test]

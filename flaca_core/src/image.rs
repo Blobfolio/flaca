@@ -2,7 +2,7 @@
 # Images
 */
 
-use crate::error::FlacaError;
+use crate::error::Error;
 use crate::format;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
@@ -44,11 +44,11 @@ impl fmt::Display for ImageKind {
 /// Flaca is merely a convenient wrapper for separate, specialized image
 /// optimization tools. The details for each application are handled
 /// here.
-pub enum ImageApp {
+pub enum App {
 	/// Jpegoptim.
 	Jpegoptim(PathBuf),
 	/// MozJPEG.
-	MozJPEG(PathBuf),
+	Mozjpeg(PathBuf),
 	/// Oxipng.
 	Oxipng(PathBuf),
 	/// Pngout.
@@ -59,13 +59,13 @@ pub enum ImageApp {
 	None,
 }
 
-impl fmt::Display for ImageApp {
+impl fmt::Display for App {
 	#[inline]
 	/// Display.
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "{}", match *self {
 			Self::Jpegoptim(_) => "Jpegoptim",
-			Self::MozJPEG(_) => "MozJPEG",
+			Self::Mozjpeg(_) => "MozJPEG",
 			Self::Oxipng(_) => "Oxipng",
 			Self::Pngout(_) => "PNGOUT",
 			Self::Zopflipng(_) => "Zopflipng",
@@ -74,11 +74,11 @@ impl fmt::Display for ImageApp {
 	}
 }
 
-impl<T: Into<PathBuf>> From<T> for ImageApp {
-	/// Derive ImageApp From Path.
+impl<T: Into<PathBuf>> From<T> for App {
+	/// Derive App From Path.
 	///
 	/// This method attempts to convert an application path into a valid
-	/// ImageApp Enum. Each application has its own rather specific name
+	/// App Enum. Each application has its own rather specific name
 	/// so this more or less works.
 	///
 	/// Nonetheless, it is recommended one use more specific assignment
@@ -101,7 +101,7 @@ impl<T: Into<PathBuf>> From<T> for ImageApp {
 			Self::Jpegoptim(format::path::abs_pathbuf(&path))
 		}
 		else if name.contains("jpegtran") {
-			Self::MozJPEG(format::path::abs_pathbuf(&path))
+			Self::Mozjpeg(format::path::abs_pathbuf(&path))
 		}
 		else if name.contains("oxipng") {
 			Self::Oxipng(format::path::abs_pathbuf(&path))
@@ -118,7 +118,7 @@ impl<T: Into<PathBuf>> From<T> for ImageApp {
 	}
 }
 
-impl Serialize for ImageApp {
+impl Serialize for App {
 	/// Serialize!
 	fn serialize<S> (&self, serializer: S) -> Result<S::Ok, S::Error>
 	where S: Serializer {
@@ -130,17 +130,17 @@ impl Serialize for ImageApp {
 	}
 }
 
-impl<'de> Deserialize<'de> for ImageApp {
+impl<'de> Deserialize<'de> for App {
 	/// Derialize!
-	fn deserialize<D> (deserializer: D) -> Result<ImageApp, D::Error>
+	fn deserialize<D> (deserializer: D) -> Result<App, D::Error>
 	where D: Deserializer<'de> {
 		// Deserialize from a human-readable string like "2015-05-15T17:01:00Z".
 		let s = String::deserialize(deserializer)?;
-		Ok(ImageApp::from(&s))
+		Ok(App::from(&s))
 	}
 }
 
-impl ImageApp {
+impl App {
 	// -----------------------------------------------------------------
 	// Construction
 	// -----------------------------------------------------------------
@@ -148,7 +148,7 @@ impl ImageApp {
 	/// Find Jpegoptim.
 	///
 	/// This will look for Jpegoptim under the user's $PATH. If found,
-	/// an ImageApp::Jpegoptim is returned, otherwise an ImageApp::None.
+	/// an App::Jpegoptim is returned, otherwise an App::None.
 	///
 	/// Executables can, of course, live anywhere and be called
 	/// anything, so this should only serve as a sane fallback.
@@ -166,7 +166,7 @@ impl ImageApp {
 	///
 	/// Rather than looking under all of the executable $PATH for the
 	/// user, this will look in the default place the MozJPEG installer
-	/// uses. If nothing executable lives there, an ImageApp::None is
+	/// uses. If nothing executable lives there, an App::None is
 	/// returned.
 	///
 	/// Executables can, of course, live anywhere and be called
@@ -174,7 +174,7 @@ impl ImageApp {
 	pub fn find_mozjpeg() -> Self {
 		let p: PathBuf = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
 		match format::path::is_executable(&p) {
-			true => Self::MozJPEG(p),
+			true => Self::Mozjpeg(p),
 			false => Self::None,
 		}
 	}
@@ -182,7 +182,7 @@ impl ImageApp {
 	/// Find Oxipng.
 	///
 	/// This will look for Oxipng under the user's $PATH. If found,
-	/// an ImageApp::Oxipng is returned, otherwise an ImageApp::None.
+	/// an App::Oxipng is returned, otherwise an App::None.
 	///
 	/// Executables can, of course, live anywhere and be called
 	/// anything, so this should only serve as a sane fallback.
@@ -196,7 +196,7 @@ impl ImageApp {
 	/// Find Pngout.
 	///
 	/// This will look for Pngout under the user's $PATH. If found,
-	/// an ImageApp::Pngout is returned, otherwise an ImageApp::None.
+	/// an App::Pngout is returned, otherwise an App::None.
 	///
 	/// Executables can, of course, live anywhere and be called
 	/// anything, so this should only serve as a sane fallback.
@@ -210,7 +210,7 @@ impl ImageApp {
 	/// Find Zopflipng.
 	///
 	/// This will look for Zopflipng under the user's $PATH. If found,
-	/// an ImageApp::Zopflipng is returned, otherwise an ImageApp::None.
+	/// an App::Zopflipng is returned, otherwise an App::None.
 	///
 	/// Executables can, of course, live anywhere and be called
 	/// anything, so this should only serve as a sane fallback.
@@ -223,8 +223,8 @@ impl ImageApp {
 
 	/// Try Jpegoptim.
 	///
-	/// This will return an ImageApp::Jpegoptim instance if the path
-	/// is valid, otherwise an ImageApp::None.
+	/// This will return an App::Jpegoptim instance if the path
+	/// is valid, otherwise an App::None.
 	pub fn try_jpegoptim<P> (path: P) -> Self
 	where P: AsRef<Path> {
 		let out: Self = Self::Jpegoptim(format::path::abs_pathbuf(path));
@@ -236,11 +236,11 @@ impl ImageApp {
 
 	/// Try MozJPEG.
 	///
-	/// This will return an ImageApp::MozJPEG instance if the path
-	/// is valid, otherwise an ImageApp::None.
+	/// This will return an App::Mozjpeg instance if the path
+	/// is valid, otherwise an App::None.
 	pub fn try_mozjpeg<P> (path: P) -> Self
 	where P: AsRef<Path> {
-		let out: Self = Self::MozJPEG(format::path::abs_pathbuf(path));
+		let out: Self = Self::Mozjpeg(format::path::abs_pathbuf(path));
 		match out.is_valid() {
 			true => out,
 			false => Self::None,
@@ -249,8 +249,8 @@ impl ImageApp {
 
 	/// Try Oxipng.
 	///
-	/// This will return an ImageApp::Oxipng instance if the path
-	/// is valid, otherwise an ImageApp::None.
+	/// This will return an App::Oxipng instance if the path
+	/// is valid, otherwise an App::None.
 	pub fn try_oxipng<P> (path: P) -> Self
 	where P: AsRef<Path> {
 		let out: Self = Self::Oxipng(format::path::abs_pathbuf(path));
@@ -262,8 +262,8 @@ impl ImageApp {
 
 	/// Try Pngout.
 	///
-	/// This will return an ImageApp::Pngout instance if the path
-	/// is valid, otherwise an ImageApp::None.
+	/// This will return an App::Pngout instance if the path
+	/// is valid, otherwise an App::None.
 	pub fn try_pngout<P> (path: P) -> Self
 	where P: AsRef<Path> {
 		let out: Self = Self::Pngout(format::path::abs_pathbuf(path));
@@ -275,8 +275,8 @@ impl ImageApp {
 
 	/// Try Zopflipng.
 	///
-	/// This will return an ImageApp::Zopflipng instance if the path
-	/// is valid, otherwise an ImageApp::None.
+	/// This will return an App::Zopflipng instance if the path
+	/// is valid, otherwise an App::None.
 	pub fn try_zopflipng<P> (path: P) -> Self
 	where P: AsRef<Path> {
 		let out: Self = Self::Zopflipng(format::path::abs_pathbuf(path));
@@ -294,7 +294,7 @@ impl ImageApp {
 
 	/// Image Kind.
 	///
-	/// Return the ImageKind this ImageApp is capable of processing.
+	/// Return the ImageKind this App is capable of processing.
 	pub fn image_kind(&self) -> ImageKind {
 		if false == self.is_valid() {
 			return ImageKind::None;
@@ -302,7 +302,7 @@ impl ImageApp {
 
 		match *self {
 			Self::Jpegoptim(_) => ImageKind::Jpeg,
-			Self::MozJPEG(_) => ImageKind::Jpeg,
+			Self::Mozjpeg(_) => ImageKind::Jpeg,
 			Self::Oxipng(_) => ImageKind::Png,
 			Self::Pngout(_) => ImageKind::Png,
 			Self::Zopflipng(_) => ImageKind::Png,
@@ -312,30 +312,30 @@ impl ImageApp {
 
 	/// The App Path.
 	///
-	/// Return the PathBuf component of an ImageApp, provided the path
+	/// Return the PathBuf component of an App, provided the path
 	/// appears to be a valid executable for this app.
-	pub fn path(&self) -> Result<PathBuf, FlacaError> {
+	pub fn path(&self) -> Result<PathBuf, Error> {
 		if false == self.is_valid() {
-			return Err(FlacaError::MissingWorker);
+			return Err(Error::InvalidApp);
 		}
 
 		match *self {
 			Self::Jpegoptim(ref p) => Ok(format::path::abs_pathbuf(&p)),
-			Self::MozJPEG(ref p) => Ok(format::path::abs_pathbuf(&p)),
+			Self::Mozjpeg(ref p) => Ok(format::path::abs_pathbuf(&p)),
 			Self::Oxipng(ref p) => Ok(format::path::abs_pathbuf(&p)),
 			Self::Pngout(ref p) => Ok(format::path::abs_pathbuf(&p)),
 			Self::Zopflipng(ref p) => Ok(format::path::abs_pathbuf(&p)),
-			Self::None => Err(FlacaError::MissingWorker),
+			Self::None => Err(Error::InvalidApp),
 		}
 	}
 
 	/// Slug.
 	///
-	/// Return the "normal" application file name for this ImageApp.
+	/// Return the "normal" application file name for this App.
 	pub fn slug(&self) -> OsString {
 		OsStr::new(match *self {
 			Self::Jpegoptim(_) => "jpegoptim",
-			Self::MozJPEG(_) => "jpegtran",
+			Self::Mozjpeg(_) => "jpegtran",
 			Self::Oxipng(_) => "oxipng",
 			Self::Pngout(_) => "pngout",
 			Self::Zopflipng(_) => "zopflipng",
@@ -346,17 +346,73 @@ impl ImageApp {
 
 
 	// -----------------------------------------------------------------
+	// Conversion
+	// -----------------------------------------------------------------
+
+	/// Cloned Copy
+	///
+	/// Clone the source if valid, otherwise return App::None.
+	pub fn cloned(&self) -> App {
+		match self.is_valid() {
+			true => self.clone(),
+			false => App::None,
+		}
+	}
+
+
+
+	// -----------------------------------------------------------------
 	// Evaluation
 	// -----------------------------------------------------------------
 
+	/// Is Jpegoptim?
+	pub fn is_jpegoptim(&self) -> bool {
+		match self {
+			Self::Jpegoptim(_) => self.is_valid(),
+			_ => false,
+		}
+	}
+
+	/// Is Mozjpeg?
+	pub fn is_mozjpeg(&self) -> bool {
+		match self {
+			Self::Mozjpeg(_) => self.is_valid(),
+			_ => false,
+		}
+	}
+
+	/// Is Oxipng?
+	pub fn is_oxipng(&self) -> bool {
+		match self {
+			Self::Oxipng(_) => self.is_valid(),
+			_ => false,
+		}
+	}
+
+	/// Is Pngout?
+	pub fn is_pngout(&self) -> bool {
+		match self {
+			Self::Pngout(_) => self.is_valid(),
+			_ => false,
+		}
+	}
+
+	/// Is Zopflipng?
+	pub fn is_zopflipng(&self) -> bool {
+		match self {
+			Self::Zopflipng(_) => self.is_valid(),
+			_ => false,
+		}
+	}
+
 	/// Is Valid?
 	///
-	/// This method attempts to answer whether or not a given ImageApp
+	/// This method attempts to answer whether or not a given App
 	/// is present and executable on the system.
 	///
 	/// Unfortunately beyond checking those two things, we don't really
 	/// have any good way of ensuring that the executable path is for
-	/// the ImageApp it is supposed to be for.
+	/// the App it is supposed to be for.
 	///
 	/// Executing arbitrary programs is generally frowned upon, so as a
 	/// least-terrible mitigation effort, the path names are checked
@@ -367,7 +423,7 @@ impl ImageApp {
 	pub fn is_valid(&self) -> bool {
 		let path: PathBuf = match *self {
 			Self::Jpegoptim(ref p) => format::path::abs_pathbuf(&p),
-			Self::MozJPEG(ref p) => format::path::abs_pathbuf(&p),
+			Self::Mozjpeg(ref p) => format::path::abs_pathbuf(&p),
 			Self::Oxipng(ref p) => format::path::abs_pathbuf(&p),
 			Self::Pngout(ref p) => format::path::abs_pathbuf(&p),
 			Self::Zopflipng(ref p) => format::path::abs_pathbuf(&p),
@@ -397,12 +453,12 @@ impl ImageApp {
 
 	/// Compress an Image!
 	///
-	/// This method will run the ImageApp binary to losslessly compress
+	/// This method will run the App binary to losslessly compress
 	/// the source image as much as possible.
 	///
 	/// The source image will be overwritten at the end of the process
 	/// unless no savings were found.
-	pub fn compress<P> (&self, path: P) -> Result<(), FlacaError>
+	pub fn compress<P> (&self, path: P) -> Result<(), Error>
 	where P: AsRef<Path> {
 		// This will also test validity.
 		let bin_path: PathBuf = self.path()?;
@@ -410,9 +466,9 @@ impl ImageApp {
 		// Make sure the image type is right for the app.
 		if false == format::path::is_image_kind(&path, self.image_kind()) {
 			return match self.image_kind() {
-				ImageKind::Jpeg => Err(FlacaError::NotJpeg),
-				ImageKind::Png => Err(FlacaError::NotPng),
-				_ => Err(FlacaError::NotImage),
+				ImageKind::Jpeg => Err(Error::NotJpeg(format::path::as_string(&path))),
+				ImageKind::Png => Err(Error::NotPng(format::path::as_string(&path))),
+				_ => Err(Error::InvalidPath(format::path::as_string(&path))),
 			};
 		}
 
@@ -438,7 +494,7 @@ impl ImageApp {
 				com.arg("--all-progressive");
 				com.arg(&working);
 			},
-			Self::MozJPEG(_) => {
+			Self::Mozjpeg(_) => {
 				com.arg("-copy");
 				com.arg("none");
 				com.arg("-optimize");
@@ -466,7 +522,7 @@ impl ImageApp {
 				com.arg(&working);
 				com.arg(&working2);
 			},
-			Self::None => return Err(FlacaError::MissingWorker),
+			Self::None => return Err(Error::NoApp(format!("{}", &self))),
 		}
 
 		// Run the command!
@@ -486,7 +542,7 @@ impl ImageApp {
 			if working.is_file() {
 				format::path::delete_file(&working)?;
 			}
-			return Err(FlacaError::new("Image optimizer failed."));
+			return Err(Error::new("Image optimizer failed."));
 		}
 
 		// If we have a smaller file, replace it.
@@ -507,36 +563,36 @@ mod tests {
 	use super::*;
 
 	#[test]
-	/// Test ImageApp::None.
+	/// Test App::None.
 	fn test_image_app_none() {
 		// Test non-app wrappers.
-		assert_eq!(ImageApp::None.is_valid(), false);
-		assert!(ImageApp::None.path().is_err());
-		assert_eq!(ImageApp::None.image_kind(), ImageKind::None);
+		assert_eq!(App::None.is_valid(), false);
+		assert!(App::None.path().is_err());
+		assert_eq!(App::None.image_kind(), ImageKind::None);
 	}
 
 	#[test]
-	/// Test ImageApp::Jpegoptim.
+	/// Test App::Jpegoptim.
 	fn test_image_app_jpegoptim() {
 		// We have to find it first.
-		match ImageApp::find_jpegoptim() {
-			ImageApp::Jpegoptim(ref p) => {
-				let app: ImageApp = ImageApp::try_jpegoptim(p.to_path_buf());
+		match App::find_jpegoptim() {
+			App::Jpegoptim(ref p) => {
+				let app: App = App::try_jpegoptim(p.to_path_buf());
 				assert_eq!(
 					app,
-					ImageApp::Jpegoptim(p.to_path_buf())
+					App::Jpegoptim(p.to_path_buf())
 				);
 				assert_eq!(
 					app,
-					ImageApp::from(p.to_path_buf())
+					App::from(p.to_path_buf())
 				);
 				assert!(app.is_valid());
 				assert!(app.path().is_ok());
 				assert_eq!(app.image_kind(), ImageKind::Jpeg);
 
 				// Test serialization.
-				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize ImageApp.");
-				let unyaml: ImageApp = serde_yaml::from_str(&yaml).expect("Unable to deserialize ImageApp.");
+				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize App.");
+				let unyaml: App = serde_yaml::from_str(&yaml).expect("Unable to deserialize App.");
 				assert_eq!(app, unyaml);
 			},
 			_ => {}
@@ -544,33 +600,33 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			ImageApp::try_jpegoptim(format::path::abs_pathbuf("./tests/assets/01.jpg")),
-			ImageApp::None,
+			App::try_jpegoptim(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::None,
 		);
 	}
 
 	#[test]
-	/// Test ImageApp::MozJPEG.
+	/// Test App::Mozjpeg.
 	fn test_image_app_mozjpeg() {
 		// We have to find it first.
-		match ImageApp::find_mozjpeg() {
-			ImageApp::MozJPEG(ref p) => {
-				let app: ImageApp = ImageApp::try_mozjpeg(p.to_path_buf());
+		match App::find_mozjpeg() {
+			App::Mozjpeg(ref p) => {
+				let app: App = App::try_mozjpeg(p.to_path_buf());
 				assert_eq!(
 					app,
-					ImageApp::MozJPEG(p.to_path_buf())
+					App::Mozjpeg(p.to_path_buf())
 				);
 				assert_eq!(
 					app,
-					ImageApp::from(p.to_path_buf())
+					App::from(p.to_path_buf())
 				);
 				assert!(app.is_valid());
 				assert!(app.path().is_ok());
 				assert_eq!(app.image_kind(), ImageKind::Jpeg);
 
 				// Test serialization.
-				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize ImageApp.");
-				let unyaml: ImageApp = serde_yaml::from_str(&yaml).expect("Unable to deserialize ImageApp.");
+				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize App.");
+				let unyaml: App = serde_yaml::from_str(&yaml).expect("Unable to deserialize App.");
 				assert_eq!(app, unyaml);
 			},
 			_ => {}
@@ -578,33 +634,33 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			ImageApp::try_mozjpeg(format::path::abs_pathbuf("./tests/assets/01.jpg")),
-			ImageApp::None,
+			App::try_mozjpeg(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::None,
 		);
 	}
 
 	#[test]
-	/// Test ImageApp::Oxipng.
+	/// Test App::Oxipng.
 	fn test_image_app_oxipng() {
 		// We have to find it first.
-		match ImageApp::find_oxipng() {
-			ImageApp::Oxipng(ref p) => {
-				let app: ImageApp = ImageApp::try_oxipng(p.to_path_buf());
+		match App::find_oxipng() {
+			App::Oxipng(ref p) => {
+				let app: App = App::try_oxipng(p.to_path_buf());
 				assert_eq!(
 					app,
-					ImageApp::Oxipng(p.to_path_buf())
+					App::Oxipng(p.to_path_buf())
 				);
 				assert_eq!(
 					app,
-					ImageApp::from(p.to_path_buf())
+					App::from(p.to_path_buf())
 				);
 				assert!(app.is_valid());
 				assert!(app.path().is_ok());
 				assert_eq!(app.image_kind(), ImageKind::Png);
 
 				// Test serialization.
-				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize ImageApp.");
-				let unyaml: ImageApp = serde_yaml::from_str(&yaml).expect("Unable to deserialize ImageApp.");
+				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize App.");
+				let unyaml: App = serde_yaml::from_str(&yaml).expect("Unable to deserialize App.");
 				assert_eq!(app, unyaml);
 			},
 			_ => {}
@@ -612,33 +668,33 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			ImageApp::try_oxipng(format::path::abs_pathbuf("./tests/assets/01.jpg")),
-			ImageApp::None,
+			App::try_oxipng(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::None,
 		);
 	}
 
 	#[test]
-	/// Test ImageApp::Pngout.
+	/// Test App::Pngout.
 	fn test_image_app_pngout() {
 		// We have to find it first.
-		match ImageApp::find_pngout() {
-			ImageApp::Pngout(ref p) => {
-				let app: ImageApp = ImageApp::try_pngout(p.to_path_buf());
+		match App::find_pngout() {
+			App::Pngout(ref p) => {
+				let app: App = App::try_pngout(p.to_path_buf());
 				assert_eq!(
 					app,
-					ImageApp::Pngout(p.to_path_buf())
+					App::Pngout(p.to_path_buf())
 				);
 				assert_eq!(
 					app,
-					ImageApp::from(p.to_path_buf())
+					App::from(p.to_path_buf())
 				);
 				assert!(app.is_valid());
 				assert!(app.path().is_ok());
 				assert_eq!(app.image_kind(), ImageKind::Png);
 
 				// Test serialization.
-				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize ImageApp.");
-				let unyaml: ImageApp = serde_yaml::from_str(&yaml).expect("Unable to deserialize ImageApp.");
+				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize App.");
+				let unyaml: App = serde_yaml::from_str(&yaml).expect("Unable to deserialize App.");
 				assert_eq!(app, unyaml);
 			},
 			_ => {}
@@ -646,33 +702,33 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			ImageApp::try_pngout(format::path::abs_pathbuf("./tests/assets/01.jpg")),
-			ImageApp::None,
+			App::try_pngout(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::None,
 		);
 	}
 
 	#[test]
-	/// Test ImageApp::Zopflipng.
+	/// Test App::Zopflipng.
 	fn test_image_app_zopflipng() {
 		// We have to find it first.
-		match ImageApp::find_zopflipng() {
-			ImageApp::Zopflipng(ref p) => {
-				let app: ImageApp = ImageApp::try_zopflipng(p.to_path_buf());
+		match App::find_zopflipng() {
+			App::Zopflipng(ref p) => {
+				let app: App = App::try_zopflipng(p.to_path_buf());
 				assert_eq!(
 					app,
-					ImageApp::Zopflipng(p.to_path_buf())
+					App::Zopflipng(p.to_path_buf())
 				);
 				assert_eq!(
 					app,
-					ImageApp::from(p.to_path_buf())
+					App::from(p.to_path_buf())
 				);
 				assert!(app.is_valid());
 				assert!(app.path().is_ok());
 				assert_eq!(app.image_kind(), ImageKind::Png);
 
 				// Test serialization.
-				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize ImageApp.");
-				let unyaml: ImageApp = serde_yaml::from_str(&yaml).expect("Unable to deserialize ImageApp.");
+				let yaml = serde_yaml::to_string(&app).expect("Unable to serialize App.");
+				let unyaml: App = serde_yaml::from_str(&yaml).expect("Unable to deserialize App.");
 				assert_eq!(app, unyaml);
 			},
 			_ => {}
@@ -680,24 +736,24 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			ImageApp::try_zopflipng(format::path::abs_pathbuf("./tests/assets/01.jpg")),
-			ImageApp::None,
+			App::try_zopflipng(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::None,
 		);
 	}
 
 	#[test]
 	#[ignore]
-	/// Test ImageApp JPEG Compression.
+	/// Test App JPEG Compression.
 	fn test_image_app_jpeg_compression() {
 		let jpg = format::path::abs_pathbuf("./tests/assets/01.jpg");
 
 		// Test whichever apps are available.
 		for (app, slug) in vec![
-			(ImageApp::find_jpegoptim(), "jpegoptim"),
-			(ImageApp::find_mozjpeg(), "jpegtran"),
+			(App::find_jpegoptim(), "jpegoptim"),
+			(App::find_mozjpeg(), "jpegtran"),
 		].iter() {
 			// If the app isn't on the system we can't test its compression.
-			if *app == ImageApp::None {
+			if *app == App::None {
 				continue;
 			}
 
@@ -736,18 +792,18 @@ mod tests {
 
 	#[test]
 	#[ignore]
-	/// Test ImageApp PNG Compression.
+	/// Test App PNG Compression.
 	fn test_image_app_png_compression() {
 		let png = format::path::abs_pathbuf("./tests/assets/02.png");
 
 		// Test whichever apps are available.
 		for (app, slug) in vec![
-			(ImageApp::find_oxipng(), "oxipng"),
-			(ImageApp::find_pngout(), "pngout"),
-			(ImageApp::find_zopflipng(), "zopflipng"),
+			(App::find_oxipng(), "oxipng"),
+			(App::find_pngout(), "pngout"),
+			(App::find_zopflipng(), "zopflipng"),
 		].iter() {
 			// If the app isn't on the system we can't test its compression.
-			if *app == ImageApp::None {
+			if *app == App::None {
 				continue;
 			}
 

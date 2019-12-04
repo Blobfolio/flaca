@@ -41,20 +41,16 @@ extern crate serde;
 extern crate serde_yaml;
 extern crate walkdir;
 
-mod config;
+mod alert;
 mod core;
 mod error;
 pub mod format;
 mod image;
-mod log;
-mod reporter;
-mod result;
+mod timer;
 
-pub use crate::config::Config;
-pub use crate::core::Core;
-pub use crate::error::FlacaError;
+pub use crate::alert::{Alert, AlertKind};
+pub use crate::core::{Core, CoreSettings, CoreState};
+pub use crate::error::Error;
 pub use crate::format as Format;
-pub use crate::image::{ImageApp, ImageKind};
-pub use crate::log::{LogEntry, LogEntryKind, LogTimer};
-pub use crate::reporter::Reporter;
-pub use crate::result::FlacaResult;
+pub use crate::image::{App, ImageKind};
+pub use crate::timer::Timer;
