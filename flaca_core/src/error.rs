@@ -34,6 +34,8 @@ pub enum Error {
 	NotJpeg(String),
 	/// Not a PNG.
 	NotPng(String),
+	/// Null Log.
+	NullAlert,
 	/// A pass-through error.
 	Other(String),
 }
@@ -86,6 +88,7 @@ impl Error {
 			Self::NoImages => "There are no images to work on.".to_string(),
 			Self::NotJpeg(ref s) => format!("{} is not a valid JPEG.", s),
 			Self::NotPng(ref s) => format!("{} is not a valid PNG.", s),
+			Self::NullAlert => "Invalid alert received.".to_string(),
 			Self::Other(ref s) => format!("{}", s),
 		}
 	}
