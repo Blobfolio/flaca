@@ -532,13 +532,14 @@ impl CoreState {
 	/// when the number of completed jobs reaches the total number of
 	/// jobs, this method ceases to take any action.
 	pub fn inc_done(&self) {
-		let ptr = self.done.clone();
+		let ptr1 = self.done.clone();
+		let ptr2 = self.total.clone();
 
-		if ptr.load(Ordering::SeqCst) < ptr.load(Ordering::SeqCst) {
-			ptr.fetch_add(1, Ordering::SeqCst);
+		if ptr1.load(Ordering::Relaxed) < ptr2.load(Ordering::Relaxed) {
+			ptr1.fetch_add(1, Ordering::SeqCst);
 		}
 		else {
-			ptr.store(self.total(), Ordering::Relaxed);
+			ptr1.store(ptr2.load(Ordering::Relaxed), Ordering::Relaxed);
 		}
 	}
 
