@@ -7,7 +7,7 @@ use crate::error::Error;
 use crate::format;
 use crate::image::{App, ImageKind};
 use crate::timer::Timer;
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossbeam_channel::Sender;
 use serde::de::{Deserialize, Deserializer, Visitor, MapAccess};
 use serde::ser::{Serialize, Serializer, SerializeStruct};
 use std::fmt;
@@ -657,21 +657,10 @@ impl CoreState {
 	// -----------------------------------------------------------------
 
 	/// Open Channel.
-	pub fn open_channel(&self) -> Receiver<Alert> {
+	pub fn open_channel(&self, sender: Sender<Alert>) {
 		let ptr = self.sender.clone();
 		let mut s = ptr.lock().unwrap();
-
-		// We might have to cancel the old one.
-		if let Some(ref olds) = s.take() {
-			drop(&olds);
-		}
-
-		// Open a new channel.
-		let (tx, rx) = unbounded();
-		s.replace(tx);
-
-		// Send the receiver back to whomever wanted it.
-		rx
+		s.replace(sender.clone());
 	}
 
 	/// Send Alert.
@@ -861,9 +850,9 @@ impl CoreState {
 	}
 
 	/// Open Channel.
-	pub fn arc_open_channel(state: Arc<Mutex<CoreState>>) -> Receiver<Alert> {
+	pub fn arc_open_channel(state: Arc<Mutex<CoreState>>, sender: Sender<Alert>) {
 		let c = state.lock().unwrap();
-		c.open_channel()
+		c.open_channel(sender)
 	}
 
 	/// Send Alert.
