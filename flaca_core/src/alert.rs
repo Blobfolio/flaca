@@ -64,9 +64,13 @@ impl AlertKind {
 	/// Prefix.
 	pub fn prefix(&self) -> String {
 		match *self {
-			Self::Other => "".to_string(),
-			_ => format!("{}: ", self)
-		}
+			Self::Debug => "Debug: ",
+			Self::Notice => "Notice: ",
+			Self::Warning => "Warning: ",
+			Self::Error => "Error: ",
+			Self::Success => "Success: ",
+			Self::Other => "",
+		}.to_string()
 	}
 }
 
