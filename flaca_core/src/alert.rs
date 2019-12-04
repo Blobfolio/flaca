@@ -165,6 +165,11 @@ impl Alert {
 		self.kind.level()
 	}
 
+	/// Message.
+	pub fn msg(&self) -> String {
+		self.msg.clone()
+	}
+
 	/// Path.
 	pub fn path(&self) -> Option<PathBuf> {
 		match self.path {
