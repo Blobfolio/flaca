@@ -144,7 +144,7 @@ impl Alert {
 
 	/// Date.
 	pub fn date(&self) -> DateTime<Local> {
-		self.date
+		self.date.clone()
 	}
 
 	/// Elapsed.
@@ -157,7 +157,7 @@ impl Alert {
 
 	/// Kind.
 	pub fn kind(&self) -> AlertKind {
-		self.kind
+		self.kind.clone()
 	}
 
 	/// Level.
