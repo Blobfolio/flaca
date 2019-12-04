@@ -76,7 +76,7 @@ impl AlertKind {
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 /// Alert.
 pub struct Alert {
 	date: DateTime<Local>,
