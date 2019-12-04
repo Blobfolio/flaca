@@ -91,7 +91,7 @@ impl Timer {
 	/// Stop.
 	pub fn stop(
 		&mut self,
-		kind: AlertKind,
+		mut kind: AlertKind,
 		path: Option<PathBuf>,
 		size: Option<(usize, usize)>,
 	) -> Alert {
@@ -100,6 +100,14 @@ impl Timer {
 			return Alert::from(Error::NullAlert);
 		}
 
+		// Upgrade notices to successes?
+		if AlertKind::Notice == kind {
+			if let Some((ref b, ref a)) = size {
+				if 0 < *a && a < b {
+					kind = AlertKind::Success;
+				}
+			}
+		}
 
 		// Improve the message using elapsed.
 		let nice_elapsed: String = format::time::human_elapsed(self.time.unwrap_or(Instant::now()), FormatKind::Long);
