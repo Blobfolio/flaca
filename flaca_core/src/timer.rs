@@ -98,7 +98,7 @@ impl Timer {
 
 		Alert::new(
 			kind,
-			format!("Started {}.", self.name.clone()),
+			format!("Finished {}.", self.name.clone()),
 			path,
 			Some(elapsed),
 			size,
