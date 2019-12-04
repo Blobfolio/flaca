@@ -393,13 +393,13 @@ impl CoreState {
 	/// Done.
 	pub fn done(&self) -> usize {
 		let ptr = self.done.clone();
-		ptr.load(Ordering::SeqCst)
+		ptr.load(Ordering::Relaxed)
 	}
 
 	/// Dry Run?
 	pub fn dry_run(&self) -> bool {
 		let ptr = self.dry_run.clone();
-		ptr.load(Ordering::SeqCst)
+		ptr.load(Ordering::Relaxed)
 	}
 
 	/// List of Available Image Apps (By Name).
@@ -476,7 +476,7 @@ impl CoreState {
 	/// Level.
 	pub fn level(&self) -> usize {
 		let ptr = self.level.clone();
-		ptr.load(Ordering::SeqCst)
+		ptr.load(Ordering::Relaxed)
 	}
 
 	/// Mozjpeg.
@@ -504,7 +504,7 @@ impl CoreState {
 	pub fn progress(&self) -> (usize, usize) {
 		let d = self.done.clone();
 		let t = self.total.clone();
-		(d.load(Ordering::SeqCst), t.load(Ordering::SeqCst))
+		(d.load(Ordering::Relaxed), t.load(Ordering::Relaxed))
 	}
 
 	/// Sender.
@@ -520,7 +520,7 @@ impl CoreState {
 	/// Total.
 	pub fn total(&self) -> usize {
 		let ptr = self.total.clone();
-		ptr.load(Ordering::SeqCst)
+		ptr.load(Ordering::Relaxed)
 	}
 
 	/// Zopflipng.
