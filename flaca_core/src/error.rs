@@ -50,32 +50,7 @@ impl std::error::Error for Error {
 impl fmt::Display for Error {
 	/// Display.
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(&self.as_string())
-	}
-}
-
-impl<T: Into<std::io::Error>> From<T> for Error {
-	/// Convert IO Errors.
-	fn from(error: T) -> Self {
-		Error::new(&format!("{}", error.into()))
-	}
-}
-
-impl Error {
-	#[inline]
-	/// New Pass-Through Error.
-	///
-	/// This is used to contain errors bubbling up from e.g. `std::io`.
-	pub fn new<S> (msg: S) -> Error
-	where S: Into<String> {
-		Error::Other(msg.into())
-	}
-
-	/// As String.
-	///
-	/// Return the Enum as a String.
-	pub fn as_string(&self) -> String {
-		match *self {
+		let msg: String = match *self {
 			Self::DoubleRun => "Flaca is already running.".to_string(),
 			Self::InvalidApp => "There is no image app to handle this request.".to_string(),
 			Self::InvalidPath(ref s) => format!("Invalid path: {}.", s),
@@ -89,6 +64,25 @@ impl Error {
 			Self::NotPng(ref s) => format!("{} is not a valid PNG.", s),
 			Self::NullAlert => "Invalid alert received.".to_string(),
 			Self::Other(ref s) => format!("{}", s),
-		}
+		};
+
+		f.write_str(&msg)
+	}
+}
+
+impl From<std::io::Error> for Error {
+	/// Convert IO Errors.
+	fn from(error: std::io::Error) -> Self {
+		Error::new(&format!("{}", error.to_string()))
+	}
+}
+
+impl Error {
+	/// New Pass-Through Error.
+	///
+	/// This is used to contain errors bubbling up from e.g. `std::io`.
+	pub fn new<S> (msg: S) -> Error
+	where S: Into<String> {
+		Error::Other(msg.into())
 	}
 }
