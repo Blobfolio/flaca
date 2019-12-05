@@ -106,7 +106,7 @@ macro_rules! core_settings_quick_apps {
 /// The app methods for CoreState are very redundant; this macro helps
 /// tidy the code a bit.
 macro_rules! core_state_quick_apps {
-	($name:expr) => {
+	($name:ident) => {
 		paste::item! {
 			/// $name.
 			pub fn $name(&self) -> App {
