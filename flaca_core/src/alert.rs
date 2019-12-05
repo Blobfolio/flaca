@@ -4,6 +4,7 @@
 
 use chrono::prelude::*;
 use crate::error::Error;
+use crate::format;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -30,21 +31,14 @@ impl fmt::Display for AlertKind {
 	#[inline]
 	/// Display.
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(&self.prefix())
-	}
-}
-
-impl Into<String> for AlertKind {
-	/// Into String.
-	fn into(self) -> String {
-		match self {
+		f.write_str(match *self {
 			Self::Debug => "Debug",
 			Self::Notice => "Notice",
 			Self::Warning => "Warning",
 			Self::Error => "Error",
 			Self::Success => "Success",
 			Self::Other => "",
-		}.to_string()
+		})
 	}
 }
 
@@ -64,13 +58,9 @@ impl AlertKind {
 	/// Prefix.
 	pub fn prefix(&self) -> String {
 		match *self {
-			Self::Debug => "Debug: ",
-			Self::Notice => "Notice: ",
-			Self::Warning => "Warning: ",
-			Self::Error => "Error: ",
-			Self::Success => "Success: ",
-			Self::Other => "",
-		}.to_string()
+			Self::Other => "".to_string(),
+			_ => format!("{}: ", self.to_string()),
+		}
 	}
 }
 
@@ -189,10 +179,7 @@ impl Alert {
 	/// Saved.
 	pub fn saved(&self) -> Option<usize> {
 		match self.size {
-			Some((ref b, ref a)) => match 0 < *a && a < b {
-				true => Some(b - a),
-				false => Some(0),
-			},
+			Some((ref b, ref a)) => Some(format::path::saved(*b, *a)),
 			_ => None,
 		}
 	}

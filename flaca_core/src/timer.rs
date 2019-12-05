@@ -100,20 +100,31 @@ impl Timer {
 			return Alert::from(Error::NullAlert);
 		}
 
-		// Upgrade notices to successes?
-		if AlertKind::Notice == kind {
-			if let Some((ref b, ref a)) = size {
-				if 0 < *a && a < b {
-					kind = AlertKind::Success;
-				}
-			}
-		}
-
 		// Improve the message using elapsed.
 		let nice_elapsed: String = format::time::human_elapsed(self.time.unwrap_or(Instant::now()), FormatKind::Long);
-		let msg: String = match "0 seconds" == nice_elapsed {
-			true => format!("Finished {}.", self.name.clone()),
-			false => format!("Finished {} in {}.", self.name.clone(), nice_elapsed),
+		let mut msg: String = match "0 seconds" == nice_elapsed {
+			true => format!("Finished {}", self.name.clone()),
+			false => format!("Finished {} in {}", self.name.clone(), nice_elapsed),
+		};
+
+		// If file sizes are involved, let's add that to the note as well!
+		msg = match size {
+			Some((ref b, ref a)) => {
+				let diff: usize = format::path::saved(*b, *a);
+				match diff {
+					0 => format!("{}, but no dice.", msg),
+					_ => {
+						// Incidentally, now is a convenient time to
+						// upgrade the alert status.
+						if AlertKind::Notice == kind {
+							kind = AlertKind::Success;
+						}
+
+						format!("{}, saving {}.", msg, format::path::human_size(diff))
+					},
+				}
+			},
+			None => format!("{}.", msg),
 		};
 
 		// Grab the elapsed time.

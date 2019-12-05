@@ -267,7 +267,7 @@ impl Display {
 		let prefix: String = Display::format_log_entry_prefix(entry.kind());
 		let prefix_len: usize = Display::format_len(&prefix);
 
-		let mut msg: String = Display::format_log_entry_msg(&entry);
+		let mut msg: String = entry.msg();
 		let mut msg_len: usize = Display::format_len(&msg);
 
 		let mut path: String = match entry.path() {
@@ -361,20 +361,6 @@ impl Display {
 		}
 	}
 
-	/// Format Alert Message.
-	fn format_log_entry_msg(entry: &Alert) -> String {
-		// Build the message part.
-		let mut msg: String = entry.msg();
-		if let Some(saved) = entry.saved() {
-			match saved {
-				0 => msg = format!("{} No change.", msg),
-				_ => msg = format!("{} Saved {}!", msg, Format::path::human_size(saved)),
-			}
-		}
-
-		msg.trim().to_string()
-	}
-
 	/// Format Alert Date.
 	fn format_log_entry_date(entry: &Alert) -> String {
 		format!("{}", entry.date().format("%T")).trim().to_string()
@@ -392,7 +378,7 @@ impl Display {
 		let prefix: String = Display::strip_styles(entry.kind().prefix());
 		let prefix_len: usize = Display::format_len(&prefix);
 
-		let mut msg: String = Display::strip_styles(Display::format_log_entry_msg(&entry));
+		let mut msg: String = Display::strip_styles(entry.msg());
 		let msg_len: usize = Display::format_len(&msg);
 
 		let date: String = Display::strip_styles(Display::format_old_log_entry_date(&entry));

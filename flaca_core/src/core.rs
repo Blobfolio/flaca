@@ -701,12 +701,7 @@ impl CoreState {
 		let ptr = self.timer.clone();
 		let mut t = ptr.lock().unwrap();
 
-		let kind = match 0 < after && after < before {
-			true => AlertKind::Success,
-			false => AlertKind::Notice,
-		};
-
-		self.send(t.stop(kind, None, Some((before, after))));
+		self.send(t.stop(AlertKind::Notice, None, Some((before, after))));
 	}
 
 

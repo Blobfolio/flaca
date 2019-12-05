@@ -234,6 +234,14 @@ where P: AsRef<Path> {
 	}
 }
 
+/// Saved.
+pub fn saved(before: usize, after: usize) -> usize {
+	match 0 < after && after < before {
+		true => before - after,
+		false => 0
+	}
+}
+
 
 
 // ---------------------------------------------------------------------
