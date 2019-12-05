@@ -143,11 +143,11 @@ impl<'de> Deserialize<'de> for App {
 
 impl App {
 	// Quick apps.
-	quick_apps! ("jpegoptim", Jpegoptim);
-	quick_apps! ("mozjpeg", Mozjpeg);
-	quick_apps! ("oxipng", Oxipng);
-	quick_apps! ("pngout", Pngout);
-	quick_apps! ("zopflipng", Zopflipng);
+	quick_apps!("jpegoptim", Jpegoptim);
+	quick_apps!("mozjpeg", Mozjpeg);
+	quick_apps!("oxipng", Oxipng);
+	quick_apps!("pngout", Pngout);
+	quick_apps!("zopflipng", Zopflipng);
 
 
 
