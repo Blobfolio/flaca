@@ -30,14 +30,18 @@ PNG images are sent to (in order):
 #![deny(missing_debug_implementations)]
 
 
-extern crate crossbeam_channel;
 #[macro_use]
 extern crate lazy_static;
-extern crate imghdr;
-extern crate nix;
-extern crate rayon;
 #[macro_use]
 extern crate serde;
+#[macro_use]
+mod macros;
+
+extern crate crossbeam_channel;
+extern crate imghdr;
+extern crate nix;
+extern crate paste;
+extern crate rayon;
 extern crate serde_yaml;
 extern crate walkdir;
 

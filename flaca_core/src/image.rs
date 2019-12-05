@@ -13,6 +13,7 @@ use std::process::{Command, Stdio};
 
 
 
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// The kind of image.
 pub enum ImageKind {
@@ -141,150 +142,12 @@ impl<'de> Deserialize<'de> for App {
 }
 
 impl App {
-	// -----------------------------------------------------------------
-	// Construction
-	// -----------------------------------------------------------------
-
-	/// Find Jpegoptim.
-	///
-	/// This will look for Jpegoptim under the user's $PATH. If found,
-	/// an App::Jpegoptim is returned, otherwise an App::None.
-	///
-	/// Executables can, of course, live anywhere and be called
-	/// anything, so this should only serve as a sane fallback.
-	pub fn find_jpegoptim() -> Self {
-		match format::path::find_executable("jpegoptim") {
-			Some(p) => Self::Jpegoptim(p),
-			_ => Self::None,
-		}
-	}
-
-	/// Find MozJPEG.
-	///
-	/// Unlike the other applications, MozJPEG's executable shares a
-	/// name with a more prominent (albeit less useful) library.
-	///
-	/// Rather than looking under all of the executable $PATH for the
-	/// user, this will look in the default place the MozJPEG installer
-	/// uses. If nothing executable lives there, an App::None is
-	/// returned.
-	///
-	/// Executables can, of course, live anywhere and be called
-	/// anything, so this should only serve as a sane fallback.
-	pub fn find_mozjpeg() -> Self {
-		let p: PathBuf = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
-		match format::path::is_executable(&p) {
-			true => Self::Mozjpeg(p),
-			false => Self::None,
-		}
-	}
-
-	/// Find Oxipng.
-	///
-	/// This will look for Oxipng under the user's $PATH. If found,
-	/// an App::Oxipng is returned, otherwise an App::None.
-	///
-	/// Executables can, of course, live anywhere and be called
-	/// anything, so this should only serve as a sane fallback.
-	pub fn find_oxipng() -> Self {
-		match format::path::find_executable("oxipng") {
-			Some(p) => Self::Oxipng(p),
-			_ => Self::None,
-		}
-	}
-
-	/// Find Pngout.
-	///
-	/// This will look for Pngout under the user's $PATH. If found,
-	/// an App::Pngout is returned, otherwise an App::None.
-	///
-	/// Executables can, of course, live anywhere and be called
-	/// anything, so this should only serve as a sane fallback.
-	pub fn find_pngout() -> Self {
-		match format::path::find_executable("pngout") {
-			Some(p) => Self::Pngout(p),
-			_ => Self::None,
-		}
-	}
-
-	/// Find Zopflipng.
-	///
-	/// This will look for Zopflipng under the user's $PATH. If found,
-	/// an App::Zopflipng is returned, otherwise an App::None.
-	///
-	/// Executables can, of course, live anywhere and be called
-	/// anything, so this should only serve as a sane fallback.
-	pub fn find_zopflipng() -> Self {
-		match format::path::find_executable("zopflipng") {
-			Some(p) => Self::Zopflipng(p),
-			_ => Self::None,
-		}
-	}
-
-	/// Try Jpegoptim.
-	///
-	/// This will return an App::Jpegoptim instance if the path
-	/// is valid, otherwise an App::None.
-	pub fn try_jpegoptim<P> (path: P) -> Self
-	where P: AsRef<Path> {
-		let out: Self = Self::Jpegoptim(format::path::abs_pathbuf(path));
-		match out.is_valid() {
-			true => out,
-			false => Self::None,
-		}
-	}
-
-	/// Try MozJPEG.
-	///
-	/// This will return an App::Mozjpeg instance if the path
-	/// is valid, otherwise an App::None.
-	pub fn try_mozjpeg<P> (path: P) -> Self
-	where P: AsRef<Path> {
-		let out: Self = Self::Mozjpeg(format::path::abs_pathbuf(path));
-		match out.is_valid() {
-			true => out,
-			false => Self::None,
-		}
-	}
-
-	/// Try Oxipng.
-	///
-	/// This will return an App::Oxipng instance if the path
-	/// is valid, otherwise an App::None.
-	pub fn try_oxipng<P> (path: P) -> Self
-	where P: AsRef<Path> {
-		let out: Self = Self::Oxipng(format::path::abs_pathbuf(path));
-		match out.is_valid() {
-			true => out,
-			false => Self::None,
-		}
-	}
-
-	/// Try Pngout.
-	///
-	/// This will return an App::Pngout instance if the path
-	/// is valid, otherwise an App::None.
-	pub fn try_pngout<P> (path: P) -> Self
-	where P: AsRef<Path> {
-		let out: Self = Self::Pngout(format::path::abs_pathbuf(path));
-		match out.is_valid() {
-			true => out,
-			false => Self::None,
-		}
-	}
-
-	/// Try Zopflipng.
-	///
-	/// This will return an App::Zopflipng instance if the path
-	/// is valid, otherwise an App::None.
-	pub fn try_zopflipng<P> (path: P) -> Self
-	where P: AsRef<Path> {
-		let out: Self = Self::Zopflipng(format::path::abs_pathbuf(path));
-		match out.is_valid() {
-			true => out,
-			false => Self::None,
-		}
-	}
+	// Quick apps.
+	quick_apps! ("jpegoptim", Jpegoptim);
+	quick_apps! ("mozjpeg", Mozjpeg);
+	quick_apps! ("oxipng", Oxipng);
+	quick_apps! ("pngout", Pngout);
+	quick_apps! ("zopflipng", Zopflipng);
 
 
 
@@ -364,46 +227,6 @@ impl App {
 	// -----------------------------------------------------------------
 	// Evaluation
 	// -----------------------------------------------------------------
-
-	/// Is Jpegoptim?
-	pub fn is_jpegoptim(&self) -> bool {
-		match self {
-			Self::Jpegoptim(_) => self.is_valid(),
-			_ => false,
-		}
-	}
-
-	/// Is Mozjpeg?
-	pub fn is_mozjpeg(&self) -> bool {
-		match self {
-			Self::Mozjpeg(_) => self.is_valid(),
-			_ => false,
-		}
-	}
-
-	/// Is Oxipng?
-	pub fn is_oxipng(&self) -> bool {
-		match self {
-			Self::Oxipng(_) => self.is_valid(),
-			_ => false,
-		}
-	}
-
-	/// Is Pngout?
-	pub fn is_pngout(&self) -> bool {
-		match self {
-			Self::Pngout(_) => self.is_valid(),
-			_ => false,
-		}
-	}
-
-	/// Is Zopflipng?
-	pub fn is_zopflipng(&self) -> bool {
-		match self {
-			Self::Zopflipng(_) => self.is_valid(),
-			_ => false,
-		}
-	}
 
 	/// Is Valid?
 	///

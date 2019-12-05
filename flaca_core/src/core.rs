@@ -385,20 +385,27 @@ impl From<CoreSettings> for CoreState {
 }
 
 impl CoreState {
+	// Quick apps.
+	core_state_quick_apps!(jpegoptim);
+	core_state_quick_apps!(mozjpeg);
+	core_state_quick_apps!(oxipng);
+	core_state_quick_apps!(pngout);
+	core_state_quick_apps!(zopflipng);
+
+
+
 	// -----------------------------------------------------------------
 	// Getters
 	// -----------------------------------------------------------------
 
 	/// Done.
 	pub fn done(&self) -> usize {
-		let ptr = self.done.clone();
-		ptr.load(Ordering::Relaxed)
+		atomicity!(self.done.clone())
 	}
 
 	/// Dry Run?
 	pub fn dry_run(&self) -> bool {
-		let ptr = self.dry_run.clone();
-		ptr.load(Ordering::Relaxed)
+		atomicity!(self.dry_run.clone())
 	}
 
 	/// List of Available Image Apps (By Name).
@@ -465,45 +472,14 @@ impl CoreState {
 		}
 	}
 
-	/// Jpegoptim.
-	pub fn jpegoptim(&self) -> App {
-		let ptr = self.jpegoptim.clone();
-		let a = ptr.lock().unwrap();
-		a.cloned()
-	}
-
 	/// Level.
 	pub fn level(&self) -> usize {
-		let ptr = self.level.clone();
-		ptr.load(Ordering::Relaxed)
-	}
-
-	/// Mozjpeg.
-	pub fn mozjpeg(&self) -> App {
-		let ptr = self.mozjpeg.clone();
-		let a = ptr.lock().unwrap();
-		a.cloned()
-	}
-
-	/// Oxipng.
-	pub fn oxipng(&self) -> App {
-		let ptr = self.oxipng.clone();
-		let a = ptr.lock().unwrap();
-		a.cloned()
-	}
-
-	/// Pngout.
-	pub fn pngout(&self) -> App {
-		let ptr = self.pngout.clone();
-		let a = ptr.lock().unwrap();
-		a.cloned()
+		atomicity!(self.level.clone())
 	}
 
 	/// Progress.
 	pub fn progress(&self) -> (usize, usize) {
-		let d = self.done.clone();
-		let t = self.total.clone();
-		(d.load(Ordering::Relaxed), t.load(Ordering::Relaxed))
+		(self.done(), self.total())
 	}
 
 	/// Sender.
@@ -518,15 +494,7 @@ impl CoreState {
 
 	/// Total.
 	pub fn total(&self) -> usize {
-		let ptr = self.total.clone();
-		ptr.load(Ordering::Relaxed)
-	}
-
-	/// Zopflipng.
-	pub fn zopflipng(&self) -> App {
-		let ptr = self.zopflipng.clone();
-		let a = ptr.lock().unwrap();
-		a.cloned()
+		atomicity!(self.total.clone())
 	}
 
 
@@ -554,24 +522,12 @@ impl CoreState {
 
 	/// Done.
 	pub fn set_done(&self, done: usize) {
-		let ptr = self.done.clone();
-		ptr.store(done, Ordering::SeqCst);
+		atomicity!(self.done.clone(), done);
 	}
 
 	/// Dry Run?
 	pub fn set_dry_run(&self, dry_run: bool) {
-		let ptr = self.dry_run.clone();
-		ptr.store(dry_run, Ordering::SeqCst);
-	}
-
-	/// Jpegoptim.
-	pub fn set_jpegoptim(&self, app: App) {
-		let ptr = self.jpegoptim.clone();
-		let mut a = ptr.lock().unwrap();
-		*a = match app.is_jpegoptim() {
-			true => app,
-			false => App::None,
-		};
+		atomicity!(self.dry_run.clone(), dry_run);
 	}
 
 	/// Level.
@@ -580,54 +536,12 @@ impl CoreState {
 			level = 4;
 		}
 
-		let ptr = self.level.clone();
-		ptr.store(level, Ordering::SeqCst);
-	}
-
-	/// Mozjpeg.
-	pub fn set_mozjpeg(&self, app: App) {
-		let ptr = self.mozjpeg.clone();
-		let mut a = ptr.lock().unwrap();
-		*a = match app.is_mozjpeg() {
-			true => app,
-			false => App::None,
-		};
-	}
-
-	/// Oxipng.
-	pub fn set_oxipng(&self, app: App) {
-		let ptr = self.oxipng.clone();
-		let mut a = ptr.lock().unwrap();
-		*a = match app.is_oxipng() {
-			true => app,
-			false => App::None,
-		};
-	}
-
-	/// Pngout.
-	pub fn set_pngout(&self, app: App) {
-		let ptr = self.pngout.clone();
-		let mut a = ptr.lock().unwrap();
-		*a = match app.is_pngout() {
-			true => app,
-			false => App::None,
-		};
+		atomicity!(self.level.clone(), level);
 	}
 
 	/// Total.
 	pub fn set_total(&self, total: usize) {
-		let ptr = self.total.clone();
-		ptr.store(total, Ordering::SeqCst);
-	}
-
-	/// Zopflipng.
-	pub fn set_zopflipng(&self, app: App) {
-		let ptr = self.zopflipng.clone();
-		let mut a = ptr.lock().unwrap();
-		*a = match app.is_zopflipng() {
-			true => app,
-			false => App::None,
-		};
+		atomicity!(self.total.clone(), total);
 	}
 
 
@@ -733,34 +647,10 @@ impl CoreState {
 		c.image_apps(kind)
 	}
 
-	/// Jpegoptim.
-	pub fn arc_jpegoptim(state: Arc<Mutex<CoreState>>) -> App {
-		let c = state.lock().unwrap();
-		c.jpegoptim()
-	}
-
 	/// Level.
 	pub fn arc_level(state: Arc<Mutex<CoreState>>) -> usize {
 		let c = state.lock().unwrap();
 		c.level()
-	}
-
-	/// Mozjpeg.
-	pub fn arc_mozjpeg(state: Arc<Mutex<CoreState>>) -> App {
-		let c = state.lock().unwrap();
-		c.mozjpeg()
-	}
-
-	/// Oxipng.
-	pub fn arc_oxipng(state: Arc<Mutex<CoreState>>) -> App {
-		let c = state.lock().unwrap();
-		c.oxipng()
-	}
-
-	/// Pngout.
-	pub fn arc_pngout(state: Arc<Mutex<CoreState>>) -> App {
-		let c = state.lock().unwrap();
-		c.pngout()
 	}
 
 	/// Progress.
@@ -781,12 +671,6 @@ impl CoreState {
 		c.total()
 	}
 
-	/// Zopflipng.
-	pub fn arc_zopflipng(state: Arc<Mutex<CoreState>>) -> App {
-		let c = state.lock().unwrap();
-		c.zopflipng()
-	}
-
 	/// Increment Completed Jobs.
 	pub fn arc_inc_done(state: Arc<Mutex<CoreState>>) {
 		let c = state.lock().unwrap();
@@ -805,46 +689,16 @@ impl CoreState {
 		c.set_dry_run(dry_run)
 	}
 
-	/// Jpegoptim.
-	pub fn arc_set_jpegoptim(state: Arc<Mutex<CoreState>>, app: App) {
-		let c = state.lock().unwrap();
-		c.set_jpegoptim(app)
-	}
-
 	/// Level.
 	pub fn arc_set_level(state: Arc<Mutex<CoreState>>, level: usize) {
 		let c = state.lock().unwrap();
 		c.set_level(level)
 	}
 
-	/// Mozjpeg.
-	pub fn arc_set_mozjpeg(state: Arc<Mutex<CoreState>>, app: App) {
-		let c = state.lock().unwrap();
-		c.set_mozjpeg(app)
-	}
-
-	/// Oxipng.
-	pub fn arc_set_oxipng(state: Arc<Mutex<CoreState>>, app: App) {
-		let c = state.lock().unwrap();
-		c.set_oxipng(app)
-	}
-
-	/// Pngout.
-	pub fn arc_set_pngout(state: Arc<Mutex<CoreState>>, app: App) {
-		let c = state.lock().unwrap();
-		c.set_pngout(app)
-	}
-
 	/// Total.
 	pub fn arc_set_total(state: Arc<Mutex<CoreState>>, total: usize) {
 		let c = state.lock().unwrap();
 		c.set_total(total)
-	}
-
-	/// Zopflipng.
-	pub fn arc_set_zopflipng(state: Arc<Mutex<CoreState>>, app: App) {
-		let c = state.lock().unwrap();
-		c.set_zopflipng(app)
 	}
 
 	/// Has Apps?
@@ -1026,6 +880,15 @@ impl<'de> Deserialize<'de> for CoreSettings {
 }
 
 impl CoreSettings {
+	// Quick apps.
+	core_settings_quick_apps!(jpegoptim);
+	core_settings_quick_apps!(mozjpeg);
+	core_settings_quick_apps!(oxipng);
+	core_settings_quick_apps!(pngout);
+	core_settings_quick_apps!(zopflipng);
+
+
+
 	// -----------------------------------------------------------------
 	// Construction
 	// -----------------------------------------------------------------
@@ -1065,31 +928,6 @@ impl CoreSettings {
 		self.level
 	}
 
-	/// Jpegoptim.
-	pub fn jpegoptim(&self) -> App {
-		self.jpegoptim.cloned()
-	}
-
-	/// MozJPEG.
-	pub fn mozjpeg(&self) -> App {
-		self.mozjpeg.cloned()
-	}
-
-	/// Oxipng.
-	pub fn oxipng(&self) -> App {
-		self.oxipng.cloned()
-	}
-
-	/// Pngout.
-	pub fn pngout(&self) -> App {
-		self.pngout.cloned()
-	}
-
-	/// Zopflipng.
-	pub fn zopflipng(&self) -> App {
-		self.zopflipng.cloned()
-	}
-
 
 
 	// -----------------------------------------------------------------
@@ -1109,46 +947,6 @@ impl CoreSettings {
 		}
 
 		self.level = level;
-	}
-
-	/// Jpegoptim.
-	pub fn set_jpegoptim(&mut self, app: App) {
-		self.jpegoptim = match app.is_jpegoptim() {
-			true => app,
-			false => App::None,
-		}
-	}
-
-	/// MozJPEG.
-	pub fn set_mozjpeg(&mut self, app: App) {
-		self.mozjpeg = match app.is_mozjpeg() {
-			true => app,
-			false => App::None,
-		}
-	}
-
-	/// Oxipng.
-	pub fn set_oxipng(&mut self, app: App) {
-		self.oxipng = match app.is_oxipng() {
-			true => app,
-			false => App::None,
-		}
-	}
-
-	/// Pngout.
-	pub fn set_pngout(&mut self, app: App) {
-		self.pngout = match app.is_pngout() {
-			true => app,
-			false => App::None,
-		}
-	}
-
-	/// Zopflipng.
-	pub fn set_zopflipng(&mut self, app: App) {
-		self.zopflipng = match app.is_zopflipng() {
-			true => app,
-			false => App::None,
-		}
 	}
 }
 
