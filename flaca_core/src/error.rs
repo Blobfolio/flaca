@@ -48,7 +48,6 @@ impl std::error::Error for Error {
 }
 
 impl fmt::Display for Error {
-	#[inline]
 	/// Display.
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.write_str(&self.as_string())

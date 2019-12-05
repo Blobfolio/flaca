@@ -26,7 +26,6 @@ pub enum ImageKind {
 }
 
 impl fmt::Display for ImageKind {
-	#[inline]
 	/// Display.
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "{}", match *self {
@@ -61,7 +60,6 @@ pub enum App {
 }
 
 impl fmt::Display for App {
-	#[inline]
 	/// Display.
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "{}", match *self {
