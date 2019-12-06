@@ -4,7 +4,7 @@
 
 use ansi_term::{Colour, Style};
 use crossbeam_channel::{Receiver, unbounded};
-use flaca_core::{CoreState, Error, Format, Alert, AlertKind};
+use flaca_core::{Alert, AlertKind, CoreState, Error, Format};
 use Format::FormatKind;
 use std::sync::{Arc, Mutex};
 use std::thread;
