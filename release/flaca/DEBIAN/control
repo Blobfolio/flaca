@@ -1,12 +1,12 @@
 Package: flaca
-Version: 1.0.2-1
+Version: 1.0.3-1
 Section: base
 Priority: optional
 Architecture: amd64
 Depends: libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8, jpegoptim, oxipng, pngout, mozjpeg, zopflipng
 Maintainer: Blobfolio LLC <hello@blobfolio.com>
 Homepage: https://github.com/Blobfolio/flaca
-Installed-Size: 1218920
+Installed-Size: 1202536
 Description: Brute-force Lossless Compression for JPEG and PNG
  Flaca is a CLI frontend written in Rust to aid the complex task of
  squeezing every last drop of space out of JPEG and PNG images —
