@@ -162,7 +162,9 @@ fn init_cli() -> (Core, Cli, Vec<PathBuf>) {
     Oxipng    <https://github.com/shssoichiro/oxipng>
     Pngout    <http://advsys.net/ken/utils.htm>
     Zopflipng <https://github.com/google/zopfli>
-		")
+
+GLOBAL CONFIGURATION:
+    /etc/flaca.yml")
 		.get_matches();
 
 	let settings: CoreSettings = init_settings(&args);
@@ -230,7 +232,7 @@ fn init_paths(args: &clap::ArgMatches) -> Vec<PathBuf> {
 	if args.is_present("file_list") {
 		// Pull from a file.
 		if let Some(raw) = args.value_of("INPUT") {
-			if let Ok(paths) = init_paths_from_file(raw) {
+			if let Ok(paths) = init_paths_from_file(&raw) {
 				return paths;
 			}
 		}
