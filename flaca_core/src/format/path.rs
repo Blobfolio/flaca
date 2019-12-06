@@ -312,6 +312,51 @@ where P: AsRef<Path> {
 // I/O Operations
 // ---------------------------------------------------------------------
 
+/// Copy File (Preserving Ownership, etc.)
+///
+/// This works just like `copy_file` except the ownership and
+/// permissions of the destination are left as were.
+///
+/// Obviously both paths must exist.
+pub fn copy_bytes<P1, P2> (from: P1, to: P2) -> Result<(), Error>
+where P1: AsRef<Path>, P2: AsRef<Path> {
+	// Both paths must exist and be files.
+	if false == from.as_ref().is_file() {
+		return Err(Error::InvalidPath(as_string(&from)));
+	}
+	else if false == to.as_ref().is_file() {
+		return Err(Error::InvalidPath(as_string(&to)));
+	}
+
+	use std::fs::File;
+	use std::fs::OpenOptions;
+	use std::io::{prelude::*, Seek, SeekFrom};
+
+	let mut data: Vec<u8> = Vec::with_capacity(file_size(&from));
+
+	{
+		// Read it to a buffer!
+		let mut f = File::open(&from)?;
+		f.read_to_end(&mut data)?;
+		f.flush()?;
+	}
+
+	{
+		// Now open the destination.
+		let mut out = OpenOptions::new()
+			.read(true)
+			.write(true)
+			.truncate(true)
+			.open(&to)?;
+
+		out.seek(SeekFrom::Start(0)).unwrap();
+		out.write_all(&data).unwrap();
+		out.flush()?;
+	}
+
+	Ok(())
+}
+
 /// Copy File.
 ///
 /// This will copy both a file and its ownership and permission
@@ -359,55 +404,31 @@ where P1: AsRef<Path>, P2: AsRef<Path> {
 	Ok(())
 }
 
-/// Copy File (Preserving Ownership, etc.)
+/// Working Copy File.
 ///
-/// This works just like `copy_file` except the ownership and
-/// permissions of the destination are left as were.
-///
-/// Obviously both paths must exist.
-pub fn copy_file_bytes<P1, P2> (from: P1, to: P2) -> Result<(), Error>
-where P1: AsRef<Path>, P2: AsRef<Path> {
-	// Both paths must exist and be files.
-	if false == from.as_ref().is_file() {
-		return Err(Error::InvalidPath(as_string(&from)));
-	}
-	else if false == to.as_ref().is_file() {
-		return Err(Error::InvalidPath(as_string(&to)));
+/// This method copies a path to a temporary location safe for
+/// future meddling. The temporary location is returned unless the
+/// operation failed, in which case an error is returned.
+pub fn copy_tmp<P> (path: P) -> Result<PathBuf, Error>
+where P: AsRef<Path> {
+	if false == path.as_ref().is_file() {
+		return Err(Error::InvalidPath(as_string(&path)));
 	}
 
-	if to.as_ref().exists() {
-		use std::fs::File;
-		use std::fs::OpenOptions;
-		use std::io::{prelude::*, Seek, SeekFrom};
+	// Build a destination path.
+	let mut to: PathBuf = env::temp_dir();
+	let stub: String = format!(
+		"flaca_{}_{}",
+		time::unixtime(),
+		strings::from_os_string(file_name(&path))
+	);
+	to.push(&stub);
+	to = as_unique_pathbuf(&to)?;
 
-		let mut data: Vec<u8> = Vec::with_capacity(file_size(&from));
-
-		{
-			// Read it to a buffer!
-			let mut f = File::open(&from)?;
-			f.read_to_end(&mut data)?;
-			f.flush()?;
-		}
-
-		{
-			// Now open the destination.
-			let mut out = OpenOptions::new()
-				.read(true)
-				.write(true)
-				.truncate(true)
-				.open(&to)?;
-
-			out.seek(SeekFrom::Start(0)).unwrap();
-			out.write_all(&data).unwrap();
-			out.flush()?;
-		}
-
-		return Ok(())
-	}
-
-	Ok(())
+	// Go ahead and copy it.
+	copy_file(&path, &to)?;
+	Ok(abs_pathbuf(&to))
 }
-
 
 /// Delete File.
 ///
@@ -460,6 +481,24 @@ where S: Into<OsString> {
 	None
 }
 
+/// Move File (Preserving Ownership, etc.)
+///
+/// This works just like move_file except the ownership and permissions
+/// of the destination are left as were.
+///
+/// Both source and destination must exist.
+pub fn move_bytes<P1, P2> (from: P1, to: P2) -> Result<(), Error>
+where P1: AsRef<Path>, P2: AsRef<Path> {
+	// Copy first.
+	copy_bytes(&from, &to)?;
+
+	// Remove the original.
+	delete_file(&from)?;
+
+	// We should be good!
+	Ok(())
+}
+
 /// Move File.
 ///
 /// For a little atomicity, this method will first copy the source
@@ -475,54 +514,6 @@ where P1: AsRef<Path>, P2: AsRef<Path> {
 
 	// We should be good!
 	Ok(())
-}
-
-/// Move File (Preserving Ownership, etc.)
-///
-/// This works just like move_file except the ownership and permissions
-/// of the destination are left as were.
-///
-/// Both source and destination must exist.
-pub fn move_file_bytes<P1, P2> (from: P1, to: P2) -> Result<(), Error>
-where P1: AsRef<Path>, P2: AsRef<Path> {
-	// Copy first.
-	copy_file_bytes(&from, &to)?;
-
-	// Remove the original.
-	delete_file(&from)?;
-
-	// We should be good!
-	Ok(())
-}
-
-/// Working Copy File.
-///
-/// This method copies a path to a temporary location safe for
-/// future meddling. The temporary location is returned unless the
-/// operation failed, in which case an error is returned.
-pub fn tmp_copy_file<P> (path: P) -> Result<PathBuf, Error>
-where P: AsRef<Path> {
-	if false == path.as_ref().is_file() {
-		return Err(Error::InvalidPath(as_string(&path)));
-	}
-
-	// Build a destination path.
-	let mut to: PathBuf = env::temp_dir();
-	let mut stub: OsString = OsStr::new(
-		&format!(
-			"flaca_{}_",
-			SystemTime::now().duration_since(UNIX_EPOCH)
-				.unwrap_or(Duration::new(5, 0))
-				.as_secs()
-		)
-	).to_os_string();
-	stub.push(file_name(&path));
-	to.push(&stub);
-	to = as_unique_pathbuf(&to)?;
-
-	// Go ahead and copy it.
-	copy_file(&path, &to)?;
-	Ok(abs_pathbuf(&to))
 }
 
 /// Recursive Image Walker.
@@ -855,19 +846,19 @@ mod tests {
 	/// * copy_file()
 	/// * delete_file()
 	/// * move_file()
-	/// * tmp_copy_file()
+	/// * copy_tmp()
 	fn test_io_ops() {
 		// Start with a valid JPEG.
 		let path = PathBuf::from("./tests/assets/01.jpg");
 		assert!(is_image(&path, false));
 
 		// Make a temporary copy.
-		let path2 = tmp_copy_file(&path).expect("Failed creating temporary copy.");
+		let path2 = copy_tmp(&path).expect("Failed creating temporary copy.");
 		assert!(is_image(&path2, false));
 		assert_ne!(&path2, &path);
 
 		// Make another temporary copy.
-		let path3 = tmp_copy_file(&path).expect("Failed creating temporary copy.");
+		let path3 = copy_tmp(&path).expect("Failed creating temporary copy.");
 		assert!(is_image(&path3, false));
 		assert_ne!(&path3, &path);
 		assert_ne!(&path3, &path2);
@@ -889,7 +880,7 @@ mod tests {
 		assert_eq!(path4.is_file(), true);
 
 		// Now let's try moving just the bytes.
-		assert!(move_file_bytes(&path4, &path2).is_ok());
+		assert!(move_bytes(&path4, &path2).is_ok());
 		assert_eq!(path4.is_file(), false);
 		assert_eq!(path2.is_file(), true);
 

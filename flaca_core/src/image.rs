@@ -297,7 +297,7 @@ impl App {
 		let start_size: usize = format::path::file_size(&path);
 
 		// We need to make a working copy.
-		let working = format::path::tmp_copy_file(&path)?;
+		let working = format::path::copy_tmp(&path)?;
 
 		// Some programs want to write changes to a third location, so
 		// let's give them somewhere to do it.
@@ -368,7 +368,7 @@ impl App {
 
 		// If we have a smaller file, replace it.
 		if end_size < start_size {
-			format::path::move_file_bytes(&working, &path)?;
+			format::path::move_bytes(&working, &path)?;
 		}
 		// Clean up is needed.
 		else if working.is_file() {
@@ -582,7 +582,7 @@ mod tests {
 			assert_eq!(app.slug(), *slug);
 
 			// Make a copy of the image for testing purposes.
-			let image: PathBuf = format::path::tmp_copy_file(&jpg)
+			let image: PathBuf = format::path::copy_tmp(&jpg)
 				.expect("Could not copy image file.");
 			assert!(format::path::is_image_kind(&image, ImageKind::Jpeg));
 
@@ -632,7 +632,7 @@ mod tests {
 			assert_eq!(app.slug(), *slug);
 
 			// Make a copy of the image for testing purposes.
-			let image: PathBuf = format::path::tmp_copy_file(&png)
+			let image: PathBuf = format::path::copy_tmp(&png)
 				.expect("Could not copy image file.");
 			assert!(format::path::is_image_kind(&image, ImageKind::Png));
 

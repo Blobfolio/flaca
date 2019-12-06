@@ -273,7 +273,7 @@ impl Core {
 		// For dry runs, just clone the image to a new location and mess
 		// with that.
 		let path: PathBuf = match dry_run {
-			true => format::path::tmp_copy_file(&path)?,
+			true => format::path::copy_tmp(&path)?,
 			false => path.as_ref().to_path_buf(),
 		};
 
