@@ -6,7 +6,7 @@ use crate::error::Error;
 use crate::format;
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -194,14 +194,14 @@ impl App {
 	///
 	/// Return the "normal" application file name for this App.
 	pub fn slug(&self) -> OsString {
-		OsStr::new(match *self {
+		format::strings::to_os_string(match *self {
 			Self::Jpegoptim(_) => "jpegoptim",
 			Self::Mozjpeg(_) => "jpegtran",
 			Self::Oxipng(_) => "oxipng",
 			Self::Pngout(_) => "pngout",
 			Self::Zopflipng(_) => "zopflipng",
 			_ => "",
-		}).to_os_string()
+		})
 	}
 
 

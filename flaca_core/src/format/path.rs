@@ -3,15 +3,15 @@
 */
 
 use crate::error::Error;
+use crate::format::strings;
+use crate::format::time;
 use crate::image::ImageKind;
-use nix::unistd::{self, Uid, Gid};
 use rayon::prelude::*;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use walkdir::WalkDir;
 
 
@@ -41,11 +41,9 @@ where P: AsRef<Path> {
 /// This returns the full path as a proper String.
 pub fn as_string<P> (path: P) -> String
 where P: AsRef<Path> {
-	abs_pathbuf(path)
-		.into_os_string()
-		.to_str()
-		.unwrap_or("")
-		.to_string()
+	strings::from_os_string(
+		abs_pathbuf(path).into_os_string()
+	)
 }
 
 /// Unique File Path.
@@ -72,20 +70,23 @@ where P: AsRef<Path> {
 	let name: OsString = file_name(&path);
 
 	// If what we have is unique already, we're done!
-	let mut proposed = dir.clone();
-	proposed.push(&name);
+	let proposed = set_file_name(&dir, &name);
 	if false == proposed.exists() {
-		return Ok(abs_pathbuf(&proposed));
+		return Ok(proposed);
 	}
 
 	// Let's add some uniqueness.
 	for i in 0..99 {
-		let mut alt_name = OsStr::new(&format!("{}--", i)).to_os_string();
-		alt_name.push(&name);
-		proposed = dir.clone();
-		proposed.push(alt_name);
-		if false == proposed.exists() {
-			return Ok(abs_pathbuf(&proposed));
+		let alt_path = set_file_name(
+			&dir,
+			format!(
+				"{}--{}",
+				i,
+				strings::from_os_string(&name)
+			)
+		);
+		if false == alt_path.exists() {
+			return Ok(alt_path);
 		}
 	}
 
@@ -106,19 +107,14 @@ pub fn file_extension<P> (path: P) -> OsString
 where P: AsRef<Path> {
 	// Directories have no extension.
 	if true == path.as_ref().is_dir() {
-		return OsStr::new("").to_os_string();
+		return strings::to_os_string("");
 	}
 
 	match path.as_ref().extension() {
-		Some(ext) => {
-			let ext: String = ext.to_str()
-				.unwrap_or("")
-				.to_string()
-				.to_lowercase();
-
-			OsStr::new(&ext).to_os_string()
-		},
-		_ => OsStr::new("").to_os_string(),
+		Some(ext) => strings::to_os_string(
+			strings::from_os_string(ext).to_lowercase()
+		),
+		_ => strings::to_os_string(""),
 	}
 }
 
@@ -130,7 +126,7 @@ pub fn file_name<P> (path: P) -> OsString
 where P: AsRef<Path> {
 	// This doesn't count for directories.
 	if path.as_ref().is_dir() {
-		return OsStr::new("").to_os_string();
+		return strings::to_os_string("");
 	}
 
 	path.as_ref()
@@ -196,23 +192,13 @@ where P: AsRef<Path> {
 
 	// Look deeper if we need to.
 	match quick {
-		true => {
-			// Check the file extension first.
-			let ext: String = file_extension(&path)
-				.to_str()
-				.unwrap_or("")
-				.to_string();
-
-			if "png" == ext {
-				ImageKind::Png
-			}
-			else if "jpg" == ext || "jpeg" == ext {
-				ImageKind::Jpeg
-			}
-			else {
-				ImageKind::None
-			}
-		}
+		// Quick Mode: Trust the file extension.
+		true => match file_extension(&path.as_ref().to_path_buf()).to_str().unwrap_or("") {
+			"png" => ImageKind::Png,
+			"jpg" | "jpeg" => ImageKind::Jpeg,
+			_ => ImageKind::None,
+		},
+		// Better Mode: Look at the Magic Headers.
 		false => match imghdr::from_file(&path) {
 			Ok(Some(imghdr::Type::Png)) => ImageKind::Png,
 			Ok(Some(imghdr::Type::Jpeg)) => ImageKind::Jpeg,
@@ -242,6 +228,21 @@ pub fn saved(before: usize, after: usize) -> usize {
 	}
 }
 
+/// Set File Name.
+///
+/// This will push a name on top of a directory path, or use
+/// `::set_file_name` if the destination does not exist.
+pub fn set_file_name<P, S> (path: P, name: S) -> PathBuf
+where P: AsRef<Path>, S: Into<OsString> {
+	let mut path: PathBuf = abs_pathbuf(&path);
+	match path.is_dir() {
+		true => path.push(name.into()),
+		false => path.set_file_name(name.into()),
+	}
+
+	path
+}
+
 
 
 // ---------------------------------------------------------------------
@@ -264,14 +265,8 @@ where P: AsRef<Path>, S: Into<OsString> {
 			return true;
 		}
 
-		return
-			ext.to_str()
-				.unwrap_or("")
-				.to_string()
-				.to_lowercase() ==
-			real.to_str()
-				.unwrap_or("")
-				.to_string();
+		// Change the case and try again.
+		return strings::to_os_string(strings::from_os_string(ext).to_lowercase()) == real;
 	}
 
 	false
@@ -390,6 +385,8 @@ where P1: AsRef<Path>, P2: AsRef<Path> {
 
 	// Make sure the permissions and ownership are correct.
 	if let Ok(meta) = from.as_ref().metadata() {
+		use nix::unistd::{self, Uid, Gid};
+
 		// Permissions are easy.
 		if let Err(_) = fs::set_permissions(&path, meta.permissions()) {};
 
@@ -470,11 +467,9 @@ where S: Into<OsString> {
 
 	let name = name.into();
 	for dir in EXECUTABLE_DIRS.as_slice() {
-		let mut path = dir.clone();
-		path.push(&name);
-
+		let path = set_file_name(&dir, &name);
 		if is_executable(&path) {
-			return Some(abs_pathbuf(&path));
+			return Some(path);
 		}
 	}
 

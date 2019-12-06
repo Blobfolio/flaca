@@ -3,7 +3,7 @@
 */
 
 use crate::format::{FormatKind, grammar};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 
 
@@ -58,6 +58,13 @@ pub fn human_elapsed(time: Instant, format: FormatKind) -> String {
 		0 => "0 seconds".to_string(),
 		_ => joined
 	}
+}
+
+/// Unix Time.
+pub fn unixtime() -> usize {
+	SystemTime::now().duration_since(UNIX_EPOCH)
+		.unwrap_or(Duration::new(5, 0))
+		.as_secs() as usize
 }
 
 
