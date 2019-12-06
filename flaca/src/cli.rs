@@ -1,5 +1,5 @@
 /*!
-# Display
+# CLI
 */
 
 use ansi_term::{Colour, Style};
@@ -13,10 +13,195 @@ use std::time::{Duration, Instant};
 
 
 
+/// Alert Formatting.
+pub trait CliAlert {
+	/// Format Alert.
+	fn cli_alert(&self) -> String;
+
+	/// Format Date.
+	fn cli_date(&self, old: bool) -> String;
+
+	/// Format Old Alert.
+	fn cli_old_alert(&self) -> String;
+
+	/// Format Alert Prefix.
+	fn cli_prefix(&self) -> String;
+}
+
+impl CliAlert for Alert {
+	/// Format Alert.
+	fn cli_alert(&self) -> String {
+		// This is pretty terrible. Haha. Let's start by gathering the
+		// individual pieces and counting up their lengths.
+		let prefix: String = self.cli_prefix();
+		let prefix_len: usize = Cli::stripped_len(&prefix);
+
+		let mut msg: String = self.msg();
+		let mut msg_len: usize = Cli::stripped_len(&msg);
+
+		let mut path: String = match self.path() {
+			Some(ref p) => p.flaca_to_string(),
+			None => "".to_string(),
+		};
+		let path_len: usize = Cli::stripped_len(&path);
+
+		let date: String = self.cli_date(false);
+		let date_len: usize = date.len();
+
+		// Now let's do a lot of width-related calculations!
+		let total_len: usize = Cli::width() - 5;
+
+		// If the output is too long not considering the path, we'll
+		// trim the message and call it a day. Note the magic number is
+		// two for minimum spacing before the date, and 20 for a cap on
+		// how small a space a path can be usefully shoved into.
+		if total_len <= prefix_len + msg_len + date_len + 22 {
+			// Shorten the message?
+			if total_len <= prefix_len + msg_len + date_len + 2 {
+				msg = Format::strings::shorten_right(
+					&msg,
+					total_len - prefix_len - date_len - 2
+				);
+				msg_len = Cli::stripped_len(&msg);
+			}
+
+			format!(
+				"{}{}{}",
+				&prefix,
+				&msg,
+				Style::new().dimmed().paint(Format::strings::pad_left(
+					&date,
+					total_len - prefix_len - msg_len,
+					b' '
+				))
+			)
+		}
+		// Otherwise we can print with the path.
+		else {
+			// Shorten the path?
+			if total_len <= prefix_len + msg_len + path_len + date_len + 4 {
+				path = Format::strings::shorten_left(
+					&path,
+					total_len - prefix_len - msg_len - date_len - 4
+				);
+			}
+
+			format!(
+				"{}{}  {}  {}",
+				&prefix,
+				&msg,
+				Colour::Cyan.bold().paint(
+					Format::strings::pad_left(
+						&path,
+						total_len - prefix_len - msg_len - date_len - 4,
+						b' '
+					)
+				),
+				Style::new().dimmed().paint(&date)
+			)
+		}
+	}
+
+	/// Format Alert Date.
+	fn cli_date(&self, old: bool) -> String {
+		format!(
+			"{}",
+			match old {
+				true => self.date().format("%F %T"),
+				false => self.date().format("%T"),
+			}
+		).to_string()
+	}
+
+	/// Format Old Alert.
+	///
+	/// We have a different display style for older records.
+	fn cli_old_alert(&self) -> String {
+		let prefix: String = Cli::strip_styles(self.kind().prefix());
+		let prefix_len: usize = Cli::stripped_len(&prefix);
+
+		let mut msg: String = Cli::strip_styles(self.msg());
+		let msg_len: usize = Cli::stripped_len(&msg);
+
+		let date: String = Cli::strip_styles(self.cli_date(true));
+		let date_len: usize = date.len();
+
+		// Now let's do a lot of width-related calculations!
+		let total_len: usize = Cli::width() - 5;
+
+		// We might need to chop the message.
+		if total_len <= prefix_len + msg_len + date_len + 3 {
+			msg = Format::strings::shorten_right(
+				&msg,
+				total_len - prefix_len - date_len - 3
+			);
+		}
+
+		let line1 = format!(
+			"[{}] {}{}",
+			Colour::Purple.bold().paint(&date),
+			Style::new().paint(&prefix),
+			Style::new().dimmed().paint(&msg),
+		);
+
+		// The path, if any, will be moved to a new line.
+		let mut path: String = match self.path() {
+			Some(ref p) => p.flaca_to_string(),
+			None => return line1,
+		};
+		let path_len: usize = Cli::stripped_len(&path);
+
+		// Shorten the path?
+		if total_len <= 6 + path_len {
+			path = Format::strings::shorten_left(
+				&path,
+				total_len - 6
+			);
+		}
+
+		// Glue them together!
+		format!(
+			"{}\n  ↳ {}",
+			line1,
+			Style::new().dimmed().paint(&path)
+		)
+	}
+
+	/// Format Alert Prefix.
+	fn cli_prefix(&self) -> String {
+		let kind: AlertKind = self.kind();
+		match kind {
+			// Debug and log notices are purple.
+			AlertKind::Debug | AlertKind::Notice => format!(
+				"{}",
+				Colour::Purple.bold().paint(kind.prefix())
+			),
+			// Success is green.
+			AlertKind::Success => format!(
+				"{}",
+				Colour::Green.bold().paint(kind.prefix())
+			),
+			// Warning is yellow.
+			AlertKind::Warning => format!(
+				"{}",
+				Colour::Yellow.bold().paint(kind.prefix())
+			),
+			// Errors are red.
+			AlertKind::Error => format!(
+				"{}",
+				Colour::Red.bold().paint(kind.prefix())
+			),
+			// Pass-through messages have no prefix.
+			AlertKind::Other => "".to_string(),
+		}
+	}
+}
+
+
 
 #[derive(Debug, Clone)]
 /// A Display.
-pub struct Display {
+pub struct Cli {
 	/// The state.
 	state: Arc<Mutex<CoreState>>,
 	/// The starting time.
@@ -29,18 +214,18 @@ pub struct Display {
 	tock: String,
 }
 
-impl Display {
+impl Cli {
 	// -----------------------------------------------------------------
 	// Construction
 	// -----------------------------------------------------------------
 
 	/// New.
-	pub fn new(state: Arc<Mutex<CoreState>>) -> Display {
+	pub fn new(state: Arc<Mutex<CoreState>>) -> Cli {
 		// Open a new channel.
 		let (tx, rx) = unbounded();
 		CoreState::arc_open_channel(state.clone(), tx.clone());
 
-		Display {
+		Cli {
 			state: state.clone(),
 			time: Instant::now(),
 			last: None,
@@ -131,16 +316,9 @@ impl Display {
 		// Erase the bar at the end to declare ourselves done!
 		print!("{}", ansi_escapes::EraseLines(5));
 		if let Some(last) = self.last.as_ref() {
-			println!(
-				"{}\n{}\n{}",
-				Colour::Cyan.dimmed().paint(
-					Format::strings::pad_left("", Display::width() - 5, b'-')
-				),
-				Display::format_log_entry(last.clone()),
-				Colour::Cyan.dimmed().paint(
-					Format::strings::pad_left("", Display::width() - 5, b'-')
-				),
-			);
+			Cli::print_divider(true);
+			println!("{}", last.cli_alert());
+			Cli::print_divider(true);
 		}
 	}
 
@@ -167,15 +345,15 @@ impl Display {
 			print!("{}", ansi_escapes::EraseLines(5));
 
 			// Re-print the old line with dimmed styles.
-			println!("{}", Display::format_old_log_entry(old));
+			println!("{}", old.cli_old_alert());
 
 			// Give us a little separator bar.
-			Display::print_divider();
+			Cli::print_divider(false);
 		}
 
 		// Print the entry.
-		println!("{}", Display::format_log_entry(entry));
-		Display::print_divider();
+		println!("{}", entry.cli_alert());
+		Cli::print_divider(false);
 		println!("");
 
 		// Send to the printer.
@@ -193,16 +371,18 @@ impl Display {
 		let (ref done, ref total) = CoreState::arc_progress(self.state.clone());
 
 		print!("{}", ansi_escapes::EraseLines(2));
-		println!("{}", Display::format_bar(*done, *total, self.tock.clone()));
+		println!("{}", Cli::format_bar(*done, *total, self.tock.clone()));
 	}
 
 	/// Print Divider.
-	fn print_divider() {
+	fn print_divider(color: bool) {
+		let divider: String = Format::strings::pad_left("", Cli::width() - 5, b'-');
 		println!(
 			"{}",
-			Style::new().dimmed().paint(
-				Format::strings::pad_left("", Display::width() - 5, b'-')
-			)
+			match color {
+				true => Colour::Cyan.dimmed().paint(divider),
+				false => Style::new().dimmed().paint(divider),
+			}
 		);
 	}
 
@@ -263,185 +443,20 @@ impl Display {
 	// -----------------------------------------------------------------
 
 	/// Strip Styles
-	fn strip_styles<S> (text: S) -> String
+	pub fn strip_styles<S> (text: S) -> String
 	where S: Into<String> {
 		let text = text.into();
 		let stripped = strip_ansi_escapes::strip(text).unwrap_or(Vec::new());
 		std::str::from_utf8(&stripped).unwrap_or("").to_string()
 	}
 
-	/// Format Alert.
-	fn format_log_entry(entry: Alert) -> String {
-		// This is pretty terrible. Haha. Let's start by gathering the
-		// individual pieces and counting up their lengths.
-		let prefix: String = Display::format_log_entry_prefix(entry.kind());
-		let prefix_len: usize = Display::format_len(&prefix);
-
-		let mut msg: String = entry.msg();
-		let mut msg_len: usize = Display::format_len(&msg);
-
-		let mut path: String = match entry.path() {
-			Some(ref p) => p.flaca_to_string(),
-			None => "".to_string(),
-		};
-		let path_len: usize = Display::format_len(&path);
-
-		let date: String = Display::format_log_entry_date(&entry);
-		let date_len: usize = date.len();
-
-		// Now let's do a lot of width-related calculations!
-		let total_len: usize = Display::width() - 5;
-
-		// If the output is too long not considering the path, we'll
-		// trim the message and call it a day. Note the magic number is
-		// two for minimum spacing before the date, and 20 for a cap on
-		// how small a space a path can be usefully shoved into.
-		if total_len <= prefix_len + msg_len + date_len + 22 {
-			// Shorten the message?
-			if total_len <= prefix_len + msg_len + date_len + 2 {
-				msg = Format::strings::shorten_right(
-					&msg,
-					total_len - prefix_len - date_len - 2
-				);
-				msg_len = Display::format_len(&msg);
-			}
-
-			format!(
-				"{}{}{}",
-				&prefix,
-				&msg,
-				Style::new().dimmed().paint(Format::strings::pad_left(
-					&date,
-					total_len - prefix_len - msg_len,
-					b' '
-				))
-			)
-		}
-		// Otherwise we can print with the path.
-		else {
-			// Shorten the path?
-			if total_len <= prefix_len + msg_len + path_len + date_len + 4 {
-				path = Format::strings::shorten_left(
-					&path,
-					total_len - prefix_len - msg_len - date_len - 4
-				);
-			}
-
-			format!(
-				"{}{}  {}  {}",
-				&prefix,
-				&msg,
-				Colour::Cyan.bold().paint(
-					Format::strings::pad_left(
-						&path,
-						total_len - prefix_len - msg_len - date_len - 4,
-						b' '
-					)
-				),
-				Style::new().dimmed().paint(&date)
-			)
-		}
-	}
-
-	/// Format Alert Prefix.
-	fn format_log_entry_prefix(kind: AlertKind) -> String {
-		match kind {
-			// Debug and log notices are purple.
-			AlertKind::Debug | AlertKind::Notice => format!(
-				"{}",
-				Colour::Purple.bold().paint(kind.prefix())
-			),
-			// Success is green.
-			AlertKind::Success => format!(
-				"{}",
-				Colour::Green.bold().paint(kind.prefix())
-			),
-			// Warning is yellow.
-			AlertKind::Warning => format!(
-				"{}",
-				Colour::Yellow.bold().paint(kind.prefix())
-			),
-			// Errors are red.
-			AlertKind::Error => format!(
-				"{}",
-				Colour::Red.bold().paint(kind.prefix())
-			),
-			// Pass-through messages have no prefix.
-			AlertKind::Other => "".to_string(),
-		}
-	}
-
-	/// Format Alert Date.
-	fn format_log_entry_date(entry: &Alert) -> String {
-		format!("{}", entry.date().format("%T")).trim().to_string()
-	}
-
-	/// Format Alert Date.
-	fn format_old_log_entry_date(entry: &Alert) -> String {
-		format!("{}", entry.date().format("%F %T")).trim().to_string()
-	}
-
-	/// Format Old Alert.
-	///
-	/// We have a different display style for older records.
-	fn format_old_log_entry(entry: Alert) -> String {
-		let prefix: String = Display::strip_styles(entry.kind().prefix());
-		let prefix_len: usize = Display::format_len(&prefix);
-
-		let mut msg: String = Display::strip_styles(entry.msg());
-		let msg_len: usize = Display::format_len(&msg);
-
-		let date: String = Display::strip_styles(Display::format_old_log_entry_date(&entry));
-		let date_len: usize = date.len();
-
-		// Now let's do a lot of width-related calculations!
-		let total_len: usize = Display::width() - 5;
-
-		// We might need to chop the message.
-		if total_len <= prefix_len + msg_len + date_len + 3 {
-			msg = Format::strings::shorten_right(
-				&msg,
-				total_len - prefix_len - date_len - 3
-			);
-		}
-
-		let line1 = format!(
-			"[{}] {}{}",
-			Colour::Purple.bold().paint(&date),
-			Style::new().paint(&prefix),
-			Style::new().dimmed().paint(&msg),
-		);
-
-		// The path, if any, will be moved to a new line.
-		let mut path: String = match entry.path() {
-			Some(ref p) => p.flaca_to_string(),
-			None => return line1,
-		};
-		let path_len: usize = Display::format_len(&path);
-
-		// Shorten the path?
-		if total_len <= 6 + path_len {
-			path = Format::strings::shorten_left(
-				&path,
-				total_len - 6
-			);
-		}
-
-		// Glue them together!
-		format!(
-			"{}\n  ↳ {}",
-			line1,
-			Style::new().dimmed().paint(&path)
-		)
-	}
-
 	/// Format Length.
 	///
 	/// This calculates the length of a string minus any ANSI escapes
 	/// that might be taking up "space".
-	fn format_len<S> (text: S) -> usize
+	pub fn stripped_len<S> (text: S) -> usize
 	where S: Into<String> {
-		let stripped: String = Display::strip_styles(text.into());
+		let stripped: String = Cli::strip_styles(text.into());
 		stripped.chars().count()
 	}
 
@@ -459,7 +474,7 @@ impl Display {
 			Colour::Cyan.bold().paint(format!("{}", done)),
 			Colour::Cyan.dimmed().paint(format!("{}", total)),
 		);
-		let progress_num_len: usize = Display::format_len(&progress_num);
+		let progress_num_len: usize = Cli::stripped_len(&progress_num);
 
 		// The numbers as a percentage.
 		let progress_percent: String = format!(
@@ -469,7 +484,7 @@ impl Display {
 		let progress_percent_len: usize = 4;
 
 		// How much space do we have?
-		let total_len: usize = Display::width() - 5;
+		let total_len: usize = Cli::width() - 5;
 		// Brackets around [elapsed], plus two spaces on either side of
 		// the bar, and two spaces between the progress numbers.
 		let space_len: usize = 2 + 2 + 2 + 2;
@@ -518,19 +533,19 @@ impl Display {
 	// -----------------------------------------------------------------
 
 	/// Print Error and Exit.
-	pub fn arc_die(display: Arc<Mutex<Display>>, error: Error) {
+	pub fn arc_die(display: Arc<Mutex<Cli>>, error: Error) {
 		let d = display.lock().unwrap();
 		d.die(error)
 	}
 
 	/// Reset.
-	pub fn arc_reset(display: Arc<Mutex<Display>>) {
+	pub fn arc_reset(display: Arc<Mutex<Cli>>) {
 		let mut d = display.lock().unwrap();
 		d.reset();
 	}
 
 	/// Watch.
-	pub fn arc_watch(display: Arc<Mutex<Display>>) {
+	pub fn arc_watch(display: Arc<Mutex<Cli>>) {
 		let mut d = display.lock().unwrap();
 		d.watch();
 	}

@@ -44,9 +44,9 @@ extern crate term_size;
 
 
 
-mod display;
+mod cli;
 
-use crate::display::Display;
+use crate::cli::Cli;
 use flaca_core::{App, Core, CoreSettings, CoreState, Error};
 use flaca_core::paths::PathProps;
 use std::fs::File;
@@ -63,24 +63,24 @@ fn main() -> Result<(), String> {
 
 	// No paths?
 	if paths.is_empty() {
-		Display::arc_die(arc_display.clone(), Error::NoImages);
+		Cli::arc_die(arc_display.clone(), Error::NoImages);
 	}
 	// Double-dipping somehow?
 	else if CoreState::arc_is_running(arc_state.clone()) {
-		Display::arc_die(arc_display.clone(), Error::DoubleRun);
+		Cli::arc_die(arc_display.clone(), Error::DoubleRun);
 	}
 
 	// Push the display into its own thread.
-	Display::arc_reset(arc_display.clone());
+	Cli::arc_reset(arc_display.clone());
 	let arc_display2 = arc_display.clone();
 
-	let display_handle = || Display::arc_watch(arc_display2.clone());
+	let display_handle = || Cli::arc_watch(arc_display2.clone());
 	let core_handle = || core.run(&paths);
 	let (_, core_result) = rayon::join(display_handle, core_handle);
 
 	// In the meantime, let's process our images!
 	if let Err(e) = core_result {
-		Display::arc_die(arc_display.clone(), e);
+		Cli::arc_die(arc_display.clone(), e);
 	}
 
 	Ok(())
@@ -90,7 +90,7 @@ fn main() -> Result<(), String> {
 ///
 /// This is really 99% of the application; we're just shoving it here to
 /// keep `main()` somewhat readable.
-fn init_cli() -> (Core, Display, Vec<PathBuf>) {
+fn init_cli() -> (Core, Cli, Vec<PathBuf>) {
 	// Initialize Clap first.
 	let args: clap::ArgMatches = clap::App::new("Flaca")
 		.version(env!("CARGO_PKG_VERSION"))
@@ -167,7 +167,7 @@ fn init_cli() -> (Core, Display, Vec<PathBuf>) {
 
 	let settings: CoreSettings = init_settings(&args);
 	let core: Core = Core::new(settings);
-	let display: Display = Display::new(core.state());
+	let display: Cli = Cli::new(core.state());
 	let paths: Vec<PathBuf> = init_paths(&args);
 
 	(core, display, paths)
