@@ -2,26 +2,17 @@
 # Formatting Helpers: Files
 */
 
-use crate::error::Error;
 use crate::paths::{PathDisplay, PathProps};
-use rayon::prelude::*;
 use std::env;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
+
 
 
 
 // ---------------------------------------------------------------------
 // Getters
 // ---------------------------------------------------------------------
-
-/// Sum File Sizes
-pub fn file_sizes(paths: &Vec<PathBuf>) -> usize {
-	paths.par_iter()
-		.map(|ref x| x.flaca_file_size())
-		.sum()
-}
 
 /// Human-Readable Size.
 ///
@@ -98,68 +89,13 @@ where S: Into<OsString> {
 	None
 }
 
-/// Recursive Image Walker.
-pub fn walk(paths: &Vec<PathBuf>) -> Result<Vec<PathBuf>, Error> {
-	// Early abort if there are no paths.
-	if true == paths.is_empty() {
-		return Err(Error::NoImages);
-	}
-
-	// Hold the results.
-	let mut out: Vec<PathBuf> = Vec::new();
-
-	// Loop and walk.
-	for path in paths.as_parallel_slice() {
-		// Recurse.
-		if path.is_dir() {
-			// Walk the directory.
-			let walked: Vec<PathBuf> = WalkDir::new(path.flaca_to_abs_pathbuf())
-				.follow_links(true)
-				.into_iter()
-				.filter_map(|x| match x {
-					Ok(path) => {
-						let path = path.path();
-						match path.flaca_is_image(true) {
-							true => Some(path.flaca_to_abs_pathbuf()),
-							false => None,
-						}
-					},
-					_ => None,
-				})
-				.collect();
-
-			if false == walked.is_empty() {
-				out.par_extend(walked);
-			}
-		}
-		// It's just a file.
-		else if path.flaca_is_image(true) {
-			out.push(path.flaca_to_abs_pathbuf());
-		}
-	}
-
-	// If we didn't turn anything up, we're done.
-	if out.is_empty() {
-		return Err(Error::NoImages);
-	}
-	// If there is more than one result, let's make sure the list is
-	// sorted and deduplicated.
-	else if 1 < out.len() {
-		out.par_sort();
-		out.dedup();
-	}
-
-	// Done!
-	Ok(out)
-}
-
 
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::image::ImageKind;
-	use crate::paths::PathIO;
+	use crate::paths::{PathIO, PathVec};
 
 
 
@@ -259,7 +195,7 @@ mod tests {
 
 		// Let's also make sure the file_sizes() method works.
 		assert_eq!(
-			file_sizes(&vec![PathBuf::from("./tests/assets/01.jpg"), PathBuf::from("./tests/assets/01.png")]),
+			vec![PathBuf::from("./tests/assets/01.jpg"), PathBuf::from("./tests/assets/01.png")].flaca_file_sizes(),
 			386663 + 211427
 		);
 	}
@@ -480,13 +416,13 @@ mod tests {
 	fn test_walk() {
 		// Pull test images.
 		let raw = vec![PathBuf::from("./tests")];
-		let paths = walk(&raw);
+		let paths = raw.flaca_walk();
 		assert!(paths.is_ok());
 		assert_eq!(paths.unwrap().len(), 13);
 
 		// Try running against a directory with no images.
 		let raw = vec![PathBuf::from("./src")];
-		let paths = walk(&raw);
+		let paths = raw.flaca_walk();
 		assert!(paths.is_err());
 
 		// Try with some direct image paths, including an invalid one
@@ -498,7 +434,7 @@ mod tests {
 			PathBuf::from("./tests/assets/03.jpg"),
 			PathBuf::from("./tests/assets/03.jpg"),
 		];
-		let paths = walk(&raw);
+		let paths = raw.flaca_walk();
 		assert!(paths.is_ok());
 		assert_eq!(paths.unwrap().len(), 3);
 
@@ -510,7 +446,7 @@ mod tests {
 			PathBuf::from("./tests/assets"),
 			PathBuf::from("./tests"),
 		];
-		let paths = walk(&raw);
+		let paths = raw.flaca_walk();
 		assert!(paths.is_ok());
 		assert_eq!(paths.unwrap().len(), 13);
 	}

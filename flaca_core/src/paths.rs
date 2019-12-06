@@ -6,11 +6,13 @@ use crate::error::Error;
 use crate::format::strings;
 use crate::format::time;
 use crate::image::ImageKind;
+use rayon::prelude::*;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
 
 
 
@@ -82,6 +84,17 @@ pub trait PathIO {
 
 	/// Move File.
 	fn flaca_move_file<P> (&self, to: P) -> Result<(), Error> where P: AsRef<Path>;
+}
+
+
+
+/// Vec Helpers.
+pub trait PathVec {
+	/// Total File Size.
+	fn flaca_file_sizes(&self) -> usize;
+
+	/// Recursive Image Walker.
+	fn flaca_walk(&self) -> Result<Vec<PathBuf>, Error>;
 }
 
 
@@ -474,5 +487,71 @@ impl PathIO for Path {
 
 		// We should be good!
 		Ok(())
+	}
+}
+
+
+
+impl PathVec for Vec<PathBuf> {
+	/// Sum File Sizes
+	fn flaca_file_sizes(&self) -> usize {
+		self.par_iter()
+			.map(|ref x| x.flaca_file_size())
+			.sum()
+	}
+
+	/// Recursive Image Walker.
+	fn flaca_walk(&self) -> Result<Vec<PathBuf>, Error> {
+		// Early abort if there are no paths.
+		if true == self.is_empty() {
+			return Err(Error::NoImages);
+		}
+
+		// Hold the results.
+		let mut out: Vec<PathBuf> = Vec::new();
+
+		// Loop and walk.
+		for path in self.as_parallel_slice() {
+			// Recurse.
+			if path.is_dir() {
+				// Walk the directory.
+				let walked: Vec<PathBuf> = WalkDir::new(path.flaca_to_abs_pathbuf())
+					.follow_links(true)
+					.into_iter()
+					.filter_map(|x| match x {
+						Ok(path) => {
+							let path = path.path();
+							match path.flaca_is_image(true) {
+								true => Some(path.flaca_to_abs_pathbuf()),
+								false => None,
+							}
+						},
+						_ => None,
+					})
+					.collect();
+
+				if false == walked.is_empty() {
+					out.par_extend(walked);
+				}
+			}
+			// It's just a file.
+			else if path.flaca_is_image(true) {
+				out.push(path.flaca_to_abs_pathbuf());
+			}
+		}
+
+		// If we didn't turn anything up, we're done.
+		if out.is_empty() {
+			return Err(Error::NoImages);
+		}
+		// If there is more than one result, let's make sure the list is
+		// sorted and deduplicated.
+		else if 1 < out.len() {
+			out.par_sort();
+			out.dedup();
+		}
+
+		// Done!
+		Ok(out)
 	}
 }

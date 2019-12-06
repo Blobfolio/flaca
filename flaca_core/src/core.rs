@@ -6,7 +6,7 @@ use crate::alert::{Alert, AlertKind};
 use crate::error::Error;
 use crate::format;
 use crate::image::{App, ImageKind};
-use crate::paths::{PathDisplay, PathIO, PathProps};
+use crate::paths::{PathDisplay, PathIO, PathProps, PathVec};
 use crate::timer::Timer;
 use crossbeam_channel::Sender;
 use serde::de::{Deserialize, Deserializer, Visitor, MapAccess};
@@ -83,7 +83,7 @@ impl Core {
 		let pngs_len: usize = pngs.len();
 
 		// Calculate the original size.
-		let before: usize = format::path::file_sizes(&jpegs) + format::path::file_sizes(&pngs);
+		let before: usize = jpegs.flaca_file_sizes() + pngs.flaca_file_sizes();
 
 		// Update the reporter totals now that we have them.
 		CoreState::arc_set_total(self.inner.clone(), jpegs_len + pngs_len);
@@ -101,7 +101,7 @@ impl Core {
 
 	/// Parse Image Paths.
 	fn _run_parse_paths(&self, paths: &Vec<PathBuf>) -> Result<(Vec<PathBuf>, Vec<PathBuf>), Error> {
-		let paths: Vec<PathBuf> = format::path::walk(&paths)?;
+		let paths: Vec<PathBuf> = paths.flaca_walk()?;
 		if true == paths.is_empty() {
 			CoreState::arc_send(
 				self.inner.clone(),

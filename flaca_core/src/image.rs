@@ -4,6 +4,7 @@
 
 use crate::error::Error;
 use crate::format;
+use crate::format::strings;
 use crate::paths::{PathDisplay, PathIO, PathProps};
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
@@ -91,10 +92,7 @@ impl<T: Into<PathBuf>> From<T> for App {
 			return Self::None;
 		}
 
-		let name: String = path.flaca_file_name()
-			.to_str()
-			.unwrap_or("")
-			.to_string()
+		let name: String = strings::from_os_string(path.flaca_file_name())
 			.to_lowercase();
 
 		if name.contains("jpegoptim") {
@@ -195,7 +193,7 @@ impl App {
 	///
 	/// Return the "normal" application file name for this App.
 	pub fn slug(&self) -> OsString {
-		format::strings::to_os_string(match *self {
+		strings::to_os_string(match *self {
 			Self::Jpegoptim(_) => "jpegoptim",
 			Self::Mozjpeg(_) => "jpegtran",
 			Self::Oxipng(_) => "oxipng",
