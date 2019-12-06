@@ -442,24 +442,6 @@ impl Cli {
 	// Formatting
 	// -----------------------------------------------------------------
 
-	/// Strip Styles
-	pub fn strip_styles<S> (text: S) -> String
-	where S: Into<String> {
-		let text = text.into();
-		let stripped = strip_ansi_escapes::strip(text).unwrap_or(Vec::new());
-		std::str::from_utf8(&stripped).unwrap_or("").to_string()
-	}
-
-	/// Format Length.
-	///
-	/// This calculates the length of a string minus any ANSI escapes
-	/// that might be taking up "space".
-	pub fn stripped_len<S> (text: S) -> usize
-	where S: Into<String> {
-		let stripped: String = Cli::strip_styles(text.into());
-		stripped.chars().count()
-	}
-
 	/// Format Progress
 	fn format_bar(done: usize, total: usize, elapsed: String) -> String {
 		let elapsed_len: usize = elapsed.len();
@@ -517,6 +499,23 @@ impl Cli {
 	// -----------------------------------------------------------------
 	// Misc Helpers
 	// -----------------------------------------------------------------
+
+	/// Strip Styles
+	pub fn strip_styles<S> (text: S) -> String
+	where S: Into<String> {
+		let text = strip_ansi_escapes::strip(text.into()).unwrap_or(Vec::new());
+		std::str::from_utf8(&text).unwrap_or("").to_string()
+	}
+
+	/// Length (Stripped).
+	///
+	/// This calculates the length of a string minus any ANSI escapes
+	/// that might be taking up "space".
+	pub fn stripped_len<S> (text: S) -> usize
+	where S: Into<String> {
+		let text: String = Cli::strip_styles(text.into());
+		text.chars().count()
+	}
 
 	/// Obtain the terminal cli width.
 	pub fn width() -> usize {
