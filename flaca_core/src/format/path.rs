@@ -3,95 +3,12 @@
 */
 
 use crate::error::Error;
-use crate::format::strings;
-use crate::format::time;
-use crate::image::ImageKind;
+use crate::paths::{PathDisplay, PathProps};
 use rayon::prelude::*;
 use std::env;
-use std::ffi::{OsStr, OsString};
-use std::fs;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-
-
-
-// ---------------------------------------------------------------------
-// Conversion
-// ---------------------------------------------------------------------
-
-/// Absolute PathBuf.
-///
-/// For performance reasons, Rust paths do not auto-canonicalize
-/// themselves. That's good and well for most use cases, but makes batch
-/// operations — sort, dedup, etc. — inconsistent.
-///
-/// This method will always return a PathBuf. If the path exists, it
-/// will be instantiated with the absolute path.
-pub fn abs_pathbuf<P> (path: P) -> PathBuf
-where P: AsRef<Path> {
-	match path.as_ref().canonicalize() {
-		Ok(path) => path,
-		_ => path.as_ref().to_path_buf(),
-	}
-}
-
-/// As String.
-///
-/// This returns the full path as a proper String.
-pub fn as_string<P> (path: P) -> String
-where P: AsRef<Path> {
-	strings::from_os_string(
-		abs_pathbuf(path).into_os_string()
-	)
-}
-
-/// Unique File Path.
-///
-/// Ensure a proposed file path is unique and will not collide should
-/// you decide to plop a file down there.
-///
-/// It is important to note that the parent directory must already
-/// exist or the method will fail.
-///
-/// If a file already exists at this path, the name will be mutated
-/// slightly to ensure uniqueness.
-pub fn as_unique_pathbuf<P> (path: P) -> Result<PathBuf, Error>
-where P: AsRef<Path> {
-	// We can't do anything if the full path is itself a directory.
-	if path.as_ref().is_dir() {
-		return Err(Error::InvalidPath(as_string(&path)));
-	}
-
-	// The directory must already exist.
-	let dir: PathBuf = parent_dir(&path)?;
-
-	// We need a file name but it can be whatever.
-	let name: OsString = file_name(&path);
-
-	// If what we have is unique already, we're done!
-	let proposed = set_file_name(&dir, &name);
-	if false == proposed.exists() {
-		return Ok(proposed);
-	}
-
-	// Let's add some uniqueness.
-	for i in 0..99 {
-		let alt_path = set_file_name(
-			&dir,
-			format!(
-				"{}--{}",
-				i,
-				strings::from_os_string(&name)
-			)
-		);
-		if false == alt_path.exists() {
-			return Ok(alt_path);
-		}
-	}
-
-	Err(Error::new("Unable to find a unique name."))
-}
 
 
 
@@ -99,61 +16,10 @@ where P: AsRef<Path> {
 // Getters
 // ---------------------------------------------------------------------
 
-/// File Extension.
-///
-/// This returns a file's extension as a lowercase OsString. If the path
-/// is a directory or has no extension, the result will be empty.
-pub fn file_extension<P> (path: P) -> OsString
-where P: AsRef<Path> {
-	// Directories have no extension.
-	if true == path.as_ref().is_dir() {
-		return strings::to_os_string("");
-	}
-
-	match path.as_ref().extension() {
-		Some(ext) => strings::to_os_string(
-			strings::from_os_string(ext).to_lowercase()
-		),
-		_ => strings::to_os_string(""),
-	}
-}
-
-/// File Name.
-///
-/// Return the file name portion of a path as an OsString. If there
-/// isn't a name, an empty string is returned.
-pub fn file_name<P> (path: P) -> OsString
-where P: AsRef<Path> {
-	// This doesn't count for directories.
-	if path.as_ref().is_dir() {
-		return strings::to_os_string("");
-	}
-
-	path.as_ref()
-		.file_name()
-		.unwrap_or(OsStr::new(""))
-		.to_os_string()
-}
-
-/// File Size.
-///
-/// Return the size of a file in bytes. If the path does not point to a
-/// valid file, zero is returned.
-pub fn file_size<P> (path: P) -> usize
-where P: AsRef<Path> {
-	if let Ok(meta) = path.as_ref().metadata() {
-		if meta.is_file() {
-			return meta.len() as usize;
-		}
-	}
-
-	0
-}
-
 /// Sum File Sizes
 pub fn file_sizes(paths: &Vec<PathBuf>) -> usize {
 	paths.par_iter()
-		.map(|ref x| file_size(&x))
+		.map(|ref x| x.flaca_file_size())
 		.sum()
 }
 
@@ -182,44 +48,6 @@ where S: Into<usize> {
 	format!("{:.*}{}", 2, bytes, unit)
 }
 
-/// Image Kind.
-pub fn image_kind<P> (path: P, quick: bool) -> ImageKind
-where P: AsRef<Path> {
-	// If this isn't a file, we're done. Haha.
-	if false == path.as_ref().is_file() {
-		return ImageKind::None;
-	}
-
-	// Look deeper if we need to.
-	match quick {
-		// Quick Mode: Trust the file extension.
-		true => match file_extension(&path.as_ref().to_path_buf()).to_str().unwrap_or("") {
-			"png" => ImageKind::Png,
-			"jpg" | "jpeg" => ImageKind::Jpeg,
-			_ => ImageKind::None,
-		},
-		// Better Mode: Look at the Magic Headers.
-		false => match imghdr::from_file(&path) {
-			Ok(Some(imghdr::Type::Png)) => ImageKind::Png,
-			Ok(Some(imghdr::Type::Jpeg)) => ImageKind::Jpeg,
-			_ => ImageKind::None,
-		},
-	}
-}
-
-/// Parent Directory.
-pub fn parent_dir<P> (path: P) -> Result<PathBuf, Error>
-where P: AsRef<Path> {
-	let dir = path.as_ref()
-		.parent()
-		.ok_or(Error::InvalidPath(as_string(&path)))?;
-
-	match dir.is_dir() {
-		true => Ok(abs_pathbuf(&dir)),
-		false => Err(Error::InvalidPath(as_string(&path))),
-	}
-}
-
 /// Saved.
 pub fn saved(before: usize, after: usize) -> usize {
 	match 0 < after && after < before {
@@ -228,217 +56,11 @@ pub fn saved(before: usize, after: usize) -> usize {
 	}
 }
 
-/// Set File Name.
-///
-/// This will push a name on top of a directory path, or use
-/// `::set_file_name` if the destination does not exist.
-pub fn set_file_name<P, S> (path: P, name: S) -> PathBuf
-where P: AsRef<Path>, S: Into<OsString> {
-	let mut path: PathBuf = abs_pathbuf(&path);
-	match path.is_dir() {
-		true => path.push(name.into()),
-		false => path.set_file_name(name.into()),
-	}
-
-	path
-}
-
-
-
-// ---------------------------------------------------------------------
-// Evaluation
-// ---------------------------------------------------------------------
-
-/// Has File Extension.
-///
-/// Run a case-insensitive check to see if a given file has a given
-/// extension. The path must be valid and have an extension for this
-/// to evaluate at all.
-pub fn has_extension<P, S> (path: P, ext: S) -> bool
-where P: AsRef<Path>, S: Into<OsString> {
-	let ext = ext.into();
-	let real = file_extension(&path);
-
-	if false == real.is_empty() && false == ext.is_empty() {
-		// A direct hit.
-		if ext == real {
-			return true;
-		}
-
-		// Change the case and try again.
-		return strings::to_os_string(strings::from_os_string(ext).to_lowercase()) == real;
-	}
-
-	false
-}
-
-/// Is Executable.
-///
-/// Check whether a given file path is executable. If the path does not
-/// point to a file or if that file lacks executable permissions, false
-/// is returned.
-pub fn is_executable<P> (path: P) -> bool
-where P: AsRef<Path> {
-	if let Ok(meta) = path.as_ref().metadata() {
-		if meta.is_file() {
-			let permissions = meta.permissions();
-			return permissions.mode() & 0o111 != 0;
-		}
-	}
-
-	return false;
-}
-
-/// Is Image Kind.
-pub fn is_image_kind<P> (path: P, kind: ImageKind) -> bool
-where P: AsRef<Path> {
-	image_kind(path, false) == kind
-}
-
-/// Is Image (Period).
-pub fn is_image<P> (path: P, quick: bool) -> bool
-where P: AsRef<Path> {
-	image_kind(path, quick) != ImageKind::None
-}
-
 
 
 // ---------------------------------------------------------------------
 // I/O Operations
 // ---------------------------------------------------------------------
-
-/// Copy File (Preserving Ownership, etc.)
-///
-/// This works just like `copy_file` except the ownership and
-/// permissions of the destination are left as were.
-///
-/// Obviously both paths must exist.
-pub fn copy_bytes<P1, P2> (from: P1, to: P2) -> Result<(), Error>
-where P1: AsRef<Path>, P2: AsRef<Path> {
-	// Both paths must exist and be files.
-	if false == from.as_ref().is_file() {
-		return Err(Error::InvalidPath(as_string(&from)));
-	}
-	else if false == to.as_ref().is_file() {
-		return Err(Error::InvalidPath(as_string(&to)));
-	}
-
-	use std::fs::File;
-	use std::fs::OpenOptions;
-	use std::io::{prelude::*, Seek, SeekFrom};
-
-	let mut data: Vec<u8> = Vec::with_capacity(file_size(&from));
-
-	{
-		// Read it to a buffer!
-		let mut f = File::open(&from)?;
-		f.read_to_end(&mut data)?;
-		f.flush()?;
-	}
-
-	{
-		// Now open the destination.
-		let mut out = OpenOptions::new()
-			.read(true)
-			.write(true)
-			.truncate(true)
-			.open(&to)?;
-
-		out.seek(SeekFrom::Start(0)).unwrap();
-		out.write_all(&data).unwrap();
-		out.flush()?;
-	}
-
-	Ok(())
-}
-
-/// Copy File.
-///
-/// This will copy both a file and its ownership and permission
-/// settings.
-///
-/// The destination should be a complete file path pointing to a
-/// directory that already exists. If the destination file itself
-/// already exists, it will be overwritten.
-pub fn copy_file<P1, P2> (from: P1, to: P2) -> Result<(), Error>
-where P1: AsRef<Path>, P2: AsRef<Path> {
-	// The current path must be a file, and the destination must not be
-	// a directory.
-	if false == from.as_ref().is_file() {
-		return Err(Error::InvalidPath(as_string(&from)));
-	}
-	else if true == to.as_ref().is_dir() {
-		return Err(Error::InvalidPath(as_string(&to)));
-	}
-
-	// The target directory must already exist too.
-	parent_dir(to.as_ref())?;
-
-	// Go ahead and copy it.
-	fs::copy(&from, &to)?;
-
-	// We should have a proper file now.
-	let path: PathBuf = abs_pathbuf(&to);
-	if false == path.is_file() {
-		return Err(Error::IOCopy(as_string(&from), as_string(&to)));
-	}
-
-	// Make sure the permissions and ownership are correct.
-	if let Ok(meta) = from.as_ref().metadata() {
-		use nix::unistd::{self, Uid, Gid};
-
-		// Permissions are easy.
-		if let Err(_) = fs::set_permissions(&path, meta.permissions()) {};
-
-		// Ownership is a little more annoying.
-		if let Err(_) = unistd::chown(
-			&path,
-			Some(Uid::from_raw(meta.uid())),
-			Some(Gid::from_raw(meta.gid()))
-		) {};
-	}
-
-	Ok(())
-}
-
-/// Working Copy File.
-///
-/// This method copies a path to a temporary location safe for
-/// future meddling. The temporary location is returned unless the
-/// operation failed, in which case an error is returned.
-pub fn copy_tmp<P> (path: P) -> Result<PathBuf, Error>
-where P: AsRef<Path> {
-	if false == path.as_ref().is_file() {
-		return Err(Error::InvalidPath(as_string(&path)));
-	}
-
-	// Build a destination path.
-	let mut to: PathBuf = env::temp_dir();
-	let stub: String = format!(
-		"flaca_{}_{}",
-		time::unixtime(),
-		strings::from_os_string(file_name(&path))
-	);
-	to.push(&stub);
-	to = as_unique_pathbuf(&to)?;
-
-	// Go ahead and copy it.
-	copy_file(&path, &to)?;
-	Ok(abs_pathbuf(&to))
-}
-
-/// Delete File.
-///
-/// Remove a file from the file system.
-pub fn delete_file<P> (path: P) -> Result<(), Error>
-where P: AsRef<Path> {
-	// Only for files!
-	if false == path.as_ref().is_file() {
-		return Err(Error::InvalidPath(as_string(&path)));
-	}
-
-	fs::remove_file(&path).map_err(|x| x.into())
-}
 
 /// Find Executable.
 ///
@@ -453,7 +75,7 @@ where S: Into<OsString> {
 				.filter_map(|x| {
 					let path = Path::new(x);
 					match path.is_dir() {
-						true => Some(abs_pathbuf(path)),
+						true => Some(path.flaca_to_abs_pathbuf()),
 						false => None,
 					}
 				})
@@ -467,48 +89,13 @@ where S: Into<OsString> {
 
 	let name = name.into();
 	for dir in EXECUTABLE_DIRS.as_slice() {
-		let path = set_file_name(&dir, &name);
-		if is_executable(&path) {
+		let path = dir.flaca_with_file_name(&name);
+		if path.flaca_is_executable() {
 			return Some(path);
 		}
 	}
 
 	None
-}
-
-/// Move File (Preserving Ownership, etc.)
-///
-/// This works just like move_file except the ownership and permissions
-/// of the destination are left as were.
-///
-/// Both source and destination must exist.
-pub fn move_bytes<P1, P2> (from: P1, to: P2) -> Result<(), Error>
-where P1: AsRef<Path>, P2: AsRef<Path> {
-	// Copy first.
-	copy_bytes(&from, &to)?;
-
-	// Remove the original.
-	delete_file(&from)?;
-
-	// We should be good!
-	Ok(())
-}
-
-/// Move File.
-///
-/// For a little atomicity, this method will first copy the source
-/// to the destination (along with its ownership and permissions)
-/// and then delete the source.
-pub fn move_file<P1, P2> (from: P1, to: P2) -> Result<(), Error>
-where P1: AsRef<Path>, P2: AsRef<Path> {
-	// Copy first.
-	copy_file(&from, &to)?;
-
-	// Remove the original.
-	delete_file(&from)?;
-
-	// We should be good!
-	Ok(())
 }
 
 /// Recursive Image Walker.
@@ -526,14 +113,14 @@ pub fn walk(paths: &Vec<PathBuf>) -> Result<Vec<PathBuf>, Error> {
 		// Recurse.
 		if path.is_dir() {
 			// Walk the directory.
-			let walked: Vec<PathBuf> = WalkDir::new(abs_pathbuf(&path))
+			let walked: Vec<PathBuf> = WalkDir::new(path.flaca_to_abs_pathbuf())
 				.follow_links(true)
 				.into_iter()
 				.filter_map(|x| match x {
 					Ok(path) => {
 						let path = path.path();
-						match is_image(&path, true) {
-							true => Some(abs_pathbuf(&path)),
+						match path.flaca_is_image(true) {
+							true => Some(path.flaca_to_abs_pathbuf()),
 							false => None,
 						}
 					},
@@ -546,8 +133,8 @@ pub fn walk(paths: &Vec<PathBuf>) -> Result<Vec<PathBuf>, Error> {
 			}
 		}
 		// It's just a file.
-		else if is_image(&path, true) {
-			out.push(abs_pathbuf(&path));
+		else if path.flaca_is_image(true) {
+			out.push(path.flaca_to_abs_pathbuf());
 		}
 	}
 
@@ -571,6 +158,8 @@ pub fn walk(paths: &Vec<PathBuf>) -> Result<Vec<PathBuf>, Error> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::image::ImageKind;
+	use crate::paths::PathIO;
 
 
 
@@ -578,12 +167,12 @@ mod tests {
 	/// Test ABS PathBuf.
 	fn test_abs_pathbuf() {
 		// A good path.
-		let path: PathBuf = abs_pathbuf("./src/lib.rs");
+		let path: PathBuf = PathBuf::from("./src/lib.rs").flaca_to_abs_pathbuf();
 		assert!(path != PathBuf::from("./src/lib.rs"));
 		assert_eq!(path, PathBuf::from("./src/lib.rs").canonicalize().unwrap());
 
 		// A bad path.
-		let path: PathBuf = abs_pathbuf("./src/library.rs");
+		let path: PathBuf = PathBuf::from("./src/library.rs").flaca_to_abs_pathbuf();
 		assert_eq!(path, PathBuf::from("./src/library.rs"));
 		assert_eq!(path.canonicalize().is_ok(), false);
 	}
@@ -593,30 +182,30 @@ mod tests {
 	fn test_as_string() {
 		// A good path.
 		let path: PathBuf = PathBuf::from("./src/lib.rs");
-		assert!(as_string(path) != "./src/lib.rs");
+		assert!(path.flaca_to_string() != "./src/lib.rs");
 
 		// A bad path.
 		let path: PathBuf = PathBuf::from("./src/library.rs");
-		assert_eq!(as_string(path), "./src/library.rs");
+		assert_eq!(path.flaca_to_string(), "./src/library.rs");
 	}
 
 	#[test]
 	/// Test Make Unique.
 	fn test_as_unique_pathbuf() {
 		// Test a path that already exists.
-		let path: PathBuf = as_unique_pathbuf("./src/lib.rs").unwrap();
-		let name = file_name(&path);
+		let path: PathBuf = PathBuf::from("./src/lib.rs").flaca_to_unique_pathbuf().unwrap();
+		let name = path.flaca_file_name();
 		assert_eq!(name, "0--lib.rs");
-		assert_eq!(parent_dir(&path), parent_dir("./src/lib.rs"));
+		assert_eq!(path.flaca_parent(), PathBuf::from("./src/lib.rs").flaca_parent());
 
 		// Test a unique path.
-		let path: PathBuf = as_unique_pathbuf("./src/library.rs").unwrap();
-		let name = file_name(&path);
+		let path: PathBuf = PathBuf::from("./src/library.rs").flaca_to_unique_pathbuf().unwrap();
+		let name = path.flaca_file_name();
 		assert_eq!(name, "library.rs");
-		assert_eq!(parent_dir(&path), parent_dir("./src/library.rs"));
+		assert_eq!(path.flaca_parent(), PathBuf::from("./src/library.rs").flaca_parent());
 
 		// Test a path that is unusable.
-		assert!(as_unique_pathbuf("./404/lib.rs").is_err());
+		assert!(PathBuf::from("./404/lib.rs").flaca_to_unique_pathbuf().is_err());
 	}
 
 	#[test]
@@ -632,7 +221,7 @@ mod tests {
 
 		for d in data.as_slice() {
 			let (path, expected) = *d;
-			assert_eq!(file_extension(path), expected);
+			assert_eq!(PathBuf::from(path).flaca_file_extension(), expected);
 		}
 	}
 
@@ -649,7 +238,7 @@ mod tests {
 
 		for d in data.as_slice() {
 			let (path, expected) = *d;
-			assert_eq!(file_name(path), expected);
+			assert_eq!(PathBuf::from(path).flaca_file_name(), expected);
 		}
 	}
 
@@ -665,7 +254,7 @@ mod tests {
 
 		for d in data.as_slice() {
 			let (path, expected) = *d;
-			assert_eq!(file_size(path), expected);
+			assert_eq!(PathBuf::from(path).flaca_file_size(), expected);
 		}
 
 		// Let's also make sure the file_sizes() method works.
@@ -703,7 +292,7 @@ mod tests {
 
 		for d in data.as_slice() {
 			let (path, quick, expected) = *d;
-			assert_eq!(image_kind(path, quick), expected);
+			assert_eq!(PathBuf::from(path).flaca_image_kind(quick), expected);
 		}
 	}
 
@@ -712,25 +301,25 @@ mod tests {
 	fn test_parent_dir() {
 		// Good file, good parent.
 		let path: PathBuf = PathBuf::from("./src/lib.rs");
-		let parent = parent_dir(&path);
+		let parent = path.flaca_parent();
 		assert!(parent.is_ok());
-		assert_eq!(parent, Ok(abs_pathbuf("./src")));
+		assert_eq!(parent, Ok(PathBuf::from("./src").flaca_to_abs_pathbuf()));
 
 		// The parent of a directory.
 		let path: PathBuf = PathBuf::from("./tests/assets");
-		let parent = parent_dir(&path);
+		let parent = path.flaca_parent();
 		assert!(parent.is_ok());
-		assert_eq!(parent, Ok(abs_pathbuf("./tests")));
+		assert_eq!(parent, Ok(PathBuf::from("./tests").flaca_to_abs_pathbuf()));
 
 		// Bad file, good parent.
 		let path: PathBuf = PathBuf::from("./src/404.jpg");
-		let parent = parent_dir(&path);
+		let parent = path.flaca_parent();
 		assert!(parent.is_ok());
-		assert_eq!(parent, Ok(abs_pathbuf("./src")));
+		assert_eq!(parent, Ok(PathBuf::from("./src").flaca_to_abs_pathbuf()));
 
 		// Bad all around.
 		let path: PathBuf = PathBuf::from("./404/test.jpg");
-		let parent = parent_dir(&path);
+		let parent = path.flaca_parent();
 		assert_eq!(parent.is_ok(), false);
 	}
 
@@ -748,7 +337,7 @@ mod tests {
 
 		for d in data.as_slice() {
 			let (path, ext, expected) = *d;
-			assert_eq!(has_extension(path, ext), expected);
+			assert_eq!(PathBuf::from(path).flaca_has_extension(ext), expected);
 		}
 	}
 
@@ -764,7 +353,7 @@ mod tests {
 
 		for d in data.as_slice() {
 			let (path, expected) = *d;
-			assert_eq!(is_executable(path), expected);
+			assert_eq!(PathBuf::from(path).flaca_is_executable(), expected);
 		}
 	}
 
@@ -781,7 +370,7 @@ mod tests {
 
 		for d in data.as_slice() {
 			let (path, expected) = *d;
-			assert_eq!(is_image(path, false), expected);
+			assert_eq!(PathBuf::from(path).flaca_is_image(false), expected);
 		}
 	}
 
@@ -800,25 +389,25 @@ mod tests {
 
 		for d in data.as_slice() {
 			let (path, kind, expected) = *d;
-			assert_eq!(is_image_kind(path, kind), expected);
+			assert_eq!(PathBuf::from(path).flaca_is_image_kind(kind), expected);
 		}
 
 		// Let's also double-check quick/slow works as expected by
 		// giving a JPEG a PNG extension.
-		let fake: PathBuf = abs_pathbuf("./tests/assets/wolf.png");
+		let fake: PathBuf = PathBuf::from("./tests/assets/wolf.png").flaca_to_abs_pathbuf();
 		assert!(fake.is_file());
-		assert_eq!(image_kind(&fake, true), ImageKind::Png);
-		assert_eq!(image_kind(&fake, false), ImageKind::Jpeg);
-		assert!(is_image_kind(&fake, ImageKind::Jpeg));
-		assert_eq!(is_image_kind(&fake, ImageKind::Png), false);
+		assert_eq!(fake.flaca_image_kind(true), ImageKind::Png);
+		assert_eq!(fake.flaca_image_kind(false), ImageKind::Jpeg);
+		assert!(fake.flaca_is_image_kind(ImageKind::Jpeg));
+		assert_eq!(fake.flaca_is_image_kind(ImageKind::Png), false);
 
 		// And again in the reverse.
-		let fake: PathBuf = abs_pathbuf("./tests/assets/wolf.jpg");
+		let fake: PathBuf = PathBuf::from("./tests/assets/wolf.jpg").flaca_to_abs_pathbuf();
 		assert!(fake.is_file());
-		assert_eq!(image_kind(&fake, true), ImageKind::Jpeg);
-		assert_eq!(image_kind(&fake, false), ImageKind::Png);
-		assert!(is_image_kind(&fake, ImageKind::Png));
-		assert_eq!(is_image_kind(&fake, ImageKind::Jpeg), false);
+		assert_eq!(fake.flaca_image_kind(true), ImageKind::Jpeg);
+		assert_eq!(fake.flaca_image_kind(false), ImageKind::Png);
+		assert!(fake.flaca_is_image_kind(ImageKind::Png));
+		assert_eq!(fake.flaca_is_image_kind(ImageKind::Jpeg), false);
 	}
 
 	#[test]
@@ -845,44 +434,44 @@ mod tests {
 	fn test_io_ops() {
 		// Start with a valid JPEG.
 		let path = PathBuf::from("./tests/assets/01.jpg");
-		assert!(is_image(&path, false));
+		assert!(path.flaca_is_image(false));
 
 		// Make a temporary copy.
-		let path2 = copy_tmp(&path).expect("Failed creating temporary copy.");
-		assert!(is_image(&path2, false));
+		let path2 = path.flaca_copy_tmp().expect("Failed creating temporary copy.");
+		assert!(path2.flaca_is_image(false));
 		assert_ne!(&path2, &path);
 
 		// Make another temporary copy.
-		let path3 = copy_tmp(&path).expect("Failed creating temporary copy.");
-		assert!(is_image(&path3, false));
+		let path3 = path.flaca_copy_tmp().expect("Failed creating temporary copy.");
+		assert!(path3.flaca_is_image(false));
 		assert_ne!(&path3, &path);
 		assert_ne!(&path3, &path2);
 
 		// The file sizes should all match too.
-		assert_eq!(file_size(&path), file_size(&path2));
-		assert_eq!(file_size(&path), file_size(&path3));
+		assert_eq!(path.flaca_file_size(), path2.flaca_file_size());
+		assert_eq!(path.flaca_file_size(), path3.flaca_file_size());
 
 		// Let's prepare a path to move a file to.
 		let mut path4: PathBuf = env::temp_dir();
 		assert!(path4.is_dir());
 		path4.push("test_io_ops.jpg");
 		assert_eq!(path4.exists(), false);
-		assert_eq!(parent_dir(&path4), parent_dir(&path3));
+		assert_eq!(&path4.flaca_parent(), &path3.flaca_parent());
 
 		// Actually try moving...
-		assert!(move_file(&path3, &path4).is_ok());
+		assert!(path3.flaca_move_file(&path4).is_ok());
 		assert_eq!(path3.is_file(), false);
 		assert_eq!(path4.is_file(), true);
 
 		// Now let's try moving just the bytes.
-		assert!(move_bytes(&path4, &path2).is_ok());
+		assert!(path4.flaca_move_bytes(&path2).is_ok());
 		assert_eq!(path4.is_file(), false);
 		assert_eq!(path2.is_file(), true);
 
 		// Moving actually tests both copy and delete actions, so we
 		// should be covered there. But we still have some cleanup to do
 		// so might as well redundantly test the results of that.
-		assert!(delete_file(&path2).is_ok());
+		assert!(path2.flaca_delete_file().is_ok());
 		assert_eq!(path2.is_file(), false);
 	}
 

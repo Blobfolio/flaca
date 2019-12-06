@@ -4,6 +4,7 @@
 
 use crate::error::Error;
 use crate::format;
+use crate::paths::{PathDisplay, PathIO, PathProps};
 use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 use std::ffi::OsString;
@@ -86,30 +87,30 @@ impl<T: Into<PathBuf>> From<T> for App {
 		let path: PathBuf = path.into();
 
 		// It must be an executable file.
-		if false == format::path::is_executable(&path) {
+		if false == path.flaca_is_executable() {
 			return Self::None;
 		}
 
-		let name: String = format::path::file_name(&path)
+		let name: String = path.flaca_file_name()
 			.to_str()
 			.unwrap_or("")
 			.to_string()
 			.to_lowercase();
 
 		if name.contains("jpegoptim") {
-			Self::Jpegoptim(format::path::abs_pathbuf(&path))
+			Self::Jpegoptim(path.flaca_to_abs_pathbuf())
 		}
 		else if name.contains("jpegtran") {
-			Self::Mozjpeg(format::path::abs_pathbuf(&path))
+			Self::Mozjpeg(path.flaca_to_abs_pathbuf())
 		}
 		else if name.contains("oxipng") {
-			Self::Oxipng(format::path::abs_pathbuf(&path))
+			Self::Oxipng(path.flaca_to_abs_pathbuf())
 		}
 		else if name.contains("pngout") {
-			Self::Pngout(format::path::abs_pathbuf(&path))
+			Self::Pngout(path.flaca_to_abs_pathbuf())
 		}
 		else if name.contains("zopflipng") {
-			Self::Zopflipng(format::path::abs_pathbuf(&path))
+			Self::Zopflipng(path.flaca_to_abs_pathbuf())
 		}
 		else {
 			Self::None
@@ -122,7 +123,7 @@ impl Serialize for App {
 	fn serialize<S> (&self, serializer: S) -> Result<S::Ok, S::Error>
 	where S: Serializer {
 		let path: String = match &self.path() {
-			Ok(ref p) => format::path::as_string(&p),
+			Ok(ref p) => p.flaca_to_string(),
 			_ => "".to_string(),
 		};
 		serializer.serialize_str(&path)
@@ -181,11 +182,11 @@ impl App {
 		}
 
 		match *self {
-			Self::Jpegoptim(ref p) => Ok(format::path::abs_pathbuf(&p)),
-			Self::Mozjpeg(ref p) => Ok(format::path::abs_pathbuf(&p)),
-			Self::Oxipng(ref p) => Ok(format::path::abs_pathbuf(&p)),
-			Self::Pngout(ref p) => Ok(format::path::abs_pathbuf(&p)),
-			Self::Zopflipng(ref p) => Ok(format::path::abs_pathbuf(&p)),
+			Self::Jpegoptim(ref p) => Ok(p.flaca_to_abs_pathbuf()),
+			Self::Mozjpeg(ref p) => Ok(p.flaca_to_abs_pathbuf()),
+			Self::Oxipng(ref p) => Ok(p.flaca_to_abs_pathbuf()),
+			Self::Pngout(ref p) => Ok(p.flaca_to_abs_pathbuf()),
+			Self::Zopflipng(ref p) => Ok(p.flaca_to_abs_pathbuf()),
 			Self::None => Err(Error::InvalidApp),
 		}
 	}
@@ -243,21 +244,21 @@ impl App {
 	/// `::slug()` somewhere in its name.
 	pub fn is_valid(&self) -> bool {
 		let path: PathBuf = match *self {
-			Self::Jpegoptim(ref p) => format::path::abs_pathbuf(&p),
-			Self::Mozjpeg(ref p) => format::path::abs_pathbuf(&p),
-			Self::Oxipng(ref p) => format::path::abs_pathbuf(&p),
-			Self::Pngout(ref p) => format::path::abs_pathbuf(&p),
-			Self::Zopflipng(ref p) => format::path::abs_pathbuf(&p),
+			Self::Jpegoptim(ref p) => p.flaca_to_abs_pathbuf(),
+			Self::Mozjpeg(ref p) => p.flaca_to_abs_pathbuf(),
+			Self::Oxipng(ref p) => p.flaca_to_abs_pathbuf(),
+			Self::Pngout(ref p) => p.flaca_to_abs_pathbuf(),
+			Self::Zopflipng(ref p) => p.flaca_to_abs_pathbuf(),
 			Self::None => return false,
 		};
 
 		// It must be an executable file.
-		if false == format::path::is_executable(&path) {
+		if false == path.flaca_is_executable() {
 			return false;
 		}
 
 		// Make sure the file name looks like the slug.
-		let name: String = format::path::file_name(&path)
+		let name: String = path.flaca_file_name()
 			.to_str()
 			.unwrap_or("")
 			.to_string()
@@ -285,25 +286,23 @@ impl App {
 		let bin_path: PathBuf = self.path()?;
 
 		// Make sure the image type is right for the app.
-		if false == format::path::is_image_kind(&path, self.image_kind()) {
+		if false == path.as_ref().flaca_is_image_kind(self.image_kind()) {
 			return match self.image_kind() {
-				ImageKind::Jpeg => Err(Error::NotJpeg(format::path::as_string(&path))),
-				ImageKind::Png => Err(Error::NotPng(format::path::as_string(&path))),
-				_ => Err(Error::InvalidPath(format::path::as_string(&path))),
+				ImageKind::Jpeg => Err(Error::NotJpeg(path.as_ref().flaca_to_string())),
+				ImageKind::Png => Err(Error::NotPng(path.as_ref().flaca_to_string())),
+				_ => Err(Error::InvalidPath(path.as_ref().flaca_to_string())),
 			};
 		}
 
 		// Our starting size.
-		let start_size: usize = format::path::file_size(&path);
+		let start_size: usize = path.as_ref().flaca_file_size();
 
 		// We need to make a working copy.
-		let working = format::path::copy_tmp(&path)?;
+		let working = path.as_ref().flaca_copy_tmp()?;
 
 		// Some programs want to write changes to a third location, so
 		// let's give them somewhere to do it.
-		let mut working2 = working.as_os_str().to_os_string();
-		working2.push(".bak");
-		let working2: PathBuf = format::path::as_unique_pathbuf(&working2)?;
+		let working2 = working.flaca_to_unique_pathbuf()?;
 
 		// Build a command.
 		let mut com = Command::new(bin_path);
@@ -354,25 +353,25 @@ impl App {
 
 		// Replace the first copy with the second copy, if applicable.
 		if working2.is_file() {
-			format::path::move_file(&working2, &working)?;
+			working2.flaca_move_file(&working)?;
 		}
 
 		// How'd we do?
-		let end_size: usize = format::path::file_size(&working);
+		let end_size: usize = working.flaca_file_size();
 		if end_size == 0 {
 			if working.is_file() {
-				format::path::delete_file(&working)?;
+				working.flaca_delete_file()?;
 			}
 			return Err(Error::new("Image optimizer failed."));
 		}
 
 		// If we have a smaller file, replace it.
 		if end_size < start_size {
-			format::path::move_bytes(&working, &path)?;
+			working.flaca_move_bytes(&path)?;
 		}
 		// Clean up is needed.
 		else if working.is_file() {
-			format::path::delete_file(&working)?;
+			working.flaca_delete_file()?;
 		}
 
 		Ok(())
@@ -421,7 +420,7 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			App::try_jpegoptim(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::try_jpegoptim(PathBuf::from("./tests/assets/01.jpg").flaca_to_abs_pathbuf()),
 			App::None,
 		);
 	}
@@ -455,7 +454,7 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			App::try_mozjpeg(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::try_jpegoptim(PathBuf::from("./tests/assets/01.jpg").flaca_to_abs_pathbuf()),
 			App::None,
 		);
 	}
@@ -489,7 +488,7 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			App::try_oxipng(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::try_jpegoptim(PathBuf::from("./tests/assets/01.jpg").flaca_to_abs_pathbuf()),
 			App::None,
 		);
 	}
@@ -523,7 +522,7 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			App::try_pngout(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::try_jpegoptim(PathBuf::from("./tests/assets/01.jpg").flaca_to_abs_pathbuf()),
 			App::None,
 		);
 	}
@@ -557,7 +556,7 @@ mod tests {
 
 		// Make sure trying fails on a bad path.
 		assert_eq!(
-			App::try_zopflipng(format::path::abs_pathbuf("./tests/assets/01.jpg")),
+			App::try_jpegoptim(PathBuf::from("./tests/assets/01.jpg").flaca_to_abs_pathbuf()),
 			App::None,
 		);
 	}
@@ -566,7 +565,7 @@ mod tests {
 	#[ignore]
 	/// Test App JPEG Compression.
 	fn test_image_app_jpeg_compression() {
-		let jpg = format::path::abs_pathbuf("./tests/assets/01.jpg");
+		let jpg = PathBuf::from("./tests/assets/01.jpg").flaca_to_abs_pathbuf();
 
 		// Test whichever apps are available.
 		for (app, slug) in vec![
@@ -582,12 +581,12 @@ mod tests {
 			assert_eq!(app.slug(), *slug);
 
 			// Make a copy of the image for testing purposes.
-			let image: PathBuf = format::path::copy_tmp(&jpg)
+			let image: PathBuf = jpg.flaca_copy_tmp()
 				.expect("Could not copy image file.");
-			assert!(format::path::is_image_kind(&image, ImageKind::Jpeg));
+			assert!(image.flaca_is_image_kind(ImageKind::Jpeg));
 
 			// Grab its size too for later comparison.
-			let before: usize = format::path::file_size(&image);
+			let before: usize = image.flaca_file_size();
 			assert!(0 < before);
 
 			// Compress it!
@@ -595,10 +594,10 @@ mod tests {
 
 			// Make sure the image is still valid. Should be, but you
 			// never know!
-			assert!(format::path::is_image_kind(&image, ImageKind::Jpeg));
+			assert!(image.flaca_is_image_kind(ImageKind::Jpeg));
 
 			// Check the size again.
-			let after: usize = format::path::file_size(&image);
+			let after: usize = image.flaca_file_size();
 			assert!(0 < after);
 
 			// This should be smaller now.
@@ -606,7 +605,8 @@ mod tests {
 
 			// And clean up after ourselves.
 			if image.exists() {
-				assert!(format::path::delete_file(&image).is_ok());
+				assert!(image.flaca_delete_file().is_ok());
+				assert_eq!(image.exists(), false);
 			}
 		}
 	}
@@ -615,7 +615,7 @@ mod tests {
 	#[ignore]
 	/// Test App PNG Compression.
 	fn test_image_app_png_compression() {
-		let png = format::path::abs_pathbuf("./tests/assets/02.png");
+		let png = PathBuf::from("./tests/assets/02.png").flaca_to_abs_pathbuf();
 
 		// Test whichever apps are available.
 		for (app, slug) in vec![
@@ -632,12 +632,12 @@ mod tests {
 			assert_eq!(app.slug(), *slug);
 
 			// Make a copy of the image for testing purposes.
-			let image: PathBuf = format::path::copy_tmp(&png)
+			let image: PathBuf = png.flaca_copy_tmp()
 				.expect("Could not copy image file.");
-			assert!(format::path::is_image_kind(&image, ImageKind::Png));
+			assert!(image.flaca_is_image_kind(ImageKind::Png));
 
 			// Grab its size too for later comparison.
-			let before: usize = format::path::file_size(&image);
+			let before: usize = image.flaca_file_size();
 			assert!(0 < before);
 
 			// Compress it!
@@ -645,10 +645,10 @@ mod tests {
 
 			// Make sure the image is still valid. Should be, but you
 			// never know!
-			assert!(format::path::is_image_kind(&image, ImageKind::Png));
+			assert!(image.flaca_is_image_kind(ImageKind::Png));
 
 			// Check the size again.
-			let after: usize = format::path::file_size(&image);
+			let after: usize = image.flaca_file_size();
 			assert!(0 < after);
 
 			// This should be smaller now.
@@ -656,7 +656,8 @@ mod tests {
 
 			// And clean up after ourselves.
 			if image.exists() {
-				assert!(format::path::delete_file(&image).is_ok());
+				assert!(image.flaca_delete_file().is_ok());
+				assert_eq!(image.exists(), false);
 			}
 		}
 	}

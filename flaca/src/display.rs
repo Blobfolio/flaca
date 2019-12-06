@@ -5,6 +5,7 @@
 use ansi_term::{Colour, Style};
 use crossbeam_channel::{Receiver, unbounded};
 use flaca_core::{Alert, AlertKind, CoreState, Error, Format};
+use flaca_core::paths::PathDisplay;
 use Format::FormatKind;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -280,7 +281,7 @@ impl Display {
 		let mut msg_len: usize = Display::format_len(&msg);
 
 		let mut path: String = match entry.path() {
-			Some(ref p) => Format::path::as_string(&p),
+			Some(ref p) => p.flaca_to_string(),
 			None => "".to_string(),
 		};
 		let path_len: usize = Display::format_len(&path);
@@ -413,7 +414,7 @@ impl Display {
 
 		// The path, if any, will be moved to a new line.
 		let mut path: String = match entry.path() {
-			Some(ref p) => Format::path::as_string(&p),
+			Some(ref p) => p.flaca_to_string(),
 			None => return line1,
 		};
 		let path_len: usize = Display::format_len(&path);

@@ -42,7 +42,7 @@ macro_rules! quick_apps {
 				match "mozjpeg" == $name {
 					true => {
 						let p: PathBuf = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
-						match format::path::is_executable(&p) {
+						match p.flaca_is_executable() {
 							true => Self::Mozjpeg(p),
 							false => Self::None,
 						}
@@ -60,7 +60,7 @@ macro_rules! quick_apps {
 			/// is valid, otherwise an App::None.
 			pub fn [<try_ $name>]<P> (path: P) -> Self
 			where P: AsRef<Path> {
-				let out: Self = Self::$key(format::path::abs_pathbuf(path));
+				let out: Self = Self::$key(path.as_ref().flaca_to_abs_pathbuf());
 				match out.is_valid() {
 					true => out,
 					false => Self::None,

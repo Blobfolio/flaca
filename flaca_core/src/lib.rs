@@ -50,6 +50,7 @@ mod core;
 mod error;
 pub mod format;
 mod image;
+pub mod paths;
 mod timer;
 
 pub use crate::alert::{Alert, AlertKind};

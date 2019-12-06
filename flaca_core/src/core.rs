@@ -6,6 +6,7 @@ use crate::alert::{Alert, AlertKind};
 use crate::error::Error;
 use crate::format;
 use crate::image::{App, ImageKind};
+use crate::paths::{PathDisplay, PathIO, PathProps};
 use crate::timer::Timer;
 use crossbeam_channel::Sender;
 use serde::de::{Deserialize, Deserializer, Visitor, MapAccess};
@@ -113,7 +114,7 @@ impl Core {
 		let mut jpegs: Vec<PathBuf> = Vec::new();
 		let mut pngs: Vec<PathBuf> = Vec::new();
 		for path in paths.as_slice() {
-			match format::path::image_kind(&path, false) {
+			match path.flaca_image_kind(false) {
 				ImageKind::Jpeg => jpegs.push(path.to_path_buf()),
 				ImageKind::Png => pngs.push(path.to_path_buf()),
 				_ => {},
@@ -244,14 +245,14 @@ impl Core {
 	) -> Result<usize, Error>
 	where P: AsRef<Path> {
 		// Note our starting size.
-		let start_size: usize = format::path::file_size(&path);
+		let start_size: usize = path.as_ref().flaca_file_size();
 		if 0 == start_size {
 			CoreState::arc_send(
 				state.clone(),
-				Alert::from(Error::InvalidPath(format::path::as_string(&path)))
+				Alert::from(Error::InvalidPath(path.as_ref().flaca_to_string()))
 			);
 
-			return Err(Error::InvalidPath(format::path::as_string(&path)));
+			return Err(Error::InvalidPath(path.as_ref().flaca_to_string()));
 		}
 
 		// Start a timer for the image as a whole.
@@ -273,7 +274,7 @@ impl Core {
 		// For dry runs, just clone the image to a new location and mess
 		// with that.
 		let path: PathBuf = match dry_run {
-			true => format::path::copy_tmp(&path)?,
+			true => path.as_ref().flaca_copy_tmp()?,
 			false => path.as_ref().to_path_buf(),
 		};
 
@@ -286,10 +287,10 @@ impl Core {
 				timer2.start(AlertKind::Debug, Some(real_path.clone()))
 			);
 
-			let before: usize = format::path::file_size(&path);
+			let before: usize = path.flaca_file_size();
 			match app.compress(&path) {
 				Ok(_) => {
-					let after: usize = format::path::file_size(&path);
+					let after: usize = path.flaca_file_size();
 					CoreState::arc_send(state.clone(), timer2.stop(
 						AlertKind::Debug,
 						Some(real_path.clone()),
@@ -306,7 +307,7 @@ impl Core {
 		}
 
 		// Our ending size.
-		let end_size: usize = format::path::file_size(&path);
+		let end_size: usize = path.flaca_file_size();
 		let diff = match 0 < end_size && end_size < start_size {
 			true => start_size - end_size,
 			false => 0,
@@ -314,7 +315,7 @@ impl Core {
 
 		// If this was a dry run, we can delete the temporary file.
 		if true == dry_run && path.exists() {
-			if let Err(_) = format::path::delete_file(&path) {}
+			if let Err(_) = path.flaca_delete_file() {}
 		}
 
 		// An ending log.
@@ -988,7 +989,7 @@ mod tests {
 			_ => assert_eq!(has_pngs, false),
 		}
 
-		let paths: Vec<PathBuf> = vec![format::path::abs_pathbuf("./tests/assets")];
+		let paths: Vec<PathBuf> = vec![PathBuf::from("./tests/assets").flaca_to_abs_pathbuf()];
 		assert!(core.run(&paths).is_ok());
 	}
 }

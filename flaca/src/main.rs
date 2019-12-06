@@ -47,7 +47,8 @@ extern crate term_size;
 mod display;
 
 use crate::display::Display;
-use flaca_core::{App, Core, CoreSettings, CoreState, Error, Format};
+use flaca_core::{App, Core, CoreSettings, CoreState, Error};
+use flaca_core::paths::PathProps;
 use std::fs::File;
 use std::io::{BufReader, BufRead};
 use std::path::{Path, PathBuf};
@@ -301,7 +302,7 @@ fn validate_cli_level(val: String) -> Result<(), String> {
 
 /// Validate CLI Setting: App Path
 fn validate_cli_path(val: String) -> Result<(), String> {
-	match Format::path::is_executable(&val) {
+	match PathBuf::from(val).flaca_is_executable() {
 		true => Ok(()),
 		false => Err("Invalid path.".to_string()),
 	}
