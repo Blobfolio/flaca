@@ -130,7 +130,16 @@ impl Display {
 		// Erase the bar at the end to declare ourselves done!
 		print!("{}", ansi_escapes::EraseLines(5));
 		if let Some(last) = self.last.as_ref() {
-			println!("{}", Display::format_log_entry(last.clone()));
+			println!(
+				"{}\n{}\n{}",
+				Colour::Cyan.dimmed().paint(
+					Format::strings::pad_left("", Display::width() - 5, b'-')
+				),
+				Display::format_log_entry(last.clone()),
+				Colour::Cyan.dimmed().paint(
+					Format::strings::pad_left("", Display::width() - 5, b'-')
+				),
+			);
 		}
 	}
 
