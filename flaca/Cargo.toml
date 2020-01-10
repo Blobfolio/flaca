@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.0.3"
+version = "1.0.4"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
 description = "Losslessly compress la mierda out of JPEG and PNG images."
@@ -10,7 +10,7 @@ flaca_core = { path = "../flaca_core" }
 ansi-escapes = "0.1.*"
 ansi_term = "0.12.*"
 crossbeam-channel = "0.4.*"
-rayon = "1.2.*"
+rayon = "1.3.*"
 strip-ansi-escapes = "0.1.*"
 term_size = "0.3.*"
 
