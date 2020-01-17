@@ -98,6 +98,61 @@ build_ver     := "1"
 	cargo test --target-dir "{{ cargo_dir }}" -- --ignored
 
 
+# Get/Set Flaca version.
+version:
+	#!/usr/bin/env bash
+
+	# Current version.
+	_ver1="$( cat "{{ justfile_directory() }}/flaca/Cargo.toml" | \
+		grep version | \
+		head -n 1 | \
+		sed 's/[^0-9\.]//g' )"
+
+	# Find out if we want to bump it.
+	_ver2="$( whiptail --inputbox "Set Flaca version:" --title "Release Version" 0 0 "$_ver1" 3>&1 1>&2 2>&3 )"
+
+	exitstatus=$?
+	if [ $exitstatus != 0 ] || [ "$_ver1" = "$_ver2" ]; then
+		exit 0
+	fi
+
+	just _info "Setting plugin version to $_ver2."
+
+	# Set the release version!
+	just _version "{{ justfile_directory() }}/flaca/Cargo.toml" "$_ver2" >/dev/null 2>&1
+	just _version "{{ justfile_directory() }}/flaca_core/Cargo.toml" "$_ver2" >/dev/null 2>&1
+
+
+# Truly set version.
+_version TOML VER:
+	#!/usr/bin/env php
+	<?php
+	if (! is_file("{{ TOML }}") || ! preg_match('/^\d+.\d+.\d+$/', "{{ VER }}")) {
+		exit(1);
+	}
+
+	$content = file_get_contents("{{ TOML }}");
+	$content = explode("\n", $content);
+	$section = null;
+
+	foreach ($content as $k=>$v) {
+		if (\preg_match('/^\[[^\]]+\]$/', $v)) {
+			$section = $v;
+			continue;
+		}
+		elseif ('[package]' === $section && 0 === \strpos($v, 'version')) {
+			$content[$k] = \sprintf(
+				'version = "%s"',
+				"{{ VER }}"
+			);
+			break;
+		}
+	}
+
+	$content = implode("\n", $content);
+	file_put_contents("{{ TOML }}", $content);
+
+
 # Init dependencies.
 @_init:
 	apt-get update -qq
@@ -108,3 +163,13 @@ build_ver     := "1"
 		oxipng \
 		pngout \
 		zopflipng
+
+
+
+##             ##
+# NOTIFICATIONS #
+##             ##
+
+# Echo an informational comment.
+@_info COMMENT:
+	echo "\e[95;1m[Info] \e[0;1m{{ COMMENT }}\e[0m"
