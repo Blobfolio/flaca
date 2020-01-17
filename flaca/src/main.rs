@@ -49,7 +49,9 @@ mod cli;
 use crate::cli::Cli;
 use flaca_core::{App, Core, CoreSettings, CoreState, Error};
 use flaca_core::paths::PathProps;
+use clap::Shell;
 use std::fs::File;
+use std::io;
 use std::io::{BufReader, BufRead};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -86,16 +88,16 @@ fn main() -> Result<(), String> {
 	Ok(())
 }
 
-/// Initialize CLI
-///
-/// This is really 99% of the application; we're just shoving it here to
-/// keep `main()` somewhat readable.
-fn init_cli() -> (Core, Cli, Vec<PathBuf>) {
-	// Initialize Clap first.
-	let args: clap::ArgMatches = clap::App::new("Flaca")
+fn build_cli() -> clap::App<'static, 'static> {
+	clap::App::new("Flaca")
 		.version(env!("CARGO_PKG_VERSION"))
 		.author("Blobfolio, LLC. <hello@blobfolio.com>")
 		.about(env!("CARGO_PKG_DESCRIPTION"))
+		.arg(clap::Arg::with_name("completions")
+			.long("completions")
+			.hidden(true)
+			.takes_value(false)
+		)
 		.arg(clap::Arg::with_name("dry_run")
 			.long("dry-run")
 			.help("Test compression without updating the original files.")
@@ -165,7 +167,25 @@ fn init_cli() -> (Core, Cli, Vec<PathBuf>) {
 
 GLOBAL CONFIGURATION:
     /etc/flaca.yml")
+}
+
+/// Initialize CLI
+///
+/// This is really 99% of the application; we're just shoving it here to
+/// keep `main()` somewhat readable.
+fn init_cli() -> (Core, Cli, Vec<PathBuf>) {
+	// Initialize Clap first.
+	let args: clap::ArgMatches = build_cli()
 		.get_matches();
+
+	if args.is_present("completions") {
+		build_cli().gen_completions_to(
+			"flaca",
+			Shell::Bash,
+			&mut io::stdout()
+		);
+		std::process::exit(0);
+	}
 
 	let settings: CoreSettings = init_settings(&args);
 	let core: Core = Core::new(settings);
