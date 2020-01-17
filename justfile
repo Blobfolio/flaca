@@ -65,8 +65,11 @@ build_ver     := "1"
 
 # Build MAN page.
 @_build-man:
+	# Most of it can come straight from the help screen.
 	help2man -N \
 		"{{ debian_dir }}/usr/bin/flaca" > "{{ debian_dir }}/usr/share/man/man1/flaca.1"
+
+	# Fix a few formatting quirks.
 	sed -i -e ':a' -e 'N' -e '$!ba' -Ee \
 		"s#Flaca [0-9\.]+[\n]Blobfolio, LLC. <hello@blobfolio.com>[\n]##g" \
 		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
@@ -79,6 +82,9 @@ build_ver     := "1"
 		"s#.SS \"SUPPORTED OPTIMIZERS:\"[\n].IP#.SS \"SUPPORTED OPTIMIZERS:\"#g" \
 		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
 
+	# Lastly, Gzip it and remove the naked version.
+	gzip -k -9 "{{ debian_dir }}/usr/share/man/man1/flaca.1"
+	rm "{{ debian_dir }}/usr/share/man/man1/flaca.1"
 
 
 # Run Normal Unit Tests.
