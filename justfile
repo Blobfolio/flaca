@@ -82,9 +82,8 @@ build_ver     := "1"
 		"s#.SS \"SUPPORTED OPTIMIZERS:\"[\n].IP#.SS \"SUPPORTED OPTIMIZERS:\"#g" \
 		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
 
-	# Lastly, Gzip it and remove the naked version.
-	gzip -k -9 "{{ debian_dir }}/usr/share/man/man1/flaca.1"
-	rm "{{ debian_dir }}/usr/share/man/man1/flaca.1"
+	# Wrap up by gzipping to save some space.
+	gzip -9 "{{ debian_dir }}/usr/share/man/man1/flaca.1"
 
 
 # Run Normal Unit Tests.
