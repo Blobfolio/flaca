@@ -40,7 +40,7 @@ build_ver     := "1"
 	strip "{{ debian_dir }}/usr/bin/flaca"
 
 	# Generate completions.
-	"{{ debian_dir }}/usr/bin/flaca" --completions . > "{{ debian_dir }}/etc/bash_completion.d/flaca.bash"
+	"{{ debian_dir }}/usr/bin/flaca" --completions > "{{ debian_dir }}/etc/bash_completion.d/flaca.bash"
 	chmod 644 "{{ debian_dir }}/etc/bash_completion.d/flaca.bash"
 
 	# Set up the control file.

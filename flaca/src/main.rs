@@ -154,7 +154,7 @@ fn build_cli() -> clap::App<'static, 'static> {
 			.index(1)
 			.help("Image/directory path(s), or if --file-list is set, a text file containing image/directory path(s), one per line.")
 			.multiple(true)
-			.required(true)
+			.required_unless_one(&["completions"])
 			.value_name("PATH")
 			.use_delimiter(false)
 		)
