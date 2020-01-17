@@ -11,7 +11,7 @@ cargo_dir     := "/tmp/flaca-cargo"
 debian_dir    := "/tmp/flaca-release/flaca"
 release_dir   := justfile_directory() + "/release"
 
-build_ver     := "2"
+build_ver     := "1"
 
 
 
