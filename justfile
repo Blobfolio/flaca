@@ -96,7 +96,6 @@ build_ver     := "2"
 @_init:
 	apt-get update -qq
 	apt-fast install -qq -y \
-		help2man \
 		jpegoptim \
 		libjpeg-turbo-progs \
 		mozjpeg \
