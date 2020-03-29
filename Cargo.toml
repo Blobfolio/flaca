@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "flaca_core",
     "flaca",
+    "flaca_core",
 ]
 
 [profile.release]
