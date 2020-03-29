@@ -8,15 +8,22 @@
 ##
 
 cargo_dir     := "/tmp/flaca-cargo"
+data_dir      := "/tmp/bench-data"
 debian_dir    := "/tmp/flaca-release/flaca"
 release_dir   := justfile_directory() + "/release"
 
 build_ver     := "1"
 
 
+# Benchmark Directory Comparisons.
+@bench: build
+	[ ! -d "{{ data_dir }}" ] || rm -rf "{{ data_dir }}"
+	cp -aR "{{ justfile_directory() }}/test-assets" "{{ data_dir }}"
+	"{{ cargo_dir }}/release/flaca" -p "{{ data_dir }}"
+
 
 # Build Release!
-@build: test
+@build:
 	# First let's build the Rust bit.
 	RUSTFLAGS="-C link-arg=-s" cargo build \
 		--release \
@@ -40,12 +47,10 @@ build_ver     := "1"
 	strip "{{ debian_dir }}/usr/bin/flaca"
 
 	# Generate completions.
-	"{{ debian_dir }}/usr/bin/flaca" --completions > "{{ debian_dir }}/etc/bash_completion.d/flaca.bash"
+	cp -a "{{ cargo_dir }}/flaca.bash" "{{ debian_dir }}/etc/bash_completion.d"
 	chmod 644 "{{ debian_dir }}/etc/bash_completion.d/flaca.bash"
 
 	# Set up the control file.
-	cp -a "{{ release_dir }}/skel/conffiles" "{{ debian_dir }}/DEBIAN"
-	cp -a "{{ release_dir }}/skel/flaca.yml" "{{ debian_dir }}/etc"
 	cp -a "{{ release_dir }}/skel/control" "{{ debian_dir }}/DEBIAN"
 	sed -i "s/VERSION/$( cat "/tmp/VERSION" )-{{ build_ver }}/g" "{{ debian_dir }}/DEBIAN/control"
 	sed -i "s/SIZE/$( du -scb "{{ debian_dir }}/usr" | tail -n 1 | awk '{print $1}' )/g" "{{ debian_dir }}/DEBIAN/control"
@@ -73,28 +78,9 @@ build_ver     := "1"
 	sed -i -e ':a' -e 'N' -e '$!ba' -Ee \
 		"s#Flaca [0-9\.]+[\n]Blobfolio, LLC. <hello@blobfolio.com>[\n]##g" \
 		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
-	sed -i -Ee 's#^(Jpegoptim|MozJPEG|Oxipng|Zopflipng|Pngout) +(<[^>]+>)#.TP\n\1\n\2#g' \
-		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
-	sed -i -e ':a' -e 'N' -e '$!ba' -Ee \
-		"s#.SS \"GLOBAL CONFIGURATION:\"[\n].IP#.SS \"GLOBAL CONFIGURATION:\"\n.TP#g" \
-		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
-	sed -i -e ':a' -e 'N' -e '$!ba' -Ee \
-		"s#.SS \"SUPPORTED OPTIMIZERS:\"[\n].IP#.SS \"SUPPORTED OPTIMIZERS:\"#g" \
-		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
 
 	# Wrap up by gzipping to save some space.
 	gzip -9 "{{ debian_dir }}/usr/share/man/man1/flaca.1"
-
-
-# Run Normal Unit Tests.
-@test:
-	cargo test --target-dir "{{ cargo_dir }}"
-
-
-# Run All Unit Tests (Even Slow Ones).
-@test-all:
-	cargo test --target-dir "{{ cargo_dir }}"
-	cargo test --target-dir "{{ cargo_dir }}" -- --ignored
 
 
 # Get/Set Flaca version.
@@ -115,7 +101,7 @@ version:
 		exit 0
 	fi
 
-	just _info "Setting plugin version to $_ver2."
+	fyi success "Setting plugin version to $_ver2."
 
 	# Set the release version!
 	just _version "{{ justfile_directory() }}/flaca/Cargo.toml" "$_ver2" >/dev/null 2>&1
@@ -154,21 +140,4 @@ _version TOML VER:
 
 # Init dependencies.
 @_init:
-	apt-get update -qq
-	apt-fast install -qq -y \
-		jpegoptim \
-		libjpeg-turbo-progs \
-		mozjpeg \
-		oxipng \
-		pngout \
-		zopflipng
-
-
-
-##             ##
-# NOTIFICATIONS #
-##             ##
-
-# Echo an informational comment.
-@_info COMMENT:
-	echo "\e[95;1m[Info] \e[0;1m{{ COMMENT }}\e[0m"
+	echo ""
