@@ -25,8 +25,7 @@ use fyi_core::witcher::mass::FYIMassOps;
 use fyi_core::witcher::ops::FYIOps;
 use rayon::prelude::*;
 use std::path::PathBuf;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 
 
@@ -61,21 +60,24 @@ fn main() -> Result<(), String> {
 	// With progress.
 	if opts.is_present("progress") {
 		let found: u64 = paths.len() as u64;
-		let bar = Progress::new("", found, PROGRESS_NO_ELAPSED);
-		let bar1 = bar.clone();
 		let before: u64 = paths.fyi_file_sizes();
 		let time = Instant::now();
 
-		thread::spawn(|| progress_arc::looper(bar1));
-		paths.clone().into_par_iter().for_each(|ref x| {
-			let _ = x.flaca_encode().is_ok();
+		{
+			use std::thread;
+			let bar = Progress::new("", found, PROGRESS_NO_ELAPSED);
+			let bar1 = bar.clone();
 
-			progress_arc::set_path(bar.clone(), &x);
-			progress_arc::increment(bar.clone(), 1);
-		});
+			thread::spawn(|| progress_arc::looper(bar1));
+			paths.clone().into_par_iter().for_each(|ref x| {
+				let _ = x.flaca_encode().is_ok();
 
-		progress_arc::finish(bar.clone());
-		thread::sleep(Duration::from_millis(150));
+				progress_arc::set_path(bar.clone(), &x);
+				progress_arc::increment(bar.clone(), 1);
+			});
+
+			progress_arc::finish(bar.clone());
+		}
 
 		let after: u64 = paths.fyi_file_sizes();
 		Msg::msg_crunched_in(found, time, Some((before, after)))
