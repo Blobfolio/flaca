@@ -78,6 +78,11 @@ build_ver     := "1"
 	sed -i -e ':a' -e 'N' -e '$!ba' -Ee \
 		"s#Flaca [0-9\.]+[\n]Blobfolio, LLC. <hello@blobfolio.com>[\n]##g" \
 		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
+	sed -i -Ee 's#^(Jpegoptim|MozJPEG|Oxipng|Zopflipng|Pngout) +(<[^>]+>)#.TP\n\1\n\2#g' \
+		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
+	sed -i -e ':a' -e 'N' -e '$!ba' -Ee \
+		"s#.SS \"OPTIMIZERS USED:\"[\n].IP#.SS \"OPTIMIZERS USED:\"#g" \
+		"{{ debian_dir }}/usr/share/man/man1/flaca.1"
 
 	# Wrap up by gzipping to save some space.
 	gzip -9 "{{ debian_dir }}/usr/share/man/man1/flaca.1"
