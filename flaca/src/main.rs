@@ -59,9 +59,9 @@ fn main() -> Result<(), String> {
 
 	// With progress.
 	if opts.is_present("progress") {
-		let found: u64 = paths.len() as u64;
-		let before: u64 = paths.fyi_file_sizes();
 		let time = Instant::now();
+		let before: u64 = paths.fyi_file_sizes();
+		let found: u64 = paths.len() as u64;
 
 		{
 			use std::thread;
