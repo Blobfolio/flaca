@@ -9,7 +9,7 @@ use crate::encoder::*;
 
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy)]
 /// Image Kind.
 pub enum ImageKind {
 	/// Jpeg.
@@ -28,17 +28,6 @@ impl fmt::Display for ImageKind {
 			Self::Png => "PNG",
 			Self::None => "None",
 		})
-	}
-}
-
-impl ImageKind {
-	/// Extension.
-	pub fn extension(&self) -> &'static str {
-		match *self {
-			ImageKind::Jpeg => "jpg",
-			ImageKind::Png => "png",
-			_ => ""
-		}
 	}
 }
 
