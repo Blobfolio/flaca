@@ -41,14 +41,11 @@ fn main() -> Result<(), String> {
 
 	// What path are we dealing with?
 	let paths: Vec<PathBuf> = match opts.is_present("list") {
-		false => {
-			let tmp: Vec<PathBuf> = opts.values_of("path").unwrap()
-				.into_iter()
-				.filter_map(|x| Some(PathBuf::from(x)))
-				.collect();
-
-			tmp.fyi_walk_filtered(&pattern)
-		},
+		false => opts.values_of("path").unwrap()
+			.into_iter()
+			.filter_map(|x| Some(PathBuf::from(x)))
+			.collect::<Vec<PathBuf>>()
+			.fyi_walk_filtered(&pattern),
 		true => PathBuf::from(opts.value_of("list").unwrap_or(""))
 			.fyi_walk_file_lines(Some(pattern)),
 	};
