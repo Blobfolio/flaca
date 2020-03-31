@@ -66,7 +66,7 @@ fn main() -> Result<(), String> {
 			let bar1 = bar.clone();
 
 			let handler = thread::spawn(|| progress_arc::looper(bar1));
-			paths.clone().into_par_iter().for_each(|ref x| {
+			paths.par_iter().for_each(|ref x| {
 				let _ = x.flaca_encode().is_ok();
 
 				progress_arc::set_path(bar.clone(), &x);
@@ -82,7 +82,7 @@ fn main() -> Result<(), String> {
 	}
 	// Without progress.
 	else {
-		paths.into_par_iter().for_each(|ref x| {
+		paths.par_iter().for_each(|ref x| {
 			let _ = x.flaca_encode().is_ok();
 		});
 	}
