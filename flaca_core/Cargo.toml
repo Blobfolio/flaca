@@ -12,5 +12,6 @@ lazy_static = "1.4.*"
 
 [dependencies.fyi_core]
 git = "https://github.com/Blobfolio/fyi.git"
+branch = "master"
 default-features = false
 features = [ "progress", "witcher" ]

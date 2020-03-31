@@ -22,5 +22,6 @@ features = [ "color", "suggestions", "vec_map", "wrap_help" ]
 
 [dependencies.fyi_core]
 git = "https://github.com/Blobfolio/fyi.git"
+branch = "master"
 default-features = false
 features = [ "progress", "witcher" ]
