@@ -37,10 +37,7 @@ pub trait Encoder: Sized {
 
 	/// Find it.
 	fn find() -> Result<PathBuf, String> {
-		match find_executable(Self::BIN) {
-			Some(p) => Ok(p),
-			_ => Err(format!("Unable to find {}.", Self::NAME)),
-		}
+		find_executable(Self::BIN).ok_or(format!("Unable to find {}.", Self::NAME))
 	}
 
 	/// Encode.

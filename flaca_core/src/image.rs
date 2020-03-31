@@ -9,7 +9,7 @@ use crate::encoder::*;
 
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy)]
 /// Image Kind.
 pub enum ImageKind {
 	/// Jpeg.
@@ -31,17 +31,6 @@ impl fmt::Display for ImageKind {
 	}
 }
 
-impl ImageKind {
-	/// Extension.
-	pub fn extension(&self) -> &'static str {
-		match *self {
-			ImageKind::Jpeg => "jpg",
-			ImageKind::Png => "png",
-			_ => ""
-		}
-	}
-}
-
 
 
 /// Image Type.
@@ -58,14 +47,14 @@ impl ImagePath for Path {
 	fn flaca_encode(&self) -> Result<(), String> {
 		match self.flaca_image_type() {
 			ImageKind::Jpeg => {
-				Jpegoptim::encode(self.clone())?;
-				Mozjpeg::encode(self.clone())?;
+				Jpegoptim::encode(&self)?;
+				Mozjpeg::encode(&self)?;
 				Ok(())
 			},
 			ImageKind::Png => {
-				Pngout::encode(self.clone())?;
-				Oxipng::encode(self.clone())?;
-				Zopflipng::encode(self.clone())?;
+				Pngout::encode(&self)?;
+				Oxipng::encode(&self)?;
+				Zopflipng::encode(&self)?;
 				Ok(())
 			},
 			ImageKind::None => Err(format!("Invalid image: {}", self.fyi_to_string())),
@@ -75,7 +64,7 @@ impl ImagePath for Path {
 	/// Image type.
 	fn flaca_image_type(&self) -> ImageKind {
 		match self.is_file() {
-			true => match imghdr::from_file(self.to_path_buf()) {
+			true => match imghdr::from_file(&self) {
 				Ok(Some(imghdr::Type::Png)) => ImageKind::Png,
 				Ok(Some(imghdr::Type::Jpeg)) => ImageKind::Jpeg,
 				_ => ImageKind::None,
