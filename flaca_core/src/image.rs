@@ -2,10 +2,10 @@
 # Flaca: Image Business
 */
 
+use crate::encoder::*;
+use fyi_core::witcher::formats::FYIFormats;
 use std::fmt;
 use std::path::Path;
-use fyi_core::witcher::formats::FYIFormats;
-use crate::encoder::*;
 
 
 

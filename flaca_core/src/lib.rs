@@ -22,9 +22,14 @@ pub mod image;
 pub mod encoder;
 
 use encoder::*;
-use fyi_core::witcher::formats::FYIFormats;
-use fyi_core::witcher::props::FYIProps;
-use fyi_core::{Msg, Prefix};
+use fyi_core::{
+	Msg,
+	Prefix
+};
+use fyi_core::witcher::{
+	formats::FYIFormats,
+	props::FYIProps,
+};
 use std::env;
 use std::path::PathBuf;
 

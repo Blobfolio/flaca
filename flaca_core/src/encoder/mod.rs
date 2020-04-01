@@ -17,10 +17,15 @@ pub use zopflipng::Zopflipng;
 use crate::find_executable;
 use crate::image::ImageKind;
 use fyi_core::misc::numbers;
-use fyi_core::witcher::formats::FYIFormats;
-use fyi_core::witcher::ops::FYIOps;
-use fyi_core::witcher::props::FYIProps;
-use std::path::{Path, PathBuf};
+use fyi_core::witcher::{
+	formats::FYIFormats,
+	ops::FYIOps,
+	props::FYIProps,
+};
+use std::path::{
+	Path,
+	PathBuf
+};
 
 
 
