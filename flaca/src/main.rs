@@ -61,19 +61,16 @@ fn main() -> Result<(), String> {
 		let found: u64 = paths.len() as u64;
 
 		{
-			use std::thread;
 			let bar = Progress::new("", found, PROGRESS_NO_ELAPSED);
-			let bar1 = bar.clone();
-
-			let handler = thread::spawn(|| progress_arc::looper(bar1));
+			let looper = progress_arc::looper(&bar, 100);
 			paths.par_iter().for_each(|ref x| {
 				let _ = x.flaca_encode().is_ok();
 
-				progress_arc::set_path(bar.clone(), &x);
-				progress_arc::increment(bar.clone(), 1);
+				progress_arc::set_path(&bar, &x);
+				progress_arc::increment(&bar, 1);
 			});
-			progress_arc::finish(bar.clone());
-			handler.join().unwrap();
+			progress_arc::finish(&bar);
+			looper.join().unwrap();
 		}
 
 		let after: u64 = paths.fyi_file_sizes();
