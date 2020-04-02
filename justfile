@@ -145,4 +145,4 @@ _version TOML VER:
 
 # Init dependencies.
 @_init:
-	echo ""
+	cargo update
