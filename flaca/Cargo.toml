@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.1.1"
+version = "1.1.2"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
 description = "Brute-force, lossless JPEG and PNG compression."

@@ -16,16 +16,22 @@ use clap::ArgMatches;
 use flaca_core::image::ImagePath;
 use fyi_core::{
 	Msg,
+	Prefix,
 	Progress,
 	progress_arc,
-	witcher,
-	PROGRESS_NO_ELAPSED
+	PROGRESS_CLEAR_ON_FINISH,
 };
-use fyi_core::witcher::mass::FYIMassOps;
-use fyi_core::witcher::ops::FYIOps;
+use fyi_core::witcher::{
+	self,
+	mass::FYIMassOps,
+	ops::FYIOps,
+};
 use rayon::prelude::*;
-use std::path::PathBuf;
-use std::time::Instant;
+use std::{
+	collections::HashSet,
+	path::PathBuf,
+	time::Instant,
+};
 
 
 
@@ -40,14 +46,16 @@ fn main() -> Result<(), String> {
 	let pattern = witcher::pattern_to_regex(r"(?i).+\.(jpe?g|png)$");
 
 	// What path are we dealing with?
-	let paths: Vec<PathBuf> = match opts.is_present("list") {
+	let paths: HashSet<PathBuf> = match opts.is_present("list") {
 		false => opts.values_of("path").unwrap()
 			.into_iter()
 			.filter_map(|x| Some(PathBuf::from(x)))
-			.collect::<Vec<PathBuf>>()
+			.collect::<HashSet<PathBuf>>()
 			.fyi_walk_filtered(&pattern),
 		true => PathBuf::from(opts.value_of("list").unwrap_or(""))
-			.fyi_walk_file_lines(Some(pattern)),
+			.fyi_walk_file_lines(Some(pattern))
+			.into_iter()
+			.collect::<HashSet<PathBuf>>(),
 	};
 
 	if paths.is_empty() {
@@ -61,19 +69,21 @@ fn main() -> Result<(), String> {
 		let found: u64 = paths.len() as u64;
 
 		{
-			use std::thread;
-			let bar = Progress::new("", found, PROGRESS_NO_ELAPSED);
-			let bar1 = bar.clone();
-
-			let handler = thread::spawn(|| progress_arc::looper(bar1));
+			let bar = Progress::new(
+				Msg::new("Reticulating splines…")
+					.with_prefix(Prefix::Custom("Flaca", 199))
+					.to_string(),
+				found,
+				PROGRESS_CLEAR_ON_FINISH
+			);
+			let looper = progress_arc::looper(&bar, 60);
 			paths.par_iter().for_each(|ref x| {
+				progress_arc::add_working(&bar, &x);
 				let _ = x.flaca_encode().is_ok();
-
-				progress_arc::set_path(bar.clone(), &x);
-				progress_arc::increment(bar.clone(), 1);
+				progress_arc::update(&bar, 1, None, Some(x.to_path_buf()));
 			});
-			progress_arc::finish(bar.clone());
-			handler.join().unwrap();
+			progress_arc::finish(&bar);
+			looper.join().unwrap();
 		}
 
 		let after: u64 = paths.fyi_file_sizes();

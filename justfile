@@ -19,6 +19,7 @@ build_ver     := "1"
 @bench: build
 	[ ! -d "{{ data_dir }}" ] || rm -rf "{{ data_dir }}"
 	cp -aR "{{ justfile_directory() }}/test-assets" "{{ data_dir }}"
+	clear
 	"{{ cargo_dir }}/release/flaca" -p "{{ data_dir }}"
 
 
@@ -145,4 +146,4 @@ _version TOML VER:
 
 # Init dependencies.
 @_init:
-	echo ""
+	cargo update
