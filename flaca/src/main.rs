@@ -20,11 +20,11 @@ use fyi_core::{
 	Progress,
 	progress_arc,
 	PROGRESS_CLEAR_ON_FINISH,
-};
-use fyi_core::witcher::{
-	self,
-	mass::FYIMassOps,
-	ops::FYIOps,
+	witcher::{
+		self,
+		mass::FYIMassOps,
+		walk::FYIWalk,
+	},
 };
 use rayon::prelude::*;
 use std::{
