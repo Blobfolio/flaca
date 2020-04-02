@@ -53,9 +53,7 @@ fn main() -> Result<(), String> {
 			.collect::<HashSet<PathBuf>>()
 			.fyi_walk_filtered(&pattern),
 		true => PathBuf::from(opts.value_of("list").unwrap_or(""))
-			.fyi_walk_file_lines(Some(pattern))
-			.into_iter()
-			.collect::<HashSet<PathBuf>>(),
+			.fyi_walk_file_lines_hs(Some(pattern)),
 	};
 
 	if paths.is_empty() {
