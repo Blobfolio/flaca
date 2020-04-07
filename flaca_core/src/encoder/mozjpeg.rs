@@ -3,14 +3,16 @@
 */
 
 use crate::image::ImageKind;
-use fyi_core::witcher::props::FYIProps;
-use std::path::{
-	Path,
-	PathBuf,
-};
-use std::process::{
-	Command,
-	Stdio,
+use fyi_core::traits::path::FYIPath;
+use std::{
+	path::{
+		Path,
+		PathBuf,
+	},
+	process::{
+		Command,
+		Stdio,
+	},
 };
 
 
