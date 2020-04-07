@@ -3,10 +3,12 @@
 */
 
 use crate::image::ImageKind;
-use std::path::Path;
-use std::process::{
-	Command,
-	Stdio,
+use std::{
+	path::Path,
+	process::{
+		Command,
+		Stdio,
+	},
 };
 
 

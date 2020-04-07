@@ -14,13 +14,17 @@ pub use oxipng::Oxipng;
 pub use pngout::Pngout;
 pub use zopflipng::Zopflipng;
 
-use crate::find_executable;
-use crate::image::ImageKind;
-use fyi_core::misc::numbers;
-use fyi_core::witcher::{
-	formats::FYIFormats,
-	ops::FYIOps,
-	props::FYIProps,
+use crate::{
+	find_executable,
+	image::ImageKind,
+};
+use fyi_core::{
+	util::numbers,
+	traits::path::{
+		FYIPath,
+		FYIPathFormat,
+		FYIPathIO,
+	},
 };
 use std::path::{
 	Path,

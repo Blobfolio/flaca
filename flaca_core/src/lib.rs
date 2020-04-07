@@ -24,14 +24,16 @@ pub mod encoder;
 use encoder::*;
 use fyi_core::{
 	Msg,
-	Prefix
+	Prefix,
+	traits::path::{
+		FYIPath,
+		FYIPathFormat,
+	},
 };
-use fyi_core::witcher::{
-	formats::FYIFormats,
-	props::FYIProps,
+use std::{
+	env,
+	path::PathBuf,
 };
-use std::env;
-use std::path::PathBuf;
 
 lazy_static! {
 	static ref JPEGOPTIM: PathBuf = Jpegoptim::find().unwrap_or(PathBuf::from("/dev/null"));
@@ -65,7 +67,7 @@ pub fn check_dependencies() {
 /// Error and Exit.
 pub fn die<S> (msg: S)
 where S: Into<String> {
-	Msg::new(msg)
+	Msg::new(msg.into())
 		.with_prefix(Prefix::Error)
 		.print();
 
