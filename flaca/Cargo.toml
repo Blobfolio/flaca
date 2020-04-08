@@ -12,8 +12,6 @@ clap = "2.33.*"
 
 [dependencies]
 flaca_core = { path = "../flaca_core" }
-rayon = "1.3.*"
-regex = "1.3.6"
 
 [dependencies.clap]
 version = "2.33.*"
