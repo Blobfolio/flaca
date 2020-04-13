@@ -3,6 +3,7 @@
 */
 
 use crate::image::ImageKind;
+use fyi_core::Result;
 use std::{
 	path::Path,
 	process::{
@@ -28,7 +29,7 @@ impl super::Encoder for Oxipng {
 	const URL: &'static str = "https://github.com/shssoichiro/oxipng";
 
 	/// Encode for Real.
-	fn _encode<P> (path: P) -> Result<(), String>
+	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
 		Command::new(crate::OXIPNG.clone())
 			.args(&[
@@ -46,7 +47,7 @@ impl super::Encoder for Oxipng {
 			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
-			.output().map_err(|x| x.to_string())?;
+			.output()?;
 
 		Ok(())
 	}

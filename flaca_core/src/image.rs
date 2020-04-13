@@ -3,7 +3,10 @@
 */
 
 use crate::encoder::*;
-use fyi_core::traits::path::FYIPathFormat;
+use fyi_core::{
+	Error,
+	Result,
+};
 use std::{
 	fmt,
 	path::Path,
@@ -38,7 +41,7 @@ impl fmt::Display for ImageKind {
 /// Image Type.
 pub trait ImagePath {
 	/// Encode.
-	fn flaca_encode(&self) -> Result<(), String>;
+	fn flaca_encode(&self) -> Result<()>;
 
 	/// Image type.
 	fn flaca_image_type(&self) -> ImageKind;
@@ -46,7 +49,7 @@ pub trait ImagePath {
 
 impl ImagePath for Path {
 	/// Encode.
-	fn flaca_encode(&self) -> Result<(), String> {
+	fn flaca_encode(&self) -> Result<()> {
 		match self.flaca_image_type() {
 			ImageKind::Jpeg => {
 				Jpegoptim::encode(&self)?;
@@ -59,7 +62,7 @@ impl ImagePath for Path {
 				Zopflipng::encode(&self)?;
 				Ok(())
 			},
-			ImageKind::None => Err(format!("Invalid image: {}", self.fyi_to_string())),
+			ImageKind::None => Err(Error::PathInvalid(self.to_path_buf(), "is not an image")),
 		}
 	}
 

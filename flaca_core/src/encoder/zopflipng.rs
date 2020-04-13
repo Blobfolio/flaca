@@ -3,6 +3,7 @@
 */
 
 use crate::image::ImageKind;
+use fyi_core::Result;
 use std::{
 	path::Path,
 	process::{
@@ -28,7 +29,7 @@ impl super::Encoder for Zopflipng {
 	const URL: &'static str = "https://github.com/google/zopfli";
 
 	/// Encode for Real.
-	fn _encode<P> (path: P) -> Result<(), String>
+	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
 		let out = path.as_ref().to_str().unwrap_or("");
 		Command::new(crate::ZOPFLIPNG.clone())
@@ -40,7 +41,7 @@ impl super::Encoder for Zopflipng {
 			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
-			.output().map_err(|x| x.to_string())?;
+			.output()?;
 
 		Ok(())
 	}

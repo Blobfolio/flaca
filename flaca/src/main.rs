@@ -12,12 +12,16 @@ mod menu;
 
 use clap::ArgMatches;
 use flaca_core::image::ImagePath;
-use fyi_core::Witch;
+use fyi_core::{
+	Error,
+	Result,
+	Witch
+};
 use std::path::PathBuf;
 
 
 
-fn main() -> Result<(), String> {
+fn main() -> Result<()> {
 	// Command line arguments.
 	let opts: ArgMatches = menu::menu()
 		.get_matches();
@@ -48,7 +52,7 @@ fn main() -> Result<(), String> {
 	};
 
 	if walk.is_empty() {
-		return Err("No images were found.".to_string());
+		return Err(Error::Other("No images were found.".to_string()));
 	}
 
 	// With progress.

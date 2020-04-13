@@ -1,21 +1,25 @@
 /*!
 # Build
-
-Generate BASH completions when building.
 */
 
 extern crate clap;
-
-use clap::Shell;
-use std::path::PathBuf;
 
 include!("src/menu.rs");
 
 
 
+/// Build tasks.
 fn main() {
+	completions();
+}
+
+/// Bash completions.
+fn completions() {
+	use clap::Shell;
+	use std::path::PathBuf;
+
 	// Store the completions here.
-	let outdir: PathBuf = PathBuf::from("/tmp/flaca-cargo");
+	let outdir: PathBuf = PathBuf::from("../release/completions");
 	if false == outdir.is_dir() {
 		std::fs::create_dir(&outdir).expect("Unable to create temporary completion directory.");
 	}

@@ -3,7 +3,11 @@
 */
 
 use crate::image::ImageKind;
-use fyi_core::traits::path::FYIPath;
+use fyi_core::{
+	Error,
+	Result,
+	traits::path::FYIPath,
+};
 use std::{
 	path::{
 		Path,
@@ -35,16 +39,16 @@ impl super::Encoder for Mozjpeg {
 	///
 	/// MozJPEG uses the same binary name as jpegtran, so we need to
 	/// look for it in a specific place.
-	fn find() -> Result<PathBuf, String> {
+	fn find() -> Result<PathBuf> {
 		let path: PathBuf = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
 		match path.fyi_is_executable() {
 			true => Ok(path),
-			_ => Err(format!("Unable to find {}.", Self::NAME)),
+			_ => Err(Error::PathInvalid(path, "is missing")),
 		}
 	}
 
 	/// Encode for Real.
-	fn _encode<P> (path: P) -> Result<(), String>
+	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
 		let out = path.as_ref().to_str().unwrap_or("");
 		Command::new(crate::MOZJPEG.clone())
@@ -59,7 +63,7 @@ impl super::Encoder for Mozjpeg {
 			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
-			.output().map_err(|x| x.to_string())?;
+			.output()?;
 
 		Ok(())
 	}
