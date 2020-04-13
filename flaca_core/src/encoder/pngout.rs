@@ -3,6 +3,7 @@
 */
 
 use crate::image::ImageKind;
+use fyi_core::Result;
 use std::{
 	path::Path,
 	process::{
@@ -28,7 +29,7 @@ impl super::Encoder for Pngout {
 	const URL: &'static str = "http://advsys.net/ken/utils.htm";
 
 	/// Encode for Real.
-	fn _encode<P> (path: P) -> Result<(), String>
+	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
 		Command::new(crate::PNGOUT.clone())
 			.args(&[
@@ -37,7 +38,7 @@ impl super::Encoder for Pngout {
 			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
-			.output().map_err(|x| x.to_string())?;
+			.output()?;
 
 		Ok(())
 	}

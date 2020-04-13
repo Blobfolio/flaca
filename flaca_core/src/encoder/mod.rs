@@ -19,12 +19,13 @@ use crate::{
 	image::ImageKind,
 };
 use fyi_core::{
-	util::numbers,
+	Error,
+	Result,
 	traits::path::{
 		FYIPath,
-		FYIPathFormat,
 		FYIPathIO,
 	},
+	util::numbers,
 };
 use std::path::{
 	Path,
@@ -45,17 +46,17 @@ pub trait Encoder: Sized {
 	const URL: &'static str;
 
 	/// Find it.
-	fn find() -> Result<PathBuf, String> {
-		find_executable(Self::BIN).ok_or(format!("Unable to find {}.", Self::NAME))
+	fn find() -> Result<PathBuf> {
+		find_executable(Self::BIN).ok_or(Error::PathInvalid(PathBuf::from(Self::BIN), "not found"))
 	}
 
 	/// Encode.
-	fn encode<P> (path: P) -> Result<(), String>
+	fn encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
 		// Get the starting size.
 		let before: u64 = path.as_ref().fyi_file_size();
 		if 0 == before {
-			return Err(format!("Empty file: {}", path.as_ref().fyi_to_string()));
+			return Err(Error::PathInvalid(path.as_ref().to_path_buf(), "is empty"));
 		}
 
 		// Copy it somewhere temporary.
@@ -76,6 +77,6 @@ pub trait Encoder: Sized {
 	}
 
 	/// Encode for Real.
-	fn _encode<P> (path: P) -> Result<(), String>
+	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path>;
 }
