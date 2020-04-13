@@ -12,10 +12,10 @@ publish = false
 maintainer = "Josh Stoik <hello@blobfolio.com>"
 copyright = "2020, Blobfolio, LLC <hello@blobfolio.com>"
 license-file = ["../LICENSE", "0"]
-extended-description = """\
+extended-description = """\n\
 Flaca is a CLI frontend written in Rust to aid the complex task of squeezing every last drop of space out of JPEG and PNG images — without sacrificing quality.\n\
 .\n\
-Flaca uses MozJPEG and Jpegoptim for lossless JPEG re-compression and PNGOUT, Oxipng, and Zopflipng for lossless PNG compression.\n\
+Flaca uses MozJPEG and Jpegoptim for lossless JPEG (re)compression and PNGOUT, Oxipng, and Zopflipng for lossless PNG (re)compression.\n\
 .\n\
 The image compression binaries are not bundled with this package and must be installed separately."""
 revision = "1"
