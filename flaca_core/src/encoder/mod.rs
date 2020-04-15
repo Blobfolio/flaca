@@ -64,14 +64,17 @@ pub trait Encoder: Sized {
 		let out = path.as_ref().fyi_copy_tmp(Self::KIND.suffix())?;
 
 		// Do the actual encoding.
-		Self::_encode(&out.path())?;
+		if let Err(e) = Self::_encode(&out.path()) {
+			out.close()?;
+			return Err(e);
+		}
 
 		let after: u64 = out.path().fyi_file_size();
 		if 0 != numbers::saved(before, after) {
 			out.persist(path.as_ref())?;
 		}
 		else {
-			drop(out);
+			out.close()?;
 		}
 
 		Ok(())
