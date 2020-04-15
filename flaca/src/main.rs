@@ -52,7 +52,7 @@ fn main() -> Result<()> {
 	};
 
 	if walk.is_empty() {
-		return Err(Error::Other("No images were found.".to_string()));
+		return Err(Error::NoPaths("images".into()));
 	}
 
 	// With progress.

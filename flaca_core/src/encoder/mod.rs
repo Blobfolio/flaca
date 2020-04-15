@@ -47,7 +47,8 @@ pub trait Encoder: Sized {
 
 	/// Find it.
 	fn find() -> Result<PathBuf> {
-		find_executable(Self::BIN).ok_or(Error::PathInvalid(PathBuf::from(Self::BIN), "not found"))
+		find_executable(Self::BIN)
+			.ok_or(Error::PathInvalid(PathBuf::from(Self::BIN), "not found"))
 	}
 
 	/// Encode.
@@ -56,21 +57,24 @@ pub trait Encoder: Sized {
 		// Get the starting size.
 		let before: u64 = path.as_ref().fyi_file_size();
 		if 0 == before {
-			return Err(Error::PathInvalid(path.as_ref().to_path_buf(), "is empty"));
+			return Err(Error::PathRead(path.as_ref().to_path_buf()));
 		}
 
 		// Copy it somewhere temporary.
-		let out = path.as_ref().fyi_copy_tmp()?;
+		let out = path.as_ref().fyi_copy_tmp(Self::KIND.suffix())?;
 
 		// Do the actual encoding.
-		Self::_encode(&out)?;
+		if let Err(e) = Self::_encode(&out.path()) {
+			out.close()?;
+			return Err(e);
+		}
 
-		let after: u64 = out.fyi_file_size();
+		let after: u64 = out.path().fyi_file_size();
 		if 0 != numbers::saved(before, after) {
-			out.fyi_move(&path)?;
+			out.persist(path.as_ref())?;
 		}
 		else {
-			out.fyi_delete()?;
+			out.close()?;
 		}
 
 		Ok(())
