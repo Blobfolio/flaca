@@ -35,6 +35,8 @@ impl super::Encoder for Pngout {
 			.args(&[
 				path.as_ref().to_str().unwrap_or(""),
 				"-q",
+				"-y",
+				"-force",
 			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
