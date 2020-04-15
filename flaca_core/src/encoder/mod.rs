@@ -61,7 +61,7 @@ pub trait Encoder: Sized {
 		}
 
 		// Copy it somewhere temporary.
-		let out = path.as_ref().fyi_copy_tmp()?;
+		let out = path.as_ref().fyi_copy_tmp(Self::KIND.suffix())?;
 
 		// Do the actual encoding.
 		Self::_encode(&out.path())?;
