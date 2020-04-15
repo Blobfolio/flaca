@@ -36,6 +36,17 @@ impl fmt::Display for ImageKind {
 	}
 }
 
+impl ImageKind {
+	/// Suffix.
+	pub fn suffix(&self) -> Option<String> {
+		match *self {
+			Self::Jpeg => Some(".jpg".to_string()),
+			Self::Png => Some(".png".to_string()),
+			Self::None => None,
+		}
+	}
+}
+
 
 
 /// Image Type.
@@ -52,14 +63,14 @@ impl ImagePath for Path {
 	fn flaca_encode(&self) -> Result<()> {
 		match self.flaca_image_type() {
 			ImageKind::Jpeg => {
-				Jpegoptim::encode(&self)?;
-				Mozjpeg::encode(&self)?;
+				let _ = Jpegoptim::encode(&self).is_ok();
+				let _ = Mozjpeg::encode(&self).is_ok();
 				Ok(())
 			},
 			ImageKind::Png => {
-				Pngout::encode(&self)?;
-				Oxipng::encode(&self)?;
-				Zopflipng::encode(&self)?;
+				let _ = Pngout::encode(&self).is_ok();
+				let _ = Oxipng::encode(&self).is_ok();
+				let _ = Zopflipng::encode(&self).is_ok();
 				Ok(())
 			},
 			ImageKind::None => Err(Error::PathInvalid(self.to_path_buf(), "is not an image")),
