@@ -15,9 +15,8 @@ use flaca_core::image::ImagePath;
 use fyi_core::{
 	Error,
 	Result,
-	Witch
 };
-use std::path::PathBuf;
+use fyi_witch::Witch;
 
 
 
@@ -29,30 +28,21 @@ fn main() -> Result<()> {
 	// Check dependencies before doing anything else.
 	flaca_core::check_dependencies();
 
-	// What path are we dealing with?
 	let walk: Witch = match opts.is_present("list") {
-		false => {
-			let paths: Vec<PathBuf> = opts.values_of("path").unwrap()
-				.into_iter()
-				.map(|x| PathBuf::from(x))
-				.collect();
-
-			Witch::new(
-				&paths,
-				Some(r"(?i).+\.(jpe?g|png)$".to_string())
-			)
-		},
-		true => {
-			let path = PathBuf::from(opts.value_of("list").unwrap_or(""));
-			Witch::from_file(
-				&path,
-				Some(r"(?i).+\.(jpe?g|png)$".to_string())
-			)
-		},
+		false => Witch::new(
+			&opts.values_of("path")
+				.unwrap()
+				.collect::<Vec<&str>>(),
+			Some(r"(?i).+\.(jpe?g|png)$".to_string())
+		),
+		true => Witch::from_file(
+			opts.value_of("list").unwrap_or(""),
+			Some(r"(?i).+\.(jpe?g|png)$".to_string())
+		),
 	};
 
 	if walk.is_empty() {
-		return Err(Error::NoPaths("images".into()));
+		return Err(Error::new("No images were found."));
 	}
 
 	// With progress.

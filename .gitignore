@@ -1,5 +1,6 @@
 /bin/
 /Cargo.lock
 /flaca.log
+/release/man/flaca.1.gz
 /target/
 /tests/

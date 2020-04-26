@@ -73,7 +73,7 @@ impl ImagePath for Path {
 				let _ = Zopflipng::encode(&self).is_ok();
 				Ok(())
 			},
-			ImageKind::None => Err(Error::PathInvalid(self.to_path_buf(), "is not an image")),
+			ImageKind::None => Err(Error::new(format!("{:?} is not a valid image.", self.to_path_buf()))),
 		}
 	}
 

@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.1.6"
+version = "1.1.7"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
@@ -42,4 +42,8 @@ features = [ "color", "suggestions", "vec_map", "wrap_help" ]
 git = "https://github.com/Blobfolio/fyi.git"
 branch = "master"
 default-features = false
-features = [ "progress", "witcher" ]
+features = [ "progress" ]
+
+[dependencies.fyi_witch]
+git = "https://github.com/Blobfolio/fyi.git"
+branch = "master"

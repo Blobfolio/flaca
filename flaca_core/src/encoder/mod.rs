@@ -21,12 +21,12 @@ use crate::{
 use fyi_core::{
 	Error,
 	Result,
-	traits::path::{
-		FYIPath,
-		FYIPathIO,
+	traits::{
+		MebiSaved,
+		PathProps,
 	},
-	util::numbers,
 };
+use fyi_witch::traits::WitchIO;
 use std::path::{
 	Path,
 	PathBuf
@@ -48,20 +48,20 @@ pub trait Encoder: Sized {
 	/// Find it.
 	fn find() -> Result<PathBuf> {
 		find_executable(Self::BIN)
-			.ok_or(Error::PathInvalid(PathBuf::from(Self::BIN), "not found"))
+			.ok_or(Error::new(format!("Could not find {}.", Self::NAME)))
 	}
 
 	/// Encode.
 	fn encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
 		// Get the starting size.
-		let before: u64 = path.as_ref().fyi_file_size();
+		let before: u64 = path.as_ref().file_size();
 		if 0 == before {
-			return Err(Error::PathRead(path.as_ref().to_path_buf()));
+			return Err(Error::new(format!("Unable to encode {:?}.", path.as_ref().to_path_buf())));
 		}
 
 		// Copy it somewhere temporary.
-		let out = path.as_ref().fyi_copy_tmp(Self::KIND.suffix())?;
+		let out = path.as_ref().witch_copy_tmp(Self::KIND.suffix())?;
 
 		// Do the actual encoding.
 		if let Err(e) = Self::_encode(&out.path()) {
@@ -69,9 +69,10 @@ pub trait Encoder: Sized {
 			return Err(e);
 		}
 
-		let after: u64 = out.path().fyi_file_size();
-		if 0 != numbers::saved(before, after) {
-			out.persist(path.as_ref())?;
+		let after: u64 = out.path().file_size();
+		if 0 != before.saved(after) {
+			out.persist(path.as_ref())
+				.map_err(|e| Error::new(format!("{}", e)))?;
 		}
 		else {
 			out.close()?;
