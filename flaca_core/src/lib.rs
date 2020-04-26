@@ -25,9 +25,9 @@ use encoder::*;
 use fyi_core::{
 	Msg,
 	Prefix,
-	traits::path::{
-		FYIPath,
-		FYIPathFormat,
+	traits::{
+		AbsPath,
+		PathProps,
 	},
 };
 use std::{
@@ -85,7 +85,7 @@ where S: Into<String> {
 				.filter_map(|ref x| {
 					let path = PathBuf::from(x);
 					match path.is_dir() {
-						true => Some(path.fyi_to_path_buf_abs()),
+						true => Some(path.to_path_buf_abs()),
 						false => None,
 					}
 				})
@@ -97,7 +97,7 @@ where S: Into<String> {
 		for dir in EXECUTABLE_DIRS.as_slice() {
 			let mut path = dir.clone();
 			path.push(&name);
-			if path.fyi_is_executable() {
+			if path.is_executable() {
 				return Some(path);
 			}
 		}

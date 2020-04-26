@@ -6,7 +6,7 @@ use crate::image::ImageKind;
 use fyi_core::{
 	Error,
 	Result,
-	traits::path::FYIPath,
+	traits::PathProps,
 };
 use std::{
 	path::{
@@ -41,9 +41,9 @@ impl super::Encoder for Mozjpeg {
 	/// look for it in a specific place.
 	fn find() -> Result<PathBuf> {
 		let path: PathBuf = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
-		match path.fyi_is_executable() {
+		match path.is_executable() {
 			true => Ok(path),
-			_ => Err(Error::PathInvalid(path, "is missing")),
+			_ => Err(Error::new("Could not find MozJPEG.")),
 		}
 	}
 
