@@ -1,5 +1,5 @@
 /*!
-# Flaca: Zopflipng
+# Flaca: `Zopflipng`
 */
 
 use crate::image::ImageKind;
@@ -14,7 +14,7 @@ use std::{
 
 
 
-/// Zopflipng.
+/// `Zopflipng`.
 #[derive(Debug, Clone, Copy)]
 pub struct Zopflipng {}
 
@@ -36,8 +36,8 @@ impl super::Encoder for Zopflipng {
 			.args(&[
 				"-m",
 				"-y",
-				&out,
-				&out,
+				out,
+				out,
 			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
