@@ -20,7 +20,7 @@ fn completions() {
 
 	// Store the completions here.
 	let outdir: PathBuf = PathBuf::from("../release/completions");
-	if false == outdir.is_dir() {
+	if ! outdir.is_dir() {
 		std::fs::create_dir(&outdir).expect("Unable to create temporary completion directory.");
 	}
 

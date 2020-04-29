@@ -12,6 +12,19 @@ Brute-force, lossless JPEG and PNG compression.
 #![deny(missing_copy_implementations)]
 #![deny(missing_debug_implementations)]
 
+#![warn(clippy::filetype_is_file)]
+#![warn(clippy::integer_division)]
+#![warn(clippy::needless_borrow)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::suboptimal_flops)]
+#![warn(clippy::unneeded_field_pattern)]
+
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::missing_errors_doc)]
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -21,7 +34,14 @@ extern crate imghdr;
 pub mod image;
 pub mod encoder;
 
-use encoder::*;
+use encoder::{
+	Encoder,
+	Jpegoptim,
+	Mozjpeg,
+	Oxipng,
+	Pngout,
+	Zopflipng,
+};
 use fyi_core::{
 	Msg,
 	Prefix,
@@ -36,30 +56,30 @@ use std::{
 };
 
 lazy_static! {
-	static ref JPEGOPTIM: PathBuf = Jpegoptim::find().unwrap_or(PathBuf::from("/dev/null"));
-	static ref MOZJPEG: PathBuf = Mozjpeg::find().unwrap_or(PathBuf::from("/dev/null"));
-	static ref OXIPNG: PathBuf = Oxipng::find().unwrap_or(PathBuf::from("/dev/null"));
-	static ref PNGOUT: PathBuf = Pngout::find().unwrap_or(PathBuf::from("/dev/null"));
-	static ref ZOPFLIPNG: PathBuf = Zopflipng::find().unwrap_or(PathBuf::from("/dev/null"));
+	static ref JPEGOPTIM: PathBuf = Jpegoptim::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
+	static ref MOZJPEG: PathBuf = Mozjpeg::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
+	static ref OXIPNG: PathBuf = Oxipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
+	static ref PNGOUT: PathBuf = Pngout::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
+	static ref ZOPFLIPNG: PathBuf = Zopflipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 }
 
 
 
 /// Dependency check.
 pub fn check_dependencies() {
-	if false == JPEGOPTIM.is_file() {
+	if ! JPEGOPTIM.is_file() {
 		die(format!("Missing: {} <{}>", Jpegoptim::NAME, Jpegoptim::URL));
 	}
-	if false == MOZJPEG.is_file() {
+	if ! MOZJPEG.is_file() {
 		die(format!("Missing: {} <{}>", Mozjpeg::NAME, Mozjpeg::URL));
 	}
-	if false == OXIPNG.is_file() {
+	if ! OXIPNG.is_file() {
 		die(format!("Missing: {} <{}>", Oxipng::NAME, Oxipng::URL));
 	}
-	if false == PNGOUT.is_file() {
+	if ! PNGOUT.is_file() {
 		die(format!("Missing: {} <{}>", Pngout::NAME, Pngout::URL));
 	}
-	if false == ZOPFLIPNG.is_file() {
+	if ! ZOPFLIPNG.is_file() {
 		die(format!("Missing: {} <{}>", Zopflipng::NAME, Zopflipng::URL));
 	}
 }
@@ -80,19 +100,19 @@ where S: Into<String> {
 	lazy_static! {
 		// We only need to build a list of executable base paths once.
 		static ref EXECUTABLE_DIRS: Vec<PathBuf> =
-			format!("{}", env::var("PATH").unwrap_or("".to_string()))
-				.split(":")
-				.filter_map(|ref x| {
+			env::var("PATH").unwrap_or_else(|_| "".to_string())
+				.split(':')
+				.filter_map(|x| {
 					let path = PathBuf::from(x);
-					match path.is_dir() {
-						true => Some(path.to_path_buf_abs()),
-						false => None,
+					if path.is_dir() {
+						Some(path.to_path_buf_abs())
 					}
+					else { None }
 				})
 				.collect();
 	}
 
-	if false == EXECUTABLE_DIRS.is_empty() {
+	if ! EXECUTABLE_DIRS.is_empty() {
 		let name = name.into();
 		for dir in EXECUTABLE_DIRS.as_slice() {
 			let mut path = dir.clone();

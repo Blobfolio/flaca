@@ -48,7 +48,7 @@ pub trait Encoder: Sized {
 	/// Find it.
 	fn find() -> Result<PathBuf> {
 		find_executable(Self::BIN)
-			.ok_or(Error::new(format!("Could not find {}.", Self::NAME)))
+			.ok_or_else(|| Error::new(format!("Could not find {}.", Self::NAME)))
 	}
 
 	/// Encode.
@@ -70,12 +70,12 @@ pub trait Encoder: Sized {
 		}
 
 		let after: u64 = out.path().file_size();
-		if 0 != before.saved(after) {
-			out.persist(path.as_ref())
-				.map_err(|e| Error::new(format!("{}", e)))?;
+		if 0 == before.saved(after) {
+			out.close()?;
 		}
 		else {
-			out.close()?;
+			out.persist(path.as_ref())
+				.map_err(|e| Error::new(format!("{}", e)))?;
 		}
 
 		Ok(())

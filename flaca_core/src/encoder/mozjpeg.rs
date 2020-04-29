@@ -1,5 +1,5 @@
 /*!
-# Flaca: MozJPEG
+# Flaca: `MozJPEG`
 */
 
 use crate::image::ImageKind;
@@ -21,7 +21,7 @@ use std::{
 
 
 
-/// MozJPEG.
+/// `MozJPEG`.
 #[derive(Debug, Clone, Copy)]
 pub struct Mozjpeg {}
 
@@ -37,13 +37,15 @@ impl super::Encoder for Mozjpeg {
 
 	/// Find it.
 	///
-	/// MozJPEG uses the same binary name as jpegtran, so we need to
+	/// `MozJPEG` uses the same binary name as `jpegtran`, so we need to
 	/// look for it in a specific place.
 	fn find() -> Result<PathBuf> {
 		let path: PathBuf = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
-		match path.is_executable() {
-			true => Ok(path),
-			_ => Err(Error::new("Could not find MozJPEG.")),
+		if path.is_executable() {
+			Ok(path)
+		}
+		else {
+			Err(Error::new("Could not find MozJPEG."))
 		}
 	}
 
@@ -58,8 +60,8 @@ impl super::Encoder for Mozjpeg {
 				"-optimize",
 				"-progressive",
 				"-outfile",
-				&out,
-				&out,
+				out,
+				out,
 			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())

@@ -2,7 +2,14 @@
 # Flaca: Image Business
 */
 
-use crate::encoder::*;
+use crate::encoder::{
+	Encoder,
+	Jpegoptim,
+	Mozjpeg,
+	Oxipng,
+	Pngout,
+	Zopflipng,
+};
 use fyi_core::{
 	Error,
 	Result,
@@ -37,9 +44,10 @@ impl fmt::Display for ImageKind {
 }
 
 impl ImageKind {
+	#[must_use]
 	/// Suffix.
-	pub fn suffix(&self) -> Option<String> {
-		match *self {
+	pub fn suffix(self) -> Option<String> {
+		match self {
 			Self::Jpeg => Some(".jpg".to_string()),
 			Self::Png => Some(".png".to_string()),
 			Self::None => None,
@@ -79,13 +87,15 @@ impl ImagePath for Path {
 
 	/// Image type.
 	fn flaca_image_type(&self) -> ImageKind {
-		match self.is_file() {
-			true => match imghdr::from_file(&self) {
+		if self.is_file() {
+			match imghdr::from_file(&self) {
 				Ok(Some(imghdr::Type::Png)) => ImageKind::Png,
 				Ok(Some(imghdr::Type::Jpeg)) => ImageKind::Jpeg,
 				_ => ImageKind::None,
-			},
-			false => ImageKind::None,
+			}
+		}
+		else {
+			ImageKind::None
 		}
 	}
 }
