@@ -40,7 +40,7 @@ impl super::Encoder for Oxipng {
 				"1",
 				"--fix",
 				"-o",
-				"6",
+				"3",
 				"-i",
 				"0",
 				path.as_ref().to_str().unwrap_or(""),
