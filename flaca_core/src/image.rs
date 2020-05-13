@@ -10,10 +10,7 @@ use crate::encoder::{
 	Pngout,
 	Zopflipng,
 };
-use fyi_core::{
-	Error,
-	Result,
-};
+use fyi_witcher::Result;
 use std::{
 	fmt,
 	path::Path,
@@ -81,7 +78,7 @@ impl ImagePath for Path {
 				let _ = Zopflipng::encode(&self).is_ok();
 				Ok(())
 			},
-			ImageKind::None => Err(Error::new(format!("{:?} is not a valid image.", self.to_path_buf()))),
+			ImageKind::None => Err(format!("{:?} is not a valid image.", self.to_path_buf())),
 		}
 	}
 
