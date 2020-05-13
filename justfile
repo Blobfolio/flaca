@@ -23,9 +23,9 @@ rustflags   := "-Clinker-plugin-lto -Clinker=clang-9 -Clink-args=-fuse-ld=lld-9 
 
 
 # Benchmark.
-@bench: build-pgo _bench-reset
+@bench: build _bench-reset
 	clear
-	"{{ cargo_dir }}/release/{{ pkg_id }}" -p "{{ data_dir }}"
+	"{{ cargo_bin }}" -p "{{ data_dir }}"
 
 
 # Build Release!
