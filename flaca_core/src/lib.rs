@@ -59,12 +59,11 @@ lazy_static::lazy_static! {
 
 
 
+#[must_use]
 /// Bytes saved.
 pub fn bytes_saved(before: u64, after: u64) -> u64 {
-	if 0 < after && after < before {
-		before - after
-	}
-	else { 0 }
+	if 0 == after || before <= after { 0 }
+	else { before - after }
 }
 
 /// Dependency check.
