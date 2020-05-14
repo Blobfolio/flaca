@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.1.9"
+version = "1.2.0"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
@@ -40,4 +40,4 @@ path = "../flaca_core"
 
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
-branch = "feature/next"
+branch = "master"
