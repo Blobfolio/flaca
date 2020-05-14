@@ -1,6 +1,6 @@
 [package]
 name = "flaca_core"
-version = "1.1.9"
+version = "1.2.0"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
 description = "Brute-force, lossless JPEG and PNG compression."
@@ -10,12 +10,10 @@ publish = false
 imghdr = "0.7.*"
 lazy_static = "1.4.*"
 
-[dependencies.fyi_core]
+[dependencies.fyi_msg]
 git = "https://github.com/Blobfolio/fyi.git"
 branch = "master"
-default-features = false
-features = [ "progress" ]
 
-[dependencies.fyi_witch]
+[dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
 branch = "master"

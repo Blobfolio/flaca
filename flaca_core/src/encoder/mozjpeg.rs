@@ -3,10 +3,9 @@
 */
 
 use crate::image::ImageKind;
-use fyi_core::{
-	Error,
+use fyi_witcher::{
 	Result,
-	traits::PathProps,
+	utility::is_executable,
 };
 use std::{
 	path::{
@@ -41,11 +40,11 @@ impl super::Encoder for Mozjpeg {
 	/// look for it in a specific place.
 	fn find() -> Result<PathBuf> {
 		let path: PathBuf = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
-		if path.is_executable() {
+		if is_executable(&path) {
 			Ok(path)
 		}
 		else {
-			Err(Error::new("Could not find MozJPEG."))
+			Err("Could not find MozJPEG.".to_string())
 		}
 	}
 
@@ -65,7 +64,7 @@ impl super::Encoder for Mozjpeg {
 			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
-			.output()?;
+			.output().map_err(|e| e.to_string())?;
 
 		Ok(())
 	}

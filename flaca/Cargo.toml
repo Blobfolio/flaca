@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.1.9"
+version = "1.2.0"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
@@ -30,20 +30,14 @@ assets = [
 [build-dependencies]
 clap = { version = "2.33.*", default-features = false }
 
-[dependencies]
-flaca_core = { path = "../flaca_core" }
-
 [dependencies.clap]
 version = "2.33.*"
 default-features = false
 features = [ "color", "suggestions", "vec_map", "wrap_help" ]
 
-[dependencies.fyi_core]
-git = "https://github.com/Blobfolio/fyi.git"
-branch = "master"
-default-features = false
-features = [ "progress" ]
+[dependencies.flaca_core]
+path = "../flaca_core"
 
-[dependencies.fyi_witch]
+[dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
 branch = "master"

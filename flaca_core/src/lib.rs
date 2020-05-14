@@ -25,12 +25,6 @@ Brute-force, lossless JPEG and PNG compression.
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)]
 
-#[macro_use]
-extern crate lazy_static;
-
-extern crate fyi_core;
-extern crate imghdr;
-
 pub mod image;
 pub mod encoder;
 
@@ -42,20 +36,20 @@ use encoder::{
 	Pngout,
 	Zopflipng,
 };
-use fyi_core::{
+use fyi_msg::{
+	Flags,
 	Msg,
-	Prefix,
-	traits::{
-		AbsPath,
-		PathProps,
-	},
+	traits::Printable,
 };
+use fyi_witcher::utility::is_executable;
 use std::{
+	borrow::Borrow,
 	env,
+	fs,
 	path::PathBuf,
 };
 
-lazy_static! {
+lazy_static::lazy_static! {
 	static ref JPEGOPTIM: PathBuf = Jpegoptim::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref MOZJPEG: PathBuf = Mozjpeg::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref OXIPNG: PathBuf = Oxipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
@@ -64,6 +58,13 @@ lazy_static! {
 }
 
 
+
+#[must_use]
+/// Bytes saved.
+pub fn bytes_saved(before: u64, after: u64) -> u64 {
+	if 0 == after || before <= after { 0 }
+	else { before - after }
+}
 
 /// Dependency check.
 pub fn check_dependencies() {
@@ -86,10 +87,9 @@ pub fn check_dependencies() {
 
 /// Error and Exit.
 pub fn die<S> (msg: S)
-where S: Into<String> {
-	Msg::new(msg.into())
-		.with_prefix(Prefix::Error)
-		.print();
+where S: Borrow<str> {
+	Msg::error(msg)
+		.print(0, Flags::TO_STDERR);
 
 	std::process::exit(1);
 }
@@ -97,15 +97,17 @@ where S: Into<String> {
 /// Find Executable.
 pub fn find_executable<S> (name: S) -> Option<PathBuf>
 where S: Into<String> {
-	lazy_static! {
+	lazy_static::lazy_static! {
 		// We only need to build a list of executable base paths once.
 		static ref EXECUTABLE_DIRS: Vec<PathBuf> =
 			env::var("PATH").unwrap_or_else(|_| "".to_string())
 				.split(':')
 				.filter_map(|x| {
-					let path = PathBuf::from(x);
-					if path.is_dir() {
-						Some(path.to_path_buf_abs())
+					if let Ok(path) = fs::canonicalize(&x) {
+						if path.is_dir() {
+							Some(path)
+						}
+						else { None }
 					}
 					else { None }
 				})
@@ -117,7 +119,7 @@ where S: Into<String> {
 		for dir in EXECUTABLE_DIRS.as_slice() {
 			let mut path = dir.clone();
 			path.push(&name);
-			if path.is_executable() {
+			if is_executable(&path) {
 				return Some(path);
 			}
 		}

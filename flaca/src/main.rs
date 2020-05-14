@@ -25,19 +25,14 @@ Brute-force, lossless JPEG and PNG compression.
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)]
 
-extern crate clap;
-extern crate flaca_core;
-extern crate fyi_core;
-
 mod menu;
 
 use clap::ArgMatches;
 use flaca_core::image::ImagePath;
-use fyi_core::{
-	Error,
+use fyi_witcher::{
+	Witcher,
 	Result,
 };
-use fyi_witch::Witch;
 
 
 
@@ -50,23 +45,23 @@ fn main() -> Result<()> {
 	flaca_core::check_dependencies();
 
 	// What path are we dealing with?
-	let walk: Witch = if opts.is_present("list") {
-		Witch::from_file(
+	let walk = if opts.is_present("list") {
+		Witcher::from_file(
 			opts.value_of("list").unwrap_or(""),
-			Some(r"(?i).+\.(jpe?g|png)$".to_string())
+			r"(?i).+\.(jpe?g|png)$"
 		)
 	}
 	else {
-		Witch::new(
+		Witcher::new(
 			&opts.values_of("path")
 				.unwrap()
 				.collect::<Vec<&str>>(),
-			Some(r"(?i).+\.(jpe?g|png)$".to_string())
+			r"(?i).+\.(jpe?g|png)$"
 		)
 	};
 
 	if walk.is_empty() {
-		return Err(Error::new("No images were found."));
+		return Err("No images were found.".to_string());
 	}
 
 	// With progress.

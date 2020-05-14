@@ -3,7 +3,7 @@
 */
 
 use crate::image::ImageKind;
-use fyi_core::Result;
+use fyi_witcher::Result;
 use std::{
 	path::Path,
 	process::{
@@ -40,7 +40,7 @@ impl super::Encoder for Pngout {
 			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
-			.output()?;
+			.output().map_err(|e| e.to_string())?;
 
 		Ok(())
 	}
