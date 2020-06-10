@@ -40,9 +40,7 @@ impl super::Encoder for Mozjpeg {
 	/// look for it in a specific place.
 	fn find() -> Result<PathBuf> {
 		let path: PathBuf = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
-		if is_executable(&path) {
-			Ok(path)
-		}
+		if is_executable(&path) { Ok(path) }
 		else {
 			Err("Could not find MozJPEG.".to_string())
 		}
