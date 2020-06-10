@@ -28,6 +28,7 @@ Brute-force, lossless JPEG and PNG compression.
 pub mod image;
 pub mod encoder;
 
+use crate::image::ImageKind;
 use encoder::{
 	Encoder,
 	Jpegoptim,
@@ -36,16 +37,16 @@ use encoder::{
 	Pngout,
 	Zopflipng,
 };
-use fyi_msg::{
-	Flags,
-	Msg,
-	traits::Printable,
-};
+use fyi_msg::Msg;
 use fyi_witcher::utility::is_executable;
 use std::{
 	borrow::Borrow,
 	env,
 	fs,
+	io::{
+		self,
+		Write
+	},
 	path::PathBuf,
 };
 
@@ -88,15 +89,13 @@ pub fn check_dependencies() {
 /// Error and Exit.
 pub fn die<S> (msg: S)
 where S: Borrow<str> {
-	Msg::error(msg)
-		.print(0, Flags::TO_STDERR);
-
+	io::stderr().write_all(&Msg::error(msg).iter().chain(&[10]).copied().collect::<Vec<u8>>()).unwrap();
 	std::process::exit(1);
 }
 
 /// Find Executable.
 pub fn find_executable<S> (name: S) -> Option<PathBuf>
-where S: Into<String> {
+where S: AsRef<str> {
 	lazy_static::lazy_static! {
 		// We only need to build a list of executable base paths once.
 		static ref EXECUTABLE_DIRS: Vec<PathBuf> =
@@ -115,10 +114,9 @@ where S: Into<String> {
 	}
 
 	if ! EXECUTABLE_DIRS.is_empty() {
-		let name = name.into();
 		for dir in EXECUTABLE_DIRS.as_slice() {
 			let mut path = dir.clone();
-			path.push(&name);
+			path.push(name.as_ref());
 			if is_executable(&path) {
 				return Some(path);
 			}
@@ -126,4 +124,33 @@ where S: Into<String> {
 	}
 
 	None
+}
+
+/// Encode.
+pub fn encode_image(path: &PathBuf) {
+	match image_type(path) {
+		ImageKind::Jpeg => {
+			let _ = Jpegoptim::encode(path).is_ok();
+			let _ = Mozjpeg::encode(path).is_ok();
+		},
+		ImageKind::Png => {
+			let _ = Pngout::encode(path).is_ok();
+			let _ = Oxipng::encode(path).is_ok();
+			let _ = Zopflipng::encode(path).is_ok();
+		},
+		ImageKind::None => {},
+	}
+}
+
+#[must_use]
+/// Image type.
+pub fn image_type(path: &PathBuf) -> ImageKind {
+	if path.is_file() {
+		match imghdr::from_file(path) {
+			Ok(Some(imghdr::Type::Png)) => ImageKind::Png,
+			Ok(Some(imghdr::Type::Jpeg)) => ImageKind::Jpeg,
+			_ => ImageKind::None,
+		}
+	}
+	else { ImageKind::None }
 }

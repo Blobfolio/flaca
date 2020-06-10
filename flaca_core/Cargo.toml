@@ -12,8 +12,10 @@ lazy_static = "1.4.*"
 
 [dependencies.fyi_msg]
 git = "https://github.com/Blobfolio/fyi.git"
-branch = "master"
+branch = "feature/next"
 
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
-branch = "master"
+branch = "feature/next"
+default-features = false
+features = [ "witch_io" ]
