@@ -40,4 +40,4 @@ path = "../flaca_core"
 
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
-branch = "feature/next"
+branch = "master"
