@@ -70,8 +70,7 @@ pub trait Encoder: Sized {
 			out.close().map_err(|e| e.to_string())?;
 		}
 		else {
-			out.persist(path.as_ref())
-				.map_err(|e| e.to_string())?;
+			out.persist(path.as_ref()).map_err(|e| e.to_string())?;
 		}
 
 		Ok(())

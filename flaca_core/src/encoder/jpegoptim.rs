@@ -31,7 +31,7 @@ impl super::Encoder for Jpegoptim {
 	/// Encode for Real.
 	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
-		Command::new(crate::JPEGOPTIM.clone())
+		Command::new(&*crate::JPEGOPTIM)
 			.args(&[
 				"-q",
 				"-f",

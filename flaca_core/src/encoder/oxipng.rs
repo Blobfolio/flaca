@@ -31,7 +31,7 @@ impl super::Encoder for Oxipng {
 	/// Encode for Real.
 	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
-		Command::new(crate::OXIPNG.clone())
+		Command::new(&*crate::OXIPNG)
 			.args(&[
 				"-s",
 				"-q",

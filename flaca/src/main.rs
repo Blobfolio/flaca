@@ -15,7 +15,9 @@ Brute-force, lossless JPEG and PNG compression.
 #![warn(clippy::filetype_is_file)]
 #![warn(clippy::integer_division)]
 #![warn(clippy::needless_borrow)]
+#![warn(clippy::nursery)]
 #![warn(clippy::pedantic)]
+#![warn(clippy::perf)]
 #![warn(clippy::suboptimal_flops)]
 #![warn(clippy::unneeded_field_pattern)]
 
@@ -28,7 +30,7 @@ Brute-force, lossless JPEG and PNG compression.
 mod menu;
 
 use clap::ArgMatches;
-use flaca_core::image::ImagePath;
+use flaca_core::encode_image;
 use fyi_witcher::{
 	Witcher,
 	Result,
@@ -66,15 +68,11 @@ fn main() -> Result<()> {
 
 	// With progress.
 	if opts.is_present("progress") {
-		walk.progress_crunch("Flaca", |x| {
-			let _ = x.flaca_encode().is_ok();
-		});
+		walk.progress_crunch("Flaca", encode_image);
 	}
 	// Without progress.
 	else {
-		walk.process(|x| {
-			let _ = x.flaca_encode().is_ok();
-		});
+		walk.process(encode_image);
 	}
 
 	Ok(())
