@@ -32,7 +32,7 @@ impl super::Encoder for Zopflipng {
 	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
 		let out = path.as_ref().to_str().unwrap_or("");
-		Command::new(crate::ZOPFLIPNG.clone())
+		Command::new(&*crate::ZOPFLIPNG)
 			.args(&[
 				"-m",
 				"-y",

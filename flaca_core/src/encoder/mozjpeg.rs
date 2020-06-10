@@ -52,7 +52,7 @@ impl super::Encoder for Mozjpeg {
 	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
 		let out = path.as_ref().to_str().unwrap_or("");
-		Command::new(crate::MOZJPEG.clone())
+		Command::new(&*crate::MOZJPEG)
 			.args(&[
 				"-copy",
 				"none",

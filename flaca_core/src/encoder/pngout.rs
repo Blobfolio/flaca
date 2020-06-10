@@ -31,7 +31,7 @@ impl super::Encoder for Pngout {
 	/// Encode for Real.
 	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
-		Command::new(crate::PNGOUT.clone())
+		Command::new(&*crate::PNGOUT)
 			.args(&[
 				path.as_ref().to_str().unwrap_or(""),
 				"-q",
