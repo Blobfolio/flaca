@@ -15,10 +15,9 @@ pkg_dir2    := justfile_directory() + "/flaca_core"
 cargo_dir   := "/tmp/" + pkg_id + "-cargo"
 cargo_bin   := cargo_dir + "/x86_64-unknown-linux-gnu/release/" + pkg_id
 data_dir    := "/tmp/bench-data"
-pgo_dir     := "/tmp/pgo-data"
 release_dir := justfile_directory() + "/release"
 
-rustflags   := "-Clinker-plugin-lto -Clinker=clang-9 -Clink-args=-fuse-ld=lld-9 -C link-arg=-s"
+rustflags   := "-C link-arg=-s"
 
 
 
@@ -29,7 +28,7 @@ rustflags   := "-Clinker-plugin-lto -Clinker=clang-9 -Clink-args=-fuse-ld=lld-9 
 
 
 # Build Release!
-@build:
+@build: clean
 	# First let's build the Rust bit.
 	RUSTFLAGS="{{ rustflags }}" cargo build \
 		--bin "{{ pkg_id }}" \
@@ -55,7 +54,7 @@ rustflags   := "-Clinker-plugin-lto -Clinker=clang-9 -Clink-args=-fuse-ld=lld-9 
 
 
 # Build Man.
-@build-man: build-pgo
+@build-man: build
 	# Pre-clean.
 	find "{{ release_dir }}/man" -type f -delete
 
@@ -81,56 +80,6 @@ rustflags   := "-Clinker-plugin-lto -Clinker=clang-9 -Clink-args=-fuse-ld=lld-9 
 	just _fix-chown "{{ release_dir }}/man"
 
 
-# Build PGO.
-@build-pgo: clean
-	# First let's build the Rust bit.
-	RUSTFLAGS="{{ rustflags }} -Cprofile-generate={{ pgo_dir }}" \
-		cargo build \
-			--bin "{{ pkg_id }}" \
-			--release \
-			--target x86_64-unknown-linux-gnu \
-			--target-dir "{{ cargo_dir }}"
-
-	clear
-
-	# Instrument a few tests.
-	just _bench-reset
-	"{{ cargo_bin }}" "{{ data_dir }}"/*.jpg
-
-	# Do them again with the UI.
-	just _bench-reset
-	"{{ cargo_bin }}" -p "{{ data_dir }}"
-
-	# Do a file.
-	just _bench-reset
-	echo "{{ data_dir }}/01.jpg" > "/tmp/pgo-list.txt"
-	echo "{{ data_dir }}/02.jpg" >> "/tmp/pgo-list.txt"
-	echo "{{ data_dir }}/wolf.jpg" >> "/tmp/pgo-list.txt"
-	echo "" >> "/tmp/pgo-list.txt"
-	"{{ cargo_bin }}" -p -l "/tmp/pgo-list.txt"
-	rm "/tmp/pgo-list.txt"
-
-	# A bunk path.
-	"{{ cargo_bin }}" "/nowhere/blankety" || true
-
-	# And some CLI screens.
-	"{{ cargo_bin }}" -V
-	"{{ cargo_bin }}" -h
-
-	clear
-
-	# Merge the data back in.
-	llvm-profdata-9 \
-		merge -o "{{ pgo_dir }}/merged.profdata" "{{ pgo_dir }}"
-
-	RUSTFLAGS="{{ rustflags }} -Cprofile-use={{ pgo_dir }}/merged.profdata" \
-		cargo build \
-			--bin "{{ pkg_id }}" \
-			--release \
-			--target x86_64-unknown-linux-gnu \
-			--target-dir "{{ cargo_dir }}"
-
-
 # Check Release!
 @check:
 	# First let's build the Rust bit.
@@ -144,7 +93,6 @@ rustflags   := "-Clinker-plugin-lto -Clinker=clang-9 -Clink-args=-fuse-ld=lld-9 
 @clean:
 	# Most things go here.
 	[ ! -d "{{ cargo_dir }}" ] || rm -rf "{{ cargo_dir }}"
-	[ ! -d "{{ pgo_dir }}" ] || rm -rf "{{ pgo_dir }}"
 
 	# But some Cargo apps place shit in subdirectories even if
 	# they place *other* shit in the designated target dir. Haha.
