@@ -58,8 +58,7 @@ rustflags   := "-C link-arg=-s"
 	# Pre-clean.
 	find "{{ pkg_dir1 }}/misc" -name "{{ pkg_id }}.1*" -type f -delete
 
-	# Build a quickie version with our shitty help.
-	# First let's build the Rust bit.
+	# Build a quickie version with the unsexy help so help2man can parse it.
 	RUSTFLAGS="{{ rustflags }}" cargo build \
 		--bin "{{ pkg_id }}" \
 		--release \
