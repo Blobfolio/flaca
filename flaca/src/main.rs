@@ -160,8 +160,48 @@ fn _flags(args: &mut ArgList) -> u8 {
 	}
 }
 
+#[cfg(not(feature = "man"))]
 #[cold]
 /// Print Help.
+fn _help() {
+	io::stdout().write_all({
+		let mut s = String::with_capacity(2048);
+		s.push_str(&format!(
+			r"
+             ,--._,--.
+           ,'  ,'   ,-`.
+(`-.__    /  ,'   /
+ `.   `--'        \__,--'-.
+   `--/       ,-.  ______/
+     (o-.     ,o- /
+      `. ;        \    {}{}{}
+       |:          \   Brute-force, lossless
+      ,'`       ,   \  JPEG and PNG compression.
+     (o o ,  --'     :
+      \--','.        ;
+       `;;  :       /
+        ;'  ;  ,' ,'
+        ,','  :  '
+        \ \   :
+         `
+
+",
+			"\x1b[38;5;199mFlaca\x1b[0;38;5;69m v",
+			env!("CARGO_PKG_VERSION"),
+			"\x1b[0m"
+		));
+		s.push_str(include_str!("../misc/help.txt"));
+		s.push('\n');
+		s
+	}.as_bytes()).unwrap();
+}
+
+#[cfg(feature = "man")]
+#[cold]
+/// Print Help.
+///
+/// This is a stripped-down version of the help screen made specifically for
+/// `help2man`, which gets run during the Debian package release build task.
 fn _help() {
 	io::stdout().write_all({
 		let mut s = String::with_capacity(1024);

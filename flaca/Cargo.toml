@@ -39,3 +39,7 @@ branch = "master"
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
 branch = "master"
+
+[features]
+default = []
+man = []
