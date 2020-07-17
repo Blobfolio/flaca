@@ -37,7 +37,7 @@ use encoder::{
 	Pngout,
 	Zopflipng,
 };
-use fyi_msg::Msg;
+use fyi_msg::MsgKind;
 use fyi_witcher::utility::is_executable;
 use std::{
 	borrow::Borrow,
@@ -89,7 +89,7 @@ pub fn check_dependencies() {
 /// Error and Exit.
 pub fn die<S> (msg: S)
 where S: Borrow<str> {
-	io::stderr().write_all(&Msg::error(msg).iter().chain(&[10]).copied().collect::<Vec<u8>>()).unwrap();
+	io::stderr().write_all(&MsgKind::Error.as_msg(msg).iter().chain(&[10]).copied().collect::<Vec<u8>>()).unwrap();
 	std::process::exit(1);
 }
 
