@@ -1,6 +1,6 @@
 /bin/
 /Cargo.lock
 /flaca.log
-/fyi/misc/flaca.1.gz
+/flaca/misc/flaca.1.gz
 /target/
 /tests/
