@@ -38,7 +38,7 @@ rustflags   := "-C link-arg=-s"
 
 
 # Build Debian package!
-@build-deb: build-man
+@build-deb: build-man build
 	# cargo-deb doesn't support target_dir flags yet.
 	[ ! -d "{{ justfile_directory() }}/target" ] || rm -rf "{{ justfile_directory() }}/target"
 	mv "{{ cargo_dir }}" "{{ justfile_directory() }}/target"
@@ -54,30 +54,34 @@ rustflags   := "-C link-arg=-s"
 
 
 # Build Man.
-@build-man: build
+@build-man:
 	# Pre-clean.
-	find "{{ release_dir }}/man" -type f -delete
+	find "{{ pkg_dir1 }}/misc" -name "{{ pkg_id }}.1*" -type f -delete
+
+	# Build a quickie version with our shitty help.
+	# First let's build the Rust bit.
+	RUSTFLAGS="{{ rustflags }}" cargo build \
+		--bin "{{ pkg_id }}" \
+		--release \
+		--all-features \
+		--target x86_64-unknown-linux-gnu \
+		--target-dir "{{ cargo_dir }}"
 
 	# Use help2man to make a crappy MAN page.
-	help2man -o "{{ release_dir }}/man/{{ pkg_id }}.1" \
+	help2man -o "{{ pkg_dir1 }}/misc/{{ pkg_id }}.1" \
 		-N "{{ cargo_bin }}"
-
-	# Strip some ugly out.
-	sd '{{ pkg_name }} [0-9.]+\nBlobfolio, LLC. <hello@blobfolio.com>\n' \
-		'' \
-		"{{ release_dir }}/man/{{ pkg_id }}.1"
 
 	sed -i -Ee \
 		's#^(Jpegoptim|MozJPEG|Oxipng|Zopflipng|Pngout) +(<[^>]+>)#.TP\n\1\n\2#g' \
-		"{{ release_dir }}/man/{{ pkg_id }}.1"
+		"{{ pkg_dir1 }}/misc/{{ pkg_id }}.1"
 
 	sed -i -e ':a' -e 'N' -e '$!ba' -Ee \
 		"s#.SS \"OPTIMIZERS USED:\"[\n].IP#.SS \"OPTIMIZERS USED:\"#g" \
-		"{{ release_dir }}/man/{{ pkg_id }}.1"
+		"{{ pkg_dir1 }}/misc/{{ pkg_id }}.1"
 
 	# Gzip it and reset ownership.
-	gzip -k -f -9 "{{ release_dir }}/man/{{ pkg_id }}.1"
-	just _fix-chown "{{ release_dir }}/man"
+	gzip -k -f -9 "{{ pkg_dir1 }}/misc/{{ pkg_id }}.1"
+	just _fix-chown "{{ pkg_dir1 }}"
 
 
 # Check Release!
@@ -109,6 +113,16 @@ rustflags   := "-C link-arg=-s"
 		--all-features \
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
+
+
+# Test Run.
+@run +ARGS:
+	RUSTFLAGS="{{ rustflags }}" cargo run \
+		--bin "{{ pkg_id }}" \
+		--release \
+		--target x86_64-unknown-linux-gnu \
+		--target-dir "{{ cargo_dir }}" \
+		-- {{ ARGS }}
 
 
 # Get/Set version.
