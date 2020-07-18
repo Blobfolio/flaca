@@ -8,11 +8,11 @@ mod oxipng;
 mod pngout;
 mod zopflipng;
 
-pub use jpegoptim::Jpegoptim;
-pub use mozjpeg::Mozjpeg;
-pub use oxipng::Oxipng;
-pub use pngout::Pngout;
-pub use zopflipng::Zopflipng;
+pub use self::jpegoptim::Jpegoptim;
+pub use self::mozjpeg::Mozjpeg;
+pub use self::oxipng::Oxipng;
+pub use self::pngout::Pngout;
+pub use self::zopflipng::Zopflipng;
 
 use crate::{
 	find_executable,

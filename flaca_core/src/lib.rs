@@ -53,7 +53,6 @@ use std::{
 lazy_static::lazy_static! {
 	static ref JPEGOPTIM: PathBuf = Jpegoptim::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref MOZJPEG: PathBuf = Mozjpeg::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
-	static ref OXIPNG: PathBuf = Oxipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref PNGOUT: PathBuf = Pngout::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref ZOPFLIPNG: PathBuf = Zopflipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 }
@@ -74,9 +73,6 @@ pub fn check_dependencies() {
 	}
 	if ! MOZJPEG.is_file() {
 		die(format!("Missing: {} <{}>", Mozjpeg::NAME, Mozjpeg::URL));
-	}
-	if ! OXIPNG.is_file() {
-		die(format!("Missing: {} <{}>", Oxipng::NAME, Oxipng::URL));
 	}
 	if ! PNGOUT.is_file() {
 		die(format!("Missing: {} <{}>", Pngout::NAME, Pngout::URL));

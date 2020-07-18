@@ -16,9 +16,9 @@ Flaca is a CLI frontend written in Rust to aid the complex task of squeezing eve
 .\n\
 Flaca uses MozJPEG and Jpegoptim for lossless JPEG (re)compression and PNGOUT, Oxipng, and Zopflipng for lossless PNG (re)compression.\n\
 .\n\
-The image compression binaries are not bundled with this package and must be installed separately."""
+Oxipng is included with Flaca, but all other encoders must be installed separately."""
 revision = "1"
-depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8, jpegoptim, oxipng, pngout, mozjpeg, zopflipng"
+depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8, jpegoptim, pngout, mozjpeg, zopflipng"
 section = "utility"
 assets = [
     ["../target/x86_64-unknown-linux-gnu/release/flaca", "usr/bin/", "755"],
