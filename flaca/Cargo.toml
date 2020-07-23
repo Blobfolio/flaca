@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.2.3"
+version = "1.3.0"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
@@ -14,16 +14,16 @@ license-file = ["../LICENSE", "0"]
 extended-description = """\n\
 Flaca is a CLI frontend written in Rust to aid the complex task of squeezing every last drop of space out of JPEG and PNG images — without sacrificing quality.\n\
 .\n\
-Flaca uses MozJPEG and Jpegoptim for lossless JPEG (re)compression and PNGOUT, Oxipng, and Zopflipng for lossless PNG (re)compression.\n\
+Flaca uses MozJPEG for lossless JPEG (re)compression and PNGOUT, Oxipng, and Zopflipng for lossless PNG (re)compression.\n\
 .\n\
-The image compression binaries are not bundled with this package and must be installed separately."""
+MozJPEG and Oxipng are included with Flaca, but all other encoders must be installed separately."""
 revision = "1"
-depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8, jpegoptim, oxipng, pngout, mozjpeg, zopflipng"
+depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8, pngout, zopflipng"
 section = "utility"
 assets = [
     ["../target/x86_64-unknown-linux-gnu/release/flaca", "usr/bin/", "755"],
-    ["./misc/flaca.bash", "etc/bash_completion.d/", "644"],
-    ["./misc/flaca.1.gz", "usr/share/man/man1/", "644"],
+    ["../skel/completions/flaca.bash", "etc/bash_completion.d/", "644"],
+    ["../skel/man/flaca.1.gz", "usr/share/man/man1/", "644"],
 ]
 
 [dependencies]
@@ -33,6 +33,10 @@ jwalk = "*"
 path = "../flaca_core"
 
 [dependencies.fyi_menu]
+git = "https://github.com/Blobfolio/fyi.git"
+branch = "master"
+
+[dependencies.fyi_msg]
 git = "https://github.com/Blobfolio/fyi.git"
 branch = "master"
 

@@ -1,6 +1,5 @@
-/bin/
 /Cargo.lock
 /flaca.log
-/flaca/misc/flaca.1.gz
-/target/
-/tests/
+/skel/man/flaca.1.gz
+/mozjpeg_sys
+/target

@@ -26,72 +26,21 @@ Brute-force, lossless JPEG and PNG compression.
 #![allow(clippy::missing_errors_doc)]
 
 pub mod image;
-pub mod encoder;
+pub mod jpegtran;
 
-use crate::image::ImageKind;
-use encoder::{
-	Encoder,
-	Jpegoptim,
-	Mozjpeg,
-	Oxipng,
-	Pngout,
-	Zopflipng,
-};
-use fyi_msg::MsgKind;
 use fyi_witcher::utility::is_executable;
 use std::{
-	borrow::Borrow,
 	env,
 	fs,
-	io::{
-		self,
-		Write
-	},
 	path::PathBuf,
 };
 
-lazy_static::lazy_static! {
-	static ref JPEGOPTIM: PathBuf = Jpegoptim::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
-	static ref MOZJPEG: PathBuf = Mozjpeg::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
-	static ref OXIPNG: PathBuf = Oxipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
-	static ref PNGOUT: PathBuf = Pngout::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
-	static ref ZOPFLIPNG: PathBuf = Zopflipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
-}
 
 
+/// Generic result type.
+pub type Result<T, E = ()> = std::result::Result<T, E>;
 
-#[must_use]
-/// Bytes saved.
-pub fn bytes_saved(before: u64, after: u64) -> u64 {
-	if 0 == after || before <= after { 0 }
-	else { before - after }
-}
 
-/// Dependency check.
-pub fn check_dependencies() {
-	if ! JPEGOPTIM.is_file() {
-		die(format!("Missing: {} <{}>", Jpegoptim::NAME, Jpegoptim::URL));
-	}
-	if ! MOZJPEG.is_file() {
-		die(format!("Missing: {} <{}>", Mozjpeg::NAME, Mozjpeg::URL));
-	}
-	if ! OXIPNG.is_file() {
-		die(format!("Missing: {} <{}>", Oxipng::NAME, Oxipng::URL));
-	}
-	if ! PNGOUT.is_file() {
-		die(format!("Missing: {} <{}>", Pngout::NAME, Pngout::URL));
-	}
-	if ! ZOPFLIPNG.is_file() {
-		die(format!("Missing: {} <{}>", Zopflipng::NAME, Zopflipng::URL));
-	}
-}
-
-/// Error and Exit.
-pub fn die<S> (msg: S)
-where S: Borrow<str> {
-	io::stderr().write_all(&MsgKind::Error.as_msg(msg).iter().chain(&[10]).copied().collect::<Vec<u8>>()).unwrap();
-	std::process::exit(1);
-}
 
 /// Find Executable.
 pub fn find_executable<S> (name: S) -> Option<PathBuf>
@@ -101,15 +50,12 @@ where S: AsRef<str> {
 		static ref EXECUTABLE_DIRS: Vec<PathBuf> =
 			env::var("PATH").unwrap_or_else(|_| "".to_string())
 				.split(':')
-				.filter_map(|x| {
-					if let Ok(path) = fs::canonicalize(&x) {
-						if path.is_dir() {
-							Some(path)
-						}
+				.filter_map(|x| fs::canonicalize(&x).ok()
+					.and_then(|x|
+						if x.is_dir() { Some(x) }
 						else { None }
-					}
-					else { None }
-				})
+					)
+				)
 				.collect();
 	}
 
@@ -124,33 +70,4 @@ where S: AsRef<str> {
 	}
 
 	None
-}
-
-/// Encode.
-pub fn encode_image(path: &PathBuf) {
-	match image_type(path) {
-		ImageKind::Jpeg => {
-			let _ = Jpegoptim::encode(path).is_ok();
-			let _ = Mozjpeg::encode(path).is_ok();
-		},
-		ImageKind::Png => {
-			let _ = Pngout::encode(path).is_ok();
-			let _ = Oxipng::encode(path).is_ok();
-			let _ = Zopflipng::encode(path).is_ok();
-		},
-		ImageKind::None => {},
-	}
-}
-
-#[must_use]
-/// Image type.
-pub fn image_type(path: &PathBuf) -> ImageKind {
-	if path.is_file() {
-		match imghdr::from_file(path) {
-			Ok(Some(imghdr::Type::Png)) => ImageKind::Png,
-			Ok(Some(imghdr::Type::Jpeg)) => ImageKind::Jpeg,
-			_ => ImageKind::None,
-		}
-	}
-	else { ImageKind::None }
 }

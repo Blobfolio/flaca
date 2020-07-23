@@ -1,0 +1,19 @@
+USAGE:
+    flaca [FLAGS] [OPTIONS] <PATH(S)>...
+
+FLAGS:
+    -h, --help        Prints help information
+    -p, --progress    Show progress bar while minifying.
+    -V, --version     Prints version information
+
+OPTIONS:
+    -l, --list <list>    Read file paths from this list.
+
+ARGS:
+    <PATH(S)>...    One or more files or directories to compress.
+
+OPTIMIZERS USED:
+    MozJPEG   <https://github.com/mozilla/mozjpeg>
+    Oxipng    <https://github.com/shssoichiro/oxipng>
+    Pngout    <http://advsys.net/ken/utils.htm>
+    Zopflipng <https://github.com/google/zopfli>

@@ -12,19 +12,14 @@ pkg_name    := "Flaca"
 pkg_dir1    := justfile_directory() + "/flaca"
 pkg_dir2    := justfile_directory() + "/flaca_core"
 
+bench_dir   := "/tmp/bench-data"
 cargo_dir   := "/tmp/" + pkg_id + "-cargo"
 cargo_bin   := cargo_dir + "/x86_64-unknown-linux-gnu/release/" + pkg_id
-data_dir    := "/tmp/bench-data"
 release_dir := justfile_directory() + "/release"
+skel_dir    := justfile_directory() + "/skel"
 
 rustflags   := "-C link-arg=-s"
 
-
-
-# Benchmark.
-@bench: build _bench-reset
-	clear
-	"{{ cargo_bin }}" -p "{{ data_dir }}"
 
 
 # Build Release!
@@ -56,10 +51,9 @@ rustflags   := "-C link-arg=-s"
 # Build Man.
 @build-man:
 	# Pre-clean.
-	find "{{ pkg_dir1 }}/misc" -name "{{ pkg_id }}.1*" -type f -delete
+	find "{{ skel_dir }}/man" -name "{{ pkg_id }}.1*" -type f -delete
 
-	# Build a quickie version with our shitty help.
-	# First let's build the Rust bit.
+	# Build a quickie version with the unsexy help so help2man can parse it.
 	RUSTFLAGS="{{ rustflags }}" cargo build \
 		--bin "{{ pkg_id }}" \
 		--release \
@@ -68,20 +62,20 @@ rustflags   := "-C link-arg=-s"
 		--target-dir "{{ cargo_dir }}"
 
 	# Use help2man to make a crappy MAN page.
-	help2man -o "{{ pkg_dir1 }}/misc/{{ pkg_id }}.1" \
+	help2man -o "{{ skel_dir }}/man/{{ pkg_id }}.1" \
 		-N "{{ cargo_bin }}"
 
 	sed -i -Ee \
-		's#^(Jpegoptim|MozJPEG|Oxipng|Zopflipng|Pngout) +(<[^>]+>)#.TP\n\1\n\2#g' \
-		"{{ pkg_dir1 }}/misc/{{ pkg_id }}.1"
+		's#^(MozJPEG|Oxipng|Zopflipng|Pngout) +(<[^>]+>)#.TP\n\1\n\2#g' \
+		"{{ skel_dir }}/man/{{ pkg_id }}.1"
 
 	sed -i -e ':a' -e 'N' -e '$!ba' -Ee \
 		"s#.SS \"OPTIMIZERS USED:\"[\n].IP#.SS \"OPTIMIZERS USED:\"#g" \
-		"{{ pkg_dir1 }}/misc/{{ pkg_id }}.1"
+		"{{ skel_dir }}/man/{{ pkg_id }}.1"
 
 	# Gzip it and reset ownership.
-	gzip -k -f -9 "{{ pkg_dir1 }}/misc/{{ pkg_id }}.1"
-	just _fix-chown "{{ pkg_dir1 }}"
+	gzip -k -f -9 "{{ skel_dir }}/man/{{ pkg_id }}.1"
+	just _fix-chown "{{ skel_dir }}/man"
 
 
 # Check Release!
@@ -160,13 +154,53 @@ version:
 
 # Reset bench.
 @_bench-reset:
-	[ ! -d "{{ data_dir }}" ] || rm -rf "{{ data_dir }}"
-	cp -aR "{{ justfile_directory() }}/test-assets" "{{ data_dir }}"
+	[ ! -d "{{ bench_dir }}" ] || rm -rf "{{ bench_dir }}"
+	cp -aR "{{ skel_dir }}/assets" "{{ bench_dir }}"
+
 
 # Init dependencies.
 @_init:
+	[ -d "{{ justfile_directory() }}/mozjpeg_sys" ] || just _init-mozjpeg
 	[ ! -f "{{ justfile_directory() }}/Cargo.lock" ] || rm "{{ justfile_directory() }}/Cargo.lock"
 	cargo update
+
+
+# Install Bindgen and Dependencies
+@_init-bindgen:
+	apt-get update
+	apt-fast install \
+		clang \
+		libclang-dev\
+		libjpeg-dev \
+		libpng-dev \
+		llvm-dev
+	cargo install bindgen
+
+
+# Init Mozjpeg-Sys.
+@_init-mozjpeg:
+	# Start fresh!
+	[ ! -d "{{ justfile_directory() }}/mozjpeg_sys" ] || rm -rf "{{ justfile_directory() }}/mozjpeg_sys"
+
+	# Clone the main repo. New commits could potentially break our patch, so
+	# let's checkout to a specific place that is known to work.
+	git clone -n \
+		https://github.com/kornelski/mozjpeg-sys.git \
+		"{{ justfile_directory() }}/mozjpeg_sys" \
+		&& cd "{{ justfile_directory() }}/mozjpeg_sys" \
+		&& git checkout b395a758d536c609f748a47c11d4af54cedf1ade \
+		&& git submodule update --init
+
+	# Patch it.
+	patch "{{ justfile_directory() }}/mozjpeg_sys/src/lib.rs" \
+		-i "{{ skel_dir }}/mozjpeg_sys/jpegtran.patch"
+
+	# Copy our extra lib exports.
+	cp -a \
+		"{{ skel_dir }}/mozjpeg_sys/jpegtran.rs" \
+		"{{ justfile_directory() }}/mozjpeg_sys/src"
+
+	just _fix-chown "{{ justfile_directory() }}/mozjpeg_sys"
 
 
 # Fix file/directory permissions.
