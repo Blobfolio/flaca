@@ -22,11 +22,18 @@ looked at to bring this all together were:
 * [mozjpeg-rs](https://github.com/immunant/mozjpeg-rs/blob/master/bin/jpegtran.rs)
 */
 
+use crate::Result;
+use libc::{
+	c_uchar,
+	free,
+};
 use mozjpeg_sys::{
 	JCOPYOPT_NONE,
 	JCROP_UNSET,
 	JXFORM_NONE,
 	boolean,
+	c_ulong,
+	c_void,
 	jcopy_markers_execute,
 	jcopy_markers_setup,
 	jpeg_compress_struct,
@@ -39,12 +46,12 @@ use mozjpeg_sys::{
 	jpeg_error_mgr,
 	jpeg_finish_compress,
 	jpeg_finish_decompress,
+	jpeg_mem_dest,
+	jpeg_mem_src,
 	jpeg_read_coefficients,
 	jpeg_read_header,
 	jpeg_simple_progression,
 	jpeg_std_error,
-	jpeg_stdio_dest,
-	jpeg_stdio_src,
 	jpeg_transform_info,
 	jpeg_write_coefficients,
 	jtransform_adjust_parameters,
@@ -53,31 +60,20 @@ use mozjpeg_sys::{
 	jvirt_barray_ptr,
 };
 use std::{
-	ffi::CString,
 	mem,
-	os::unix::ffi::OsStrExt,
-	path::Path,
 	ptr,
+	slice,
 };
 
 
 
-/// Jpegtran.
-pub fn jpegtran<P> (path: P) -> bool
-where P: AsRef<Path> {
-	let path = path.as_ref();
-
-	path.exists() &&
-		! path.is_dir() &&
-		CString::new(path.as_os_str().as_bytes()).map_or(
-			false,
-			|ref c| unsafe { _jpegtran(c).is_ok() }
-		)
-}
-
 #[allow(unused_assignments)]
-/// Actual Jpegtran.
-unsafe fn _jpegtran(path: &CString) -> Result<(), ()> {
+/// Jpegtran (Memory Mode)
+///
+/// # Safety
+///
+/// The data should be valid JPEG data. Weird things could happen if it isn't.
+pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	let mut transformoption: jpeg_transform_info =
 		jpeg_transform_info {
 			transform: JXFORM_NONE,
@@ -116,10 +112,6 @@ unsafe fn _jpegtran(path: &CString) -> Result<(), ()> {
 
 	let mut dst_coef_arrays: *mut jvirt_barray_ptr = ptr::null_mut::<jvirt_barray_ptr>();
 
-	// Open the file read-only.
-	let mut mode = CString::new("rb").unwrap();
-	let mut fh = libc::fopen(path.as_ptr(), mode.as_ptr());
-
 	// Initialize the JPEG (de/)compression object with default error handling.
 	jpeg_create_decompress(&mut srcinfo);
 	jpeg_create_compress(&mut dstinfo);
@@ -128,7 +120,7 @@ unsafe fn _jpegtran(path: &CString) -> Result<(), ()> {
 	jsrcerr.trace_level = jdsterr.trace_level;
 
 	// Load the source file.
-	jpeg_stdio_src(&mut srcinfo, fh);
+	jpeg_mem_src(&mut srcinfo, data.as_ptr(), data.len() as c_ulong);
 
 	// Ignore markers.
 	jcopy_markers_setup(&mut srcinfo, JCOPYOPT_NONE);
@@ -157,17 +149,16 @@ unsafe fn _jpegtran(path: &CString) -> Result<(), ()> {
 		&mut transformoption,
 	);
 
-	// Close the read handle, and re-open as a write handle.
-	libc::fclose(fh);
-	mode = CString::new("wb").unwrap();
-	fh = libc::fopen(path.as_ptr(), mode.as_ptr());
+	// Get an output buffer going.
+	let mut outbuffer: *mut c_uchar = ptr::null_mut();
+    let mut outsize: c_ulong = 0;
 
 	// Turn on "progressive" and "code optimizing" for the output.
 	dstinfo.optimize_coding = true as boolean;
 	jpeg_simple_progression(&mut dstinfo);
 
 	// And load the destination file.
-	jpeg_stdio_dest(&mut dstinfo, fh);
+	jpeg_mem_dest(&mut dstinfo, &mut outbuffer, &mut outsize);
 
 	// Start the compressor. Note: no data is written here.
 	jpeg_write_coefficients(&mut dstinfo, dst_coef_arrays);
@@ -183,14 +174,28 @@ unsafe fn _jpegtran(path: &CString) -> Result<(), ()> {
 		&mut transformoption,
 	);
 
-	// Finish compression and release memory.
+	// Let's get the data!
 	jpeg_finish_compress(&mut dstinfo);
-	jpeg_destroy_compress(&mut dstinfo);
+	let out: Vec<u8> =
+		if outbuffer.is_null() || outsize == 0 { vec![] }
+		else {
+			let tmp = slice::from_raw_parts(outbuffer, outsize as usize).to_vec();
 
+			// The buffer probably needs to be manually freed. I don't think
+			// jpeg_destroy_compress() handles that for us.
+			free(outbuffer as *mut c_void);
+			outbuffer = ptr::null_mut();
+			outsize = 0;
+
+			tmp
+		};
+
+	// Release any memory that's left.
+	jpeg_destroy_compress(&mut dstinfo);
 	jpeg_finish_decompress(&mut srcinfo);
 	jpeg_destroy_decompress(&mut srcinfo);
 
-	libc::fclose(fh);
-
-	Ok(())
+	// Return the result if any!
+	if out.is_empty() { Err(()) }
+	else { Ok(out) }
 }

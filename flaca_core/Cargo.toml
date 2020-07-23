@@ -10,6 +10,8 @@ publish = false
 imghdr = "0.7.*"
 lazy_static = "1.4.*"
 libc = "*"
+tempfile = "3.1.*"
+tempfile-fast = "0.3.*"
 
 [dependencies.mozjpeg-sys]
 path = "../mozjpeg_sys"
@@ -28,5 +30,3 @@ branch = "master"
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
 branch = "master"
-default-features = false
-features = [ "witch_io" ]

@@ -26,17 +26,8 @@ Brute-force, lossless JPEG and PNG compression.
 #![allow(clippy::missing_errors_doc)]
 
 pub mod image;
-pub mod encoder;
 pub mod jpegtran;
 
-use crate::image::ImageKind;
-use encoder::{
-	Encoder,
-	Mozjpeg,
-	Oxipng,
-	Pngout,
-	Zopflipng,
-};
 use fyi_witcher::utility::is_executable;
 use std::{
 	env,
@@ -44,22 +35,12 @@ use std::{
 	path::PathBuf,
 };
 
-lazy_static::lazy_static! {
-	static ref PNGOUT: PathBuf = Pngout::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
-	static ref ZOPFLIPNG: PathBuf = Zopflipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
-
-	static ref PNGOUT_EXISTS: bool = PNGOUT.is_file();
-	static ref ZOPFLIPNG_EXISTS: bool = ZOPFLIPNG.is_file();
-}
 
 
+/// Generic result type.
+pub type Result<T, E = ()> = std::result::Result<T, E>;
 
-#[must_use]
-/// Bytes saved.
-pub fn bytes_saved(before: u64, after: u64) -> u64 {
-	if 0 == after || before <= after { 0 }
-	else { before - after }
-}
+
 
 /// Find Executable.
 pub fn find_executable<S> (name: S) -> Option<PathBuf>
@@ -89,20 +70,4 @@ where S: AsRef<str> {
 	}
 
 	None
-}
-
-#[allow(unused_must_use)]
-/// Encode.
-pub fn encode_image(path: &PathBuf) {
-	match ImageKind::from(path) {
-		ImageKind::Jpeg => {
-			Mozjpeg::encode(path);
-		},
-		ImageKind::Png => {
-			Pngout::encode(path);
-			Oxipng::encode(path);
-			Zopflipng::encode(path);
-		},
-		ImageKind::None => {},
-	}
 }

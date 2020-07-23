@@ -27,12 +27,13 @@ Brute-force, lossless JPEG and PNG compression.
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)]
 
-use flaca_core::encode_image;
-use fyi_menu::ArgList;
-use fyi_witcher::{
-	Witcher,
+use flaca_core::{
+	image,
 	Result,
 };
+use fyi_menu::ArgList;
+use fyi_msg::MsgKind;
+use fyi_witcher::Witcher;
 use std::{
 	ffi::OsStr,
 	fs,
@@ -76,16 +77,17 @@ fn main() -> Result<()> {
 	};
 
 	if walk.is_empty() {
-		return Err("No image files were found.".to_string());
+		MsgKind::Error.as_msg("No images were found.").eprintln();
+		return Err(());
 	}
 
 	// Without progress.
 	if 0 == flags & FLAG_PROGRESS {
-		walk.process(encode_image);
+		walk.process(image::compress);
 	}
 	// With progress.
 	else {
-		walk.progress_crunch("Flaca", encode_image);
+		walk.progress_crunch("Flaca", image::compress);
 	}
 
 	Ok(())
