@@ -188,6 +188,8 @@ version:
 		"{{ skel_dir }}/mozjpeg_sys/jpegtran.rs" \
 		"{{ justfile_directory() }}/mozjpeg_sys/src"
 
+	just _fix-chown "{{ justfile_directory() }}/mozjpeg_sys"
+
 
 # Fix file/directory permissions.
 @_fix-chmod PATH:
