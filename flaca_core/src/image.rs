@@ -2,7 +2,10 @@
 # Flaca: Image Business
 */
 
-use std::fmt;
+use std::{
+	fmt,
+	path::PathBuf,
+};
 
 
 
@@ -17,6 +20,12 @@ pub enum ImageKind {
 	None,
 }
 
+impl Default for ImageKind {
+	fn default() -> Self {
+		Self::None
+	}
+}
+
 impl fmt::Display for ImageKind {
 	/// Display.
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -25,6 +34,20 @@ impl fmt::Display for ImageKind {
 			Self::Png => "PNG",
 			Self::None => "None",
 		})
+	}
+}
+
+impl From<&PathBuf> for ImageKind {
+	/// From.
+	fn from(path: &PathBuf) -> Self {
+		if path.is_dir() { Self::None }
+		else {
+			match imghdr::from_file(path) {
+				Ok(Some(imghdr::Type::Png)) => Self::Png,
+				Ok(Some(imghdr::Type::Jpeg)) => Self::Jpeg,
+				_ => Self::None,
+			}
+		}
 	}
 }
 

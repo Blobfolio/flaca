@@ -94,31 +94,19 @@ where S: AsRef<str> {
 	None
 }
 
+#[allow(unused_must_use)]
 /// Encode.
 pub fn encode_image(path: &PathBuf) {
-	match image_type(path) {
+	match ImageKind::from(path) {
 		ImageKind::Jpeg => {
-			let _ = Jpegoptim::encode(path).is_ok();
-			let _ = Mozjpeg::encode(path).is_ok();
+			Jpegoptim::encode(path);
+			Mozjpeg::encode(path);
 		},
 		ImageKind::Png => {
-			let _ = Pngout::encode(path).is_ok();
-			let _ = Oxipng::encode(path).is_ok();
-			let _ = Zopflipng::encode(path).is_ok();
+			Pngout::encode(path);
+			Oxipng::encode(path);
+			Zopflipng::encode(path);
 		},
 		ImageKind::None => {},
 	}
-}
-
-#[must_use]
-/// Image type.
-pub fn image_type(path: &PathBuf) -> ImageKind {
-	if path.is_file() {
-		match imghdr::from_file(path) {
-			Ok(Some(imghdr::Type::Png)) => ImageKind::Png,
-			Ok(Some(imghdr::Type::Jpeg)) => ImageKind::Jpeg,
-			_ => ImageKind::None,
-		}
-	}
-	else { ImageKind::None }
 }
