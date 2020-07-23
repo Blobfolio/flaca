@@ -28,6 +28,9 @@ impl super::Encoder for Pngout {
 	/// The program URL.
 	const URL: &'static str = "http://advsys.net/ken/utils.htm";
 
+	/// Does it exist?
+	fn exists() -> bool { *crate::PNGOUT_EXISTS }
+
 	/// Encode for Real.
 	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {

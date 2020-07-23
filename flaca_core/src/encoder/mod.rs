@@ -41,6 +41,10 @@ pub trait Encoder: Sized {
 	/// The program URL.
 	const URL: &'static str;
 
+	#[must_use]
+	/// Does it exist?
+	fn exists() -> bool { true }
+
 	/// Find it.
 	fn find() -> Result<PathBuf> {
 		find_executable(Self::BIN)
@@ -50,6 +54,10 @@ pub trait Encoder: Sized {
 	/// Encode.
 	fn encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
+		if ! Self::exists() {
+			return Err(Self::_missing());
+		}
+
 		// Get the starting size.
 		let before: u64 = file_size(path.as_ref());
 		if 0 == before {
@@ -74,6 +82,12 @@ pub trait Encoder: Sized {
 		}
 
 		Ok(())
+	}
+
+	#[must_use]
+	/// Missing.
+	fn _missing() -> String {
+		format!("Missing: {} <{}>", Self::NAME, Self::URL)
 	}
 
 	/// Encode for Real.

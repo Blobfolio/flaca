@@ -25,6 +25,9 @@ impl super::Encoder for Jpegoptim {
 	/// The program URL.
 	const URL: &'static str = "https://github.com/tjko/jpegoptim";
 
+	/// Does it exist?
+	fn exists() -> bool { *crate::JPEGOPTIM_EXISTS }
+
 	/// Encode for Real.
 	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {

@@ -28,6 +28,9 @@ impl super::Encoder for Zopflipng {
 	/// The program URL.
 	const URL: &'static str = "https://github.com/google/zopfli";
 
+	/// Does it exist?
+	fn exists() -> bool { *crate::ZOPFLIPNG_EXISTS }
+
 	/// Encode for Real.
 	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {

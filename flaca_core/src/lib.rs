@@ -38,16 +38,10 @@ use encoder::{
 	Pngout,
 	Zopflipng,
 };
-use fyi_msg::MsgKind;
 use fyi_witcher::utility::is_executable;
 use std::{
-	borrow::Borrow,
 	env,
 	fs,
-	io::{
-		self,
-		Write
-	},
 	path::PathBuf,
 };
 
@@ -55,6 +49,10 @@ lazy_static::lazy_static! {
 	static ref JPEGOPTIM: PathBuf = Jpegoptim::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref PNGOUT: PathBuf = Pngout::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref ZOPFLIPNG: PathBuf = Zopflipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
+
+	static ref JPEGOPTIM_EXISTS: bool = JPEGOPTIM.is_file();
+	static ref PNGOUT_EXISTS: bool = PNGOUT.is_file();
+	static ref ZOPFLIPNG_EXISTS: bool = ZOPFLIPNG.is_file();
 }
 
 
@@ -64,26 +62,6 @@ lazy_static::lazy_static! {
 pub fn bytes_saved(before: u64, after: u64) -> u64 {
 	if 0 == after || before <= after { 0 }
 	else { before - after }
-}
-
-/// Dependency check.
-pub fn check_dependencies() {
-	if ! JPEGOPTIM.is_file() {
-		die(format!("Missing: {} <{}>", Jpegoptim::NAME, Jpegoptim::URL));
-	}
-	if ! PNGOUT.is_file() {
-		die(format!("Missing: {} <{}>", Pngout::NAME, Pngout::URL));
-	}
-	if ! ZOPFLIPNG.is_file() {
-		die(format!("Missing: {} <{}>", Zopflipng::NAME, Zopflipng::URL));
-	}
-}
-
-/// Error and Exit.
-pub fn die<S> (msg: S)
-where S: Borrow<str> {
-	io::stderr().write_all(&MsgKind::Error.as_msg(msg).iter().chain(&[10]).copied().collect::<Vec<u8>>()).unwrap();
-	std::process::exit(1);
 }
 
 /// Find Executable.
