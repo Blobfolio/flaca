@@ -2,13 +2,11 @@
 # Flaca: Encoders
 */
 
-mod jpegoptim;
 mod mozjpeg;
 mod oxipng;
 mod pngout;
 mod zopflipng;
 
-pub use self::jpegoptim::Jpegoptim;
 pub use self::mozjpeg::Mozjpeg;
 pub use self::oxipng::Oxipng;
 pub use self::pngout::Pngout;

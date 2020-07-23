@@ -32,7 +32,6 @@ pub mod jpegtran;
 use crate::image::ImageKind;
 use encoder::{
 	Encoder,
-	Jpegoptim,
 	Mozjpeg,
 	Oxipng,
 	Pngout,
@@ -46,11 +45,9 @@ use std::{
 };
 
 lazy_static::lazy_static! {
-	static ref JPEGOPTIM: PathBuf = Jpegoptim::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref PNGOUT: PathBuf = Pngout::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref ZOPFLIPNG: PathBuf = Zopflipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 
-	static ref JPEGOPTIM_EXISTS: bool = JPEGOPTIM.is_file();
 	static ref PNGOUT_EXISTS: bool = PNGOUT.is_file();
 	static ref ZOPFLIPNG_EXISTS: bool = ZOPFLIPNG.is_file();
 }
@@ -99,7 +96,6 @@ where S: AsRef<str> {
 pub fn encode_image(path: &PathBuf) {
 	match ImageKind::from(path) {
 		ImageKind::Jpeg => {
-			Jpegoptim::encode(path);
 			Mozjpeg::encode(path);
 		},
 		ImageKind::Png => {

@@ -13,7 +13,6 @@ ARGS:
     <PATH(S)>...    One or more files or directories to compress.
 
 OPTIMIZERS USED:
-    Jpegoptim <https://github.com/tjko/jpegoptim>
     MozJPEG   <https://github.com/mozilla/mozjpeg>
     Oxipng    <https://github.com/shssoichiro/oxipng>
     Pngout    <http://advsys.net/ken/utils.htm>

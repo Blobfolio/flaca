@@ -14,11 +14,11 @@ license-file = ["../LICENSE", "0"]
 extended-description = """\n\
 Flaca is a CLI frontend written in Rust to aid the complex task of squeezing every last drop of space out of JPEG and PNG images — without sacrificing quality.\n\
 .\n\
-Flaca uses MozJPEG and Jpegoptim for lossless JPEG (re)compression and PNGOUT, Oxipng, and Zopflipng for lossless PNG (re)compression.\n\
+Flaca uses MozJPEG for lossless JPEG (re)compression and PNGOUT, Oxipng, and Zopflipng for lossless PNG (re)compression.\n\
 .\n\
 MozJPEG and Oxipng are included with Flaca, but all other encoders must be installed separately."""
 revision = "1"
-depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8, jpegoptim, pngout, zopflipng"
+depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8, pngout, zopflipng"
 section = "utility"
 assets = [
     ["../target/x86_64-unknown-linux-gnu/release/flaca", "usr/bin/", "755"],
