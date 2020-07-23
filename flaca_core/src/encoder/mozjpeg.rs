@@ -28,7 +28,7 @@ impl super::Encoder for Mozjpeg {
 
 	/// Find it.
 	///
-	/// MozJPEG is built-in, so we only need to find ourselves. Really not even
+	/// `MozJPEG` is built-in, so we only need to find ourselves. Really not even
 	/// that, but it is good to have for completeness.
 	fn find() -> Result<PathBuf> {
 		Ok(std::env::current_exe().expect("Flaca should exist!"))
