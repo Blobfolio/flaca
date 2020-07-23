@@ -2,7 +2,6 @@
 # Flaca: `MozJPEG`
 */
 
-use crate::image::ImageKind;
 use crate::jpegtran;
 use fyi_witcher::Result;
 use std::path::{
@@ -19,8 +18,6 @@ pub struct Mozjpeg {}
 impl super::Encoder for Mozjpeg {
 	/// The binary file name.
 	const BIN: &'static str = "jpegtran";
-	/// Image Kind.
-	const KIND: ImageKind = ImageKind::Jpeg;
 	/// The program name.
 	const NAME: &'static str = "MozJPEG";
 	/// The program URL.

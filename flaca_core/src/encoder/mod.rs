@@ -35,7 +35,7 @@ pub trait Encoder: Sized {
 	/// The binary file name.
 	const BIN: &'static str;
 	/// Image Kind.
-	const KIND: ImageKind;
+	const KIND: ImageKind = ImageKind::Jpeg;
 	/// The program name.
 	const NAME: &'static str;
 	/// The program URL.

@@ -2,7 +2,6 @@
 # Flaca: JPEGOPTIM
 */
 
-use crate::image::ImageKind;
 use fyi_witcher::Result;
 use std::{
 	path::Path,
@@ -21,8 +20,6 @@ pub struct Jpegoptim {}
 impl super::Encoder for Jpegoptim {
 	/// The binary file name.
 	const BIN: &'static str = "jpegoptim";
-	/// Image Kind.
-	const KIND: ImageKind = ImageKind::Jpeg;
 	/// The program name.
 	const NAME: &'static str = "jpegoptim";
 	/// The program URL.
