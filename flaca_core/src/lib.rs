@@ -72,15 +72,12 @@ where S: AsRef<str> {
 		static ref EXECUTABLE_DIRS: Vec<PathBuf> =
 			env::var("PATH").unwrap_or_else(|_| "".to_string())
 				.split(':')
-				.filter_map(|x| {
-					if let Ok(path) = fs::canonicalize(&x) {
-						if path.is_dir() {
-							Some(path)
-						}
+				.filter_map(|x| fs::canonicalize(&x).ok()
+					.and_then(|x|
+						if x.is_dir() { Some(x) }
 						else { None }
-					}
-					else { None }
-				})
+					)
+				)
 				.collect();
 	}
 
