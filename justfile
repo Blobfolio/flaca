@@ -165,6 +165,18 @@ version:
 	cargo update
 
 
+# Install Bindgen and Dependencies
+@_init-bindgen:
+	apt-get update
+	apt-fast install \
+		clang \
+		libclang-dev\
+		libjpeg-dev \
+		libpng-dev \
+		llvm-dev
+	cargo install bindgen
+
+
 # Init Mozjpeg-Sys.
 @_init-mozjpeg:
 	# Start fresh!
