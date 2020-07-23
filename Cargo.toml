@@ -2,6 +2,7 @@
 members = [
     "flaca",
     "flaca_core",
+    "mozjpeg_sys",
 ]
 
 [profile.release]

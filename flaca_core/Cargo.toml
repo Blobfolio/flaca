@@ -9,6 +9,12 @@ publish = false
 [dependencies]
 imghdr = "0.7.*"
 lazy_static = "1.4.*"
+libc = "*"
+
+[dependencies.mozjpeg-sys]
+path = "../mozjpeg_sys"
+default-features = false
+features = [ "turbojpeg_api", "nasm_simd" ]
 
 [dependencies.oxipng]
 version = "3.0.*"

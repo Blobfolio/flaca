@@ -3,19 +3,11 @@
 */
 
 use crate::image::ImageKind;
-use fyi_witcher::{
-	Result,
-	utility::is_executable,
-};
-use std::{
-	path::{
-		Path,
-		PathBuf,
-	},
-	process::{
-		Command,
-		Stdio,
-	},
+use crate::jpegtran;
+use fyi_witcher::Result;
+use std::path::{
+	Path,
+	PathBuf,
 };
 
 
@@ -36,34 +28,16 @@ impl super::Encoder for Mozjpeg {
 
 	/// Find it.
 	///
-	/// `MozJPEG` uses the same binary name as `jpegtran`, so we need to
-	/// look for it in a specific place.
+	/// MozJPEG is built-in, so we only need to find ourselves. Really not even
+	/// that, but it is good to have for completeness.
 	fn find() -> Result<PathBuf> {
-		let path: PathBuf = PathBuf::from("/opt/mozjpeg/bin/jpegtran");
-		if is_executable(&path) { Ok(path) }
-		else {
-			Err("Could not find MozJPEG.".to_string())
-		}
+		Ok(std::env::current_exe().expect("Flaca should exist!"))
 	}
 
 	/// Encode for Real.
 	fn _encode<P> (path: P) -> Result<()>
 	where P: AsRef<Path> {
-		let out = path.as_ref().to_str().unwrap_or("");
-		Command::new(&*crate::MOZJPEG)
-			.args(&[
-				"-copy",
-				"none",
-				"-optimize",
-				"-progressive",
-				"-outfile",
-				out,
-				out,
-			])
-			.stdout(Stdio::piped())
-			.stderr(Stdio::piped())
-			.output().map_err(|e| e.to_string())?;
-
-		Ok(())
+		if jpegtran::jpegtran(path) { Ok(()) }
+		else { Err("Compression failed.".to_string()) }
 	}
 }

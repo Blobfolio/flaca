@@ -1,0 +1,5 @@
+#include "jinclude.h"
+#include "jpeglib.h"
+#include "jerror.h"
+#include "turbojpeg.h"
+#include "transupp.h"

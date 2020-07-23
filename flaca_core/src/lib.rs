@@ -27,6 +27,7 @@ Brute-force, lossless JPEG and PNG compression.
 
 pub mod image;
 pub mod encoder;
+pub mod jpegtran;
 
 use crate::image::ImageKind;
 use encoder::{
@@ -52,7 +53,6 @@ use std::{
 
 lazy_static::lazy_static! {
 	static ref JPEGOPTIM: PathBuf = Jpegoptim::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
-	static ref MOZJPEG: PathBuf = Mozjpeg::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref PNGOUT: PathBuf = Pngout::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 	static ref ZOPFLIPNG: PathBuf = Zopflipng::find().unwrap_or_else(|_| PathBuf::from("/dev/null"));
 }
@@ -70,9 +70,6 @@ pub fn bytes_saved(before: u64, after: u64) -> u64 {
 pub fn check_dependencies() {
 	if ! JPEGOPTIM.is_file() {
 		die(format!("Missing: {} <{}>", Jpegoptim::NAME, Jpegoptim::URL));
-	}
-	if ! MOZJPEG.is_file() {
-		die(format!("Missing: {} <{}>", Mozjpeg::NAME, Mozjpeg::URL));
 	}
 	if ! PNGOUT.is_file() {
 		die(format!("Missing: {} <{}>", Pngout::NAME, Pngout::URL));

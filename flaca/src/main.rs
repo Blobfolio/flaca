@@ -190,7 +190,7 @@ fn _help() {
 			env!("CARGO_PKG_VERSION"),
 			"\x1b[0m"
 		));
-		s.push_str(include_str!("../misc/help.txt"));
+		s.push_str(include_str!("../../skel/help.txt"));
 		s.push('\n');
 		s
 	}.as_bytes()).unwrap();
@@ -211,7 +211,7 @@ fn _help() {
 		s.push_str(env!("CARGO_PKG_DESCRIPTION"));
 		s.push('\n');
 		s.push('\n');
-		s.push_str(include_str!("../misc/help.txt"));
+		s.push_str(include_str!("../../skel/help.txt"));
 		s.push('\n');
 		s
 	}.as_bytes()).unwrap();
