@@ -109,7 +109,6 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	dstinfo.common.err = jpeg_std_error(&mut jdsterr);
 
 	let mut src_coef_arrays: *mut jvirt_barray_ptr = ptr::null_mut::<jvirt_barray_ptr>();
-
 	let mut dst_coef_arrays: *mut jvirt_barray_ptr = ptr::null_mut::<jvirt_barray_ptr>();
 
 	// Initialize the JPEG (de/)compression object with default error handling.
