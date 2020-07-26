@@ -21,7 +21,6 @@ features = [ "turbojpeg_api", "nasm_simd" ]
 [dependencies.oxipng]
 version = "3.0.*"
 default-features = false
-features = [ "parallel" ]
 
 [dependencies.fyi_msg]
 git = "https://github.com/Blobfolio/fyi.git"
