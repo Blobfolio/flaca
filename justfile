@@ -66,7 +66,7 @@ rustflags   := "-C link-arg=-s"
 		-N "{{ cargo_bin }}"
 
 	sed -i -Ee \
-		's#^(MozJPEG|Oxipng|Zopflipng|Pngout) +(<[^>]+>)#.TP\n\1\n\2#g' \
+		's#^(MozJPEG|Oxipng|Zopflipng) +(<[^>]+>)#.TP\n\1\n\2#g' \
 		"{{ skel_dir }}/man/{{ pkg_id }}.1"
 
 	sed -i -e ':a' -e 'N' -e '$!ba' -Ee \

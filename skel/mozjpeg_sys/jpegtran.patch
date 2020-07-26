@@ -1,12 +1,14 @@
 diff --git a/src/lib.rs b/src/lib.rs
-index 7ab1a0d..07522f5 100644
+index 7ab1a0d..2d44353 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -1,13 +1,16 @@
+@@ -1,13 +1,18 @@
  //! Please **[read libjpeg manual](https://github.com/mozilla/mozjpeg/blob/master/libjpeg.txt)** for description of functions in this crate.
  
 -#![allow(non_snake_case)]
++#![allow(clippy::match_like_matches_macro)]
 +#![allow(clippy::missing_safety_doc)]
++#![allow(clippy::unknown_clippy_lints)]
  #![allow(non_camel_case_types)]
 +#![allow(non_snake_case)]
  #![allow(non_upper_case_globals)]
