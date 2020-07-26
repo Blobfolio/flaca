@@ -15,5 +15,4 @@ ARGS:
 OPTIMIZERS USED:
     MozJPEG   <https://github.com/mozilla/mozjpeg>
     Oxipng    <https://github.com/shssoichiro/oxipng>
-    Pngout    <http://advsys.net/ken/utils.htm>
     Zopflipng <https://github.com/google/zopfli>

@@ -102,9 +102,9 @@ impl ImageKind {
 /// JPEG images are passed through `MozJPEG`, stripping markers and optimizing
 /// the encoding.
 ///
-/// PNG images are passed through `PNGOUT`, `Oxipng`, and `Zopflipng` (in that
-/// order) to brute-force the best possible encoding. During the process,
-/// markers are stripped and interlacing is removed.
+/// PNG images are passed through `Oxipng` and `Zopflipng` (in that order) to
+/// brute-force the best possible encoding. During the process, markers are
+/// stripped and interlacing is removed.
 ///
 /// See the encoder-specific methods for additional details.
 pub fn compress(path: &PathBuf) {
@@ -117,12 +117,11 @@ pub fn compress(path: &PathBuf) {
 	let len: usize = data.len();
 	if len == 0 { return; }
 
-	// JPEGs!
+	// JPEGs only need to run through MozJPEG.
 	if kind == ImageKind::Jpeg { compress_mozjpeg(&mut data); }
-	// PNGs!
-	else {
-		compress_pngout(&mut data);
-		compress_oxipng(&mut data);
+	// PNGs are passed through Oxipng first. If that doesn't crash, we'll send
+	// files to Zopflipng for potentially more compression.
+	else if compress_oxipng(&mut data).is_ok() {
 		compress_zopflipng(&mut data);
 	}
 
@@ -153,9 +152,15 @@ pub fn compress_mozjpeg(data: &mut Vec<u8>) -> Result<()> {
 
 /// Compress: `Oxipng`
 ///
+/// Pass the in-memory PNG data to `Oxipng` to see what savings it can come up
+/// with. If `Oxipng` is unable to parse/fix the file, an `Err` is returned (so
+/// we can pack up and go home early). Otherwise an `Ok()` response is
+/// returned, `true` indicating savings happened, `false` indicating no savings
+/// happened.
+///
 /// The result is comparable to calling:
 /// `oxipng -o 3 -s -a -i 0 --fix`
-pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<()> {
+pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<bool> {
 	use oxipng::{
 		AlphaOptim,
 		Deflaters,
@@ -187,7 +192,7 @@ pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<()> {
 			o.interlace.replace(0);
 
 			// Strip what can be safely stripped.
-			o.strip = Headers::Safe;
+			o.strip = Headers::All;
 
 			o
 		};
@@ -203,54 +208,9 @@ pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<()> {
 	if ! tmp.is_empty() && tmp.len() < data.len() {
 		data.truncate(tmp.len());
 		data[..].copy_from_slice(&tmp[..]);
-		Ok(())
+		Ok(true)
 	}
-	else { Err(()) }
-}
-
-/// Compress: `PNGOUT`
-///
-/// This method spawns a call to the external `PNGOUT` program if it has been
-/// installed.
-///
-/// `PNGOUT` has been made *almost* redundant by the much-faster `Oxipng` lib,
-/// however its proprietary encoding algorithms can very occasionally chip off
-/// a few extra bytes.
-///
-/// Its inclusion can extend compression runtimes by about 5×, though, so
-/// hopefully future releases of `Oxipng` can close the gap so this routine can
-/// be dropped.
-pub fn compress_pngout(data: &mut Vec<u8>) -> Result<()> {
-	lazy_static::lazy_static! {
-		static ref PNGOUT: OsString = find_executable("pngout")
-			.unwrap_or_default()
-			.into_os_string();
-	}
-
-	// Abort if PNGOUT is not found.
-	if PNGOUT.is_empty() { return Err(()); }
-
-	// Convert it to a file.
-	let target = ImageKind::Png.mktmp_with(data)?;
-	let path = target.path().to_str().unwrap_or_default();
-	if path.is_empty() { return Err(()); }
-
-	// Execute the linked program.
-	Command::new(&*PNGOUT)
-		.args(&[
-			path,
-			"-q",
-			"-y",
-			"-force",
-		])
-		.stdout(Stdio::piped())
-		.stderr(Stdio::piped())
-		.output()
-		.map_err(|_| ())?;
-
-	// See what changed.
-	if replace_if_smaller(target, data) { Ok(()) }
-	else { Err(()) }
+	else { Ok(false) }
 }
 
 /// Compress: `Zopflipng`
@@ -293,24 +253,16 @@ pub fn compress_zopflipng(data: &mut Vec<u8>) -> Result<()> {
 		.output()
 		.map_err(|_| ())?;
 
-	// See what changed.
-	if replace_if_smaller(target, data) { Ok(()) }
-	else { Err(()) }
-}
-
-/// Write Result (If Smaller)
-///
-/// Our brute-force compression passes are cumulative. If a pass yields any
-/// savings, this method will update the buffer so the next pass has a better
-/// place to start from.
-fn replace_if_smaller(target: NamedTempFile, data: &mut Vec<u8>) -> bool {
-	let tmp: Vec<u8> = fs::read(target.path()).unwrap_or_default();
+	// To see what changed, we need to open and read the file we just wrote.
+	// Sucks to have the unnecessary file I/O, but this is still much more
+	// efficient than using Rust Zopfli bindings directly.
+	let tmp: Vec<u8> = fs::read(path).map_err(|_| ())?;
 	drop(target);
 
 	if ! tmp.is_empty() && tmp.len() < data.len() {
 		data.truncate(tmp.len());
 		data[..].copy_from_slice(&tmp[..]);
-		true
 	}
-	else { false }
+
+	Ok(())
 }
