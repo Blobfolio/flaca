@@ -42,6 +42,7 @@ use std::{
 		Write,
 	},
 	path::PathBuf,
+	process,
 };
 
 
@@ -55,42 +56,55 @@ const FLAG_VERSION: u8  = 0b0100;
 
 
 
-fn main() -> Result<()> {
+#[allow(clippy::if_not_else)] // Code is confusing otherwise.
+fn main() {
 	let mut args = ArgList::default();
 	args.expect();
 
-	let flags = _flags(&mut args);
-	// Help or Version?
+	let mut flags: u8 = 0;
+	args.pluck_flags(
+		&mut flags,
+		&[
+			"-h", "--help",
+			"-p", "--progress",
+			"-V", "--version",
+		],
+		&[
+			FLAG_HELP, FLAG_HELP,
+			FLAG_PROGRESS, FLAG_PROGRESS,
+			FLAG_VERSION, FLAG_VERSION,
+		],
+	);
+
+	// Help.
 	if 0 != flags & FLAG_HELP {
 		_help();
-		return Ok(());
 	}
+	// Version.
 	else if 0 != flags & FLAG_VERSION {
 		_version();
-		return Ok(());
 	}
-
-	// What path are we dealing with?
-	let walk = match args.pluck_opt(|x| x == "-l" || x == "--list") {
-		Some(p) => unsafe { Witcher::from_file_custom(p, witch_filter) },
-		None => unsafe { Witcher::custom(&args.expect_args(), witch_filter) },
-	};
-
-	if walk.is_empty() {
-		MsgKind::Error.as_msg("No images were found.").eprintln();
-		return Err(());
-	}
-
-	// Without progress.
-	if 0 == flags & FLAG_PROGRESS {
-		walk.process(image::compress);
-	}
-	// With progress.
+	// Actual stuff!
 	else {
-		walk.progress_crunch("Flaca", image::compress);
-	}
+		// What path are we dealing with?
+		let walk = match args.pluck_opt(|x| x == "-l" || x == "--list") {
+			Some(p) => unsafe { Witcher::from_file_custom(p, witch_filter) },
+			None => unsafe { Witcher::custom(&args.expect_args(), witch_filter) },
+		};
 
-	Ok(())
+		if walk.is_empty() {
+			MsgKind::Error.as_msg("No images were found.").eprintln();
+			process::exit(1);
+		}
+		// Without progress.
+		else if 0 == flags & FLAG_PROGRESS {
+			walk.process(image::compress);
+		}
+		// With progress.
+		else {
+			walk.progress_crunch("Flaca", image::compress);
+		}
+	}
 }
 
 #[allow(clippy::needless_pass_by_value)] // Would if it were the expected signature!
@@ -106,70 +120,21 @@ fn witch_filter(res: Result<jwalk::DirEntry<((), ())>, jwalk::Error>) -> Option<
 			if
 				len > 5 &&
 				(
-					bytes[len-5..len].eq_ignore_ascii_case(b".jpeg") ||
 					bytes[len-4..len].eq_ignore_ascii_case(b".jpg") ||
-					bytes[len-4..len].eq_ignore_ascii_case(b".png")
+					bytes[len-4..len].eq_ignore_ascii_case(b".png") ||
+					bytes[len-5..len].eq_ignore_ascii_case(b".jpeg")
 				)
 			{ Some(p) }
 			else { None }
 		})
 }
 
-/// Fetch Flags.
-fn _flags(args: &mut ArgList) -> u8 {
-	let len: usize = args.len();
-	if 0 == len { 0 }
-	else {
-		let mut flags: u8 = 0;
-		let mut del = 0;
-		let raw = args.as_mut_vec();
-
-		// This is basically what `Vec.retain()` does, except we're hitting
-		// multiple patterns at once and sending back the results.
-		let ptr = raw.as_mut_ptr();
-		unsafe {
-			let mut idx: usize = 0;
-			while idx < len {
-				match (*ptr.add(idx)).as_str() {
-					"-h" | "--help" => {
-						flags |= FLAG_HELP;
-						del += 1;
-					},
-					"-p" | "--progress" => {
-						flags |= FLAG_PROGRESS;
-						del += 1;
-					},
-					"-V" | "--version" => {
-						flags |= FLAG_VERSION;
-						del += 1;
-					},
-					_ => if del > 0 {
-						ptr.add(idx).swap(ptr.add(idx - del));
-					}
-				}
-
-				idx += 1;
-			}
-		}
-
-		// Did we find anything? If so, run `truncate()` to free the memory
-		// and return the flags.
-		if del > 0 {
-			raw.truncate(len - del);
-			flags
-		}
-		else { 0 }
-	}
-}
-
 #[cfg(not(feature = "man"))]
 #[cold]
 /// Print Help.
 fn _help() {
-	io::stdout().write_all({
-		let mut s = String::with_capacity(2048);
-		s.push_str(&format!(
-			r"
+	io::stdout().write_fmt(format_args!(
+		r"
              ,--._,--.
            ,'  ,'   ,-`.
 (`-.__    /  ,'   /
@@ -187,15 +152,12 @@ fn _help() {
         \ \   :
          `
 
-",
+{}",
 			"\x1b[38;5;199mFlaca\x1b[0;38;5;69m v",
 			env!("CARGO_PKG_VERSION"),
-			"\x1b[0m"
-		));
-		s.push_str(include_str!("../../skel/help.txt"));
-		s.push('\n');
-		s
-	}.as_bytes()).unwrap();
+			"\x1b[0m",
+			include_str!("../../skel/help.txt")
+	)).unwrap();
 }
 
 #[cfg(feature = "man")]
@@ -205,27 +167,23 @@ fn _help() {
 /// This is a stripped-down version of the help screen made specifically for
 /// `help2man`, which gets run during the Debian package release build task.
 fn _help() {
-	io::stdout().write_all({
-		let mut s = String::with_capacity(1024);
-		s.push_str("Flaca ");
-		s.push_str(env!("CARGO_PKG_VERSION"));
-		s.push('\n');
-		s.push_str(env!("CARGO_PKG_DESCRIPTION"));
-		s.push('\n');
-		s.push('\n');
-		s.push_str(include_str!("../../skel/help.txt"));
-		s.push('\n');
-		s
-	}.as_bytes()).unwrap();
+	io::stdout().write_all(&[
+		b"Flaca ",
+		env!("CARGO_PKG_VERSION").as_bytes(),
+		b"\n",
+		env!("CARGO_PKG_DESCRIPTION").as_bytes(),
+		b"\n\n",
+		include_bytes!("../../skel/help.txt"),
+		b"\n",
+	].concat()).unwrap();
 }
 
 #[cold]
 /// Print version and exit.
 fn _version() {
-	io::stdout().write_all({
-		let mut s = String::from("Flaca ");
-		s.push_str(env!("CARGO_PKG_VERSION"));
-		s.push('\n');
-		s
-	}.as_bytes()).unwrap();
+	io::stdout().write_all(&[
+		b"Flaca ",
+		env!("CARGO_PKG_VERSION").as_bytes(),
+		b"\n"
+	].concat()).unwrap();
 }
