@@ -16,3 +16,4 @@ OPTIMIZERS USED:
     MozJPEG   <https://github.com/mozilla/mozjpeg>
     Oxipng    <https://github.com/shssoichiro/oxipng>
     Zopflipng <https://github.com/google/zopfli>
+
