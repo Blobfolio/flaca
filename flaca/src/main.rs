@@ -31,8 +31,6 @@ use flaca_core::{
 	image,
 	Result,
 };
-use fyi_menu::ArgList;
-use fyi_msg::MsgKind;
 use fyi_witcher::Witcher;
 use std::{
 	ffi::OsStr,
@@ -42,68 +40,59 @@ use std::{
 		Write,
 	},
 	path::PathBuf,
-	process,
 };
-
-
-
-/// -h | --help
-const FLAG_HELP: u8     = 0b0001;
-/// -p | --progress
-const FLAG_PROGRESS: u8 = 0b0010;
-/// -V | --version
-const FLAG_VERSION: u8  = 0b0100;
 
 
 
 #[allow(clippy::if_not_else)] // Code is confusing otherwise.
 fn main() {
-	let mut args = ArgList::default();
-	args.expect();
+	let mut args = fyi_menu::parse_env_args(fyi_menu::FLAG_ALL);
+	let mut progress: bool = false;
+	let mut list: Option<String> = None;
 
-	let mut flags: u8 = 0;
-	args.pluck_flags(
-		&mut flags,
-		&[
-			"-h", "--help",
-			"-p", "--progress",
-			"-V", "--version",
-		],
-		&[
-			FLAG_HELP, FLAG_HELP,
-			FLAG_PROGRESS, FLAG_PROGRESS,
-			FLAG_VERSION, FLAG_VERSION,
-		],
-	);
+	// Run through the arguments to see what we've got going on!
+	let mut idx: usize = 0;
+	let mut len: usize = args.len();
+	while idx < len {
+		match args[idx].as_str() {
+			"-h" | "--help" => { return _help(); },
+			"-V" | "--version" => { return _version(); },
+			"-p" | "--progress" => { progress = true; },
+			"-l" | "--list" =>
+				if idx + 1 == len {
+					fyi_menu::die(b"Missing file list.");
+				}
+				else {
+					list.replace(args.remove(idx + 1));
+					len -= 1;
+				},
+			_ => { break; }
+		}
 
-	// Help.
-	if 0 != flags & FLAG_HELP {
-		_help();
+		idx += 1;
 	}
-	// Version.
-	else if 0 != flags & FLAG_VERSION {
-		_version();
+
+	// Clear what we've checked.
+	if idx > 0 {
+		args.drain(0..idx);
 	}
-	// Actual stuff!
+
+	// What path are we dealing with?
+	let walk = match list {
+		Some(p) => unsafe { Witcher::from_file_custom(p, witch_filter) },
+		None => unsafe { Witcher::custom(&args[..], witch_filter) },
+	};
+
+	if walk.is_empty() {
+		fyi_menu::die(b"No images were found.");
+	}
+	// With progress.
+	else if progress {
+		walk.progress_crunch("Flaca", image::compress);
+	}
+	// Without progress.
 	else {
-		// What path are we dealing with?
-		let walk = match args.pluck_opt(|x| x == "-l" || x == "--list") {
-			Some(p) => unsafe { Witcher::from_file_custom(p, witch_filter) },
-			None => unsafe { Witcher::custom(&args.expect_args(), witch_filter) },
-		};
-
-		if walk.is_empty() {
-			MsgKind::Error.as_msg("No images were found.").eprintln();
-			process::exit(1);
-		}
-		// Without progress.
-		else if 0 == flags & FLAG_PROGRESS {
-			walk.process(image::compress);
-		}
-		// With progress.
-		else {
-			walk.progress_crunch("Flaca", image::compress);
-		}
+		walk.process(image::compress);
 	}
 }
 
