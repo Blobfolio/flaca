@@ -97,7 +97,6 @@ fn main() {
 	}
 }
 
-#[allow(clippy::needless_pass_by_value)] // Would if it were the expected signature!
 #[allow(trivial_casts)] // Trivial though it may be, the code doesn't work without it!
 /// Accept or Deny Files.
 fn witch_filter(path: &PathBuf) -> bool {
