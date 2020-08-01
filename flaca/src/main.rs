@@ -27,14 +27,13 @@ Brute-force, lossless JPEG and PNG compression.
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)]
 
-use flaca_core::{
-	image,
-	Result,
+use flaca_core::image;
+use fyi_witcher::{
+	self,
+	Witcher
 };
-use fyi_witcher::Witcher;
 use std::{
 	ffi::OsStr,
-	fs,
 	io::{
 		self,
 		Write,
@@ -79,43 +78,38 @@ fn main() {
 
 	// What path are we dealing with?
 	let walk = match list {
-		Some(p) => unsafe { Witcher::from_file_custom(p, witch_filter) },
-		None => unsafe { Witcher::custom(&args[..], witch_filter) },
-	};
+		Some(p) => Witcher::read_paths_from_file(p),
+		None => Witcher::from(args),
+	}
+		.filter(witch_filter)
+		.collect::<Vec<PathBuf>>();
 
 	if walk.is_empty() {
 		fyi_menu::die(b"No images were found.");
 	}
 	// With progress.
 	else if progress {
-		walk.progress_crunch("Flaca", image::compress);
+		fyi_witcher::progress_crunch(&walk, "Flaca", image::compress);
 	}
 	// Without progress.
 	else {
-		walk.process(image::compress);
+		fyi_witcher::process(&walk, image::compress);
 	}
 }
 
 #[allow(clippy::needless_pass_by_value)] // Would if it were the expected signature!
 #[allow(trivial_casts)] // Trivial though it may be, the code doesn't work without it!
 /// Accept or Deny Files.
-fn witch_filter(res: Result<jwalk::DirEntry<((), ())>, jwalk::Error>) -> Option<PathBuf> {
-	res.ok()
-		.and_then(|p| if p.file_type().is_dir() { None } else { Some(p) })
-		.and_then(|p| fs::canonicalize(p.path()).ok())
-		.and_then(|p| {
-			let bytes: &[u8] = unsafe { &*(p.as_os_str() as *const OsStr as *const [u8]) };
-			let len: usize = bytes.len();
-			if
-				len > 5 &&
-				(
-					bytes[len-4..len].eq_ignore_ascii_case(b".jpg") ||
-					bytes[len-4..len].eq_ignore_ascii_case(b".png") ||
-					bytes[len-5..len].eq_ignore_ascii_case(b".jpeg")
-				)
-			{ Some(p) }
-			else { None }
-		})
+fn witch_filter(path: &PathBuf) -> bool {
+	let bytes: &[u8] = unsafe { &*(path.as_os_str() as *const OsStr as *const [u8]) };
+	let len: usize = bytes.len();
+
+	len > 5 &&
+	(
+		bytes[len-4..len].eq_ignore_ascii_case(b".jpg") ||
+		bytes[len-4..len].eq_ignore_ascii_case(b".png") ||
+		bytes[len-5..len].eq_ignore_ascii_case(b".jpeg")
+	)
 }
 
 #[cfg(not(feature = "man"))]
