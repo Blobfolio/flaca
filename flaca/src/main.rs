@@ -28,6 +28,8 @@ Brute-force, lossless JPEG and PNG compression.
 #![allow(clippy::missing_errors_doc)]
 
 use flaca_core::image;
+use fyi_msg::MsgKind;
+use fyi_progress::Progress;
 use fyi_witcher::{
 	self,
 	Witcher
@@ -45,56 +47,51 @@ use std::{
 
 #[allow(clippy::if_not_else)] // Code is confusing otherwise.
 fn main() {
-	let mut args = fyi_menu::parse_env_args(fyi_menu::FLAG_ALL);
+	let args = fyi_menu::parse_env_args(fyi_menu::FLAG_ALL);
 	let mut progress: bool = false;
-	let mut list: Option<String> = None;
+	let mut list: &str = "";
 
 	// Run through the arguments to see what we've got going on!
 	let mut idx: usize = 0;
-	let mut len: usize = args.len();
+	let len: usize = args.len();
 	while idx < len {
 		match args[idx].as_str() {
 			"-h" | "--help" => { return _help(); },
 			"-V" | "--version" => { return _version(); },
-			"-p" | "--progress" => { progress = true; },
+			"-p" | "--progress" => {
+				progress = true;
+				idx += 1;
+			},
 			"-l" | "--list" =>
-				if idx + 1 == len {
-					fyi_menu::die(b"Missing file list.");
+				if idx + 1 < len {
+					list = &args[idx + 1];
+					idx += 2;
 				}
-				else {
-					list.replace(args.remove(idx + 1));
-					len -= 1;
-				},
+				else { idx += 1 },
 			_ => { break; }
 		}
-
-		idx += 1;
 	}
 
-	// Clear what we've checked.
-	if idx > 0 {
-		args.drain(0..idx);
-	}
+	// What path(s) are we dealing with?
+	let walker = Progress::<PathBuf>::from(
+		if list.is_empty() {
+			if idx < args.len() { Witcher::from(&args[idx..]) }
+			else { Witcher::default() }
+		}
+		else { Witcher::read_paths_from_file(list) }
+			.filter(witch_filter)
+			.collect::<Vec<PathBuf>>()
+	)
+		.with_title(
+			MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}").to_string()
+		);
 
-	// What path are we dealing with?
-	let walk = match list {
-		Some(p) => Witcher::read_paths_from_file(p),
-		None => Witcher::from(args),
-	}
-		.filter(witch_filter)
-		.collect::<Vec<PathBuf>>();
-
-	if walk.is_empty() {
-		fyi_menu::die(b"No images were found.");
-	}
 	// With progress.
-	else if progress {
-		fyi_witcher::progress_crunch(&walk, "Flaca", image::compress);
+	if progress {
+		fyi_witcher::progress_crunch(walker, image::compress);
 	}
 	// Without progress.
-	else {
-		fyi_witcher::process(&walk, image::compress);
-	}
+	else { walker.silent(image::compress); }
 }
 
 #[allow(trivial_casts)] // Trivial though it may be, the code doesn't work without it!
