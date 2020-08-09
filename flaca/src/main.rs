@@ -82,9 +82,7 @@ fn main() {
 			.filter(witch_filter)
 			.collect::<Vec<PathBuf>>()
 	)
-		.with_title(
-			MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}").to_string()
-		);
+		.with_title(MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}"));
 
 	// With progress.
 	if progress {
