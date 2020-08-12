@@ -29,18 +29,12 @@ Brute-force, lossless JPEG and PNG compression.
 
 use flaca_core::image;
 use fyi_msg::MsgKind;
-use fyi_progress::Progress;
-use fyi_witcher::{
-	self,
-	Witcher
-};
+use fyi_witcher::Witcher;
 use std::{
-	ffi::OsStr,
 	io::{
 		self,
 		Write,
 	},
-	path::PathBuf,
 };
 
 
@@ -73,37 +67,15 @@ fn main() {
 	}
 
 	// What path(s) are we dealing with?
-	let walker = Progress::<PathBuf>::from(
-		if list.is_empty() {
-			if idx < args.len() { Witcher::from(&args[idx..]) }
-			else { Witcher::default() }
-		}
-		else { Witcher::read_paths_from_file(list) }
-			.filter(witch_filter)
-			.collect::<Vec<PathBuf>>()
-	)
-		.with_title(MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}"));
-
-	// With progress.
-	if progress {
-		fyi_witcher::progress_crunch(walker, image::compress);
+	if list.is_empty() {
+		if idx < args.len() { Witcher::from(&args[idx..]) }
+		else { Witcher::default() }
 	}
-	// Without progress.
-	else { walker.silent(image::compress); }
-}
-
-#[allow(trivial_casts)] // Trivial though it may be, the code doesn't work without it!
-/// Accept or Deny Files.
-fn witch_filter(path: &PathBuf) -> bool {
-	let bytes: &[u8] = unsafe { &*(path.as_os_str() as *const OsStr as *const [u8]) };
-	let len: usize = bytes.len();
-
-	len > 5 &&
-	(
-		bytes[len-4..len].eq_ignore_ascii_case(b".jpg") ||
-		bytes[len-4..len].eq_ignore_ascii_case(b".png") ||
-		bytes[len-5..len].eq_ignore_ascii_case(b".jpeg")
-	)
+	else { Witcher::from_list(list) }
+		.filter_into_progress(r"(?i).+\.(jpe?g|png)$")
+		.with_title(MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}"))
+		.with_display(progress)
+		.crunch(image::compress);
 }
 
 #[cfg(not(feature = "man"))]
