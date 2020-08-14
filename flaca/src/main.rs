@@ -73,8 +73,8 @@ fn main() {
 	}
 	else { Witcher::from_list(list) }
 		.filter_into_progress(r"(?i).+\.(jpe?g|png)$")
-		.with_title(MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}"))
 		.with_display(progress)
+		.with_title(MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}"))
 		.crunch(image::compress);
 }
 
