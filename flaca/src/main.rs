@@ -29,12 +29,20 @@ Brute-force, lossless JPEG and PNG compression.
 
 use flaca_core::image;
 use fyi_msg::MsgKind;
-use fyi_witcher::Witcher;
+use fyi_witcher::{
+	Witcher,
+	WITCHING_DIFF,
+	WITCHING_QUIET,
+	WITCHING_SUMMARIZE,
+};
 use std::{
+	ffi::OsStr,
 	io::{
 		self,
 		Write,
 	},
+	ops::Range,
+	path::PathBuf,
 };
 
 
@@ -42,23 +50,51 @@ use std::{
 #[allow(clippy::if_not_else)] // Code is confusing otherwise.
 fn main() {
 	let args = fyi_menu::parse_env_args(fyi_menu::FLAG_ALL);
-	let mut progress: bool = false;
-	let mut list: &str = "";
+	let (flags, rg, list) = parse_args(&args);
+
+	// Put it all together!
+	Witcher::default()
+		.with_filter(witcher_filter)
+		.with(&args[rg], list)
+		.into_witching()
+		.with_flags(flags)
+		.with_labels("image", "images")
+		.with_title(MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}"))
+		.run(image::compress);
+}
+
+
+
+#[allow(clippy::reversed_empty_ranges)] // Witcher will print an error for us.
+#[allow(clippy::range_plus_one)] // We need a consistent return type!
+/// Parse Options.
+///
+/// Returns a tuple containing the flags, path range, and whether or not it is
+/// a list.
+fn parse_args(args: &[String]) -> (u8, Range<usize>, bool) {
+	let mut flags: u8 = WITCHING_DIFF | WITCHING_QUIET | WITCHING_SUMMARIZE;
+	let mut list: usize = 0;
 
 	// Run through the arguments to see what we've got going on!
 	let mut idx: usize = 0;
 	let len: usize = args.len();
 	while idx < len {
 		match args[idx].as_str() {
-			"-h" | "--help" => { return _help(); },
-			"-V" | "--version" => { return _version(); },
+			"-h" | "--help" => {
+				_help();
+				std::process::exit(0);
+			},
+			"-V" | "--version" => {
+				_version();
+				std::process::exit(0);
+			},
 			"-p" | "--progress" => {
-				progress = true;
+				flags &= ! WITCHING_QUIET;
 				idx += 1;
 			},
 			"-l" | "--list" =>
 				if idx + 1 < len {
-					list = &args[idx + 1];
+					list = idx + 1;
 					idx += 2;
 				}
 				else { idx += 1 },
@@ -66,17 +102,37 @@ fn main() {
 		}
 	}
 
-	// What path(s) are we dealing with?
-	if list.is_empty() {
-		if idx < args.len() { Witcher::from(&args[idx..]) }
-		else { Witcher::default() }
-	}
-	else { Witcher::from_list(list) }
-		.filter_into_progress(r"(?i).+\.(jpe?g|png)$")
-		.with_display(progress)
-		.with_title(MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}"))
-		.crunch(image::compress);
+	// What paths are we dealing with?
+	(
+		flags,
+		match list {
+			0 if idx < args.len() => idx..args.len(),
+			0 => 0..0,
+			x => x..x+1,
+		},
+		0 != list
+	)
 }
+
+
+
+#[allow(trivial_casts)] // Triviality is needed!
+/// Witcher Filter
+///
+/// We're only looking for three kinds of files; it is faster to check manually
+/// than to use Regex.
+fn witcher_filter(path: &PathBuf) -> bool {
+	let bytes: &[u8] = unsafe { &*(path.as_os_str() as *const OsStr as *const [u8]) };
+	let len: usize = bytes.len();
+	len > 5 &&
+	(
+		bytes[len-4..len].eq_ignore_ascii_case(b".jpg") ||
+		bytes[len-4..len].eq_ignore_ascii_case(b".png") ||
+		bytes[len-5..len].eq_ignore_ascii_case(b".jpeg")
+	)
+}
+
+
 
 #[cfg(not(feature = "man"))]
 #[cold]
@@ -109,6 +165,8 @@ fn _help() {
 	)).unwrap();
 }
 
+
+
 #[cfg(feature = "man")]
 #[cold]
 /// Print Help.
@@ -126,6 +184,8 @@ fn _help() {
 		b"\n",
 	].concat()).unwrap();
 }
+
+
 
 #[cold]
 /// Print version and exit.
