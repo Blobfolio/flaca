@@ -36,13 +36,11 @@ use fyi_witcher::{
 	WITCHING_SUMMARIZE,
 };
 use std::{
-	ffi::OsStr,
 	io::{
 		self,
 		Write,
 	},
 	ops::Range,
-	path::PathBuf,
 };
 
 
@@ -54,7 +52,7 @@ fn main() {
 
 	// Put it all together!
 	Witcher::default()
-		.with_filter(witcher_filter)
+		.with_ext3(b".jpg", b".png", b".jpeg")
 		.with(&args[rg], list)
 		.into_witching()
 		.with_flags(flags)
@@ -111,24 +109,6 @@ fn parse_args(args: &[String]) -> (u8, Range<usize>, bool) {
 			x => x..x+1,
 		},
 		0 != list
-	)
-}
-
-
-
-#[allow(trivial_casts)] // Triviality is needed!
-/// Witcher Filter
-///
-/// We're only looking for three kinds of files; it is faster to check manually
-/// than to use Regex.
-fn witcher_filter(path: &PathBuf) -> bool {
-	let bytes: &[u8] = unsafe { &*(path.as_os_str() as *const OsStr as *const [u8]) };
-	let len: usize = bytes.len();
-	len > 5 &&
-	(
-		bytes[len-4..len].eq_ignore_ascii_case(b".jpg") ||
-		bytes[len-4..len].eq_ignore_ascii_case(b".png") ||
-		bytes[len-5..len].eq_ignore_ascii_case(b".jpeg")
 	)
 }
 
