@@ -29,7 +29,10 @@ Brute-force, lossless JPEG and PNG compression.
 
 use flaca_core::image;
 use fyi_menu::Argue;
-use fyi_msg::MsgKind;
+use fyi_msg::{
+	Msg,
+	MsgKind,
+};
 use fyi_witcher::{
 	Witcher,
 	WITCHING_DIFF,
@@ -44,7 +47,7 @@ fn main() {
 	// Parse CLI arguments.
 	let args = Argue::new()
 		.with_any()
-		.with_version(versioner)
+		.with_version(b"Flaca", env!("CARGO_PKG_VERSION").as_bytes())
 		.with_help(helper)
 		.with_list();
 
@@ -68,9 +71,7 @@ fn main() {
 #[cold]
 /// Print Help.
 fn helper(_: Option<&str>) {
-	use std::io::Write;
-
-	std::io::stdout().write_fmt(format_args!(
+	Msg::from(format!(
 		r"
              ,--._,--.
            ,'  ,'   ,-`.
@@ -94,7 +95,7 @@ fn helper(_: Option<&str>) {
 			env!("CARGO_PKG_VERSION"),
 			"\x1b[0m",
 			include_str!("../../skel/help.txt")
-	)).unwrap();
+	)).print();
 }
 
 #[cfg(feature = "man")]
@@ -104,31 +105,13 @@ fn helper(_: Option<&str>) {
 /// This is a stripped-down version of the help screen made specifically for
 /// `help2man`, which gets run during the Debian package release build task.
 fn helper(_: Option<&str>) {
-	use std::io::Write;
-
-	let writer = std::io::stdout();
-	let mut handle = writer.lock();
-
-	handle.write_all(b"Flaca ").unwrap();
-	handle.write_all(env!("CARGO_PKG_VERSION").as_bytes()).unwrap();
-	handle.write_all(b"\n").unwrap();
-	handle.write_all(env!("CARGO_PKG_DESCRIPTION").as_bytes()).unwrap();
-	handle.write_all(b"\n\n").unwrap();
-	handle.write_all(include_bytes!("../../skel/help.txt")).unwrap();
-	handle.write_all(b"\n").unwrap();
-
-	handle.flush().unwrap();
-}
-
-/// Print Version.
-fn versioner() {
-	use std::io::Write;
-	let writer = std::io::stdout();
-	let mut handle = writer.lock();
-
-	handle.write_all(b"Flaca ").unwrap();
-	handle.write_all(env!("CARGO_PKG_VERSION").as_bytes()).unwrap();
-	handle.write_all(b"\n").unwrap();
-
-	handle.flush().unwrap();
+	Msg::from([
+		b"Flaca ",
+		env!("CARGO_PKG_VERSION").as_bytes(),
+		b"\n",
+		env!("CARGO_PKG_DESCRIPTION").as_bytes(),
+		b"\n\n",
+		include_bytes!("../../skel/help.txt"),
+	].concat())
+		.print();
 }
