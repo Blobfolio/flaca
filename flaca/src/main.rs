@@ -28,6 +28,7 @@ Brute-force, lossless JPEG and PNG compression.
 #![allow(clippy::missing_errors_doc)]
 
 use flaca_core::image;
+use fyi_menu::Argue;
 use fyi_msg::MsgKind;
 use fyi_witcher::{
 	Witcher,
@@ -35,25 +36,27 @@ use fyi_witcher::{
 	WITCHING_QUIET,
 	WITCHING_SUMMARIZE,
 };
-use std::{
-	io::{
-		self,
-		Write,
-	},
-	ops::Range,
-};
 
 
 
 #[allow(clippy::if_not_else)] // Code is confusing otherwise.
 fn main() {
-	let args = fyi_menu::parse_env_args(fyi_menu::FLAG_ALL);
-	let (flags, rg, list) = parse_args(&args);
+	// Parse CLI arguments.
+	let args = Argue::new()
+		.with_any()
+		.with_version(versioner)
+		.with_help(helper)
+		.with_list();
+
+	let mut flags: u8 = WITCHING_QUIET | WITCHING_SUMMARIZE | WITCHING_DIFF;
+	if args.switch2("-p", "--progress") {
+		flags &= ! WITCHING_QUIET;
+	}
 
 	// Put it all together!
 	Witcher::default()
 		.with_ext3(b".jpg", b".png", b".jpeg")
-		.with(&args[rg], list)
+		.with_paths(args.args())
 		.into_witching()
 		.with_flags(flags)
 		.with_labels("image", "images")
@@ -61,64 +64,13 @@ fn main() {
 		.run(image::compress);
 }
 
-
-
-#[allow(clippy::reversed_empty_ranges)] // Witcher will print an error for us.
-#[allow(clippy::range_plus_one)] // We need a consistent return type!
-/// Parse Options.
-///
-/// Returns a tuple containing the flags, path range, and whether or not it is
-/// a list.
-fn parse_args(args: &[String]) -> (u8, Range<usize>, bool) {
-	let mut flags: u8 = WITCHING_DIFF | WITCHING_QUIET | WITCHING_SUMMARIZE;
-	let mut list: usize = 0;
-
-	// Run through the arguments to see what we've got going on!
-	let mut idx: usize = 0;
-	let len: usize = args.len();
-	while idx < len {
-		match args[idx].as_str() {
-			"-h" | "--help" => {
-				_help();
-				std::process::exit(0);
-			},
-			"-V" | "--version" => {
-				_version();
-				std::process::exit(0);
-			},
-			"-p" | "--progress" => {
-				flags &= ! WITCHING_QUIET;
-				idx += 1;
-			},
-			"-l" | "--list" =>
-				if idx + 1 < len {
-					list = idx + 1;
-					idx += 2;
-				}
-				else { idx += 1 },
-			_ => { break; }
-		}
-	}
-
-	// What paths are we dealing with?
-	(
-		flags,
-		match list {
-			0 if idx < args.len() => idx..args.len(),
-			0 => 0..0,
-			x => x..x+1,
-		},
-		0 != list
-	)
-}
-
-
-
 #[cfg(not(feature = "man"))]
 #[cold]
 /// Print Help.
-fn _help() {
-	io::stdout().write_fmt(format_args!(
+fn helper(_: Option<&str>) {
+	use std::io::Write;
+
+	std::io::stdout().write_fmt(format_args!(
 		r"
              ,--._,--.
            ,'  ,'   ,-`.
@@ -145,34 +97,38 @@ fn _help() {
 	)).unwrap();
 }
 
-
-
 #[cfg(feature = "man")]
 #[cold]
 /// Print Help.
 ///
 /// This is a stripped-down version of the help screen made specifically for
 /// `help2man`, which gets run during the Debian package release build task.
-fn _help() {
-	io::stdout().write_all(&[
-		b"Flaca ",
-		env!("CARGO_PKG_VERSION").as_bytes(),
-		b"\n",
-		env!("CARGO_PKG_DESCRIPTION").as_bytes(),
-		b"\n\n",
-		include_bytes!("../../skel/help.txt"),
-		b"\n",
-	].concat()).unwrap();
+fn helper(_: Option<&str>) {
+	use std::io::Write;
+
+	let writer = std::io::stdout();
+	let mut handle = writer.lock();
+
+	handle.write_all(b"Flaca ").unwrap();
+	handle.write_all(env!("CARGO_PKG_VERSION").as_bytes()).unwrap();
+	handle.write_all(b"\n").unwrap();
+	handle.write_all(env!("CARGO_PKG_DESCRIPTION").as_bytes()).unwrap();
+	handle.write_all(b"\n\n").unwrap();
+	handle.write_all(include_bytes!("../../skel/help.txt")).unwrap();
+	handle.write_all(b"\n").unwrap();
+
+	handle.flush().unwrap();
 }
 
+/// Print Version.
+fn versioner() {
+	use std::io::Write;
+	let writer = std::io::stdout();
+	let mut handle = writer.lock();
 
+	handle.write_all(b"Flaca ").unwrap();
+	handle.write_all(env!("CARGO_PKG_VERSION").as_bytes()).unwrap();
+	handle.write_all(b"\n").unwrap();
 
-#[cold]
-/// Print version and exit.
-fn _version() {
-	io::stdout().write_all(&[
-		b"Flaca ",
-		env!("CARGO_PKG_VERSION").as_bytes(),
-		b"\n"
-	].concat()).unwrap();
+	handle.flush().unwrap();
 }
