@@ -51,10 +51,9 @@ fn main() {
 		.with_help(helper)
 		.with_list();
 
-	let mut flags: u8 = WITCHING_QUIET | WITCHING_SUMMARIZE | WITCHING_DIFF;
-	if args.switch2("-p", "--progress") {
-		flags &= ! WITCHING_QUIET;
-	}
+	let flags: u8 =
+		if args.switch2("-p", "--progress") { WITCHING_SUMMARIZE | WITCHING_DIFF }
+		else { WITCHING_QUIET | WITCHING_SUMMARIZE | WITCHING_DIFF };
 
 	// Put it all together!
 	Witcher::default()
