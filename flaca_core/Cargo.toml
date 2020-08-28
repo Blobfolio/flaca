@@ -22,10 +22,6 @@ features = [ "turbojpeg_api", "nasm_simd" ]
 version = "3.0.*"
 default-features = false
 
-[dependencies.fyi_msg]
-git = "https://github.com/Blobfolio/fyi.git"
-branch = "master"
-
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
 branch = "master"
