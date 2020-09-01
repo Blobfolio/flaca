@@ -170,11 +170,16 @@ version:
 	apt-get update
 	apt-fast install \
 		clang \
-		libclang-dev\
+		libclang-dev \
 		libjpeg-dev \
 		libpng-dev \
 		llvm-dev
 	cargo install bindgen
+
+	# cmake -G"Unix Makefiles"
+
+	# bindgen --disable-name-namespacing --no-derive-copy --no-derive-debug --no-layout-tests --no-prepend-enum-name  --use-core
+	# -o raw-bindgen.rs jpegtran-bindgen.h
 
 
 # Init Mozjpeg-Sys.
