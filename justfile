@@ -193,12 +193,12 @@ version:
 		https://github.com/kornelski/mozjpeg-sys.git \
 		"{{ justfile_directory() }}/mozjpeg_sys" \
 		&& cd "{{ justfile_directory() }}/mozjpeg_sys" \
-		&& git checkout b395a758d536c609f748a47c11d4af54cedf1ade \
+		&& git checkout 3d7e9ed4fd66d789fcb99821c3f260361da6a2a3 \
 		&& git submodule update --init
 
 	# Patch it.
-	patch "{{ justfile_directory() }}/mozjpeg_sys/src/lib.rs" \
-		-i "{{ skel_dir }}/mozjpeg_sys/jpegtran.patch"
+	cd "{{ justfile_directory() }}/mozjpeg_sys" \
+		&& git apply ../skel/mozjpeg_sys/jpegtran.patch
 
 	# Copy our extra lib exports.
 	cp -a \
