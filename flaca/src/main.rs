@@ -42,11 +42,13 @@ use fyi_msg::{
 	MsgKind,
 };
 use fyi_witcher::{
+	utility,
 	Witcher,
 	WITCHING_DIFF,
 	WITCHING_QUIET,
 	WITCHING_SUMMARIZE,
 };
+use std::path::PathBuf;
 
 
 
@@ -64,7 +66,35 @@ fn main() {
 
 	// Put it all together!
 	Witcher::default()
-		.with_ext3(b".jpg", b".png", b".jpeg")
+		.with_filter(|p: &PathBuf| {
+			let p: &[u8] = utility::path_as_bytes(p);
+			let p_len: usize = p.len();
+
+			p_len > 5 &&
+			p[p_len - 1].to_ascii_lowercase() == b'g' &&
+			(
+				(
+					p[p_len - 4] == b'.' &&
+					(
+						(
+							p[p_len - 3].to_ascii_lowercase() == b'j' &&
+							p[p_len - 2].to_ascii_lowercase() == b'p'
+						) ||
+						(
+							p[p_len - 3].to_ascii_lowercase() == b'p' &&
+							p[p_len - 2].to_ascii_lowercase() == b'n'
+						)
+					)
+				) ||
+				(
+					p[p_len - 5] == b'.' &&
+					p[p_len - 4].to_ascii_lowercase() == b'j' &&
+					p[p_len - 3].to_ascii_lowercase() == b'p' &&
+					p[p_len - 2].to_ascii_lowercase() == b'e'
+				)
+			)
+
+		})
 		.with_paths(args.args())
 		.into_witching()
 		.with_flags(flags)
