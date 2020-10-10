@@ -25,7 +25,7 @@ rustflags   := "-C link-arg=-s"
 # Build Release!
 @build: clean
 	# First let's build the Rust bit.
-	RUSTFLAGS="{{ rustflags }}" cargo build \
+	RUSTFLAGS="--emit asm {{ rustflags }}" cargo build \
 		--bin "{{ pkg_id }}" \
 		--release \
 		--target x86_64-unknown-linux-gnu \
@@ -170,11 +170,16 @@ version:
 	apt-get update
 	apt-fast install \
 		clang \
-		libclang-dev\
+		libclang-dev \
 		libjpeg-dev \
 		libpng-dev \
 		llvm-dev
 	cargo install bindgen
+
+	# cmake -G"Unix Makefiles"
+
+	# bindgen --disable-name-namespacing --no-derive-copy --no-derive-debug --no-layout-tests --no-prepend-enum-name  --use-core
+	# -o raw-bindgen.rs jpegtran-bindgen.h
 
 
 # Init Mozjpeg-Sys.
@@ -188,12 +193,12 @@ version:
 		https://github.com/kornelski/mozjpeg-sys.git \
 		"{{ justfile_directory() }}/mozjpeg_sys" \
 		&& cd "{{ justfile_directory() }}/mozjpeg_sys" \
-		&& git checkout b395a758d536c609f748a47c11d4af54cedf1ade \
+		&& git checkout 3d7e9ed4fd66d789fcb99821c3f260361da6a2a3 \
 		&& git submodule update --init
 
 	# Patch it.
-	patch "{{ justfile_directory() }}/mozjpeg_sys/src/lib.rs" \
-		-i "{{ skel_dir }}/mozjpeg_sys/jpegtran.patch"
+	cd "{{ justfile_directory() }}/mozjpeg_sys" \
+		&& git apply ../skel/mozjpeg_sys/jpegtran.patch
 
 	# Copy our extra lib exports.
 	cp -a \

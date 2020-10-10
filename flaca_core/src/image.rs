@@ -57,7 +57,7 @@ impl ImageKind {
 	/// Extension.
 	///
 	/// This returns an appropriate file extension for the image type.
-	pub fn ext(self) -> &'static str {
+	pub const fn ext(&self) -> &str {
 		match self {
 			Self::Png => ".png",
 			Self::Jpeg => ".jpg",

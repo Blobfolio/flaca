@@ -1,5 +1,36 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 82ff8ba..3b503bb 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -36,7 +36,7 @@ path = "examples/reencode.rs"
+ libc = "0.2.68"
+ 
+ [features]
+-default = ["nasm_simd"]
++default = ["turbojpeg_api", "nasm_simd"]
+ with_simd = [] # nasm is required for x86, but not ARM
+ nasm_simd = ["with_simd", "nasm-rs", "nasm-rs/parallel"]
+ unwinding = []
+diff --git a/src/build.rs b/src/build.rs
+index b81f73e..db44be1 100644
+--- a/src/build.rs
++++ b/src/build.rs
+@@ -1,3 +1,5 @@
++#![allow(clippy::match_like_matches_macro)]
++
+ #[allow(unused_imports)]
+ use std::path::{Path, PathBuf};
+ use std::fs;
+@@ -85,6 +87,7 @@ fn main() {
+             #endif
+         #endif
+         #define PACKAGE_NAME "{PACKAGE_NAME}"
++        #define THREAD_LOCAL __thread
+         #define VERSION "{VERSION}"
+         #define SIZEOF_SIZE_T {SIZEOF_SIZE_T}
+         "#,
 diff --git a/src/lib.rs b/src/lib.rs
-index 7ab1a0d..2d44353 100644
+index a5d9bf6..afc3b79 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -1,13 +1,18 @@

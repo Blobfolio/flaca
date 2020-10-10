@@ -4,14 +4,6 @@
 Brute-force, lossless JPEG and PNG compression.
 */
 
-#![warn(missing_docs)]
-#![warn(trivial_casts)]
-#![warn(trivial_numeric_casts)]
-#![warn(unused_import_braces)]
-
-#![deny(missing_copy_implementations)]
-#![deny(missing_debug_implementations)]
-
 #![warn(clippy::filetype_is_file)]
 #![warn(clippy::integer_division)]
 #![warn(clippy::needless_borrow)]
@@ -20,33 +12,50 @@ Brute-force, lossless JPEG and PNG compression.
 #![warn(clippy::perf)]
 #![warn(clippy::suboptimal_flops)]
 #![warn(clippy::unneeded_field_pattern)]
+#![warn(macro_use_extern_crate)]
+#![warn(missing_copy_implementations)]
+#![warn(missing_debug_implementations)]
+#![warn(missing_docs)]
+#![warn(non_ascii_idents)]
+#![warn(trivial_casts)]
+#![warn(trivial_numeric_casts)]
+#![warn(unreachable_pub)]
+#![warn(unused_crate_dependencies)]
+#![warn(unused_extern_crates)]
+#![warn(unused_import_braces)]
 
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_precision_loss)]
 #![allow(clippy::cast_sign_loss)]
-#![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)]
+#![allow(clippy::module_name_repetitions)]
+
+
 
 use flaca_core::image;
-use fyi_menu::Argue;
+use fyi_menu::{
+	Argue,
+	FLAG_REQUIRED,
+};
 use fyi_msg::{
 	Msg,
 	MsgKind,
 };
 use fyi_witcher::{
+	utility,
 	Witcher,
 	WITCHING_DIFF,
 	WITCHING_QUIET,
 	WITCHING_SUMMARIZE,
 };
+use std::path::PathBuf;
 
 
 
 #[allow(clippy::if_not_else)] // Code is confusing otherwise.
 fn main() {
 	// Parse CLI arguments.
-	let args = Argue::new()
-		.with_any()
+	let args = Argue::new(FLAG_REQUIRED)
 		.with_version(b"Flaca", env!("CARGO_PKG_VERSION").as_bytes())
 		.with_help(helper)
 		.with_list();
@@ -57,7 +66,35 @@ fn main() {
 
 	// Put it all together!
 	Witcher::default()
-		.with_ext3(b".jpg", b".png", b".jpeg")
+		.with_filter(|p: &PathBuf| {
+			let p: &[u8] = utility::path_as_bytes(p);
+			let p_len: usize = p.len();
+
+			p_len > 5 &&
+			p[p_len - 1].to_ascii_lowercase() == b'g' &&
+			(
+				(
+					p[p_len - 4] == b'.' &&
+					(
+						(
+							p[p_len - 3].to_ascii_lowercase() == b'j' &&
+							p[p_len - 2].to_ascii_lowercase() == b'p'
+						) ||
+						(
+							p[p_len - 3].to_ascii_lowercase() == b'p' &&
+							p[p_len - 2].to_ascii_lowercase() == b'n'
+						)
+					)
+				) ||
+				(
+					p[p_len - 5] == b'.' &&
+					p[p_len - 4].to_ascii_lowercase() == b'j' &&
+					p[p_len - 3].to_ascii_lowercase() == b'p' &&
+					p[p_len - 2].to_ascii_lowercase() == b'e'
+				)
+			)
+
+		})
 		.with_paths(args.args())
 		.into_witching()
 		.with_flags(flags)
