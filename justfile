@@ -25,7 +25,7 @@ rustflags   := "-C link-arg=-s"
 # Build Release!
 @build: clean
 	# First let's build the Rust bit.
-	RUSTFLAGS="{{ rustflags }}" cargo build \
+	RUSTFLAGS="--emit asm {{ rustflags }}" cargo build \
 		--bin "{{ pkg_id }}" \
 		--release \
 		--target x86_64-unknown-linux-gnu \
