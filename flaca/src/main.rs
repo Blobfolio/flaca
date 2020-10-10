@@ -33,7 +33,10 @@ Brute-force, lossless JPEG and PNG compression.
 
 
 use flaca_core::image;
-use fyi_menu::Argue;
+use fyi_menu::{
+	Argue,
+	FLAG_REQUIRED,
+};
 use fyi_msg::{
 	Msg,
 	MsgKind,
@@ -50,8 +53,7 @@ use fyi_witcher::{
 #[allow(clippy::if_not_else)] // Code is confusing otherwise.
 fn main() {
 	// Parse CLI arguments.
-	let args = Argue::new()
-		.with_any()
+	let args = Argue::new(FLAG_REQUIRED)
 		.with_version(b"Flaca", env!("CARGO_PKG_VERSION").as_bytes())
 		.with_help(helper)
 		.with_list();
