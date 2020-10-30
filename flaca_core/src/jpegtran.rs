@@ -1,8 +1,10 @@
 /*!
 # Flaca - Jpegtran
 
-This is a very minimalist implementation of `MozJPEG`'s lossless `jpegtran`
-encoder as called with `-copy none -progressive -optimize` flags.
+This is essentially a port of the `MozJPEG` code relating to:
+```bash
+jpegtran -copy none -progressive -optimize
+```
 
 This is made possible by forking the `mozjpeg-sys` crate, with additional
 bindings from the Turbo side of things (namely `transupp.c`) that `jpegtran`
@@ -68,9 +70,9 @@ use std::{
 
 
 #[allow(unused_assignments)]
-/// Jpegtran (Memory Mode)
+/// # Jpegtran (Memory Mode)
 ///
-/// # Safety
+/// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
 pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {

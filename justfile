@@ -1,10 +1,18 @@
 ##
 # Development Recipes
 #
-# This requires Just: https://github.com/casey/just
+# This justfile is intended to be run from inside a Docker sandbox:
+# https://github.com/Blobfolio/righteous-sandbox
 #
-# To see possible tasks, run:
-# just --list
+# docker run \
+#	--rm \
+#	-v "{{ invocation_directory() }}":/share \
+#	-it \
+#	--name "righteous_sandbox" \
+#	"righteous/sandbox:debian"
+#
+# Alternatively, you can just run cargo commands the usual way and ignore these
+# recipes.
 ##
 
 pkg_id      := "flaca"
