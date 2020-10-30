@@ -3,15 +3,12 @@
 */
 
 use crate::{
-	find_executable,
 	jpegtran,
 	Result
 };
+use fyi_witcher::utility::is_executable;
 use std::{
-	ffi::{
-		OsStr,
-		OsString,
-	},
+	ffi::OsStr,
 	fs,
 	io::Write,
 	path::PathBuf,
@@ -31,12 +28,12 @@ pub enum ImageKind {
 	Jpeg,
 	/// Png.
 	Png,
-	/// Neither.
+	/// Some other kind of file.
 	None,
 }
 
 impl From<&PathBuf> for ImageKind {
-	/// From `PathBuf`.
+	/// # From `PathBuf`.
 	///
 	/// This determines the "true" image type by evaluating the Magic MIME
 	/// headers of the file, if any.
@@ -54,9 +51,14 @@ impl From<&PathBuf> for ImageKind {
 
 impl ImageKind {
 	#[must_use]
-	/// Extension.
+	/// # Extension.
 	///
-	/// This returns an appropriate file extension for the image type.
+	/// This returns an appropriate file extension for the image type,
+	/// lowercase and unambiguous.
+	///
+	/// While flaca avoids renaming source files, it does occasionally need to
+	/// rename the temporary files it is working on as some dependencies crash
+	/// if a file has the wrong extension.
 	pub const fn ext(&self) -> &str {
 		match self {
 			Self::Png => ".png",
@@ -65,10 +67,10 @@ impl ImageKind {
 		}
 	}
 
-	/// Tempfile.
+	/// # Tempfile.
 	///
-	/// Make a temporary file with the correct file extension (as many of the
-	/// external programs we call get pissy if that is missing or wrong).
+	/// Make a temporary file with the correct file extension. See also
+	/// [`ImageKind::ext`].
 	pub fn mktmp(self) -> Result<NamedTempFile> {
 		if self == Self::None { return Err(()); }
 
@@ -78,12 +80,15 @@ impl ImageKind {
 			.map_err(|_| ())
 	}
 
-	/// Tempfile w/ Data.
+	/// # Tempfile w/ Data.
 	///
 	/// Make a temporary file and seed it with the contents of `data`. This is
 	/// like a temporary copy operation except that ownership and permissions
-	/// might be different for the tempfile. That doesn't really matter for our
-	/// purposes since we're keeping data in a buffer between runs.
+	/// might be different for the tempfile.
+	///
+	/// For our purposes, permissions don't really matter so long as flaca
+	/// itself can read/write. Data is held in an agnostic byte vector between
+	/// runs.
 	pub fn mktmp_with(self, data: &[u8]) -> Result<NamedTempFile> {
 		let target = self.mktmp()?;
 		let mut file = target.as_file();
@@ -94,7 +99,7 @@ impl ImageKind {
 }
 
 #[allow(unused_must_use)]
-/// Compress!
+/// # Compress!
 ///
 /// Losslessly compress the image at `path`, updating the original file if
 /// savings happen to be found.
@@ -133,10 +138,12 @@ pub fn compress(path: &PathBuf) {
 	}
 }
 
-/// Compress: `MozJpeg`
+/// # Compress: `MozJpeg`
 ///
 /// The result is comparable to running:
-/// `jpegtran -copy none -optimize -progressive`
+/// ```bash
+/// jpegtran -copy none -optimize -progressive
+/// ```
 pub fn compress_mozjpeg(data: &mut Vec<u8>) -> Result<()> {
 	// This pass can be done without needless file I/O! Hurray!
 	let tmp: Vec<u8> = unsafe { jpegtran::jpegtran_mem(data)? };
@@ -150,7 +157,7 @@ pub fn compress_mozjpeg(data: &mut Vec<u8>) -> Result<()> {
 	else { Err(()) }
 }
 
-/// Compress: `Oxipng`
+/// # Compress: `Oxipng`
 ///
 /// Pass the in-memory PNG data to `Oxipng` to see what savings it can come up
 /// with. If `Oxipng` is unable to parse/fix the file, an `Err` is returned (so
@@ -159,7 +166,9 @@ pub fn compress_mozjpeg(data: &mut Vec<u8>) -> Result<()> {
 /// happened.
 ///
 /// The result is comparable to calling:
-/// `oxipng -o 3 -s -a -i 0 --fix`
+/// ```bash
+/// oxipng -o 3 -s -a -i 0 --fix
+/// ```
 pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<bool> {
 	use oxipng::{
 		AlphaOptim,
@@ -213,27 +222,28 @@ pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<bool> {
 	else { Ok(false) }
 }
 
-/// Compress: `Zopflipng`
+/// # Compress: `Zopflipng`
 ///
-/// This method spawns a call to the external `Zopflipng` program if it has
-/// been installed.
+/// This method spawns an external call to the `zopflipng` executable bundled
+/// with flaca. If for some reason that file is missing, this compression pass
+/// is skipped.
 ///
-/// While several attempts have been made at porting Google's `Zopfli` library
-/// to Rust, they are either missing the "png" bits entirely, or fall woefully
-/// short in performance and/or effectiveness.
+/// This approach is less than ideal for a number of reasons, but to date there
+/// isn't a workable Rust port of `zopflipng`. `Oxipng` has basic `zopfli`
+/// support, but with major performance and compression loss relative to
+/// calling an external `zopflipng` on a second pass.
 ///
-/// `Oxipng`, for example, includes a built-in `Zopfli` encoder implementation,
-/// but using it extends the compression time magnitudes and results in fewer
-/// bytes saved than simply running two separate passes.
+/// If/when that situation changes, flaca will internalize the operations!
 pub fn compress_zopflipng(data: &mut Vec<u8>) -> Result<()> {
 	lazy_static::lazy_static! {
-		static ref ZOPFLIPNG: OsString = find_executable("zopflipng")
-			.unwrap_or_default()
-			.into_os_string();
+		static ref ZOPFLIPNG: bool = {
+			let zopflipng: PathBuf = PathBuf::from("/var/lib/flaca/zopflipng");
+			zopflipng.is_file() && is_executable(&zopflipng)
+		};
 	}
 
 	// Abort if Zopflipng is not found.
-	if ZOPFLIPNG.is_empty() { return Err(()); }
+	if ! *ZOPFLIPNG { return Err(()); }
 
 	// Convert it to a file.
 	let target = ImageKind::Png.mktmp_with(data)?;
@@ -241,7 +251,7 @@ pub fn compress_zopflipng(data: &mut Vec<u8>) -> Result<()> {
 	if path.is_empty() { return Err(()); }
 
 	// Execute the linked program.
-	Command::new(&*ZOPFLIPNG)
+	Command::new("/var/lib/flaca/zopflipng")
 		.args(&[
 			"-m",
 			"-y",

@@ -35,46 +35,7 @@ Brute-force, lossless JPEG and PNG compression.
 pub mod image;
 pub mod jpegtran;
 
-use fyi_witcher::utility::is_executable;
-use std::{
-	env,
-	fs,
-	path::PathBuf,
-};
 
 
-
-/// Generic result type.
+/// # Generic result type.
 pub type Result<T, E = ()> = std::result::Result<T, E>;
-
-
-
-/// Find Executable.
-pub fn find_executable<S> (name: S) -> Option<PathBuf>
-where S: AsRef<str> {
-	lazy_static::lazy_static! {
-		// We only need to build a list of executable base paths once.
-		static ref EXECUTABLE_DIRS: Vec<PathBuf> =
-			env::var("PATH").unwrap_or_else(|_| "".to_string())
-				.split(':')
-				.filter_map(|x| fs::canonicalize(&x).ok()
-					.and_then(|x|
-						if x.is_dir() { Some(x) }
-						else { None }
-					)
-				)
-				.collect();
-	}
-
-	if ! EXECUTABLE_DIRS.is_empty() {
-		for dir in EXECUTABLE_DIRS.as_slice() {
-			let mut path = dir.clone();
-			path.push(name.as_ref());
-			if is_executable(&path) {
-				return Some(path);
-			}
-		}
-	}
-
-	None
-}

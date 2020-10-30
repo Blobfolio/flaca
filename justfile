@@ -33,7 +33,7 @@ rustflags   := "-C link-arg=-s"
 
 
 # Build Debian package!
-@build-deb: build-man build
+@build-deb: build-man build _init-zopflipng
 	# cargo-deb doesn't support target_dir flags yet.
 	[ ! -d "{{ justfile_directory() }}/target" ] || rm -rf "{{ justfile_directory() }}/target"
 	mv "{{ cargo_dir }}" "{{ justfile_directory() }}/target"
@@ -161,6 +161,7 @@ version:
 # Init dependencies.
 @_init:
 	[ -d "{{ justfile_directory() }}/mozjpeg_sys" ] || just _init-mozjpeg
+	[ -f "{{ skel_dir }}/zopflipng" ] || just _init-zopflipng
 	[ ! -f "{{ justfile_directory() }}/Cargo.lock" ] || rm "{{ justfile_directory() }}/Cargo.lock"
 	cargo update
 
@@ -206,6 +207,29 @@ version:
 		"{{ justfile_directory() }}/mozjpeg_sys/src"
 
 	just _fix-chown "{{ justfile_directory() }}/mozjpeg_sys"
+
+
+# Init (build) Zopflipng.
+@_init-zopflipng:
+	# Start fresh!
+	[ ! -d "/tmp/zopfli" ] || rm -rf "/tmp/zopfli"
+
+	# Clone and build it.
+	git clone https://github.com/google/zopfli "/tmp/zopfli"
+	cd "/tmp/zopfli" && make zopflipng
+	[ -f "/tmp/zopfli/zopflipng" ] || fyi error --exit 1 "Failed to make Zopflipng."
+
+	# Move the file, set permissions, etc.
+	mv "/tmp/zopfli/zopflipng" "{{ skel_dir }}/"
+	just _fix-chown "{{ skel_dir }}/zopflipng"
+	chmod 755 "{{ skel_dir }}/zopflipng"
+
+	# Make our dev lives easier by making sure the /var/lib/flaca copy is set.
+	[ -d "/var/lib/flaca" ] || mkdir -p "/var/lib/flaca"
+	cp -a "{{ skel_dir }}/zopflipng" "/var/lib/flaca/"
+
+	# Clean up.
+	rm -rf "/tmp/zopfli"
 
 
 # Fix file/directory permissions.
