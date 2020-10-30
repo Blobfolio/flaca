@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.4.1"
+version = "1.4.2"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
@@ -12,16 +12,17 @@ maintainer = "Josh Stoik <hello@blobfolio.com>"
 copyright = "2020, Blobfolio, LLC <hello@blobfolio.com>"
 license-file = ["../LICENSE", "0"]
 extended-description = """\n\
-Flaca is a CLI app written in Rust to aid the complex task of squeezing every last drop of space out of JPEG and PNG images — without sacrificing quality.\n\
+Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of losslessly compressing JPEG and PNG images for use on the web.\n\
 .\n\
 Under the hood, it uses MozJPEG for lossless JPEG (re)compression, and Oxipng/Zopflipng for lossless PNG (re)compression."""
 revision = "1"
-depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8, zopflipng"
+depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8"
 section = "utility"
 assets = [
     ["../target/x86_64-unknown-linux-gnu/release/flaca", "usr/bin/", "755"],
     ["../skel/completions/flaca.bash", "etc/bash_completion.d/", "644"],
     ["../skel/man/flaca.1.gz", "usr/share/man/man1/", "644"],
+    ["../skel/zopflipng", "var/lib/flaca/", "755"],
 ]
 
 [dependencies.flaca_core]
