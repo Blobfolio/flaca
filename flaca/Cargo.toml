@@ -1,11 +1,12 @@
 [package]
 name = "flaca"
-version = "1.4.2"
+version = "1.4.3"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
 description = "Brute-force, lossless JPEG and PNG compression."
 publish = false
+build = "build.rs"
 
 [package.metadata.deb]
 maintainer = "Josh Stoik <hello@blobfolio.com>"
@@ -24,6 +25,10 @@ assets = [
     ["../skel/man/flaca.1.gz", "usr/share/man/man1/", "644"],
     ["../skel/zopflipng", "var/lib/flaca/", "755"],
 ]
+
+[build-dependencies.fyi_menu]
+git = "https://github.com/Blobfolio/fyi.git"
+branch = "master"
 
 [dependencies.flaca_core]
 path = "../flaca_core"

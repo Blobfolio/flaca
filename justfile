@@ -69,6 +69,10 @@ rustflags   := "-C link-arg=-s"
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 
+	# Clean up the BASH completion script.
+	just _fix-chown "{{ skel_dir }}/completions/{{ pkg_id }}.bash"
+	chmod 644 "{{ skel_dir }}/completions/{{ pkg_id }}.bash"
+
 	# Use help2man to make a crappy MAN page.
 	help2man -o "{{ skel_dir }}/man/{{ pkg_id }}.1" \
 		-N "{{ cargo_bin }}"
