@@ -28,7 +28,6 @@ fn main() {
 	// All of our options.
 	let b = Basher::new("flaca")
 		.with_option(Some("-l"), Some("--list"))
-		.with_switch(None, Some("--clean"))
 		.with_switch(Some("-h"), Some("--help"))
 		.with_switch(Some("-p"), Some("--progress"))
 		.with_switch(Some("-V"), Some("--version"));
