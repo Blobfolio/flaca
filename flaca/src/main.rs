@@ -182,7 +182,6 @@ fn main() {
 		.run(image::compress);
 }
 
-#[cfg(not(feature = "man"))]
 #[cold]
 /// # Print Help.
 fn helper(_: Option<&str>) {
@@ -211,22 +210,4 @@ fn helper(_: Option<&str>) {
 			"\x1b[0m",
 			include_str!("../../skel/help.txt")
 	)).print();
-}
-
-#[cfg(feature = "man")]
-#[cold]
-/// # Print Help.
-///
-/// This is a stripped-down version of the help screen made specifically for
-/// `help2man`, which gets run during the Debian package release build task.
-fn helper(_: Option<&str>) {
-	Msg::from([
-		b"Flaca ",
-		env!("CARGO_PKG_VERSION").as_bytes(),
-		b"\n",
-		env!("CARGO_PKG_DESCRIPTION").as_bytes(),
-		b"\n\n",
-		include_bytes!("../../skel/help.txt"),
-	].concat())
-		.print();
 }

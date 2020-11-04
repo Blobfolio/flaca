@@ -20,10 +20,6 @@ _basher__flaca() {
 	if [ ! -z "${cmd}" ]; then
 		opts=()
 		
-		if [[ ! " ${COMP_LINE} " =~ " -l " ]] && [[ ! " ${COMP_LINE} " =~ " --list " ]]; then
-			opts+=("-l")
-			opts+=("--list")
-		fi
 		if [[ ! " ${COMP_LINE} " =~ " -h " ]] && [[ ! " ${COMP_LINE} " =~ " --help " ]]; then
 			opts+=("-h")
 			opts+=("--help")
@@ -35,6 +31,10 @@ _basher__flaca() {
 		if [[ ! " ${COMP_LINE} " =~ " -V " ]] && [[ ! " ${COMP_LINE} " =~ " --version " ]]; then
 			opts+=("-V")
 			opts+=("--version")
+		fi
+		if [[ ! " ${COMP_LINE} " =~ " -l " ]] && [[ ! " ${COMP_LINE} " =~ " --list " ]]; then
+			opts+=("-l")
+			opts+=("--list")
 		fi
 
 		opts=" ${opts[@]} "
