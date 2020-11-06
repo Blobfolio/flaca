@@ -66,11 +66,10 @@ rustflags   := "-C link-arg=-s"
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 
-	# Gzip Man page.
-	gzip -k -f -9 "{{ skel_dir }}/man/{{ pkg_id }}.1"
-
 	# Fix permissions.
+	just _fix-chmod "{{ skel_dir }}/man"
 	just _fix-chown "{{ skel_dir }}/man"
+	just _fix-chmod "{{ skel_dir }}/completions"
 	just _fix-chown "{{ skel_dir }}/completions"
 
 
