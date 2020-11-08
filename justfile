@@ -41,12 +41,15 @@ rustflags   := "-C link-arg=-s"
 
 
 # Build Debian package!
-@build-deb: build-man build _init-zopflipng
+@build-deb: build _init-zopflipng
+	# Do completions/man.
+	cargo bashman -m "{{ pkg_dir1 }}/Cargo.toml"
+
 	# cargo-deb doesn't support target_dir flags yet.
 	[ ! -d "{{ justfile_directory() }}/target" ] || rm -rf "{{ justfile_directory() }}/target"
 	mv "{{ cargo_dir }}" "{{ justfile_directory() }}/target"
 
-	# First let's build the Rust bit.
+	# Build the deb.
 	cargo-deb \
 		--no-build \
 		-p {{ pkg_id }} \
@@ -54,23 +57,6 @@ rustflags   := "-C link-arg=-s"
 
 	just _fix-chown "{{ release_dir }}"
 	mv "{{ justfile_directory() }}/target" "{{ cargo_dir }}"
-
-
-# Build Man.
-@build-man:
-	# Build with "man" feature, triggering MAN and BASH builds.
-	RUSTFLAGS="{{ rustflags }}" cargo build \
-		--bin "{{ pkg_id }}" \
-		--release \
-		--all-features \
-		--target x86_64-unknown-linux-gnu \
-		--target-dir "{{ cargo_dir }}"
-
-	# Fix permissions.
-	just _fix-chmod "{{ skel_dir }}/man"
-	just _fix-chown "{{ skel_dir }}/man"
-	just _fix-chmod "{{ skel_dir }}/completions"
-	just _fix-chown "{{ skel_dir }}/completions"
 
 
 # Check Release!
