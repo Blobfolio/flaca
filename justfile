@@ -145,6 +145,7 @@ version:
 	[ -f "{{ skel_dir }}/zopflipng" ] || just _init-zopflipng
 	[ ! -f "{{ justfile_directory() }}/Cargo.lock" ] || rm "{{ justfile_directory() }}/Cargo.lock"
 	cargo update
+	cargo outdated -w
 
 
 # Install Bindgen and Dependencies
