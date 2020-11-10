@@ -204,10 +204,28 @@ fn helper(_: Option<&str>) {
         \ \   :
          `
 
-{}",
-			"\x1b[38;5;199mFlaca\x1b[0;38;5;69m v",
-			env!("CARGO_PKG_VERSION"),
-			"\x1b[0m",
-			include_str!("../../skel/help.txt")
+USAGE:
+    flaca [FLAGS] [OPTIONS] <PATH(S)>...
+
+FLAGS:
+    -h, --help        Prints help information
+    -p, --progress    Show progress bar while minifying.
+    -V, --version     Prints version information
+
+OPTIONS:
+    -l, --list <list>    Read file paths from this list.
+
+ARGS:
+    <PATH(S)>...    One or more files or directories to compress.
+
+OPTIMIZERS USED:
+    MozJPEG   <https://github.com/mozilla/mozjpeg>
+    Oxipng    <https://github.com/shssoichiro/oxipng>
+    Zopflipng <https://github.com/google/zopfli>
+
+",
+		"\x1b[38;5;199mFlaca\x1b[0;38;5;69m v",
+		env!("CARGO_PKG_VERSION"),
+		"\x1b[0m",
 	)).print();
 }
