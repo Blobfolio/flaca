@@ -172,7 +172,6 @@ fn main() {
 					p[p_len - 2].to_ascii_lowercase() == b'e'
 				)
 			)
-
 		})
 		.with_paths(args.args())
 		.into_witching()

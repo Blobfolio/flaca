@@ -40,9 +40,9 @@ impl From<&PathBuf> for ImageKind {
 	fn from(path: &PathBuf) -> Self {
 		if path.is_dir() { Self::None }
 		else {
-			match imghdr::from_file(path) {
-				Ok(Some(imghdr::Type::Png)) => Self::Png,
-				Ok(Some(imghdr::Type::Jpeg)) => Self::Jpeg,
+			match imghdr::from_file(path).ok().flatten() {
+				Some(imghdr::Type::Png) => Self::Png,
+				Some(imghdr::Type::Jpeg) => Self::Jpeg,
 				_ => Self::None,
 			}
 		}
@@ -92,9 +92,10 @@ impl ImageKind {
 	pub fn mktmp_with(self, data: &[u8]) -> Result<NamedTempFile> {
 		let target = self.mktmp()?;
 		let mut file = target.as_file();
-		file.write_all(data).map_err(|_| ())?;
-		file.flush().map_err(|_| ())?;
-		Ok(target)
+		file.write_all(data)
+			.and_then(|_| file.flush())
+			.map(|_| target)
+			.map_err(|_| ())
 	}
 }
 
@@ -133,8 +134,9 @@ pub fn compress(path: &PathBuf) {
 	// Write changes back to the original file, if any.
 	if data.len() < len {
 		let mut out = tempfile_fast::Sponge::new_for(path).unwrap();
-		out.write_all(&data).unwrap();
-		out.commit().unwrap();
+		let _ = out.write_all(&data)
+			.and_then(|_| out.commit())
+			.is_ok();
 	}
 }
 
