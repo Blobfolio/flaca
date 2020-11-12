@@ -17,8 +17,9 @@ tempfile-fast = "0.3.*"
 path = "../mozjpeg_sys"
 
 [dependencies.oxipng]
-version = "3.0.*"
+version = "4.0.*"
 default-features = false
+features = [ "libdeflater" ]
 
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
