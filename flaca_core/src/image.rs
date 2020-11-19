@@ -133,10 +133,8 @@ pub fn compress(path: &PathBuf) {
 
 	// Write changes back to the original file, if any.
 	if data.len() < len {
-		let mut out = tempfile_fast::Sponge::new_for(path).unwrap();
-		let _ = out.write_all(&data)
-			.and_then(|_| out.commit())
-			.is_ok();
+		let _ = tempfile_fast::Sponge::new_for(path)
+			.and_then(|mut out| out.write_all(&data).and_then(|_| out.commit()));
 	}
 }
 
@@ -238,10 +236,7 @@ pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<bool> {
 /// If/when that situation changes, flaca will internalize the operations!
 pub fn compress_zopflipng(data: &mut Vec<u8>) -> Result<()> {
 	lazy_static::lazy_static! {
-		static ref ZOPFLIPNG: bool = {
-			let zopflipng: PathBuf = PathBuf::from("/var/lib/flaca/zopflipng");
-			zopflipng.is_file() && is_executable(&zopflipng)
-		};
+		static ref ZOPFLIPNG: bool = is_executable("/var/lib/flaca/zopflipng");
 	}
 
 	// Abort if Zopflipng is not found.
@@ -249,8 +244,10 @@ pub fn compress_zopflipng(data: &mut Vec<u8>) -> Result<()> {
 
 	// Convert it to a file.
 	let target = ImageKind::Png.mktmp_with(data)?;
-	let path = target.path().to_str().unwrap_or_default();
-	if path.is_empty() { return Err(()); }
+	let path = target.path()
+		.to_str()
+		.filter(|x| ! x.is_empty())
+		.ok_or(())?;
 
 	// Execute the linked program.
 	Command::new("/var/lib/flaca/zopflipng")
