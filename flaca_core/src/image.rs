@@ -247,7 +247,7 @@ pub fn compress_zopflipng(data: &mut Vec<u8>) -> Result<()> {
 	let path = target.path()
 		.to_str()
 		.filter(|x| ! x.is_empty())
-		.ok_or_else(|| ())?;
+		.ok_or(())?;
 
 	// Execute the linked program.
 	Command::new("/var/lib/flaca/zopflipng")
