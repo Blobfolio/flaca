@@ -3063,7 +3063,7 @@ SOFTWARE.
 
 **Used By:**
 
-* [flaca 1.5.0](https://crates.io/crates/flaca)
+* [flaca 1.5.1](https://crates.io/crates/flaca)
 * [fyi_menu 0.4.3](https://github.com/Blobfolio/fyi)
 * [fyi_msg 0.4.3](https://github.com/Blobfolio/fyi)
 * [fyi_witcher 0.4.3](https://github.com/Blobfolio/fyi)
