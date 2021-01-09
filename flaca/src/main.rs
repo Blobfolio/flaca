@@ -114,10 +114,7 @@ use fyi_menu::{
 	Argue,
 	FLAG_REQUIRED,
 };
-use fyi_msg::{
-	Msg,
-	MsgKind,
-};
+use fyi_msg::Msg;
 use fyi_witcher::{
 	utility,
 	Witcher,
@@ -133,7 +130,7 @@ use std::path::PathBuf;
 fn main() {
 	// Parse CLI arguments.
 	let args = Argue::new(FLAG_REQUIRED)
-		.with_version(b"Flaca", env!("CARGO_PKG_VERSION").as_bytes())
+		.with_version("Flaca", env!("CARGO_PKG_VERSION"))
 		.with_help(helper)
 		.with_list();
 
@@ -178,14 +175,14 @@ fn main() {
 		.into_witching()
 		.with_flags(flags)
 		.with_labels("image", "images")
-		.with_title(MsgKind::new("Flaca", 199).into_msg("Reticulating splines\u{2026}"))
+		.with_title(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}"))
 		.run(image::compress);
 }
 
 #[cold]
 /// # Print Help.
 fn helper(_: Option<&str>) {
-	Msg::from(format!(
+	Msg::plain(format!(
 		r"
              ,--._,--.
            ,'  ,'   ,-`.
