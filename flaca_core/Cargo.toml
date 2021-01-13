@@ -11,7 +11,10 @@ imghdr = "0.7.*"
 lazy_static = "1.4.*"
 libc = "*"
 tempfile = "3.2.*"
-tempfile-fast = "0.3.*"
+
+[dependencies.tempfile-fast]
+git = "https://github.com/FauxFaux/tempfile-fast-rs.git"
+rev = "7cd84b2"
 
 [dependencies.mozjpeg-sys]
 path = "../mozjpeg_sys"
