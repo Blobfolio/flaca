@@ -1,6 +1,6 @@
 [package]
 name = "flaca_core"
-version = "1.5.2"
+version = "1.5.3"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
 description = "Brute-force, lossless JPEG and PNG compression."
@@ -10,8 +10,11 @@ publish = false
 imghdr = "0.7.*"
 lazy_static = "1.4.*"
 libc = "*"
-tempfile = "3.1.*"
-tempfile-fast = "0.3.*"
+tempfile = "3.2.*"
+
+[dependencies.tempfile-fast]
+git = "https://github.com/FauxFaux/tempfile-fast-rs.git"
+rev = "7cd84b2"
 
 [dependencies.mozjpeg-sys]
 path = "../mozjpeg_sys"
@@ -23,4 +26,4 @@ features = [ "libdeflater" ]
 
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
-tag = "v0.5.0"
+tag = "v0.5.1"
