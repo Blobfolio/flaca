@@ -1510,13 +1510,9 @@ limitations under the License.
 
 **Used By:**
 
-* [getrandom 0.1.16](https://github.com/rust-random/getrandom)
 * [getrandom 0.2.1](https://github.com/rust-random/getrandom)
-* [rand 0.7.3](https://github.com/rust-random/rand)
 * [rand 0.8.1](https://github.com/rust-random/rand)
-* [rand_chacha 0.2.2](https://github.com/rust-random/rand)
 * [rand_chacha 0.3.0](https://github.com/rust-random/rand)
-* [rand_core 0.5.1](https://github.com/rust-random/rand)
 * [rand_core 0.6.1](https://github.com/rust-random/rand)
 
 
