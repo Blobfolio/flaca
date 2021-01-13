@@ -10,7 +10,7 @@ publish = false
 imghdr = "0.7.*"
 lazy_static = "1.4.*"
 libc = "*"
-tempfile = "3.1.*"
+tempfile = "3.2.*"
 tempfile-fast = "0.3.*"
 
 [dependencies.mozjpeg-sys]
@@ -23,4 +23,4 @@ features = [ "libdeflater" ]
 
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
-tag = "v0.5.0"
+tag = "v0.5.1"
