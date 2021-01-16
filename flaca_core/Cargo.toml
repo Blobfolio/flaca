@@ -1,6 +1,6 @@
 [package]
 name = "flaca_core"
-version = "1.5.3"
+version = "1.5.4"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
 description = "Brute-force, lossless JPEG and PNG compression."
@@ -26,4 +26,4 @@ features = [ "libdeflater" ]
 
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
-tag = "v0.5.1"
+tag = "v0.5.2"
