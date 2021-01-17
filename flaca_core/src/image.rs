@@ -6,7 +6,6 @@ use crate::{
 	jpegtran,
 	Result
 };
-use fyi_witcher::utility::is_executable;
 use std::{
 	ffi::OsStr,
 	fs,
@@ -235,8 +234,13 @@ pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<bool> {
 ///
 /// If/when that situation changes, flaca will internalize the operations!
 pub fn compress_zopflipng(data: &mut Vec<u8>) -> Result<()> {
+	use std::os::unix::fs::PermissionsExt;
+
 	lazy_static::lazy_static! {
-		static ref ZOPFLIPNG: bool = is_executable("/var/lib/flaca/zopflipng");
+		static ref ZOPFLIPNG: bool = std::fs::metadata("/var/lib/flaca/zopflipng")
+			.ok()
+			.filter(std::fs::Metadata::is_file)
+			.map_or(false, |m| m.permissions().mode() & 0o111 != 0);
 	}
 
 	// Abort if Zopflipng is not found.

@@ -23,7 +23,3 @@ path = "../mozjpeg_sys"
 version = "4.0.*"
 default-features = false
 features = [ "libdeflater" ]
-
-[dependencies.fyi_witcher]
-git = "https://github.com/Blobfolio/fyi.git"
-tag = "v0.5.2"
