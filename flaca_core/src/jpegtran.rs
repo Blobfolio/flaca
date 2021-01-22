@@ -30,14 +30,13 @@ use libc::{
 	free,
 };
 use mozjpeg_sys::{
-	JCOPYOPT_NONE,
-	JCROP_UNSET,
-	JXFORM_NONE,
+	JCROP_CODE_JCROP_UNSET,
+	JXFORM_CODE_JXFORM_NONE,
 	boolean,
 	c_ulong,
 	c_void,
-	jcopy_markers_execute,
-	jcopy_markers_setup,
+	//jcopy_markers_execute,
+	//jcopy_markers_setup,
 	jpeg_compress_struct,
 	jpeg_copy_critical_parameters,
 	jpeg_create_compress,
@@ -78,20 +77,20 @@ use std::{
 pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	let mut transformoption: jpeg_transform_info =
 		jpeg_transform_info {
-			transform: JXFORM_NONE,
+			transform: JXFORM_CODE_JXFORM_NONE,
 			perfect: 0,
 			trim: 0,
 			force_grayscale: 0,
 			crop: 0,
 			slow_hflip: 0,
 			crop_width: 0,
-			crop_width_set: JCROP_UNSET,
+			crop_width_set: JCROP_CODE_JCROP_UNSET,
 			crop_height: 0,
-			crop_height_set: JCROP_UNSET,
+			crop_height_set: JCROP_CODE_JCROP_UNSET,
 			crop_xoffset: 0,
-			crop_xoffset_set: JCROP_UNSET,
+			crop_xoffset_set: JCROP_CODE_JCROP_UNSET,
 			crop_yoffset: 0,
-			crop_yoffset_set: JCROP_UNSET,
+			crop_yoffset_set: JCROP_CODE_JCROP_UNSET,
 			num_components: 0,
 			workspace_coef_arrays: ptr::null_mut::<jvirt_barray_ptr>(),
 			output_width: 0,
@@ -124,7 +123,7 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	jpeg_mem_src(&mut srcinfo, data.as_ptr(), data.len() as c_ulong);
 
 	// Ignore markers.
-	jcopy_markers_setup(&mut srcinfo, JCOPYOPT_NONE);
+	// TODO: jcopy_markers_setup(&mut srcinfo, JCOPYOPT_NONE);
 
 	// Read the file header to get to the goods.
 	jpeg_read_header(&mut srcinfo, true as boolean);
@@ -165,7 +164,7 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	jpeg_write_coefficients(&mut dstinfo, dst_coef_arrays);
 
 	// Make sure we aren't copying any markers.
-	jcopy_markers_execute(&mut srcinfo, &mut dstinfo, JCOPYOPT_NONE);
+	// TODO: jcopy_markers_execute(&mut srcinfo, &mut dstinfo, JCOPYOPT_NONE);
 
 	// Execute and write the transformation, if any.
 	jtransform_execute_transform(

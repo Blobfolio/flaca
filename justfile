@@ -152,54 +152,10 @@ version:
 
 # Init dependencies.
 @_init:
-	[ -d "{{ justfile_directory() }}/mozjpeg_sys" ] || just _init-mozjpeg
-	[ -f "{{ skel_dir }}/zopflipng" ] || just _init-zopflipng
+	[ -f "{{ release_dir }}/zopflipng" ] || just _init-zopflipng
 	[ ! -f "{{ justfile_directory() }}/Cargo.lock" ] || rm "{{ justfile_directory() }}/Cargo.lock"
 	cargo update
 	cargo outdated -w
-
-
-# Install Bindgen and Dependencies
-@_init-bindgen:
-	apt-get update
-	apt-fast install \
-		clang \
-		libclang-dev \
-		libjpeg-dev \
-		libpng-dev \
-		llvm-dev
-	cargo install bindgen
-
-	# cmake -G"Unix Makefiles"
-
-	# bindgen --disable-name-namespacing --no-derive-copy --no-derive-debug --no-layout-tests --no-prepend-enum-name  --use-core
-	# -o raw-bindgen.rs jpegtran-bindgen.h
-
-
-# Init Mozjpeg-Sys.
-@_init-mozjpeg:
-	# Start fresh!
-	[ ! -d "{{ justfile_directory() }}/mozjpeg_sys" ] || rm -rf "{{ justfile_directory() }}/mozjpeg_sys"
-
-	# Clone the main repo. New commits could potentially break our patch, so
-	# let's checkout to a specific place that is known to work.
-	git clone -n \
-		https://github.com/kornelski/mozjpeg-sys.git \
-		"{{ justfile_directory() }}/mozjpeg_sys" \
-		&& cd "{{ justfile_directory() }}/mozjpeg_sys" \
-		&& git checkout 3d7e9ed4fd66d789fcb99821c3f260361da6a2a3 \
-		&& git submodule update --init
-
-	# Patch it.
-	cd "{{ justfile_directory() }}/mozjpeg_sys" \
-		&& git apply ../skel/mozjpeg_sys/jpegtran.patch
-
-	# Copy our extra lib exports.
-	cp -a \
-		"{{ skel_dir }}/mozjpeg_sys/jpegtran.rs" \
-		"{{ justfile_directory() }}/mozjpeg_sys/src"
-
-	just _fix-chown "{{ justfile_directory() }}/mozjpeg_sys"
 
 
 # Init (build) Zopflipng.
@@ -213,13 +169,13 @@ version:
 	[ -f "/tmp/zopfli/zopflipng" ] || fyi error --exit 1 "Failed to make Zopflipng."
 
 	# Move the file, set permissions, etc.
-	mv "/tmp/zopfli/zopflipng" "{{ skel_dir }}/"
-	just _fix-chown "{{ skel_dir }}/zopflipng"
-	chmod 755 "{{ skel_dir }}/zopflipng"
+	mv "/tmp/zopfli/zopflipng" "{{ release_dir }}/"
+	just _fix-chown "{{ release_dir }}/zopflipng"
+	chmod 755 "{{ release_dir }}/zopflipng"
 
 	# Make our dev lives easier by making sure the /var/lib/flaca copy is set.
 	[ -d "/var/lib/flaca" ] || mkdir -p "/var/lib/flaca"
-	cp -a "{{ skel_dir }}/zopflipng" "/var/lib/flaca/"
+	cp -a "{{ release_dir }}/zopflipng" "/var/lib/flaca/"
 
 	# Clean up.
 	rm -rf "/tmp/zopfli"

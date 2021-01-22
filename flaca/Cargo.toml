@@ -20,15 +20,15 @@ depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg
 section = "utility"
 assets = [
     ["../target/x86_64-unknown-linux-gnu/release/flaca", "usr/bin/", "755"],
-    ["../skel/completions/flaca.bash", "etc/bash_completion.d/", "644"],
-    ["../skel/man/flaca.1.gz", "usr/share/man/man1/", "644"],
-    ["../skel/zopflipng", "var/lib/flaca/", "755"],
+    ["../release/completions/flaca.bash", "etc/bash_completion.d/", "644"],
+    ["../release/man/flaca.1.gz", "usr/share/man/man1/", "644"],
+    ["../release/zopflipng", "var/lib/flaca/", "755"],
 ]
 
 [package.metadata.bashman]
 name = "Flaca"
-bash-dir = "../skel/completions"
-man-dir = "../skel/man"
+bash-dir = "../release/completions"
+man-dir = "../release/man"
 
 [[package.metadata.bashman.switches]]
 short = "-h"
