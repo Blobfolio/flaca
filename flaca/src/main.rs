@@ -56,28 +56,6 @@ flaca -p /path/to/assets
 # Or load it up with a lot of places separately:
 flaca /path/to/assets /path/to/favicon.png …
 ```
-
-
-
-## License
-
-Copyright © 2020 [Blobfolio, LLC](https://blobfolio.com) &lt;hello@blobfolio.com&gt;
-
-This work is free. You can redistribute it and/or modify it under the terms of the Do What The Fuck You Want To Public License, Version 2.
-
-    DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
-    Version 2, December 2004
-
-    Copyright (C) 2004 Sam Hocevar <sam@hocevar.net>
-
-    Everyone is permitted to copy and distribute verbatim or modified
-    copies of this license document, and changing it is allowed as long
-    as the name is changed.
-
-    DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
-    TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
-
-    0. You just DO WHAT THE FUCK YOU WANT TO.
 */
 
 #![warn(clippy::filetype_is_file)]
@@ -181,8 +159,8 @@ fn main() {
 
 #[cold]
 /// # Print Help.
-fn helper(_: Option<&str>) {
-	Msg::plain(format!(
+const fn helper() -> &'static str {
+	concat!(
 		r"
              ,--._,--.
            ,'  ,'   ,-`.
@@ -190,7 +168,7 @@ fn helper(_: Option<&str>) {
  `.   `--'        \__,--'-.
    `--/       ,-.  ______/
      (o-.     ,o- /
-      `. ;        \    {}{}{}
+      `. ;        \    ", "\x1b[38;5;199mFlaca\x1b[0;38;5;69m v", env!("CARGO_PKG_VERSION"), "\x1b[0m", r"
        |:          \   Brute-force, lossless
       ,'`       ,   \  JPEG and PNG compression.
      (o o ,  --'     :
@@ -219,10 +197,6 @@ OPTIMIZERS USED:
     MozJPEG   <https://github.com/mozilla/mozjpeg>
     Oxipng    <https://github.com/shssoichiro/oxipng>
     Zopflipng <https://github.com/google/zopfli>
-
-",
-		"\x1b[38;5;199mFlaca\x1b[0;38;5;69m v",
-		env!("CARGO_PKG_VERSION"),
-		"\x1b[0m",
-	)).print();
+"
+	)
 }
