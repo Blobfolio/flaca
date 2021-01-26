@@ -1,6 +1,6 @@
 [package]
 name = "flaca_core"
-version = "1.5.6"
+version = "1.5.7"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
 description = "Brute-force, lossless JPEG and PNG compression."
@@ -17,9 +17,8 @@ git = "https://github.com/FauxFaux/tempfile-fast-rs.git"
 rev = "7cd84b2"
 
 [dependencies.mozjpeg-sys]
-git = "https://github.com/kornelski/mozjpeg-sys.git"
+version = "0.10.*, >= 0.10.12"
 features = [ "jpegtran" ]
-rev = "52bc40d"
 
 [dependencies.oxipng]
 version = "4.0.*"
