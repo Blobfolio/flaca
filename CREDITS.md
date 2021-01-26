@@ -2296,7 +2296,7 @@ limitations under the License.
 
 **Used By:**
 
-* [mozjpeg-sys 0.10.11](https://github.com/kornelski/mozjpeg-sys.git)
+* [mozjpeg-sys 0.10.12](https://github.com/kornelski/mozjpeg-sys.git)
 
 
 ```
@@ -2596,11 +2596,11 @@ SOFTWARE.
 
 **Used By:**
 
-* [flaca 1.5.6](https://crates.io/crates/flaca)
-* [fyi_menu 0.5.4](https://github.com/Blobfolio/fyi)
-* [fyi_msg 0.5.4](https://github.com/Blobfolio/fyi)
-* [fyi_num 0.5.4](https://github.com/Blobfolio/fyi)
-* [fyi_witcher 0.5.4](https://github.com/Blobfolio/fyi)
+* [flaca 1.5.7](https://crates.io/crates/flaca)
+* [fyi_menu 0.5.5](https://github.com/Blobfolio/fyi)
+* [fyi_msg 0.5.5](https://github.com/Blobfolio/fyi)
+* [fyi_num 0.5.5](https://github.com/Blobfolio/fyi)
+* [fyi_witcher 0.5.5](https://github.com/Blobfolio/fyi)
 
 
 ```
