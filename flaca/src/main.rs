@@ -172,11 +172,7 @@ fn _main() -> Result<(), ArgueError> {
 				)
 			)
 		})
-		.with_paths(
-			args.args()
-				.iter()
-				.map(|x| OsStr::from_bytes(x.as_ref()))
-		)
+		.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
 		.into_witching()
 		.with_flags(flags)
 		.with_labels("image", "images")
