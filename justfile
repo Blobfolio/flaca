@@ -79,6 +79,8 @@ rustflags   := "-C link-arg=-s"
 	[ ! -d "{{ pkg_dir1 }}/target" ] || rm -rf "{{ pkg_dir1 }}/target"
 	[ ! -d "{{ pkg_dir2 }}/target" ] || rm -rf "{{ pkg_dir2 }}/target"
 
+	cargo update --workspace
+
 
 # Clippy.
 @clippy:
@@ -154,7 +156,7 @@ version:
 @_init:
 	[ -f "{{ release_dir }}/zopflipng" ] || just _init-zopflipng
 	[ ! -f "{{ justfile_directory() }}/Cargo.lock" ] || rm "{{ justfile_directory() }}/Cargo.lock"
-	cargo update
+	cargo update --workspace
 	cargo outdated -w
 
 

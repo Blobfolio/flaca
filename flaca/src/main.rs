@@ -90,7 +90,10 @@ flaca /path/to/assets /path/to/favicon.png …
 use flaca_core::image;
 use fyi_menu::{
 	Argue,
+	ArgueError,
+	FLAG_HELP,
 	FLAG_REQUIRED,
+	FLAG_VERSION,
 };
 use fyi_msg::Msg;
 use fyi_witcher::{
@@ -100,20 +103,40 @@ use fyi_witcher::{
 	WITCHING_QUIET,
 	WITCHING_SUMMARIZE,
 };
-use std::path::PathBuf;
+use std::{
+	ffi::OsStr,
+	os::unix::ffi::OsStrExt,
+	path::PathBuf,
+};
 
 
 
 #[allow(clippy::if_not_else)] // Code is confusing otherwise.
+/// Main.
 fn main() {
+	match _main() {
+		Err(ArgueError::WantsVersion) => {
+			fyi_msg::plain!(concat!("Flaca v", env!("CARGO_PKG_VERSION")));
+		},
+		Err(ArgueError::WantsHelp) => {
+			helper();
+		},
+		Err(e) => {
+			Msg::error(e).die(1);
+		},
+		Ok(_) => {},
+	}
+}
+
+#[inline]
+/// Actual Main.
+fn _main() -> Result<(), ArgueError> {
 	// Parse CLI arguments.
-	let args = Argue::new(FLAG_REQUIRED)
-		.with_version("Flaca", env!("CARGO_PKG_VERSION"))
-		.with_help(helper)
+	let args = Argue::new(FLAG_HELP | FLAG_REQUIRED | FLAG_VERSION)?
 		.with_list();
 
 	let flags: u8 =
-		if args.switch2("-p", "--progress") { WITCHING_SUMMARIZE | WITCHING_DIFF }
+		if args.switch2(b"-p", b"--progress") { WITCHING_SUMMARIZE | WITCHING_DIFF }
 		else { WITCHING_QUIET | WITCHING_SUMMARIZE | WITCHING_DIFF };
 
 	// Put it all together!
@@ -149,18 +172,20 @@ fn main() {
 				)
 			)
 		})
-		.with_paths(args.args())
+		.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
 		.into_witching()
 		.with_flags(flags)
 		.with_labels("image", "images")
 		.with_title(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}"))
 		.run(image::compress);
+
+	Ok(())
 }
 
 #[cold]
 /// # Print Help.
-const fn helper() -> &'static str {
-	concat!(
+fn helper() {
+	fyi_msg::plain!(concat!(
 		r"
              ,--._,--.
            ,'  ,'   ,-`.
@@ -198,5 +223,5 @@ OPTIMIZERS USED:
     Oxipng    <https://github.com/shssoichiro/oxipng>
     Zopflipng <https://github.com/google/zopfli>
 "
-	)
+	));
 }
