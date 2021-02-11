@@ -70,13 +70,13 @@ path = "../flaca_core"
 
 [dependencies.fyi_menu]
 git = "https://github.com/Blobfolio/fyi.git"
-branch = "feature/next"
+tag = "v0.6.1"
 
 [dependencies.fyi_msg]
 git = "https://github.com/Blobfolio/fyi.git"
-branch = "feature/next"
+tag = "v0.6.1"
 
 [dependencies.fyi_witcher]
 git = "https://github.com/Blobfolio/fyi.git"
-branch = "feature/next"
+tag = "v0.6.1"
 features = [ "witching" ]
