@@ -88,17 +88,13 @@ use argyle::{
 	FLAG_VERSION,
 };
 use flaca_core::image;
-use dactyl::{
-	NicePercent,
-	NiceU32,
-	NiceU64,
-};
 use dowser::{
 	Dowser,
 	utility::du,
 };
 use fyi_msg::{
 	Msg,
+	MsgKind,
 	Progless,
 };
 use rayon::iter::{
@@ -158,6 +154,8 @@ fn _main() -> Result<(), ArgyleError> {
 
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
+		use num_traits::cast::FromPrimitive;
+
 		// Check file sizes before we start.
 		let before: u64 = du(&paths);
 		let len: u32 = u32::try_from(paths.len())
@@ -176,56 +174,25 @@ fn _main() -> Result<(), ArgyleError> {
 		});
 
 		// Finish up.
-		let elapsed = progress.finish();
+		let _ = progress.finish();
 		let after: u64 = du(&paths);
 
-		// Build and print a summary.
-		if after > 0 && after < before {
-			use num_traits::cast::FromPrimitive;
+		let saved: u64 =
+			if after > 0 && after < before { before - after }
+			else { 0 };
 
-			// Show a percentage difference if we can.
-			if let (Some(p1), Some(p2)) = (f64::from_u64(before - after), f64::from_u64(before)) {
-				unsafe {
-					Msg::success_unchecked(&[
-						&b"Crunched "[..],
-						NiceU32::from(len).as_bytes(),
-						if len == 1 { b" image in " } else { b" images in " },
-						elapsed.as_bytes(),
-						b", saving ",
-						NiceU64::from(before - after).as_bytes(),
-						b" bytes \x1b[2m(",
-						NicePercent::from(p1 / p2).as_bytes(),
-						b")\x1b[0m.",
-					].concat())
-				}.print();
+		let percent: Option<f64> =
+			if saved > 0 {
+				f64::from_u64(before - after)
+					.zip(f64::from_u64(before))
+					.map(|(a, b)| a / b)
 			}
-			// Otherwise just the bytes.
-			else {
-				unsafe {
-					Msg::success_unchecked(&[
-						&b"Crunched "[..],
-						NiceU32::from(len).as_bytes(),
-						if len == 1 { b" image in " } else { b" images in " },
-						elapsed.as_bytes(),
-						b", saving ",
-						NiceU64::from(before - after).as_bytes(),
-						b" bytes.",
-					].concat())
-				}.print();
-			}
-		}
-		// Checked, but no luck.
-		else {
-			unsafe {
-				Msg::done_unchecked(&[
-					&b"Checked "[..],
-					NiceU32::from(len).as_bytes(),
-					if len == 1 { b" image in " } else { b" images in " },
-					elapsed.as_bytes(),
-					b", but no savings were possible.",
-				].concat())
-			}.print();
-		}
+			else { None };
+
+		// Print a summary!
+		progress.summary(MsgKind::Crunched, "image", "images")
+			.with_bytes_saved(saved, percent)
+			.print();
 	}
 	else {
 		paths.par_iter().for_each(|x| {
