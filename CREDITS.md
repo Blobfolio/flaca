@@ -6,8 +6,8 @@ License details for project dependencies are listed below.
 
 * Apache License 2.0 (13)
 * MIT License (8)
+* Do What The F*ck You Want To Public License (2)
 * Independent JPEG Group License (1)
-* Do What The F*ck You Want To Public License (1)
 * zlib License (1)
 
 
@@ -17,8 +17,7 @@ License details for project dependencies are listed below.
 
 **Used By:**
 
-* [const_fn 0.4.5](https://github.com/taiki-e/const_fn)
-* [miniz_oxide 0.4.3](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
+* [miniz_oxide 0.4.4](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
 
 
 ```
@@ -1055,13 +1054,13 @@ limitations under the License.
 
 **Used By:**
 
-* [ahash 0.7.0](https://github.com/tkaitchuck/ahash)
+* [ahash 0.7.2](https://github.com/tkaitchuck/ahash)
 * [bitflags 1.2.1](https://github.com/bitflags/bitflags)
 * [cfg-if 1.0.0](https://github.com/alexcrichton/cfg-if)
 * [crossbeam-channel 0.5.0](https://github.com/crossbeam-rs/crossbeam)
 * [crossbeam-deque 0.8.0](https://github.com/crossbeam-rs/crossbeam)
-* [crossbeam-epoch 0.9.1](https://github.com/crossbeam-rs/crossbeam)
-* [crossbeam-utils 0.8.1](https://github.com/crossbeam-rs/crossbeam)
+* [crossbeam-epoch 0.9.3](https://github.com/crossbeam-rs/crossbeam)
+* [crossbeam-utils 0.8.3](https://github.com/crossbeam-rs/crossbeam)
 * [deflate 0.8.6](https://github.com/image-rs/deflate-rs)
 * [either 1.6.1](https://github.com/bluss/either)
 * [hashbrown 0.9.1](https://github.com/rust-lang/hashbrown)
@@ -1075,7 +1074,7 @@ limitations under the License.
 * [num-rational 0.3.2](https://github.com/rust-num/num-rational)
 * [num-traits 0.2.14](https://github.com/rust-num/num-traits)
 * [num_cpus 1.13.0](https://github.com/seanmonstar/num_cpus)
-* [once_cell 1.5.2](https://github.com/matklad/once_cell)
+* [once_cell 1.7.0](https://github.com/matklad/once_cell)
 * [png 0.16.8](https://github.com/image-rs/image-png.git)
 * [rayon 1.5.0](https://github.com/rayon-rs/rayon)
 * [rayon-core 1.9.0](https://github.com/rayon-rs/rayon)
@@ -1509,7 +1508,7 @@ limitations under the License.
 * [getrandom 0.2.2](https://github.com/rust-random/getrandom)
 * [rand 0.8.3](https://github.com/rust-random/rand)
 * [rand_chacha 0.3.0](https://github.com/rust-random/rand)
-* [rand_core 0.6.1](https://github.com/rust-random/rand)
+* [rand_core 0.6.2](https://github.com/rust-random/rand)
 
 
 ```
@@ -1721,7 +1720,7 @@ limitations under the License.
 
 **Used By:**
 
-* [adler 0.2.3](https://github.com/jonas-schievink/adler.git)
+* [adler 1.0.2](https://github.com/jonas-schievink/adler.git)
 
 
 ```
@@ -2434,7 +2433,7 @@ limitations under the License.
 
 **Used By:**
 
-* [bytemuck 1.5.0](https://github.com/Lokathor/bytemuck)
+* [bytemuck 1.5.1](https://github.com/Lokathor/bytemuck)
 
 
 ```
@@ -2506,7 +2505,7 @@ limitations under the License.
 
 **Used By:**
 
-* [mozjpeg-sys 0.10.12](https://github.com/kornelski/mozjpeg-sys.git)
+* [mozjpeg-sys 0.10.13](https://github.com/kornelski/mozjpeg-sys.git)
 
 
 ```
@@ -2806,11 +2805,34 @@ SOFTWARE.
 
 **Used By:**
 
-* [flaca 1.5.8](https://crates.io/crates/flaca)
-* [fyi_menu 0.6.1](https://github.com/Blobfolio/fyi)
-* [fyi_msg 0.6.1](https://github.com/Blobfolio/fyi)
-* [fyi_num 0.6.1](https://github.com/Blobfolio/fyi)
-* [fyi_witcher 0.6.1](https://github.com/Blobfolio/fyi)
+* [argyle 0.3.0](https://github.com/Blobfolio/argyle)
+* [dactyl 0.1.4](https://github.com/Blobfolio/dactyl)
+* [dowser 0.1.1](https://github.com/Blobfolio/dowser)
+
+
+```
+DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+Version 2, December 2004
+
+Copyright (C) 2004 Sam Hocevar <sam@hocevar.net>
+
+Everyone is permitted to copy and distribute verbatim or modified
+copies of this license document, and changing it is allowed as long
+as the name is changed.
+
+DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+0. You just DO WHAT THE FUCK YOU WANT TO.
+
+```
+
+### Do What The F*ck You Want To Public License
+
+**Used By:**
+
+* [flaca 1.5.9](https://crates.io/crates/flaca)
+* [fyi_msg 0.7.0](https://github.com/Blobfolio/fyi)
 
 
 ```

@@ -10,7 +10,7 @@ use std::{
 	ffi::OsStr,
 	fs,
 	io::Write,
-	path::PathBuf,
+	path::Path,
 	process::{
 		Command,
 		Stdio,
@@ -31,12 +31,12 @@ pub enum ImageKind {
 	None,
 }
 
-impl From<&PathBuf> for ImageKind {
+impl From<&Path> for ImageKind {
 	/// # From `PathBuf`.
 	///
 	/// This determines the "true" image type by evaluating the Magic MIME
 	/// headers of the file, if any.
-	fn from(path: &PathBuf) -> Self {
+	fn from(path: &Path) -> Self {
 		if path.is_dir() { Self::None }
 		else {
 			match imghdr::from_file(path).ok().flatten() {
@@ -70,6 +70,11 @@ impl ImageKind {
 	///
 	/// Make a temporary file with the correct file extension. See also
 	/// [`ImageKind::ext`].
+	///
+	/// ## Errors
+	///
+	/// Returns an error if the file is not an image or a temporary file cannot
+	/// be created.
 	pub fn mktmp(self) -> Result<NamedTempFile> {
 		if self == Self::None { return Err(()); }
 
@@ -88,6 +93,11 @@ impl ImageKind {
 	/// For our purposes, permissions don't really matter so long as flaca
 	/// itself can read/write. Data is held in an agnostic byte vector between
 	/// runs.
+	///
+	/// ## Errors
+	///
+	/// Returns an error if the file is not an image or a temporary file cannot
+	/// be created.
 	pub fn mktmp_with(self, data: &[u8]) -> Result<NamedTempFile> {
 		let target = self.mktmp()?;
 		let mut file = target.as_file();
@@ -112,7 +122,7 @@ impl ImageKind {
 /// stripped and interlacing is removed.
 ///
 /// See the encoder-specific methods for additional details.
-pub fn compress(path: &PathBuf) {
+pub fn compress(path: &Path) {
 	// This should be a valid image type.
 	let kind = ImageKind::from(path);
 	if kind == ImageKind::None { return; }
@@ -143,6 +153,11 @@ pub fn compress(path: &PathBuf) {
 /// ```bash
 /// jpegtran -copy none -optimize -progressive
 /// ```
+///
+/// ## Errors
+///
+/// An error is returned on failure, including cases where everything worked
+/// but no compression was possible.
 pub fn compress_mozjpeg(data: &mut Vec<u8>) -> Result<()> {
 	// This pass can be done without needless file I/O! Hurray!
 	let tmp: Vec<u8> = unsafe { jpegtran::jpegtran_mem(data)? };
@@ -168,6 +183,11 @@ pub fn compress_mozjpeg(data: &mut Vec<u8>) -> Result<()> {
 /// ```bash
 /// oxipng -o 3 -s -a -i 0 --fix
 /// ```
+///
+/// ## Errors
+///
+/// An error is returned on failure, including cases where everything worked
+/// but no compression was possible.
 pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<bool> {
 	use oxipng::{
 		AlphaOptim,
@@ -233,6 +253,11 @@ pub fn compress_oxipng(data: &mut Vec<u8>) -> Result<bool> {
 /// calling an external `zopflipng` on a second pass.
 ///
 /// If/when that situation changes, flaca will internalize the operations!
+///
+/// ## Errors
+///
+/// An error is returned on failure, including cases where everything worked
+/// but no compression was possible.
 pub fn compress_zopflipng(data: &mut Vec<u8>) -> Result<()> {
 	use std::os::unix::fs::PermissionsExt;
 

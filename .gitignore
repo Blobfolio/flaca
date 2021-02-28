@@ -1,5 +1,3 @@
+**/*.gz
+**/target/
 /Cargo.lock
-/flaca.log
-/skel/man/flaca.1.gz
-/mozjpeg_sys
-/target

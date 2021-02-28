@@ -78,35 +78,41 @@ flaca /path/to/assets /path/to/favicon.png …
 #![warn(unused_extern_crates)]
 #![warn(unused_import_braces)]
 
-#![allow(clippy::cast_possible_truncation)]
-#![allow(clippy::cast_precision_loss)]
-#![allow(clippy::cast_sign_loss)]
-#![allow(clippy::map_err_ignore)]
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::module_name_repetitions)]
 
 
-
-use flaca_core::image;
-use fyi_menu::{
+use argyle::{
 	Argue,
-	ArgueError,
+	ArgyleError,
 	FLAG_HELP,
 	FLAG_REQUIRED,
 	FLAG_VERSION,
 };
-use fyi_msg::Msg;
-use fyi_witcher::{
-	utility,
-	Witcher,
-	WITCHING_DIFF,
-	WITCHING_QUIET,
-	WITCHING_SUMMARIZE,
+use flaca_core::image;
+use fyi_msg::{
+	Msg,
+	Progless,
+};
+use dactyl::{
+	NicePercent,
+	NiceU32,
+	NiceU64,
+};
+use dowser::{
+	Dowser,
+	utility::du,
+};
+use rayon::iter::{
+	IntoParallelRefIterator,
+	ParallelIterator,
 };
 use std::{
+	convert::TryFrom,
 	ffi::OsStr,
 	os::unix::ffi::OsStrExt,
-	path::PathBuf,
+	path::{
+		Path,
+		PathBuf,
+	},
 };
 
 
@@ -115,69 +121,117 @@ use std::{
 /// Main.
 fn main() {
 	match _main() {
-		Err(ArgueError::WantsVersion) => {
-			fyi_msg::plain!(concat!("Flaca v", env!("CARGO_PKG_VERSION")));
+		Ok(_) => {},
+		Err(ArgyleError::WantsVersion) => {
+			println!(concat!("Flaca v", env!("CARGO_PKG_VERSION")));
 		},
-		Err(ArgueError::WantsHelp) => {
+		Err(ArgyleError::WantsHelp) => {
 			helper();
 		},
 		Err(e) => {
 			Msg::error(e).die(1);
 		},
-		Ok(_) => {},
 	}
 }
 
 #[inline]
 /// Actual Main.
-fn _main() -> Result<(), ArgueError> {
+fn _main() -> Result<(), ArgyleError> {
 	// Parse CLI arguments.
 	let args = Argue::new(FLAG_HELP | FLAG_REQUIRED | FLAG_VERSION)?
 		.with_list();
 
-	let flags: u8 =
-		if args.switch2(b"-p", b"--progress") { WITCHING_SUMMARIZE | WITCHING_DIFF }
-		else { WITCHING_QUIET | WITCHING_SUMMARIZE | WITCHING_DIFF };
-
 	// Put it all together!
-	Witcher::default()
-		.with_filter(|p: &PathBuf| {
-			let p: &[u8] = utility::path_as_bytes(p);
-			let p_len: usize = p.len();
-
-			// Check for either of three different extensions at once, while
-			// keeping branching to a minimum. It looks a bit weird, but isn't
-			// too complicated. :)
-			p_len > 5 &&
-			p[p_len - 1].to_ascii_lowercase() == b'g' &&
-			(
-				(
-					p[p_len - 4] == b'.' &&
-					(
-						(
-							p[p_len - 3].to_ascii_lowercase() == b'j' &&
-							p[p_len - 2].to_ascii_lowercase() == b'p'
-						) ||
-						(
-							p[p_len - 3].to_ascii_lowercase() == b'p' &&
-							p[p_len - 2].to_ascii_lowercase() == b'n'
-						)
-					)
-				) ||
-				(
-					p[p_len - 5] == b'.' &&
-					p[p_len - 4].to_ascii_lowercase() == b'j' &&
-					p[p_len - 3].to_ascii_lowercase() == b'p' &&
-					p[p_len - 2].to_ascii_lowercase() == b'e'
+	let paths = Vec::<PathBuf>::try_from(
+		Dowser::default()
+			.with_filter(|p: &Path| p.extension()
+				.map_or(
+					false,
+					|e| {
+						let ext = e.as_bytes().to_ascii_lowercase();
+						ext == b"jpg" || ext == b"png" || ext == b"jpeg"
+					}
 				)
 			)
-		})
-		.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
-		.into_witching()
-		.with_flags(flags)
-		.with_labels("image", "images")
-		.with_title(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}"))
-		.run(image::compress);
+			.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
+	).map_err(|_| ArgyleError::Custom("No images were found."))?;
+
+	// Sexy run-through.
+	if args.switch2(b"-p", b"--progress") {
+		// Check file sizes before we start.
+		let before: u64 = du(&paths);
+		let len: u32 = u32::try_from(paths.len())
+			.map_err(|_| ArgyleError::Custom("Only 4,294,967,295 files can be crunched at one time."))?;
+
+		// Boot up a progress bar.
+		let progress = Progless::steady(len)
+			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
+
+		// Process!
+		paths.par_iter().for_each(|x| {
+			let tmp = x.to_string_lossy();
+			progress.add(&tmp);
+			image::compress(x);
+			progress.remove(&tmp);
+		});
+
+		// Finish up.
+		let elapsed = progress.finish();
+		let after: u64 = du(&paths);
+
+		// Build and print a summary.
+		if after > 0 && after < before {
+			use num_traits::cast::FromPrimitive;
+
+			// Show a percentage difference if we can.
+			if let (Some(p1), Some(p2)) = (f64::from_u64(before - after), f64::from_u64(before)) {
+				unsafe {
+					Msg::success_unchecked(&[
+						&b"Crunched "[..],
+						NiceU32::from(len).as_bytes(),
+						if len == 1 { b" image in " } else { b" images in " },
+						elapsed.as_bytes(),
+						b", saving ",
+						NiceU64::from(before - after).as_bytes(),
+						b" bytes \x1b[2m(",
+						NicePercent::from(p1 / p2).as_bytes(),
+						b")\x1b[0m.",
+					].concat())
+				}.print();
+			}
+			// Otherwise just the bytes.
+			else {
+				unsafe {
+					Msg::success_unchecked(&[
+						&b"Crunched "[..],
+						NiceU32::from(len).as_bytes(),
+						if len == 1 { b" image in " } else { b" images in " },
+						elapsed.as_bytes(),
+						b", saving ",
+						NiceU64::from(before - after).as_bytes(),
+						b" bytes.",
+					].concat())
+				}.print();
+			}
+		}
+		// Checked, but no luck.
+		else {
+			unsafe {
+				Msg::done_unchecked(&[
+					&b"Checked "[..],
+					NiceU32::from(len).as_bytes(),
+					if len == 1 { b" image in " } else { b" images in " },
+					elapsed.as_bytes(),
+					b", but no savings were possible.",
+				].concat())
+			}.print();
+		}
+	}
+	else {
+		paths.par_iter().for_each(|x| {
+			image::compress(x);
+		});
+	}
 
 	Ok(())
 }
@@ -185,7 +239,7 @@ fn _main() -> Result<(), ArgueError> {
 #[cold]
 /// # Print Help.
 fn helper() {
-	fyi_msg::plain!(concat!(
+	println!(concat!(
 		r"
              ,--._,--.
            ,'  ,'   ,-`.

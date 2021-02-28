@@ -79,7 +79,7 @@ rustflags   := "-C link-arg=-s"
 	[ ! -d "{{ pkg_dir1 }}/target" ] || rm -rf "{{ pkg_dir1 }}/target"
 	[ ! -d "{{ pkg_dir2 }}/target" ] || rm -rf "{{ pkg_dir2 }}/target"
 
-	cargo update --workspace
+	cargo update -w
 
 
 # Clippy.
@@ -154,9 +154,13 @@ version:
 
 # Init dependencies.
 @_init:
+	# We need beta until 1.51 is stable.
+	rustup default beta
+	rustup component add clippy
+
 	[ -f "{{ release_dir }}/zopflipng" ] || just _init-zopflipng
 	[ ! -f "{{ justfile_directory() }}/Cargo.lock" ] || rm "{{ justfile_directory() }}/Cargo.lock"
-	cargo update --workspace
+	cargo update -w
 	cargo outdated -w
 
 
