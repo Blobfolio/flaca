@@ -94,13 +94,13 @@ use fyi_msg::{
 };
 use dactyl::{
 	NicePercent,
+	NiceU32,
 	NiceU64,
 };
 use dowser::{
 	Dowser,
 	utility::du,
 };
-use num_traits::cast::FromPrimitive;
 use rayon::iter::{
 	IntoParallelRefIterator,
 	ParallelIterator,
@@ -160,9 +160,11 @@ fn _main() -> Result<(), ArgyleError> {
 	if args.switch2(b"-p", b"--progress") {
 		// Check file sizes before we start.
 		let before: u64 = du(&paths);
+		let len: u32 = u32::try_from(paths.len())
+			.map_err(|_| ArgyleError::Custom("Only 4,294,967,295 files can be crunched at one time."))?;
 
 		// Boot up a progress bar.
-		let progress = Progless::steady(u32::try_from(paths.len()).map_err(|_| ArgyleError::Custom("Only 4,294,967,295 files can be crunched at one time."))?)
+		let progress = Progless::steady(len)
 			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
 
 		// Process!
@@ -179,35 +181,50 @@ fn _main() -> Result<(), ArgyleError> {
 
 		// Build and print a summary.
 		if after > 0 && after < before {
+			use num_traits::cast::FromPrimitive;
+
 			// Show a percentage difference if we can.
 			if let (Some(p1), Some(p2)) = (f64::from_u64(before - after), f64::from_u64(before)) {
-				Msg::success(format!(
-					"Crunched {} image{} in {}, saving {} bytes \x1b[2m({})\x1b[0m.",
-					NiceU64::from(paths.len()),
-					if paths.len() == 1 { "" } else { "s" },
-					elapsed.as_str(),
-					NiceU64::from(before - after).as_str(),
-					NicePercent::from(p1 / p2).as_str()
-				)).print();
+				unsafe {
+					Msg::success_unchecked(&[
+						&b"Crunched "[..],
+						NiceU32::from(len).as_bytes(),
+						if len == 1 { b" image in " } else { b" images in " },
+						elapsed.as_bytes(),
+						b", saving ",
+						NiceU64::from(before - after).as_bytes(),
+						b" bytes \x1b[2m(",
+						NicePercent::from(p1 / p2).as_bytes(),
+						b")\x1b[0m.",
+					].concat())
+				}.print();
 			}
 			// Otherwise just the bytes.
 			else {
-				Msg::success(format!(
-					"Crunched {} image{} in {}, saving {} bytes.",
-					NiceU64::from(paths.len()),
-					if paths.len() == 1 { "" } else { "s" },
-					elapsed.as_str(),
-					NiceU64::from(before - after).as_str()
-				)).print();
+				unsafe {
+					Msg::success_unchecked(&[
+						&b"Crunched "[..],
+						NiceU32::from(len).as_bytes(),
+						if len == 1 { b" image in " } else { b" images in " },
+						elapsed.as_bytes(),
+						b", saving ",
+						NiceU64::from(before - after).as_bytes(),
+						b" bytes.",
+					].concat())
+				}.print();
 			}
 		}
+		// Checked, but no luck.
 		else {
-			Msg::done(format!(
-					"Crunched {} image{} in {}, but no savings were possible.",
-					NiceU64::from(paths.len()),
-					if paths.len() == 1 { "" } else { "s" },
-					elapsed.as_str()
-				)).print();
+			unsafe {
+				Msg::done_unchecked(&[
+					&b"Checked "[..],
+					NiceU32::from(len).as_bytes(),
+					if len == 1 { b" image in " } else { b" images in " },
+					elapsed.as_bytes(),
+					b", but no savings were possible.",
+				].concat())
+			}.print();
 		}
 	}
 	else {
