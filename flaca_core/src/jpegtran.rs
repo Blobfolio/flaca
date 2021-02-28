@@ -27,7 +27,6 @@ use mozjpeg_sys::{
 	// jcopy_markers_setup,
 	boolean,
 	c_ulong,
-	c_void,
 	JCROP_CODE_JCROP_UNSET,
 	jpeg_compress_struct,
 	jpeg_copy_critical_parameters,
@@ -54,6 +53,7 @@ use mozjpeg_sys::{
 	JXFORM_CODE_JXFORM_NONE,
 };
 use std::{
+	convert::TryFrom,
 	mem,
 	ptr,
 	slice,
@@ -63,6 +63,11 @@ use std::{
 
 #[allow(unused_assignments)]
 /// # Jpegtran (Memory Mode)
+///
+/// ## Errors
+///
+/// An error is returned on failure, including cases where everything worked
+/// but no compression was possible.
 ///
 /// ## Safety
 ///
@@ -115,7 +120,8 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	// Load the source file.
 	jpeg_mem_src(&mut srcinfo, data.as_ptr(), data.len() as c_ulong);
 
-	// Ignore markers.
+	// Ignore markers. This may not be needed, but isn't currently exported by
+	// mozjpeg_sys.
 	// TODO: jcopy_markers_setup(&mut srcinfo, JCOPYOPT_NONE);
 
 	// Read the file header to get to the goods.
@@ -172,11 +178,11 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	let out: Vec<u8> =
 		if outbuffer.is_null() || outsize == 0 { vec![] }
 		else {
-			let tmp = slice::from_raw_parts(outbuffer, outsize as usize).to_vec();
+			let tmp = slice::from_raw_parts(outbuffer, usize::try_from(outsize).map_err(|_| ())?).to_vec();
 
 			// The buffer probably needs to be manually freed. I don't think
 			// jpeg_destroy_compress() handles that for us.
-			free(outbuffer as *mut c_void);
+			free(outbuffer.cast::<mozjpeg_sys::c_void>());
 			outbuffer = ptr::null_mut();
 			outsize = 0;
 
