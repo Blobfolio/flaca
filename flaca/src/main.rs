@@ -88,10 +88,6 @@ use argyle::{
 	FLAG_VERSION,
 };
 use flaca_core::image;
-use fyi_msg::{
-	Msg,
-	Progless,
-};
 use dactyl::{
 	NicePercent,
 	NiceU32,
@@ -100,6 +96,10 @@ use dactyl::{
 use dowser::{
 	Dowser,
 	utility::du,
+};
+use fyi_msg::{
+	Msg,
+	Progless,
 };
 use rayon::iter::{
 	IntoParallelRefIterator,
