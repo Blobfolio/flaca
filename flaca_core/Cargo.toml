@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 imghdr = "0.7.*"
 lazy_static = "1.4.*"
-libc = "*"
+libc = "0.2.*"
 tempfile = "3.2.*"
 
 [dependencies.tempfile-fast]
