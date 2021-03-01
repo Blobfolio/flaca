@@ -68,7 +68,6 @@ items = [
 [dependencies]
 argyle = "0.3.*"
 dowser = "0.1.*"
-num-traits = "0.2.*"
 rayon = "1.5.*"
 
 [dependencies.flaca_core]

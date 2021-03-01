@@ -93,6 +93,7 @@ use dowser::{
 	utility::du,
 };
 use fyi_msg::{
+	BeforeAfter,
 	Msg,
 	MsgKind,
 	Progless,
@@ -154,16 +155,16 @@ fn _main() -> Result<(), ArgyleError> {
 
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
-		use num_traits::cast::FromPrimitive;
-
-		// Check file sizes before we start.
-		let before: u64 = du(&paths);
+		// The length has to fit in `u32`.
 		let len: u32 = u32::try_from(paths.len())
 			.map_err(|_| ArgyleError::Custom("Only 4,294,967,295 files can be crunched at one time."))?;
 
 		// Boot up a progress bar.
 		let progress = Progless::steady(len)
 			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
+
+		// Check file sizes before we start.
+		let mut ba = BeforeAfter::start(du(&paths));
 
 		// Process!
 		paths.par_iter().for_each(|x| {
@@ -173,25 +174,13 @@ fn _main() -> Result<(), ArgyleError> {
 			progress.remove(&tmp);
 		});
 
+		// Check file sizes again.
+		ba.stop(du(&paths));
+
 		// Finish up.
 		let _ = progress.finish();
-		let after: u64 = du(&paths);
-
-		let saved: u64 =
-			if after > 0 && after < before { before - after }
-			else { 0 };
-
-		let percent: Option<f64> =
-			if saved > 0 {
-				f64::from_u64(before - after)
-					.zip(f64::from_u64(before))
-					.map(|(a, b)| a / b)
-			}
-			else { None };
-
-		// Print a summary!
 		progress.summary(MsgKind::Crunched, "image", "images")
-			.with_bytes_saved(saved, percent)
+			.with_bytes_saved(ba.less(), ba.less_percent())
 			.print();
 	}
 	else {
