@@ -1,5 +1,5 @@
 /*!
-# Flaca - Jpegtran
+# Flaca: Jpegtran
 
 This is essentially a port of the `MozJPEG` code relating to:
 ```bash
@@ -17,7 +17,7 @@ looked at to bring this all together were:
 * [mozjpeg-rs](https://github.com/immunant/mozjpeg-rs/blob/master/bin/jpegtran.rs)
 */
 
-use crate::Result;
+use crate::FlacaError;
 use libc::{
 	c_uchar,
 	free,
@@ -95,7 +95,7 @@ extern "C" {
 /// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
+pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>, FlacaError> {
 	let mut transformoption: jpeg_transform_info =
 		jpeg_transform_info {
 			transform: JXFORM_CODE_JXFORM_NONE,
@@ -153,7 +153,7 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	// Abort if transformation is not possible. We aren't cropping or anything,
 	// but this method might still do something with the defaults?
 	if jtransform_request_workspace(&mut srcinfo, &mut transformoption) == 0 {
-		return Err(());
+		return Err(FlacaError::ParseFail);
 	}
 
 	// Read source file as DCT coefficients.
@@ -201,7 +201,10 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	let out: Vec<u8> =
 		if outbuffer.is_null() || outsize == 0 { vec![] }
 		else {
-			let tmp = slice::from_raw_parts(outbuffer, usize::try_from(outsize).map_err(|_| ())?).to_vec();
+			let tmp = slice::from_raw_parts(
+				outbuffer,
+				usize::try_from(outsize).map_err(|_| FlacaError::ParseFail)?
+			).to_vec();
 
 			// The buffer probably needs to be manually freed. I don't think
 			// jpeg_destroy_compress() handles that for us.
@@ -218,6 +221,5 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	jpeg_destroy_decompress(&mut srcinfo);
 
 	// Return the result if any!
-	if out.is_empty() { Err(()) }
-	else { Ok(out) }
+	Ok(out)
 }

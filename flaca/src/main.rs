@@ -87,7 +87,7 @@ use argyle::{
 	FLAG_REQUIRED,
 	FLAG_VERSION,
 };
-use flaca_core::image;
+use flaca_core::FlacaImage;
 use dowser::{
 	Dowser,
 	utility::du,
@@ -111,8 +111,10 @@ use std::{
 
 
 
-#[allow(clippy::if_not_else)] // Code is confusing otherwise.
-/// Main.
+/// # Main.
+///
+/// This shell provides us a way to easily handle error responses. Actual
+/// processing is done by `_main()`.
 fn main() {
 	match _main() {
 		Ok(_) => {},
@@ -129,7 +131,9 @@ fn main() {
 }
 
 #[inline]
-/// Actual Main.
+/// # Actual Main.
+///
+/// This is the actual main, allowing us to easily bubble errors.
 fn _main() -> Result<(), ArgyleError> {
 	// Parse CLI arguments.
 	let args = Argue::new(FLAG_HELP | FLAG_REQUIRED | FLAG_VERSION)?
@@ -153,12 +157,14 @@ fn _main() -> Result<(), ArgyleError> {
 		let mut ba = BeforeAfter::start(du(&paths));
 
 		// Process!
-		paths.par_iter().for_each(|x| {
-			let tmp = x.to_string_lossy();
-			progress.add(&tmp);
-			image::compress(x);
-			progress.remove(&tmp);
-		});
+		paths.par_iter().for_each(|x|
+			if let Ok(mut enc) = FlacaImage::try_from(x) {
+				let tmp = x.to_string_lossy();
+				progress.add(&tmp);
+				let _res = enc.compress();
+				progress.remove(&tmp);
+			}
+		);
 
 		// Check file sizes again.
 		ba.stop(du(&paths));
@@ -170,9 +176,11 @@ fn _main() -> Result<(), ArgyleError> {
 			.print();
 	}
 	else {
-		paths.par_iter().for_each(|x| {
-			image::compress(x);
-		});
+		paths.par_iter().for_each(|x|
+			if let Ok(mut enc) = FlacaImage::try_from(x) {
+				let _res = enc.compress();
+			}
+		);
 	}
 
 	Ok(())
