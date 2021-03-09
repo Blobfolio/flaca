@@ -23,10 +23,10 @@ use libc::{
 	free,
 };
 use mozjpeg_sys::{
-	// jcopy_markers_execute,
-	// jcopy_markers_setup,
 	boolean,
 	c_ulong,
+	j_compress_ptr,
+	j_decompress_ptr,
 	JCROP_CODE_JCROP_UNSET,
 	jpeg_compress_struct,
 	jpeg_copy_critical_parameters,
@@ -58,6 +58,29 @@ use std::{
 	ptr,
 	slice,
 };
+
+
+
+#[allow(clippy::upper_case_acronyms)] // It's C, baby.
+const JCOPYOPT_NONE: JCOPY_OPTION = 0;
+
+#[allow(clippy::upper_case_acronyms)] // It's C, baby.
+#[allow(non_camel_case_types)]
+type JCOPY_OPTION = u32;
+
+// We need a couple more things from jpegtran. Mozjpeg-sys includes the right
+// sources but doesn't export the definitions.
+extern "C" {
+	fn jcopy_markers_setup(srcinfo: j_decompress_ptr, option: JCOPY_OPTION);
+}
+
+extern "C" {
+	fn jcopy_markers_execute(
+		srcinfo: j_decompress_ptr,
+		dstinfo: j_compress_ptr,
+		option: JCOPY_OPTION,
+	);
+}
 
 
 
@@ -122,7 +145,7 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 
 	// Ignore markers. This may not be needed, but isn't currently exported by
 	// mozjpeg_sys.
-	// TODO: jcopy_markers_setup(&mut srcinfo, JCOPYOPT_NONE);
+	jcopy_markers_setup(&mut srcinfo, JCOPYOPT_NONE);
 
 	// Read the file header to get to the goods.
 	jpeg_read_header(&mut srcinfo, true as boolean);
@@ -163,7 +186,7 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>> {
 	jpeg_write_coefficients(&mut dstinfo, dst_coef_arrays);
 
 	// Make sure we aren't copying any markers.
-	// TODO: jcopy_markers_execute(&mut srcinfo, &mut dstinfo, JCOPYOPT_NONE);
+	jcopy_markers_execute(&mut srcinfo, &mut dstinfo, JCOPYOPT_NONE);
 
 	// Execute and write the transformation, if any.
 	jtransform_execute_transform(
