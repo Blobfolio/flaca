@@ -106,10 +106,7 @@ use std::{
 	convert::TryFrom,
 	ffi::OsStr,
 	os::unix::ffi::OsStrExt,
-	path::{
-		Path,
-		PathBuf,
-	},
+	path::PathBuf,
 };
 
 
@@ -140,27 +137,16 @@ fn _main() -> Result<(), ArgyleError> {
 
 	// Put it all together!
 	let paths = Vec::<PathBuf>::try_from(
-		Dowser::default()
-			.with_filter(|p: &Path| p.extension()
-				.map_or(
-					false,
-					|e| {
-						let ext = e.as_bytes().to_ascii_lowercase();
-						ext == b"jpg" || ext == b"png" || ext == b"jpeg"
-					}
-				)
-			)
+		Dowser::regex(r"(?i)[^/]+\.(jpe?g|png)$")
 			.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
-	).map_err(|_| ArgyleError::Custom("No images were found."))?;
+	)
+		.map_err(|_| ArgyleError::Custom("No images were found."))?;
 
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
-		// The length has to fit in `u32`.
-		let len: u32 = u32::try_from(paths.len())
-			.map_err(|_| ArgyleError::Custom("Only 4,294,967,295 files can be crunched at one time."))?;
-
 		// Boot up a progress bar.
-		let progress = Progless::steady(len)
+		let progress = Progless::try_from(paths.len())
+			.map_err(|_| ArgyleError::Custom("Progress can only be displayed for up to 4,294,967,295 images. Try again with fewer images or without the -p/--progress flag."))?
 			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
 
 		// Check file sizes before we start.
@@ -178,7 +164,7 @@ fn _main() -> Result<(), ArgyleError> {
 		ba.stop(du(&paths));
 
 		// Finish up.
-		let _ = progress.finish();
+		progress.finish();
 		progress.summary(MsgKind::Crunched, "image", "images")
 			.with_bytes_saved(ba.less(), ba.less_percent())
 			.print();

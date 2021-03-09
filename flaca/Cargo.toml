@@ -67,8 +67,11 @@ items = [
 
 [dependencies]
 argyle = "0.3.*"
-dowser = "0.1.*"
 rayon = "1.5.*"
+
+[dependencies.dowser]
+version = "0.2.*"
+features = [ "regexp" ]
 
 [dependencies.flaca_core]
 path = "../flaca_core"
