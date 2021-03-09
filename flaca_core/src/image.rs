@@ -279,17 +279,19 @@ pub fn compress_zopflipng(data: &mut Vec<u8>) -> Result<()> {
 		.ok_or(())?;
 
 	// Execute the linked program.
-	Command::new("/var/lib/flaca/zopflipng")
+	let status = Command::new("/var/lib/flaca/zopflipng")
 		.args(&[
 			"-m",
 			"-y",
 			path,
 			path,
 		])
-		.stdout(Stdio::piped())
-		.stderr(Stdio::piped())
-		.output()
+		.stdout(Stdio::null())
+		.stderr(Stdio::null())
+		.status()
 		.map_err(|_| ())?;
+
+	if ! status.success() { return Err(()); }
 
 	// To see what changed, we need to open and read the file we just wrote.
 	// Sucks to have the unnecessary file I/O, but this is still much more
