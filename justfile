@@ -116,7 +116,7 @@ version:
 	#!/usr/bin/env bash
 
 	# Current version.
-	_ver1="$( toml get "{{ pkg_dir1 }}/Cargo.toml" package.version | \
+	_ver1="$( toml get "{{ justfile_directory() }}/Cargo.toml" package.version | \
 		sed 's/"//g' )"
 
 	# Find out if we want to bump it.
@@ -130,7 +130,7 @@ version:
 	fyi success "Setting version to $_ver2."
 
 	# Set the release version!
-	just _version "{{ pkg_dir1 }}" "$_ver2"
+	just _version "{{ justfile_directory() }}" "$_ver2"
 
 
 # Set version for real.
@@ -152,13 +152,10 @@ version:
 # Init dependencies.
 @_init:
 	# We need beta until 1.51 is stable.
-	rustup default beta
-	rustup component add clippy
+	env RUSTUP_PERMIT_COPY_RENAME=true rustup default beta
+	env RUSTUP_PERMIT_COPY_RENAME=true rustup component add clippy
 
 	[ -f "{{ release_dir }}/zopflipng" ] || just _init-zopflipng
-	[ ! -f "{{ justfile_directory() }}/Cargo.lock" ] || rm "{{ justfile_directory() }}/Cargo.lock"
-	cargo update
-	cargo outdated
 
 
 # Init (build) Zopflipng.
