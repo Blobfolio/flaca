@@ -1055,6 +1055,7 @@ limitations under the License.
 **Used By:**
 
 * [ahash 0.7.2](https://github.com/tkaitchuck/ahash)
+* [atomic 0.5.0](https://github.com/Amanieu/atomic-rs)
 * [bitflags 1.2.1](https://github.com/bitflags/bitflags)
 * [cfg-if 1.0.0](https://github.com/alexcrichton/cfg-if)
 * [crossbeam-channel 0.5.0](https://github.com/crossbeam-rs/crossbeam)
@@ -1064,17 +1065,17 @@ limitations under the License.
 * [deflate 0.8.6](https://github.com/image-rs/deflate-rs)
 * [either 1.6.1](https://github.com/bluss/either)
 * [hashbrown 0.9.1](https://github.com/rust-lang/hashbrown)
-* [indexmap 1.6.1](https://github.com/bluss/indexmap)
+* [indexmap 1.6.2](https://github.com/bluss/indexmap)
 * [itertools 0.10.0](https://github.com/bluss/rust-itertools)
 * [lazy_static 1.4.0](https://github.com/rust-lang-nursery/lazy-static.rs)
-* [libc 0.2.86](https://github.com/rust-lang/libc)
+* [libc 0.2.88](https://github.com/rust-lang/libc)
 * [libdeflater 0.7.1](https://github.com/adamkewley/libdeflater)
 * [num-integer 0.1.44](https://github.com/rust-num/num-integer)
 * [num-iter 0.1.42](https://github.com/rust-num/num-iter)
 * [num-rational 0.3.2](https://github.com/rust-num/num-rational)
 * [num-traits 0.2.14](https://github.com/rust-num/num-traits)
 * [num_cpus 1.13.0](https://github.com/seanmonstar/num_cpus)
-* [once_cell 1.7.0](https://github.com/matklad/once_cell)
+* [once_cell 1.7.2](https://github.com/matklad/once_cell)
 * [png 0.16.8](https://github.com/image-rs/image-png.git)
 * [rayon 1.5.0](https://github.com/rayon-rs/rayon)
 * [rayon-core 1.9.0](https://github.com/rayon-rs/rayon)
@@ -2679,7 +2680,7 @@ SOFTWARE.
 
 **Used By:**
 
-* [image 0.23.13](https://github.com/image-rs/image)
+* [image 0.23.14](https://github.com/image-rs/image)
 
 
 ```
@@ -2805,9 +2806,10 @@ SOFTWARE.
 
 **Used By:**
 
-* [argyle 0.3.0](https://github.com/Blobfolio/argyle)
-* [dactyl 0.1.4](https://github.com/Blobfolio/dactyl)
-* [dowser 0.1.1](https://github.com/Blobfolio/dowser)
+* [argyle 0.3.1](https://github.com/Blobfolio/argyle)
+* [dactyl 0.1.5](https://github.com/Blobfolio/dactyl)
+* [dowser 0.2.0](https://github.com/Blobfolio/dowser)
+* [flaca 1.6.0](https://crates.io/crates/flaca)
 
 
 ```
@@ -2831,7 +2833,6 @@ TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
 **Used By:**
 
-* [flaca 1.5.9](https://crates.io/crates/flaca)
 * [fyi_msg 0.7.0](https://github.com/Blobfolio/fyi)
 
 
