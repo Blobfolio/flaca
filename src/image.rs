@@ -2,35 +2,10 @@
 # Flaca: Lib
 */
 
-#![warn(clippy::filetype_is_file)]
-#![warn(clippy::integer_division)]
-#![warn(clippy::needless_borrow)]
-#![warn(clippy::nursery)]
-#![warn(clippy::pedantic)]
-#![warn(clippy::perf)]
-#![warn(clippy::suboptimal_flops)]
-#![warn(clippy::unneeded_field_pattern)]
-#![warn(macro_use_extern_crate)]
-#![warn(missing_copy_implementations)]
-#![warn(missing_debug_implementations)]
-#![warn(missing_docs)]
-#![warn(non_ascii_idents)]
-#![warn(trivial_casts)]
-#![warn(trivial_numeric_casts)]
-#![warn(unreachable_pub)]
-#![warn(unused_crate_dependencies)]
-#![warn(unused_extern_crates)]
-#![warn(unused_import_braces)]
-
-#![allow(clippy::module_name_repetitions)]
-
-mod error;
-mod jpegtran;
-mod kind;
-
-pub use error::FlacaError;
-pub use kind::ImageKind;
-
+use crate::{
+	FlacaError,
+	ImageKind,
+};
 use std::{
 	convert::TryFrom,
 	ffi::OsStr,
@@ -114,7 +89,7 @@ impl FlacaImage<'_> {
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
 	fn mozjpeg(&mut self) -> Result<bool, FlacaError> {
-		Ok(self.maybe_update(&unsafe { jpegtran::jpegtran_mem(&self.data)? }))
+		Ok(self.maybe_update(&unsafe { super::jpegtran::jpegtran_mem(&self.data)? }))
 	}
 
 	/// # Compress w/ `Oxipng`

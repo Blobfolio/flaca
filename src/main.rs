@@ -78,6 +78,19 @@ flaca /path/to/assets /path/to/favicon.png …
 #![warn(unused_extern_crates)]
 #![warn(unused_import_braces)]
 
+#![allow(clippy::module_name_repetitions)]
+
+
+
+mod error;
+mod image;
+pub mod jpegtran;
+mod kind;
+
+pub use error::FlacaError;
+pub use kind::ImageKind;
+pub use image::FlacaImage;
+
 
 
 use argyle::{
@@ -87,7 +100,6 @@ use argyle::{
 	FLAG_REQUIRED,
 	FLAG_VERSION,
 };
-use flaca_core::FlacaImage;
 use dowser::{
 	Dowser,
 	utility::du,
@@ -141,7 +153,15 @@ fn _main() -> Result<(), ArgyleError> {
 
 	// Put it all together!
 	let paths = Vec::<PathBuf>::try_from(
-		Dowser::regex(r"(?i)[^/]+\.(jpe?g|png)$")
+		Dowser::filtered(|p| p.extension()
+			.map_or(
+				false,
+				|e| {
+					let ext = e.as_bytes().to_ascii_lowercase();
+					ext == b"jpg" || ext == b"png" || ext == b"jpeg"
+				}
+			)
+		)
 			.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
 	)
 		.map_err(|_| ArgyleError::Custom("No images were found."))?;

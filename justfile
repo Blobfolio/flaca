@@ -17,8 +17,7 @@
 
 pkg_id      := "flaca"
 pkg_name    := "Flaca"
-pkg_dir1    := justfile_directory() + "/flaca"
-pkg_dir2    := justfile_directory() + "/flaca_core"
+pkg_dir1    := justfile_directory() + "/src"
 
 bench_dir   := "/tmp/bench-data"
 cargo_dir   := "/tmp/" + pkg_id + "-cargo"
@@ -43,7 +42,7 @@ rustflags   := "-C link-arg=-s"
 # Build Debian package!
 @build-deb: credits build _init-zopflipng
 	# Do completions/man.
-	cargo bashman -m "{{ pkg_dir1 }}/Cargo.toml"
+	cargo bashman -m "{{ justfile_directory() }}/Cargo.toml"
 
 	# cargo-deb doesn't support target_dir flags yet.
 	[ ! -d "{{ justfile_directory() }}/target" ] || rm -rf "{{ justfile_directory() }}/target"
@@ -77,9 +76,8 @@ rustflags   := "-C link-arg=-s"
 	# they place *other* shit in the designated target dir. Haha.
 	[ ! -d "{{ justfile_directory() }}/target" ] || rm -rf "{{ justfile_directory() }}/target"
 	[ ! -d "{{ pkg_dir1 }}/target" ] || rm -rf "{{ pkg_dir1 }}/target"
-	[ ! -d "{{ pkg_dir2 }}/target" ] || rm -rf "{{ pkg_dir2 }}/target"
 
-	cargo update -w
+	cargo update
 
 
 # Clippy.
@@ -96,7 +94,7 @@ rustflags   := "-C link-arg=-s"
 @credits:
 	# Update CREDITS.html.
 	cargo about \
-		-m "{{ pkg_dir1 }}/Cargo.toml" \
+		-m "{{ justfile_directory() }}/Cargo.toml" \
 		generate \
 		"{{ release_dir }}/credits/about.hbs" > "{{ justfile_directory() }}/CREDITS.md"
 
@@ -133,7 +131,6 @@ version:
 
 	# Set the release version!
 	just _version "{{ pkg_dir1 }}" "$_ver2"
-	just _version "{{ pkg_dir2 }}" "$_ver2"
 
 
 # Set version for real.
@@ -160,8 +157,8 @@ version:
 
 	[ -f "{{ release_dir }}/zopflipng" ] || just _init-zopflipng
 	[ ! -f "{{ justfile_directory() }}/Cargo.lock" ] || rm "{{ justfile_directory() }}/Cargo.lock"
-	cargo update -w
-	cargo outdated -w
+	cargo update
+	cargo outdated
 
 
 # Init (build) Zopflipng.
