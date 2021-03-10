@@ -118,7 +118,7 @@ version:
 	#!/usr/bin/env bash
 
 	# Current version.
-	_ver1="$( toml get "{{ pkg_dir2 }}/Cargo.toml" package.version | \
+	_ver1="$( toml get "{{ pkg_dir1 }}/Cargo.toml" package.version | \
 		sed 's/"//g' )"
 
 	# Find out if we want to bump it.
