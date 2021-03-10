@@ -78,6 +78,19 @@ flaca /path/to/assets /path/to/favicon.png …
 #![warn(unused_extern_crates)]
 #![warn(unused_import_braces)]
 
+#![allow(clippy::module_name_repetitions)]
+
+
+
+mod error;
+mod image;
+pub mod jpegtran;
+mod kind;
+
+pub use error::FlacaError;
+pub use kind::ImageKind;
+pub use image::FlacaImage;
+
 
 
 use argyle::{
@@ -87,19 +100,15 @@ use argyle::{
 	FLAG_REQUIRED,
 	FLAG_VERSION,
 };
-use flaca_core::image;
-use fyi_msg::{
-	Msg,
-	Progless,
-};
-use dactyl::{
-	NicePercent,
-	NiceU32,
-	NiceU64,
-};
 use dowser::{
 	Dowser,
 	utility::du,
+};
+use fyi_msg::{
+	BeforeAfter,
+	Msg,
+	MsgKind,
+	Progless,
 };
 use rayon::iter::{
 	IntoParallelRefIterator,
@@ -109,16 +118,15 @@ use std::{
 	convert::TryFrom,
 	ffi::OsStr,
 	os::unix::ffi::OsStrExt,
-	path::{
-		Path,
-		PathBuf,
-	},
+	path::PathBuf,
 };
 
 
 
-#[allow(clippy::if_not_else)] // Code is confusing otherwise.
-/// Main.
+/// # Main.
+///
+/// This shell provides us a way to easily handle error responses. Actual
+/// processing is done by `_main()`.
 fn main() {
 	match _main() {
 		Ok(_) => {},
@@ -135,7 +143,9 @@ fn main() {
 }
 
 #[inline]
-/// Actual Main.
+/// # Actual Main.
+///
+/// This is the actual main, allowing us to easily bubble errors.
 fn _main() -> Result<(), ArgyleError> {
 	// Parse CLI arguments.
 	let args = Argue::new(FLAG_HELP | FLAG_REQUIRED | FLAG_VERSION)?
@@ -143,94 +153,54 @@ fn _main() -> Result<(), ArgyleError> {
 
 	// Put it all together!
 	let paths = Vec::<PathBuf>::try_from(
-		Dowser::default()
-			.with_filter(|p: &Path| p.extension()
-				.map_or(
-					false,
-					|e| {
-						let ext = e.as_bytes().to_ascii_lowercase();
-						ext == b"jpg" || ext == b"png" || ext == b"jpeg"
-					}
-				)
+		Dowser::filtered(|p| p.extension()
+			.map_or(
+				false,
+				|e| {
+					let ext = e.as_bytes().to_ascii_lowercase();
+					ext == b"jpg" || ext == b"png" || ext == b"jpeg"
+				}
 			)
+		)
 			.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
-	).map_err(|_| ArgyleError::Custom("No images were found."))?;
+	)
+		.map_err(|_| ArgyleError::Custom("No images were found."))?;
 
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
-		// Check file sizes before we start.
-		let before: u64 = du(&paths);
-		let len: u32 = u32::try_from(paths.len())
-			.map_err(|_| ArgyleError::Custom("Only 4,294,967,295 files can be crunched at one time."))?;
-
 		// Boot up a progress bar.
-		let progress = Progless::steady(len)
+		let progress = Progless::try_from(paths.len())
+			.map_err(|_| ArgyleError::Custom("Progress can only be displayed for up to 4,294,967,295 images. Try again with fewer images or without the -p/--progress flag."))?
 			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
 
+		// Check file sizes before we start.
+		let mut ba = BeforeAfter::start(du(&paths));
+
 		// Process!
-		paths.par_iter().for_each(|x| {
-			let tmp = x.to_string_lossy();
-			progress.add(&tmp);
-			image::compress(x);
-			progress.remove(&tmp);
-		});
+		paths.par_iter().for_each(|x|
+			if let Ok(mut enc) = FlacaImage::try_from(x) {
+				let tmp = x.to_string_lossy();
+				progress.add(&tmp);
+				let _res = enc.compress();
+				progress.remove(&tmp);
+			}
+		);
+
+		// Check file sizes again.
+		ba.stop(du(&paths));
 
 		// Finish up.
-		let elapsed = progress.finish();
-		let after: u64 = du(&paths);
-
-		// Build and print a summary.
-		if after > 0 && after < before {
-			use num_traits::cast::FromPrimitive;
-
-			// Show a percentage difference if we can.
-			if let (Some(p1), Some(p2)) = (f64::from_u64(before - after), f64::from_u64(before)) {
-				unsafe {
-					Msg::success_unchecked(&[
-						&b"Crunched "[..],
-						NiceU32::from(len).as_bytes(),
-						if len == 1 { b" image in " } else { b" images in " },
-						elapsed.as_bytes(),
-						b", saving ",
-						NiceU64::from(before - after).as_bytes(),
-						b" bytes \x1b[2m(",
-						NicePercent::from(p1 / p2).as_bytes(),
-						b")\x1b[0m.",
-					].concat())
-				}.print();
-			}
-			// Otherwise just the bytes.
-			else {
-				unsafe {
-					Msg::success_unchecked(&[
-						&b"Crunched "[..],
-						NiceU32::from(len).as_bytes(),
-						if len == 1 { b" image in " } else { b" images in " },
-						elapsed.as_bytes(),
-						b", saving ",
-						NiceU64::from(before - after).as_bytes(),
-						b" bytes.",
-					].concat())
-				}.print();
-			}
-		}
-		// Checked, but no luck.
-		else {
-			unsafe {
-				Msg::done_unchecked(&[
-					&b"Checked "[..],
-					NiceU32::from(len).as_bytes(),
-					if len == 1 { b" image in " } else { b" images in " },
-					elapsed.as_bytes(),
-					b", but no savings were possible.",
-				].concat())
-			}.print();
-		}
+		progress.finish();
+		progress.summary(MsgKind::Crunched, "image", "images")
+			.with_bytes_saved(ba.less(), ba.less_percent())
+			.print();
 	}
 	else {
-		paths.par_iter().for_each(|x| {
-			image::compress(x);
-		});
+		paths.par_iter().for_each(|x|
+			if let Ok(mut enc) = FlacaImage::try_from(x) {
+				let _res = enc.compress();
+			}
+		);
 	}
 
 	Ok(())
