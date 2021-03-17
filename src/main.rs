@@ -192,7 +192,7 @@ fn _main() -> Result<(), ArgyleError> {
 		// Finish up.
 		progress.finish();
 		progress.summary(MsgKind::Crunched, "image", "images")
-			.with_bytes_saved(ba.less(), ba.less_percent())
+			.with_bytes_saved(ba)
 			.print();
 	}
 	else {
