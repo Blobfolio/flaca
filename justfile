@@ -151,10 +151,6 @@ version:
 
 # Init dependencies.
 @_init:
-	# We need beta until 1.51 is stable.
-	env RUSTUP_PERMIT_COPY_RENAME=true rustup default beta
-	env RUSTUP_PERMIT_COPY_RENAME=true rustup component add clippy
-
 	[ -f "{{ release_dir }}/zopflipng" ] || just _init-zopflipng
 
 
