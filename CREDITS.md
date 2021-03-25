@@ -1068,7 +1068,7 @@ limitations under the License.
 * [indexmap 1.6.2](https://github.com/bluss/indexmap)
 * [itertools 0.10.0](https://github.com/bluss/rust-itertools)
 * [lazy_static 1.4.0](https://github.com/rust-lang-nursery/lazy-static.rs)
-* [libc 0.2.88](https://github.com/rust-lang/libc)
+* [libc 0.2.91](https://github.com/rust-lang/libc)
 * [libdeflater 0.7.1](https://github.com/adamkewley/libdeflater)
 * [num-integer 0.1.44](https://github.com/rust-num/num-integer)
 * [num-iter 0.1.42](https://github.com/rust-num/num-iter)
@@ -2711,7 +2711,7 @@ SOFTWARE.
 
 **Used By:**
 
-* [byteorder 1.4.2](https://github.com/BurntSushi/byteorder)
+* [byteorder 1.4.3](https://github.com/BurntSushi/byteorder)
 
 
 ```
@@ -2807,9 +2807,9 @@ SOFTWARE.
 **Used By:**
 
 * [argyle 0.3.1](https://github.com/Blobfolio/argyle)
-* [dactyl 0.1.5](https://github.com/Blobfolio/dactyl)
+* [dactyl 0.1.7](https://github.com/Blobfolio/dactyl)
 * [dowser 0.2.0](https://github.com/Blobfolio/dowser)
-* [flaca 1.6.0](https://crates.io/crates/flaca)
+* [flaca 1.6.1](https://crates.io/crates/flaca)
 
 
 ```
