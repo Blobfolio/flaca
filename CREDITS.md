@@ -2809,7 +2809,7 @@ SOFTWARE.
 * [argyle 0.3.1](https://github.com/Blobfolio/argyle)
 * [dactyl 0.1.7](https://github.com/Blobfolio/dactyl)
 * [dowser 0.2.0](https://github.com/Blobfolio/dowser)
-* [flaca 1.6.1](https://crates.io/crates/flaca)
+* [flaca 1.6.2](https://crates.io/crates/flaca)
 
 
 ```
