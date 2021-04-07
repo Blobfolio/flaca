@@ -1,3 +1,4 @@
+**/*.deb
 **/*.gz
 **/target/
 /Cargo.lock
