@@ -40,7 +40,7 @@ rustflags   := "-C link-arg=-s"
 
 
 # Build Debian package!
-@build-deb: credits build _init-zopflipng
+@build-deb: credits build
 	# Do completions/man.
 	cargo bashman -m "{{ justfile_directory() }}/Cargo.toml"
 
@@ -52,7 +52,8 @@ rustflags   := "-C link-arg=-s"
 	cargo-deb \
 		--no-build \
 		-p {{ pkg_id }} \
-		-o "{{ justfile_directory() }}/release"
+		-o "{{ justfile_directory() }}/release" \
+		--target x86_64-unknown-linux-gnu
 
 	just _fix-chown "{{ release_dir }}"
 	mv "{{ justfile_directory() }}/target" "{{ cargo_dir }}"
@@ -97,6 +98,9 @@ rustflags   := "-C link-arg=-s"
 		-m "{{ justfile_directory() }}/Cargo.toml" \
 		generate \
 		"{{ release_dir }}/credits/about.hbs" > "{{ justfile_directory() }}/CREDITS.md"
+
+	# Fix line endings.
+	sd '\r\n' '\n' "{{ justfile_directory() }}/CREDITS.md"
 
 	just _fix-chown "{{ justfile_directory() }}/CREDITS.md"
 
@@ -151,30 +155,8 @@ version:
 
 # Init dependencies.
 @_init:
-	[ -f "{{ release_dir }}/zopflipng" ] || just _init-zopflipng
-
-
-# Init (build) Zopflipng.
-@_init-zopflipng:
-	# Start fresh!
-	[ ! -d "/tmp/zopfli" ] || rm -rf "/tmp/zopfli"
-
-	# Clone and build it.
-	git clone https://github.com/google/zopfli "/tmp/zopfli"
-	cd "/tmp/zopfli" && make zopflipng
-	[ -f "/tmp/zopfli/zopflipng" ] || fyi error --exit 1 "Failed to make Zopflipng."
-
-	# Move the file, set permissions, etc.
-	mv "/tmp/zopfli/zopflipng" "{{ release_dir }}/"
-	just _fix-chown "{{ release_dir }}/zopflipng"
-	chmod 755 "{{ release_dir }}/zopflipng"
-
-	# Make our dev lives easier by making sure the /var/lib/flaca copy is set.
-	[ -d "/var/lib/flaca" ] || mkdir -p "/var/lib/flaca"
-	cp -a "{{ release_dir }}/zopflipng" "/var/lib/flaca/"
-
-	# Clean up.
-	rm -rf "/tmp/zopfli"
+	# Nothing now.
+	[ -f "/var/lib/flaca/zopflipng" ] || fyi warning "Missing /var/lib/flaca/zopflipng; build the project and copy the bin from the release dir."
 
 
 # Fix file/directory permissions.
