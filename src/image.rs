@@ -199,7 +199,7 @@ impl FlacaImage<'_> {
 		let path = target.path().as_os_str();
 
 		// Execute the linked program.
-		let status = Command::new("/var/lib/flaca/zopflipng")
+		if ! Command::new("/var/lib/flaca/zopflipng")
 			.args(&[
 				OsStr::new("-m"),
 				OsStr::new("-y"),
@@ -209,9 +209,10 @@ impl FlacaImage<'_> {
 			.stdout(Stdio::null())
 			.stderr(Stdio::null())
 			.status()
-			.map_err(|_| FlacaError::WriteFail)?;
-
-		if ! status.success() { return Err(FlacaError::WriteFail); }
+			.map_or(false, |s| s.success())
+		{
+			return Err(FlacaError::WriteFail);
+		}
 
 		// To see what changed, we need to open and read the file we just
 		// wrote. Sucks to have the unnecessary file I/O, but this is still
