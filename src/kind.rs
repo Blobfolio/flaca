@@ -26,7 +26,7 @@ impl TryFrom<&[u8]> for ImageKind {
 	fn try_from(src: &[u8]) -> Result<Self, Self::Error> {
 		// `imghdr` will panic if the slice is too small to contain headers.
 		if src.len() < 8 {
-			return Err(RefractError::Source);
+			return Err(FlacaError::InvalidImageType);
 		}
 
 		match imghdr::from_bytes(src) {
