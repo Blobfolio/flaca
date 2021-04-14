@@ -233,7 +233,7 @@ limitations under the License.
 * [atomic 0.5.0](https://github.com/Amanieu/atomic-rs)
 * [bitflags 1.2.1](https://github.com/bitflags/bitflags)
 * [cfg-if 1.0.0](https://github.com/alexcrichton/cfg-if)
-* [crossbeam-channel 0.5.0](https://github.com/crossbeam-rs/crossbeam)
+* [crossbeam-channel 0.5.1](https://github.com/crossbeam-rs/crossbeam)
 * [crossbeam-deque 0.8.0](https://github.com/crossbeam-rs/crossbeam)
 * [crossbeam-epoch 0.9.3](https://github.com/crossbeam-rs/crossbeam)
 * [crossbeam-utils 0.8.3](https://github.com/crossbeam-rs/crossbeam)
@@ -965,8 +965,8 @@ limitations under the License.
 
 **Used By:**
 
-* [cloudflare-zlib 0.2.5](https://gitlab.com/kornelski/cloudflare-zlib-sys)
-* [cloudflare-zlib-sys 0.2.0](https://gitlab.com/kornelski/cloudflare-zlib-sys)
+* [cloudflare-zlib 0.2.8](https://gitlab.com/kornelski/cloudflare-zlib-sys)
+* [cloudflare-zlib-sys 0.3.0](https://gitlab.com/kornelski/cloudflare-zlib-sys)
 * [imghdr 0.7.0](https://github.com/svartalf/rust-imghdr)
 * [libdeflate-sys 0.7.1](https://github.com/adamkewley/libdeflater)
 
@@ -2809,7 +2809,7 @@ SOFTWARE.
 * [argyle 0.3.1](https://github.com/Blobfolio/argyle)
 * [dactyl 0.1.7](https://github.com/Blobfolio/dactyl)
 * [dowser 0.2.0](https://github.com/Blobfolio/dowser)
-* [flaca 1.6.2](https://crates.io/crates/flaca)
+* [flaca 1.6.3](https://crates.io/crates/flaca)
 
 
 ```
