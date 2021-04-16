@@ -77,7 +77,6 @@ items = [
 [dependencies]
 argyle = "0.3.*"
 dowser = "0.2.*"
-imghdr = "0.7.*"
 lazy_static = "1.4.*"
 libc = "0.2.*"
 rayon = "1.5.*"
