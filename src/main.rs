@@ -184,6 +184,9 @@ fn _main() -> Result<(), ArgyleError> {
 				let _res = enc.compress();
 				progress.remove(&tmp);
 			}
+			else {
+				progress.increment();
+			}
 		);
 
 		// Check file sizes again.
