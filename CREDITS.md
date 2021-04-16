@@ -967,7 +967,6 @@ limitations under the License.
 
 * [cloudflare-zlib 0.2.8](https://gitlab.com/kornelski/cloudflare-zlib-sys)
 * [cloudflare-zlib-sys 0.3.0](https://gitlab.com/kornelski/cloudflare-zlib-sys)
-* [imghdr 0.7.0](https://github.com/svartalf/rust-imghdr)
 * [libdeflate-sys 0.7.1](https://github.com/adamkewley/libdeflater)
 
 
@@ -2809,7 +2808,7 @@ SOFTWARE.
 * [argyle 0.3.1](https://github.com/Blobfolio/argyle)
 * [dactyl 0.1.7](https://github.com/Blobfolio/dactyl)
 * [dowser 0.2.0](https://github.com/Blobfolio/dowser)
-* [flaca 1.6.3](https://crates.io/crates/flaca)
+* [flaca 1.6.4](https://crates.io/crates/flaca)
 
 
 ```
