@@ -75,7 +75,7 @@ items = [
 ]
 
 [dependencies]
-argyle = "0.3.*"
+argyle = "0.4.*"
 dowser = "0.2.*"
 lazy_static = "1.4.*"
 libc = "0.2.*"
@@ -84,7 +84,7 @@ tempfile = "3.2.*"
 
 [dependencies.fyi_msg]
 git = "https://github.com/Blobfolio/fyi.git"
-tag = "v0.7.0"
+tag = "v0.7.1"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
