@@ -88,7 +88,7 @@ tag = "v0.7.1"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
-version = "0.10.*, >= 0.10.12"
+version = "0.10.13"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
