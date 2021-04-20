@@ -91,8 +91,6 @@ pub use error::FlacaError;
 pub use kind::ImageKind;
 pub use image::FlacaImage;
 
-
-
 use argyle::{
 	Argue,
 	ArgyleError,
@@ -130,10 +128,10 @@ use std::{
 fn main() {
 	match _main() {
 		Ok(_) => {},
-		Err(ArgyleError::WantsVersion) => {
+		Err(FlacaError::Argue(ArgyleError::WantsVersion)) => {
 			println!(concat!("Flaca v", env!("CARGO_PKG_VERSION")));
 		},
-		Err(ArgyleError::WantsHelp) => {
+		Err(FlacaError::Argue(ArgyleError::WantsHelp)) => {
 			helper();
 		},
 		Err(e) => {
@@ -146,7 +144,7 @@ fn main() {
 /// # Actual Main.
 ///
 /// This is the actual main, allowing us to easily bubble errors.
-fn _main() -> Result<(), ArgyleError> {
+fn _main() -> Result<(), FlacaError> {
 	// Parse CLI arguments.
 	let args = Argue::new(FLAG_HELP | FLAG_REQUIRED | FLAG_VERSION)?
 		.with_list();
@@ -164,13 +162,13 @@ fn _main() -> Result<(), ArgyleError> {
 		)
 			.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
 	)
-		.map_err(|_| ArgyleError::Custom("No images were found."))?;
+		.map_err(|_| FlacaError::NoImages)?;
 
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
 		// Boot up a progress bar.
 		let progress = Progless::try_from(paths.len())
-			.map_err(|_| ArgyleError::Custom("Progress can only be displayed for up to 4,294,967,295 images. Try again with fewer images or without the -p/--progress flag."))?
+			.map_err(|_| FlacaError::ProgressOverflow)?
 			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
 
 		// Check file sizes before we start.
