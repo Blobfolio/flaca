@@ -230,7 +230,11 @@ impl FlacaImage<'_> {
 	/// This will replace the inline source data with the new version, provided
 	/// the new version has length and is smaller than the original.
 	fn maybe_update(&mut self, new: &[u8]) -> bool {
-		if ! new.is_empty() && new.len() < self.data.len() {
+		if
+			! new.is_empty() &&
+			new.len() < self.data.len() &&
+			ImageKind::try_from(new).map_or(false, |k| k == self.kind)
+		{
 			self.data.truncate(new.len());
 			self.data[..].copy_from_slice(new);
 			true

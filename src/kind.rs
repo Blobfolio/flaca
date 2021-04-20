@@ -7,7 +7,7 @@ use std::convert::TryFrom;
 
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// # Image Kind.
 ///
 /// This evaluates the file type from its headers, ensuring we process images
