@@ -57,9 +57,7 @@ impl FlacaImage<'_> {
 	/// (other than cases where no savings were possible).
 	pub fn compress(&mut self) -> Result<(), FlacaError> {
 		let changed: bool = match self.kind {
-			ImageKind::Jpeg => {
-				self.mozjpeg()?
-			},
+			ImageKind::Jpeg => self.mozjpeg()?,
 			ImageKind::Png => {
 				let a: bool = self.oxipng()?;
 				self.zopflipng()? || a
