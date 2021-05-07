@@ -6,8 +6,8 @@ License details for project dependencies are listed below.
 
 * Apache License 2.0 (13)
 * MIT License (8)
-* Do What The F*ck You Want To Public License (2)
 * Independent JPEG Group License (1)
+* Do What The F*ck You Want To Public License (1)
 * zlib License (1)
 
 
@@ -235,15 +235,15 @@ limitations under the License.
 * [cfg-if 1.0.0](https://github.com/alexcrichton/cfg-if)
 * [crossbeam-channel 0.5.1](https://github.com/crossbeam-rs/crossbeam)
 * [crossbeam-deque 0.8.0](https://github.com/crossbeam-rs/crossbeam)
-* [crossbeam-epoch 0.9.3](https://github.com/crossbeam-rs/crossbeam)
-* [crossbeam-utils 0.8.3](https://github.com/crossbeam-rs/crossbeam)
+* [crossbeam-epoch 0.9.4](https://github.com/crossbeam-rs/crossbeam)
+* [crossbeam-utils 0.8.4](https://github.com/crossbeam-rs/crossbeam)
 * [deflate 0.8.6](https://github.com/image-rs/deflate-rs)
 * [either 1.6.1](https://github.com/bluss/either)
 * [hashbrown 0.9.1](https://github.com/rust-lang/hashbrown)
 * [indexmap 1.6.2](https://github.com/bluss/indexmap)
 * [itertools 0.10.0](https://github.com/bluss/rust-itertools)
 * [lazy_static 1.4.0](https://github.com/rust-lang-nursery/lazy-static.rs)
-* [libc 0.2.93](https://github.com/rust-lang/libc)
+* [libc 0.2.94](https://github.com/rust-lang/libc)
 * [libdeflater 0.7.1](https://github.com/adamkewley/libdeflater)
 * [num-integer 0.1.44](https://github.com/rust-num/num-integer)
 * [num-iter 0.1.42](https://github.com/rust-num/num-iter)
@@ -965,7 +965,7 @@ limitations under the License.
 
 **Used By:**
 
-* [cloudflare-zlib 0.2.8](https://gitlab.com/kornelski/cloudflare-zlib-sys)
+* [cloudflare-zlib 0.2.9](https://gitlab.com/kornelski/cloudflare-zlib-sys)
 * [cloudflare-zlib-sys 0.3.0](https://gitlab.com/kornelski/cloudflare-zlib-sys)
 * [libdeflate-sys 0.7.1](https://github.com/adamkewley/libdeflater)
 
@@ -2505,7 +2505,7 @@ limitations under the License.
 
 **Used By:**
 
-* [mozjpeg-sys 0.10.13](https://github.com/kornelski/mozjpeg-sys.git)
+* [mozjpeg-sys 0.12.3](https://github.com/kornelski/mozjpeg-sys.git)
 
 
 ```
@@ -2805,10 +2805,11 @@ SOFTWARE.
 
 **Used By:**
 
-* [argyle 0.3.1](https://github.com/Blobfolio/argyle)
+* [argyle 0.4.1](https://github.com/Blobfolio/argyle)
 * [dactyl 0.1.7](https://github.com/Blobfolio/dactyl)
-* [dowser 0.2.0](https://github.com/Blobfolio/dowser)
-* [flaca 1.6.4](https://crates.io/crates/flaca)
+* [dowser 0.2.3](https://github.com/Blobfolio/dowser)
+* [flaca 1.6.5](https://crates.io/crates/flaca)
+* [fyi_msg 0.7.1](https://github.com/Blobfolio/fyi)
 
 
 ```
@@ -2825,28 +2826,6 @@ DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
 TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
 0. You just DO WHAT THE FUCK YOU WANT TO.
-
-```
-
-### Do What The F*ck You Want To Public License
-
-**Used By:**
-
-* [fyi_msg 0.7.0](https://github.com/Blobfolio/fyi)
-
-
-```
-DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
-Version 2, December 2004
-
-Copyright (C) 2004 Sam Hocevar <sam@hocevar.net>
-
-Everyone is permitted to copy and distribute verbatim or modified copies of this license document, and changing it is allowed as long as the name is changed.
-
-DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
-TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
-
-  0. You just DO WHAT THE FUCK YOU WANT TO.
 
 ```
 
