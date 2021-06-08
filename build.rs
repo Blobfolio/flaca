@@ -63,10 +63,8 @@ pub fn main() {
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
 			.output()
-			.ok()
-			.and_then(|x| String::from_utf8(x.stdout).ok())
-			.expect("Unable to run built Zopflipng executable.")
-			.contains("ZopfliPNG")
+			.map_or(false, |x| String::from_utf8_lossy(&x.stdout).contains("ZopfliPNG")),
+		"Unable to run built Zopflipng executable."
 	);
 }
 
