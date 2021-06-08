@@ -118,6 +118,13 @@ use std::{
 	ffi::OsStr,
 	os::unix::ffi::OsStrExt,
 	path::PathBuf,
+	sync::{
+		Arc,
+		atomic::{
+			AtomicBool,
+			Ordering::SeqCst,
+		},
+	},
 };
 
 
@@ -167,6 +174,20 @@ fn _main() -> Result<(), FlacaError> {
 	)
 		.map_err(|_| FlacaError::NoImages)?;
 
+	// Create a temporary directory in case we need it. This should be cleaned
+	// up automatically on program exit.
+	let tmp = tempfile::Builder::new()
+		.prefix(OsStr::new("flaca_"))
+		.tempdir()
+		.ok()
+		.filter(|x| x.path().is_dir())
+		.ok_or(FlacaError::TmpDir)?;
+	let tmpdir = tmp.path().to_path_buf();
+
+	// Controls for early termination.
+	let killed = Arc::from(AtomicBool::new(false));
+	let k2 = Arc::clone(&killed);
+
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
 		// Boot up a progress bar.
@@ -177,16 +198,27 @@ fn _main() -> Result<(), FlacaError> {
 		// Check file sizes before we start.
 		let mut ba = BeforeAfter::start(du(&paths));
 
+		// Intercept CTRL+C so we can gracefully shut down.
+		let p2 = progress.clone();
+		let _res = ctrlc::set_handler(move || {
+			k2.store(true, SeqCst);
+			p2.set_title(Some(Msg::warning("Early shutdown in progress.")));
+		});
+
 		// Process!
 		paths.par_iter().for_each(|x|
-			if let Ok(mut enc) = FlacaImage::try_from(x) {
-				let tmp = x.to_string_lossy();
-				progress.add(&tmp);
-				let _res = enc.compress();
-				progress.remove(&tmp);
-			}
-			else {
-				progress.increment();
+			if ! killed.load(SeqCst) {
+				// Encode if we can.
+				if let Ok(mut enc) = FlacaImage::try_from((x, &tmpdir)) {
+					let tmp = x.to_string_lossy();
+					progress.add(&tmp);
+					let _res = enc.compress();
+					progress.remove(&tmp);
+				}
+				// Bump the count if we can't.
+				else {
+					progress.increment();
+				}
 			}
 		);
 
@@ -195,19 +227,30 @@ fn _main() -> Result<(), FlacaError> {
 
 		// Finish up.
 		progress.finish();
-		progress.summary(MsgKind::Crunched, "image", "images")
-			.with_bytes_saved(ba)
-			.print();
+
+		if ! killed.load(SeqCst) {
+			progress.summary(MsgKind::Crunched, "image", "images")
+				.with_bytes_saved(ba)
+				.print();
+		}
 	}
 	else {
+		// Intercept CTRL+C so we can gracefully shut down.
+		let _res = ctrlc::set_handler(move || { k2.store(true, SeqCst); });
+
+		// Process!
 		paths.par_iter().for_each(|x|
-			if let Ok(mut enc) = FlacaImage::try_from(x) {
-				let _res = enc.compress();
+			if ! killed.load(SeqCst) {
+				if let Ok(mut enc) = FlacaImage::try_from((x, &tmpdir)) {
+					let _res = enc.compress();
+				}
 			}
 		);
 	}
 
-	Ok(())
+	// Early abort?
+	if killed.load(SeqCst) { Err(FlacaError::Killed) }
+	else { Ok(()) }
 }
 
 #[cold]

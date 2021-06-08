@@ -156,7 +156,6 @@ version:
 # Init dependencies.
 @_init:
 	# Nothing now.
-	[ -f "/var/lib/flaca/zopflipng" ] || fyi warning "Missing /var/lib/flaca/zopflipng; build the project and copy the bin from the release dir."
 
 
 # Fix file/directory permissions.

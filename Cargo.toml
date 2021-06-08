@@ -31,7 +31,6 @@ assets = [
     ["./target/x86_64-unknown-linux-gnu/release/flaca", "usr/bin/", "755"],
     ["./release/completions/flaca.bash", "etc/bash_completion.d/", "644"],
     ["./release/man/flaca.1.gz", "usr/share/man/man1/", "644"],
-    ["./target/x86_64-unknown-linux-gnu/release/zopfli-git/zopflipng", "var/lib/flaca/", "755"],
 ]
 
 [package.metadata.bashman]
@@ -76,6 +75,7 @@ items = [
 
 [dependencies]
 argyle = "0.4.*"
+ctrlc = "3.1.*"
 dowser = "0.2.*"
 lazy_static = "1.4.*"
 libc = "0.2.*"
