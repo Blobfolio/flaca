@@ -35,6 +35,7 @@ pub struct FlacaImage<'a> {
 impl<'a> TryFrom<(&'a PathBuf, &'a PathBuf)> for FlacaImage<'a> {
 	type Error = FlacaError;
 
+	/// # From (Image Path, Tmp Dir Path).
 	fn try_from(src: (&'a PathBuf, &'a PathBuf)) -> Result<Self, Self::Error> {
 		// Load the image data.
 		let data = fs::read(src.0).map_err(|_| FlacaError::ReadFail)?;
