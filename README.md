@@ -24,7 +24,7 @@ As a general rule, you should _not_ try to feed your entire personal media libra
 
 Debian and Ubuntu users (and probably Arch Linux users too) can just grab the pre-built `.deb` package from the [release page](https://github.com/Blobfolio/flaca/releases/latest).
 
-Flaca is written in [Rust](https://www.rust-lang.org/), though, so can be built from source on other systems using `Cargo`:
+Flaca is written in [Rust](https://www.rust-lang.org/), though, so can be built from source on other Linux distributions (Fedora, etc.) using `Cargo`:
 
 ```
 # Clone the repository.
@@ -39,7 +39,7 @@ cargo build \
     --release
 ```
 
-In addition to up-to-date `rustc` and `cargo`, you'll also need `gcc`, ``git`, `make`, and the dev libraries for `libjpeg` and `libpng`.
+In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`, ``git`, `make`, and the dev libraries for `libjpeg` and `libpng`.
 
 The above list may not be exhaustive, though. If you find you need anything else, please open a ticket so this list can be updated!
 
