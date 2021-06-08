@@ -1,8 +1,8 @@
 # Flaca
 
-Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of **losslessly** compressing JPEG and PNG images for use in production **web environments**.
+Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of maximally, **losslessly** compressing JPEG and PNG images for use in production **web environments**.
 
-It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a JPEG, but calculating the optimal construction for a PNG takes a lot of work!
+It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a JPEG, but calculating the optimal construction for a PNG can take a lot of work!
 
 Compression is mainly achieved through the removal of metadata and optimization of pixel tables. Under the hood, Flaca leverages the `jpegtran` functionality from [MozJPEG](https://github.com/mozilla/mozjpeg) for JPEG images, and a combination of [Oxipng](https://github.com/shssoichiro/oxipng) and [Zopflipng](https://github.com/google/zopfli) for PNG images.
 
@@ -14,17 +14,34 @@ For web images, metadata is just so much wasted bandwidth. Stock photos in parti
 
 And it helps close the [digital divide](https://en.wikipedia.org/wiki/Digital_divide).
 
-**However**, the removal of metadata is only "lossless" in the context of images destined for view in web browsers. Image editors, printers, and gallery programs extensively use metadata for all sorts of different reasons ranging from gamma correction to geolocation.
+But in other contexts, _metadata may matter_.
 
-**Do not** run Flaca against your personal media library or raw design/print sources or else Google Photos won't know what to make of all your selfies!
-
-If your personal computer is _that_ strapped for disk space, just buy an external hard drive. :)
+As a general rule, you should _not_ try to feed your entire personal media library or raw print/design assets to Flaca or it may eat something important.
 
 
 
 ## Installation
 
-Installable `.deb` packages are included with each [release](https://github.com/Blobfolio/flaca/releases/latest). They should always work for the latest stable Debian and Ubuntu.
+Debian and Ubuntu users (and probably Arch Linux users too) can just grab the pre-built `.deb` package from the [release page](https://github.com/Blobfolio/flaca/releases/latest).
+
+Flaca is written in [Rust](https://www.rust-lang.org/), though, so can be built from source on other systems using `Cargo`:
+
+```
+# Clone the repository.
+git clone https://github.com/Blobfolio/flaca.git
+
+# Move into the directory.
+cd flaca
+
+# Build with Cargo. Feel free to add other build flags as desired.
+cargo build \
+    --bin flaca \
+    --release
+```
+
+In addition to up-to-date `rustc` and `cargo`, you'll also need `gcc`, ``git`, `make`, and the dev libraries for `libjpeg` and `libpng`.
+
+The above list may not be exhaustive, though. If you find you need anything else, please open a ticket so this list can be updated!
 
 
 
@@ -33,7 +50,7 @@ Installable `.deb` packages are included with each [release](https://github.com/
 It's easy. Just run `flaca [FLAGS] [OPTIONS] <PATH(S)>…`.
 
 The following flags and options are available:
-```bash
+```
 -h, --help           Prints help information
 -l, --list <list>    Read file paths from this list (one per line).
 -p, --progress       Show progress bar while minifying.
@@ -58,21 +75,9 @@ flaca /path/to/assets /path/to/favicon.png …
 
 
 
-## Credits
-
-| Library | License | Author |
-| ---- | ---- | ---- |
-| [imghdr](https://crates.io/crates/imghdr) | Apache-2.0 OR MIT | svartalf |
-| [lazy_static](https://crates.io/crates/lazy_static) | Apache-2.0 OR MIT | Marvin Löbel |
-| [mozjpeg_sys](https://crates.io/crates/mozjpeg_sys) | IJG | Kornel |
-| [oxipng](https://crates.io/crates/oxipng) | MIT | Joshua Holmer |
-| [tempfile-fast](https://crates.io/crates/tempfile-fast) | MIT | Chris West (Faux) |
-| [tempfile](https://crates.io/crates/tempfile) | Apache-2.0 OR MIT | Ashley Mannix, Jason White, Steven Allen, The Rust Project Developers |
-| [zopflipng](https://github.com/google/zopfli) | Apache-2.0 | Google |
-
-
-
 ## License
+
+See also: [CREDITS.md](CREDITS.md)
 
 Copyright © 2021 [Blobfolio, LLC](https://blobfolio.com) &lt;hello@blobfolio.com&gt;
 
