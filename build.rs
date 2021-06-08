@@ -54,20 +54,26 @@ pub fn main() {
 		.stdout(Stdio::null())
 		.stderr(Stdio::null())
 		.status();
+
+	// Last check, make sure it runs, more or less.
+	assert!(
+		Command::new(&bin)
+			.current_dir(&repo)
+			.args(&["-h"])
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.output()
+			.map_or(false, |x| String::from_utf8_lossy(&x.stdout).contains("ZopfliPNG")),
+		"Unable to run built Zopflipng executable."
+	);
 }
 
 /// # Out path.
 ///
-/// This is a workaround for `cargo-deb` not being able to find files in the
-/// `OUT_DIR`. Adapted from [this example](https://github.com/mmstick/cargo-deb/blob/e43018a46b8dc922cfdf6cdde12f7ed92fcc41aa/example/build.rs).
+/// This generates a (file/dir) path relative to `OUT_DIR`.
 fn out_path(name: &str) -> PathBuf {
-	let out = PathBuf::from(std::env::var("OUT_DIR").expect("Missing OUT_DIR."));
-	let mut out = out
-		.ancestors()  // .../target/x86_64-unknown-linux-gnu/<debug|release>/build/flaca-<SHA>/out
-		.nth(3)       // .../target/x86_64-unknown-linux-gnu/<debug|release>
-		.expect("Missing OUT_DIR.")
-		.to_owned();
-
+	let dir = std::env::var("OUT_DIR").expect("Missing OUT_DIR.");
+	let mut out = std::fs::canonicalize(dir).expect("Missing OUT_DIR.");
 	out.push(name);
 	out
 }

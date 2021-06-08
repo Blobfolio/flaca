@@ -29,20 +29,23 @@ pub struct FlacaImage<'a> {
 	file: &'a PathBuf,
 	kind: ImageKind,
 	data: Vec<u8>,
+	tmpdir: &'a PathBuf,
 }
 
-impl<'a> TryFrom<&'a PathBuf> for FlacaImage<'a> {
+impl<'a> TryFrom<(&'a PathBuf, &'a PathBuf)> for FlacaImage<'a> {
 	type Error = FlacaError;
 
-	fn try_from(file: &'a PathBuf) -> Result<Self, Self::Error> {
+	/// # From (Image Path, Tmp Dir Path).
+	fn try_from(src: (&'a PathBuf, &'a PathBuf)) -> Result<Self, Self::Error> {
 		// Load the image data.
-		let data = fs::read(file).map_err(|_| FlacaError::ReadFail)?;
+		let data = fs::read(src.0).map_err(|_| FlacaError::ReadFail)?;
 		if data.is_empty() { Err(FlacaError::EmptyFile) }
 		else {
 			Ok(Self {
-				file,
+				file: src.0,
 				kind: ImageKind::try_from(data.as_slice())?,
 				data,
+				tmpdir: src.1,
 			})
 		}
 	}
@@ -168,22 +171,16 @@ impl FlacaImage<'_> {
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
 	fn zopflipng(&mut self) -> Result<bool, FlacaError> {
-		use std::os::unix::fs::PermissionsExt;
+		// Find/create zopflipng.
+		let zpath = match self.init_zopfli() {
+			Ok(z) => z,
+			Err(_) => { return Ok(false); }
+		};
 
-		lazy_static::lazy_static! {
-			static ref ZOPFLIPNG: bool = fs::metadata("/var/lib/flaca/zopflipng")
-				.ok()
-				.filter(fs::Metadata::is_file)
-				.map_or(false, |m| m.permissions().mode() & 0o111 != 0);
-		}
-
-		// Abort if Zopflipng is not found or executable.
-		if ! *ZOPFLIPNG { return Ok(false); }
-
-		// Make a tempfile copy we can throw at Zopflipng.
+		// Make a tempfile copy we can throw at zopflipng.
 		let target = tempfile::Builder::new()
 			.suffix(OsStr::new(".png"))
-			.tempfile()
+			.tempfile_in(self.tmpdir)
 			.map_err(|_| FlacaError::WriteFail)?;
 
 		{
@@ -197,7 +194,7 @@ impl FlacaImage<'_> {
 		let path = target.path().as_os_str();
 
 		// Execute the linked program.
-		if ! Command::new("/var/lib/flaca/zopflipng")
+		if ! Command::new(zpath)
 			.args(&[
 				OsStr::new("-m"),
 				OsStr::new("-y"),
@@ -219,10 +216,45 @@ impl FlacaImage<'_> {
 			&fs::read(path).map_err(|_| FlacaError::ReadFail)?
 		);
 
-		// Explicitly drop the tempfile to make sure it gets cleaned up.
-		drop(target);
-
 		Ok(changed)
+	}
+
+	/// # Extract Zopfli (if possible).
+	///
+	/// The `zopflipng` binary is embedded within the application to improve
+	/// portability, but in order to use it, we have to write it to the
+	/// file system.
+	///
+	/// This gets chucked into our `TempDir` as "zopflipng" and should get
+	/// cleaned up automatically on program exit.
+	fn init_zopfli(&self) -> Result<PathBuf, FlacaError> {
+		use std::os::unix::fs::PermissionsExt;
+
+		let zpath = {
+			let mut dir = self.tmpdir.clone();
+			dir.push("zopflipng");
+			dir
+		};
+
+		// Extract if it doesn't already exist.
+		if ! zpath.is_file() {
+			let mut file = std::fs::File::create(&zpath)
+				.map_err(|_| FlacaError::TmpDir)?;
+
+			// Write the data and make the file executable.
+			file.write_all(include_bytes!(concat!(env!("OUT_DIR"), "/zopfli-git/zopflipng")))
+				.and_then(|_| file.flush())
+				.and_then(|_| file.metadata())
+				.and_then(|meta| {
+					let mut perms = meta.permissions();
+					perms.set_mode(0o755);
+					file.set_permissions(perms)
+				})
+				.map_err(|_| FlacaError::TmpDir)?;
+		}
+
+		// Return the path as it is probably OK.
+		Ok(zpath)
 	}
 
 	/// # Maybe Update Buffer.
