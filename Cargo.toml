@@ -83,8 +83,7 @@ rayon = "1.5.*"
 tempfile = "3.2.*"
 
 [dependencies.fyi_msg]
-git = "https://github.com/Blobfolio/fyi.git"
-tag = "v0.7.1"
+version = "0.8.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
