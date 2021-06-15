@@ -1,5 +1,7 @@
 # Flaca
 
+[![Build Status](https://github.com/Blobfolio/flaca/workflows/Build/badge.svg)](https://github.com/Blobfolio/flaca/actions)
+
 Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of maximally, **losslessly** compressing JPEG and PNG images for use in production **web environments**.
 
 It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a JPEG, but calculating the optimal construction for a PNG can take a lot of work!
