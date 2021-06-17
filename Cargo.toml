@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.7.0"
+version = "1.7.1"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
@@ -83,12 +83,11 @@ rayon = "1.5.*"
 tempfile = "3.2.*"
 
 [dependencies.fyi_msg]
-git = "https://github.com/Blobfolio/fyi.git"
-tag = "v0.7.1"
+version = "0.8.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
-version = "0.12.4"
+version = "0.12.5"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]

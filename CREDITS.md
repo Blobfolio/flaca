@@ -241,16 +241,16 @@ limitations under the License.
 * [either 1.6.1](https://github.com/bluss/either)
 * [hashbrown 0.9.1](https://github.com/rust-lang/hashbrown)
 * [indexmap 1.6.2](https://github.com/bluss/indexmap)
-* [itertools 0.10.0](https://github.com/bluss/rust-itertools)
+* [itertools 0.10.1](https://github.com/rust-itertools/itertools)
 * [lazy_static 1.4.0](https://github.com/rust-lang-nursery/lazy-static.rs)
-* [libc 0.2.95](https://github.com/rust-lang/libc)
+* [libc 0.2.97](https://github.com/rust-lang/libc)
 * [libdeflater 0.7.1](https://github.com/adamkewley/libdeflater)
 * [num-integer 0.1.44](https://github.com/rust-num/num-integer)
 * [num-iter 0.1.42](https://github.com/rust-num/num-iter)
 * [num-rational 0.3.2](https://github.com/rust-num/num-rational)
 * [num-traits 0.2.14](https://github.com/rust-num/num-traits)
 * [num_cpus 1.13.0](https://github.com/seanmonstar/num_cpus)
-* [once_cell 1.7.2](https://github.com/matklad/once_cell)
+* [once_cell 1.8.0](https://github.com/matklad/once_cell)
 * [png 0.16.8](https://github.com/image-rs/image-png.git)
 * [rayon 1.5.1](https://github.com/rayon-rs/rayon)
 * [rayon-core 1.9.1](https://github.com/rayon-rs/rayon)
@@ -893,7 +893,7 @@ limitations under the License.
 
 **Used By:**
 
-* [bytemuck 1.5.1](https://github.com/Lokathor/bytemuck)
+* [bytemuck 1.7.0](https://github.com/Lokathor/bytemuck)
 
 
 ```
@@ -1689,9 +1689,9 @@ limitations under the License.
 **Used By:**
 
 * [getrandom 0.2.3](https://github.com/rust-random/getrandom)
-* [rand 0.8.3](https://github.com/rust-random/rand)
-* [rand_chacha 0.3.0](https://github.com/rust-random/rand)
-* [rand_core 0.6.2](https://github.com/rust-random/rand)
+* [rand 0.8.4](https://github.com/rust-random/rand)
+* [rand_chacha 0.3.1](https://github.com/rust-random/rand)
+* [rand_core 0.6.3](https://github.com/rust-random/rand)
 
 
 ```
@@ -2717,7 +2717,7 @@ limitations under the License.
 
 **Used By:**
 
-* [mozjpeg-sys 0.12.4](https://github.com/kornelski/mozjpeg-sys.git)
+* [mozjpeg-sys 0.12.5](https://github.com/kornelski/mozjpeg-sys.git)
 
 
 ```
@@ -3050,10 +3050,10 @@ SOFTWARE.
 **Used By:**
 
 * [argyle 0.4.2](https://github.com/Blobfolio/argyle)
-* [dactyl 0.1.7](https://github.com/Blobfolio/dactyl)
+* [dactyl 0.1.8](https://github.com/Blobfolio/dactyl)
 * [dowser 0.2.4](https://github.com/Blobfolio/dowser)
-* [flaca 1.7.0](https://crates.io/crates/flaca)
-* [fyi_msg 0.7.1](https://github.com/Blobfolio/fyi)
+* [flaca 1.7.1](https://crates.io/crates/flaca)
+* [fyi_msg 0.8.1](https://github.com/Blobfolio/fyi)
 
 
 ```

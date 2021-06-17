@@ -1,5 +1,7 @@
 # Flaca
 
+[![Build Status](https://github.com/Blobfolio/flaca/workflows/Build/badge.svg)](https://github.com/Blobfolio/flaca/actions)
+
 Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of maximally, **losslessly** compressing JPEG and PNG images for use in production **web environments**.
 
 It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a JPEG, but calculating the optimal construction for a PNG can take a lot of work!
@@ -22,22 +24,24 @@ As a general rule, you should _not_ try to feed your entire personal media libra
 
 ## Installation
 
-Debian and Ubuntu users (and probably Arch Linux users too) can just grab the pre-built `.deb` package from the [release page](https://github.com/Blobfolio/flaca/releases/latest).
+Debian and Ubuntu users can just grab the pre-built `.deb` package from the [latest release](https://github.com/Blobfolio/flaca/releases/latest).
 
-Flaca is written in [Rust](https://www.rust-lang.org/), though, so can be built from source on other Linux distributions (Fedora, etc.) using `Cargo`:
+This application is written in [Rust](https://www.rust-lang.org/) and can alternatively be built from source using [Cargo](https://github.com/rust-lang/cargo):
 
-```
-# Clone the repository.
+```bash
+# Clone the source.
 git clone https://github.com/Blobfolio/flaca.git
 
-# Move into the directory.
+# Go to it.
 cd flaca
 
-# Build with Cargo. Feel free to add other build flags as desired.
+# Build as usual. Specify additional flags as desired.
 cargo build \
     --bin flaca \
     --release
 ```
+
+(This should work under other 64-bit Unix environments too, like MacOS.)
 
 In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`, `git`, `make`, and the dev libraries for `libjpeg` and `libpng`.
 
