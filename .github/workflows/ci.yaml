@@ -55,4 +55,4 @@ jobs:
 
     - name: Clippy
       run: |
-        cargo clippy --release --all-features --target ${{ matrix.target }}
+        cargo clippy --release --target ${{ matrix.target }}
