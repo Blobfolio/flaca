@@ -5,7 +5,7 @@ License details for project dependencies are listed below.
 ## Overview of Licenses:
 
 * Apache License 2.0 (14)
-* MIT License (9)
+* MIT License (8)
 * Independent JPEG Group License (1)
 * Do What The F*ck You Want To Public License (1)
 * zlib License (1)
@@ -239,12 +239,13 @@ limitations under the License.
 * [crossbeam-utils 0.8.5](https://github.com/crossbeam-rs/crossbeam)
 * [deflate 0.8.6](https://github.com/image-rs/deflate-rs)
 * [either 1.6.1](https://github.com/bluss/either)
-* [hashbrown 0.9.1](https://github.com/rust-lang/hashbrown)
-* [indexmap 1.6.2](https://github.com/bluss/indexmap)
+* [hashbrown 0.11.2](https://github.com/rust-lang/hashbrown)
+* [indexmap 1.7.0](https://github.com/bluss/indexmap)
 * [itertools 0.10.1](https://github.com/rust-itertools/itertools)
 * [lazy_static 1.4.0](https://github.com/rust-lang-nursery/lazy-static.rs)
 * [libc 0.2.97](https://github.com/rust-lang/libc)
-* [libdeflater 0.7.1](https://github.com/adamkewley/libdeflater)
+* [libdeflate-sys 0.7.3](https://github.com/adamkewley/libdeflater)
+* [libdeflater 0.7.3](https://github.com/adamkewley/libdeflater)
 * [num-integer 0.1.44](https://github.com/rust-num/num-integer)
 * [num-iter 0.1.42](https://github.com/rust-num/num-iter)
 * [num-rational 0.3.2](https://github.com/rust-num/num-rational)
@@ -967,7 +968,6 @@ limitations under the License.
 
 * [cloudflare-zlib 0.2.9](https://gitlab.com/kornelski/cloudflare-zlib-sys)
 * [cloudflare-zlib-sys 0.3.0](https://gitlab.com/kornelski/cloudflare-zlib-sys)
-* [libdeflate-sys 0.7.1](https://github.com/adamkewley/libdeflater)
 
 
 ```
@@ -3013,38 +3013,6 @@ SOFTWARE.
 
 ```
 
-### MIT License
-
-**Used By:**
-
-* [tempfile-fast 0.3.3](https://github.com/FauxFaux/tempfile-fast-rs)
-
-
-```
-MIT License
-
-Copyright (c) 2017 Chris West
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-```
-
 ### Do What The F*ck You Want To Public License
 
 **Used By:**
@@ -3052,8 +3020,9 @@ SOFTWARE.
 * [argyle 0.4.2](https://github.com/Blobfolio/argyle)
 * [dactyl 0.1.8](https://github.com/Blobfolio/dactyl)
 * [dowser 0.2.4](https://github.com/Blobfolio/dowser)
-* [flaca 1.7.1](https://crates.io/crates/flaca)
+* [flaca 1.7.2](https://crates.io/crates/flaca)
 * [fyi_msg 0.8.1](https://github.com/Blobfolio/fyi)
+* [write_atomic 0.1.0](https://github.com/Blobfolio/write_atomic)
 
 
 ```
