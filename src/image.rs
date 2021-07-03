@@ -69,8 +69,7 @@ impl FlacaImage<'_> {
 
 		// Save the newer, smaller version!
 		if changed {
-			tempfile_fast::Sponge::new_for(self.file)
-				.and_then(|mut out| out.write_all(&self.data).and_then(|_| out.commit()))
+			write_atomic::write_file(self.file, &self.data)
 				.map_err(|_| FlacaError::WriteFail)?;
 		}
 
