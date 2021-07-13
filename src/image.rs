@@ -6,6 +6,7 @@ use crate::{
 	FlacaError,
 	ImageKind,
 };
+use once_cell::sync::Lazy;
 use std::{
 	convert::TryFrom,
 	ffi::OsStr,
@@ -115,35 +116,32 @@ impl FlacaImage<'_> {
 			Options,
 		};
 
-		lazy_static::lazy_static! {
-			// The options will remain the same for each run.
-			static ref OPTS: Options = {
-				let mut o: Options = Options::from_preset(3);
+		static OPTS: Lazy<Options> = Lazy::new(|| {
+			let mut o: Options = Options::from_preset(3);
 
-				// Alpha optimizations.
-				o.alphas.insert(AlphaOptim::Black);
-				o.alphas.insert(AlphaOptim::Down);
-				o.alphas.insert(AlphaOptim::Left);
-				o.alphas.insert(AlphaOptim::Right);
-				o.alphas.insert(AlphaOptim::Up);
-				o.alphas.insert(AlphaOptim::White);
+			// Alpha optimizations.
+			o.alphas.insert(AlphaOptim::Black);
+			o.alphas.insert(AlphaOptim::Down);
+			o.alphas.insert(AlphaOptim::Left);
+			o.alphas.insert(AlphaOptim::Right);
+			o.alphas.insert(AlphaOptim::Up);
+			o.alphas.insert(AlphaOptim::White);
 
-				// The alternative deflater seems to perform the same or better
-				// than the default, so I guess that's what we're going to use!
-				o.deflate = Deflaters::Libdeflater;
+			// The alternative deflater seems to perform the same or better
+			// than the default, so I guess that's what we're going to use!
+			o.deflate = Deflaters::Libdeflater;
 
-				// Fix errors when possible.
-				o.fix_errors = true;
+			// Fix errors when possible.
+			o.fix_errors = true;
 
-				// Strip interlacing.
-				o.interlace.replace(0);
+			// Strip interlacing.
+			o.interlace.replace(0);
 
-				// Strip what can be safely stripped.
-				o.strip = Headers::All;
+			// Strip what can be safely stripped.
+			o.strip = Headers::All;
 
-				o
-			};
-		}
+			o
+		});
 
 		// This pass can be done without needless file I/O! Hurray!
 		Ok(self.maybe_update(

@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.7.2"
+version = "1.7.3"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
@@ -77,8 +77,8 @@ items = [
 argyle = "0.4.*"
 ctrlc = "3.1.*"
 dowser = "0.2.*"
-lazy_static = "1.4.*"
 libc = "0.2.*"
+once_cell = "1.8.*"
 rayon = "1.5.*"
 tempfile = "3.2.*"
 write_atomic = "0.1.*"
@@ -92,7 +92,7 @@ version = "0.12.5"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
-version = "4.0.*"
+version = "5.0.*"
 default-features = false
 features = [ "libdeflater" ]
 
