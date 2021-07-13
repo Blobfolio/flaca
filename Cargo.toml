@@ -92,7 +92,7 @@ version = "0.12.5"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
-version = "4.0.*"
+version = "5.0.*"
 default-features = false
 features = [ "libdeflater" ]
 
