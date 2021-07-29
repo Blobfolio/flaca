@@ -894,7 +894,7 @@ limitations under the License.
 
 **Used By:**
 
-* [bytemuck 1.7.0](https://github.com/Lokathor/bytemuck)
+* [bytemuck 1.7.2](https://github.com/Lokathor/bytemuck)
 
 
 ```
@@ -2929,7 +2929,7 @@ limitations under the License.
 
 **Used By:**
 
-* [mozjpeg-sys 0.12.5](https://github.com/kornelski/mozjpeg-sys.git)
+* [mozjpeg-sys 1.0.0](https://github.com/kornelski/mozjpeg-sys.git)
 
 
 ```
@@ -3232,7 +3232,7 @@ SOFTWARE.
 * [argyle 0.4.2](https://github.com/Blobfolio/argyle)
 * [dactyl 0.1.8](https://github.com/Blobfolio/dactyl)
 * [dowser 0.2.4](https://github.com/Blobfolio/dowser)
-* [flaca 1.7.3](https://crates.io/crates/flaca)
+* [flaca 1.7.4](https://crates.io/crates/flaca)
 * [fyi_msg 0.8.1](https://github.com/Blobfolio/fyi)
 * [write_atomic 0.1.0](https://github.com/Blobfolio/write_atomic)
 
