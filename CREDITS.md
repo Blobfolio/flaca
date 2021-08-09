@@ -234,7 +234,7 @@ limitations under the License.
 * [bitflags 1.2.1](https://github.com/bitflags/bitflags)
 * [cfg-if 1.0.0](https://github.com/alexcrichton/cfg-if)
 * [crossbeam-channel 0.5.1](https://github.com/crossbeam-rs/crossbeam)
-* [crossbeam-deque 0.8.0](https://github.com/crossbeam-rs/crossbeam)
+* [crossbeam-deque 0.8.1](https://github.com/crossbeam-rs/crossbeam)
 * [crossbeam-epoch 0.9.5](https://github.com/crossbeam-rs/crossbeam)
 * [crossbeam-utils 0.8.5](https://github.com/crossbeam-rs/crossbeam)
 * [deflate 0.8.6](https://github.com/image-rs/deflate-rs)
