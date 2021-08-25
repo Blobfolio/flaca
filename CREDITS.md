@@ -234,7 +234,7 @@ limitations under the License.
 * [bitflags 1.2.1](https://github.com/bitflags/bitflags)
 * [cfg-if 1.0.0](https://github.com/alexcrichton/cfg-if)
 * [crossbeam-channel 0.5.1](https://github.com/crossbeam-rs/crossbeam)
-* [crossbeam-deque 0.8.0](https://github.com/crossbeam-rs/crossbeam)
+* [crossbeam-deque 0.8.1](https://github.com/crossbeam-rs/crossbeam)
 * [crossbeam-epoch 0.9.5](https://github.com/crossbeam-rs/crossbeam)
 * [crossbeam-utils 0.8.5](https://github.com/crossbeam-rs/crossbeam)
 * [deflate 0.8.6](https://github.com/image-rs/deflate-rs)
@@ -243,7 +243,7 @@ limitations under the License.
 * [indexmap 1.7.0](https://github.com/bluss/indexmap)
 * [itertools 0.10.1](https://github.com/rust-itertools/itertools)
 * [lazy_static 1.4.0](https://github.com/rust-lang-nursery/lazy-static.rs)
-* [libc 0.2.98](https://github.com/rust-lang/libc)
+* [libc 0.2.100](https://github.com/rust-lang/libc)
 * [libdeflate-sys 0.7.3](https://github.com/adamkewley/libdeflater)
 * [libdeflater 0.7.3](https://github.com/adamkewley/libdeflater)
 * [num-integer 0.1.44](https://github.com/rust-num/num-integer)
@@ -1688,7 +1688,7 @@ limitations under the License.
 
 **Used By:**
 
-* [ctrlc 3.1.9](https://github.com/Detegr/rust-ctrlc.git)
+* [ctrlc 3.2.0](https://github.com/Detegr/rust-ctrlc.git)
 
 
 ```
@@ -3134,7 +3134,7 @@ SOFTWARE.
 
 **Used By:**
 
-* [nix 0.20.0](https://github.com/nix-rust/nix)
+* [nix 0.22.1](https://github.com/nix-rust/nix)
 
 
 ```
@@ -3232,7 +3232,7 @@ SOFTWARE.
 * [argyle 0.4.2](https://github.com/Blobfolio/argyle)
 * [dactyl 0.1.8](https://github.com/Blobfolio/dactyl)
 * [dowser 0.2.4](https://github.com/Blobfolio/dowser)
-* [flaca 1.7.4](https://crates.io/crates/flaca)
+* [flaca 1.7.5](https://crates.io/crates/flaca)
 * [fyi_msg 0.8.1](https://github.com/Blobfolio/fyi)
 * [write_atomic 0.1.0](https://github.com/Blobfolio/write_atomic)
 

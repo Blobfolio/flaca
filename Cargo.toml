@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.7.4"
+version = "1.7.5"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2018"
@@ -25,7 +25,7 @@ Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of lossle
 .\n\
 Under the hood, it uses MozJPEG for lossless JPEG (re)compression, and Oxipng/Zopflipng for lossless PNG (re)compression."""
 revision = "1"
-depends = "$auto, libjpeg-turbo-progs, libturbojpeg1 | libjpeg62-turbo | libjpeg-turbo8"
+depends = "libc6 (>= 2.18), libgcc1 (>= 1:4.2) | libgcc-s1 (>= 4.2), libstdc++6 (>= 6)"
 section = "utility"
 assets = [
     ["./target/x86_64-unknown-linux-gnu/release/flaca", "usr/bin/", "755"],
@@ -75,7 +75,7 @@ items = [
 
 [dependencies]
 argyle = "0.4.*"
-ctrlc = "3.1.*"
+ctrlc = "3.2.*"
 dowser = "0.2.*"
 libc = "0.2.*"
 once_cell = "1.8.*"
