@@ -75,17 +75,17 @@ items = [
 ]
 
 [dependencies]
-argyle = "0.4.*"
+argyle = "0.5.*"
 ctrlc = "3.2.*"
-dowser = "0.2.*"
+dowser = "0.3.*"
 libc = "0.2.*"
 once_cell = "1.8.*"
 rayon = "1.5.*"
 tempfile = "3.2.*"
-write_atomic = "0.1.*"
+write_atomic = "0.2.*"
 
 [dependencies.fyi_msg]
-version = "0.8.*"
+version = "0.9.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
