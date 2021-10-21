@@ -8,7 +8,6 @@ use crate::{
 };
 use once_cell::sync::Lazy;
 use std::{
-	convert::TryFrom,
 	ffi::OsStr,
 	fs,
 	io::Write,

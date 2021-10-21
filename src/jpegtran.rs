@@ -53,7 +53,6 @@ use mozjpeg_sys::{
 	JXFORM_CODE_JXFORM_NONE,
 };
 use std::{
-	convert::TryFrom,
 	mem,
 	ptr,
 	slice,
