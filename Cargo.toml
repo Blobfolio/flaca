@@ -89,7 +89,7 @@ version = "0.9.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
-version = "1.0.0"
+version = "1.0.*"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
