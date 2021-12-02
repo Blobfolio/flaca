@@ -6,16 +6,18 @@ License details for project dependencies are listed below.
 
 * Apache License 2.0 (16)
 * MIT License (9)
-* zlib License (3)
+* zlib License (2)
 * Independent JPEG Group License (1)
 * Do What The F*ck You Want To Public License (1)
+
 ## Complete Licenses:
 
 ### Apache License 2.0
 
 **Used By:**
 
-* [miniz_oxide 0.4.4](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
+* [miniz_oxide 0.5.1](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
+
 ```
 
                                  Apache License
@@ -202,6 +204,7 @@ License details for project dependencies are listed below.
 **Used By:**
 
 * [crc-catalog 1.1.1](https://github.com/akhilles/crc-catalog.git)
+
 ```
                                  Apache License
                            Version 2.0, January 2004
@@ -412,6 +415,7 @@ License details for project dependencies are listed below.
 **Used By:**
 
 * [bytecount 0.6.2](https://github.com/llogiq/bytecount)
+
 ```
                                  Apache License
                            Version 2.0, January 2004
@@ -621,7 +625,8 @@ License details for project dependencies are listed below.
 
 **Used By:**
 
-* [crc32fast 1.2.1](https://github.com/srijs/rust-crc32fast)
+* [crc32fast 1.3.0](https://github.com/srijs/rust-crc32fast)
+
 ```
                                  Apache License
                            Version 2.0, January 2004
@@ -833,6 +838,7 @@ License details for project dependencies are listed below.
 **Used By:**
 
 * [crc 2.1.0](https://github.com/mrhooray/crc-rs.git)
+
 ```
                               Apache License
                         Version 2.0 January 2004
@@ -1043,6 +1049,7 @@ limitations under the License.
 **Used By:**
 
 * [ctrlc 3.2.1](https://github.com/Detegr/rust-ctrlc.git)
+
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -1253,6 +1260,7 @@ limitations under the License.
 **Used By:**
 
 * [ppv-lite86 0.2.15](https://github.com/cryptocorrosion/cryptocorrosion)
+
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -1463,7 +1471,7 @@ limitations under the License.
 **Used By:**
 
 * [ahash 0.7.6](https://github.com/tkaitchuck/ahash)
-* [atomic 0.5.0](https://github.com/Amanieu/atomic-rs)
+* [atomic 0.5.1](https://github.com/Amanieu/atomic-rs)
 * [bitflags 1.3.2](https://github.com/bitflags/bitflags)
 * [cfg-if 1.0.0](https://github.com/alexcrichton/cfg-if)
 * [crossbeam-channel 0.5.1](https://github.com/crossbeam-rs/crossbeam)
@@ -1476,7 +1484,7 @@ limitations under the License.
 * [indexmap 1.7.0](https://github.com/bluss/indexmap)
 * [itertools 0.10.1](https://github.com/rust-itertools/itertools)
 * [lazy_static 1.4.0](https://github.com/rust-lang-nursery/lazy-static.rs)
-* [libc 0.2.106](https://github.com/rust-lang/libc)
+* [libc 0.2.108](https://github.com/rust-lang/libc)
 * [libdeflate-sys 0.7.3](https://github.com/adamkewley/libdeflater)
 * [libdeflater 0.7.3](https://github.com/adamkewley/libdeflater)
 * [num-integer 0.1.44](https://github.com/rust-num/num-integer)
@@ -1492,6 +1500,7 @@ limitations under the License.
 * [tempfile 3.2.0](https://github.com/Stebalien/tempfile)
 * [term_size 0.3.2](https://github.com/kbknapp/term_size-rs.git)
 * [unicode-width 0.1.9](https://github.com/unicode-rs/unicode-width)
+
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -1702,6 +1711,7 @@ limitations under the License.
 **Used By:**
 
 * [bit-vec 0.6.3](https://github.com/contain-rs/bit-vec)
+
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -1915,6 +1925,7 @@ limitations under the License.
 * [rand 0.8.4](https://github.com/rust-random/rand)
 * [rand_chacha 0.3.1](https://github.com/rust-random/rand)
 * [rand_core 0.6.3](https://github.com/rust-random/rand)
+
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -2125,6 +2136,7 @@ limitations under the License.
 **Used By:**
 
 * [adler 1.0.2](https://github.com/jonas-schievink/adler.git)
+
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -2335,6 +2347,7 @@ limitations under the License.
 **Used By:**
 
 * [log 0.4.14](https://github.com/rust-lang/log)
+
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -2545,6 +2558,7 @@ limitations under the License.
 **Used By:**
 
 * [remove_dir_all 0.5.3](https://github.com/XAMPPRocky/remove_dir_all.git)
+
 ```
                               Apache License
                         Version 2.0, January 2004
@@ -2746,6 +2760,7 @@ limitations under the License.
 
 * [cloudflare-zlib 0.2.9](https://gitlab.com/kornelski/cloudflare-zlib-sys)
 * [cloudflare-zlib-sys 0.3.0](https://gitlab.com/kornelski/cloudflare-zlib-sys)
+
 ```
 Apache License
 Version 2.0, January 2004
@@ -2828,6 +2843,7 @@ limitations under the License.
 **Used By:**
 
 * [bytemuck 1.7.2](https://github.com/Lokathor/bytemuck)
+
 ```
 Apache License
 Version 2.0, January 2004
@@ -2898,6 +2914,7 @@ limitations under the License.
 **Used By:**
 
 * [unicode-width 0.1.9](https://github.com/unicode-rs/unicode-width)
+
 ```
 Licensed under the Apache License, Version 2.0
 <LICENSE-APACHE or
@@ -2914,6 +2931,7 @@ according to those terms.
 **Used By:**
 
 * [mozjpeg-sys 1.0.1](https://github.com/kornelski/mozjpeg-sys.git)
+
 ```
 Independent JPEG Group License
 
@@ -2961,6 +2979,7 @@ We are required to state that
 **Used By:**
 
 * [memoffset 0.6.4](https://github.com/Gilnaa/memoffset)
+
 ```
 Copyright (c) 2017 Gilad Naaman
 
@@ -2988,6 +3007,7 @@ SOFTWARE.
 **Used By:**
 
 * [miniz_oxide 0.3.7](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
+
 ```
 MIT License
 
@@ -3018,6 +3038,7 @@ SOFTWARE.
 **Used By:**
 
 * [rgb 0.8.29](https://github.com/kornelski/rust-rgb)
+
 ```
 MIT License
 
@@ -3048,6 +3069,7 @@ SOFTWARE.
 **Used By:**
 
 * [image 0.23.14](https://github.com/image-rs/image)
+
 ```
 The MIT License (MIT)
 
@@ -3077,6 +3099,7 @@ SOFTWARE.
 **Used By:**
 
 * [byteorder 1.4.3](https://github.com/BurntSushi/byteorder)
+
 ```
 The MIT License (MIT)
 
@@ -3107,6 +3130,7 @@ THE SOFTWARE.
 **Used By:**
 
 * [nix 0.23.0](https://github.com/nix-rust/nix)
+
 ```
 The MIT License (MIT)
 
@@ -3137,6 +3161,7 @@ THE SOFTWARE.
 **Used By:**
 
 * [color_quant 1.1.0](https://github.com/image-rs/color_quant.git)
+
 ```
 The MIT License (MIT)
 
@@ -3166,7 +3191,8 @@ SOFTWARE.
 
 **Used By:**
 
-* [oxipng 5.0.0](https://github.com/shssoichiro/oxipng)
+* [oxipng 5.0.1](https://github.com/shssoichiro/oxipng)
+
 ```
 The MIT License (MIT)
 Copyright (c) 2016 Joshua Holmer
@@ -3196,6 +3222,7 @@ SOFTWARE.
 **Used By:**
 
 * [byteorder 1.4.3](https://github.com/BurntSushi/byteorder)
+
 ```
 This project is dual-licensed under the Unlicense and MIT licenses.
 
@@ -3207,12 +3234,13 @@ You may use this code under the terms of either license.
 
 **Used By:**
 
-* [argyle 0.5.0](https://github.com/Blobfolio/argyle)
-* [dactyl 0.2.0](https://github.com/Blobfolio/dactyl)
+* [argyle 0.5.1](https://github.com/Blobfolio/argyle)
+* [dactyl 0.2.1](https://github.com/Blobfolio/dactyl)
 * [dowser 0.3.0](https://github.com/Blobfolio/dowser)
-* [flaca 1.7.8](https://crates.io/crates/flaca)
-* [fyi_msg 0.9.0](https://github.com/Blobfolio/fyi)
+* [flaca 1.7.9](https://crates.io/crates/flaca)
+* [fyi_msg 0.9.2](https://github.com/Blobfolio/fyi)
 * [write_atomic 0.2.0](https://github.com/Blobfolio/write_atomic)
+
 ```
 DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
 Version 2, December 2004
@@ -3234,53 +3262,8 @@ TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
 **Used By:**
 
-* [cloudflare-zlib-sys 0.3.0](https://gitlab.com/kornelski/cloudflare-zlib-sys)
-```
-/* adler32_simd.h
- *
- * (C) 1995-2013 Jean-loup Gailly and Mark Adler
- *
- * This software is provided 'as-is', without any express or implied
- * warranty.  In no event will the authors be held liable for any damages
- * arising from the use of this software.
- *
- * Permission is granted to anyone to use this software for any purpose,
- * including commercial applications, and to alter it and redistribute it
- * freely, subject to the following restrictions:
- *
- * 1. The origin of this software must not be misrepresented; you must not
- *    claim that you wrote the original software. If you use this software
- *    in a product, an acknowledgment in the product documentation would be
- *    appreciated but is not required.
- * 2. Altered source versions must be plainly marked as such, and must not be
- *    misrepresented as being the original software.
- * 3. This notice may not be removed or altered from any source distribution.
- *
- * Jean-loup Gailly        Mark Adler
- * jloup@gzip.org          madler@alumni.caltech.edu
- *
- * Copyright 2017 The Chromium Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style license that can be
- * found in the Chromium source repository LICENSE file.
- */
-
-#include <stdint.h>
-
-#include "zconf.h"
-#include "zutil.h"
-
-uint32_t ZLIB_INTERNAL adler32_simd_(
-    uint32_t adler,
-    const unsigned char *buf,
-    unsigned long len);
-
-```
-
-### zlib License
-
-**Used By:**
-
 * [adler32 1.2.0](https://github.com/remram44/adler32-rs)
+
 ```
 Copyright notice for the Rust port:
 
@@ -3333,6 +3316,8 @@ Copyright notice for the original C code from the zlib project:
 **Used By:**
 
 * [cloudflare-zlib 0.2.9](https://gitlab.com/kornelski/cloudflare-zlib-sys)
+* [cloudflare-zlib-sys 0.3.0](https://gitlab.com/kornelski/cloudflare-zlib-sys)
+
 ```
 zlib License
 
