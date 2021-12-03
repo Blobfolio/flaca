@@ -41,9 +41,6 @@ rustflags   := "-C link-arg=-s"
 
 # Build Debian package!
 @build-deb: credits build
-	# Do completions/man.
-	cargo bashman -m "{{ justfile_directory() }}/Cargo.toml"
-
 	# cargo-deb doesn't support target_dir flags yet.
 	[ ! -d "{{ justfile_directory() }}/target" ] || rm -rf "{{ justfile_directory() }}/target"
 	mv "{{ cargo_dir }}" "{{ justfile_directory() }}/target"
@@ -52,7 +49,7 @@ rustflags   := "-C link-arg=-s"
 	cargo-deb \
 		--no-build \
 		-p {{ pkg_id }} \
-		-o "{{ justfile_directory() }}/release" \
+		-o "{{ release_dir }}" \
 		--target x86_64-unknown-linux-gnu
 
 	just _fix-chown "{{ release_dir }}"
@@ -93,15 +90,8 @@ rustflags   := "-C link-arg=-s"
 
 # Generate CREDITS.
 @credits:
-	# Update CREDITS.html.
-	cargo about \
-		generate \
-		-m "{{ justfile_directory() }}/Cargo.toml" \
-		"{{ release_dir }}/credits/about.hbs" > "{{ justfile_directory() }}/CREDITS.md"
-
-	# Fix line endings.
-	sd '\r\n' '\n' "{{ justfile_directory() }}/CREDITS.md"
-
+	cargo bashman -m "{{ justfile_directory() }}/Cargo.toml"
+	echo '| [zopflipng](https://github.com/google/zopfli) | | Google | Apache-2.0 |' >> "{{ justfile_directory() }}/CREDITS.md"
 	just _fix-chown "{{ justfile_directory() }}/CREDITS.md"
 
 
