@@ -30,7 +30,7 @@ rustflags   := "-C link-arg=-s"
 
 
 # Build Release!
-@build: clean
+@build:
 	# First let's build the Rust bit.
 	RUSTFLAGS="--emit asm {{ rustflags }}" cargo build \
 		--bin "{{ pkg_id }}" \
@@ -40,7 +40,7 @@ rustflags   := "-C link-arg=-s"
 
 
 # Build Debian package!
-@build-deb: credits build
+@build-deb: clean credits build
 	# cargo-deb doesn't support target_dir flags yet.
 	[ ! -d "{{ justfile_directory() }}/target" ] || rm -rf "{{ justfile_directory() }}/target"
 	mv "{{ cargo_dir }}" "{{ justfile_directory() }}/target"
