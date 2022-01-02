@@ -11,6 +11,19 @@ use std::{
 	},
 };
 
+macro_rules! cmd {
+	($cmd:expr, $oops:literal) => (
+		assert!(
+			$cmd
+				.stdout(Stdio::null())
+				.stderr(Stdio::null())
+				.status()
+				.map_or(false, |s| s.success()),
+			$oops
+		);
+	);
+}
+
 /// # Build Zopflipng.
 ///
 /// Rust's Zopfli implementation is insufficient for our needs; we have to
@@ -27,51 +40,36 @@ pub fn main() {
 	}
 
 	// Clone the repository.
-	assert!(
+	cmd!(
 		Command::new("git")
 			.args(&[
 				OsStr::new("clone"),
 				OsStr::new("https://github.com/google/zopfli"),
 				repo.as_os_str(),
-			])
-			.stdout(Stdio::null())
-			.stderr(Stdio::null())
-			.status()
-			.map_or(false, |s| s.success()),
+			]),
 		"Unable to clone Zopfli repo."
 	);
 
-	// Local patch path.
-	let patch = std::fs::canonicalize(
-		PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")
-			.expect("Missing Manifest Dir"))
-			.join("skel/zopfli.patch")
-	).expect("Missing Zopfli patch.");
+	// Checkout a specific commit for reproducibility.
+	cmd!(
+		Command::new("git").current_dir(&repo).args(&["checkout", "831773b"]),
+		"Unable to checkout Zopfli repo."
+	);
 
 	// Apply the patch so we can build the binary with LTO.
-	assert!(
+	cmd!(
 		Command::new("git")
 			.current_dir(&repo)
 			.args(&[
 				OsStr::new("apply"),
-				patch.as_os_str(),
-			])
-			.stdout(Stdio::null())
-			.stderr(Stdio::null())
-			.status()
-			.map_or(false, |s| s.success()),
+				in_path("skel/zopfli.patch").as_os_str(),
+			]),
 		"Unable to patch Zopfli."
 	);
 
 	// Build it.
-	assert!(
-		Command::new("make")
-		.current_dir(&repo)
-		.args(&["zopflipng"])
-		.stdout(Stdio::null())
-		.stderr(Stdio::null())
-		.status()
-		.map_or(false, |s| s.success()),
+	cmd!(
+		Command::new("make").current_dir(&repo).args(&["zopflipng"]),
 		"Unable to build Zopflipng."
 	);
 
@@ -90,7 +88,7 @@ pub fn main() {
 	assert!(
 		Command::new(&bin)
 			.current_dir(&repo)
-			.args(&["-h"])
+			.arg("-h")
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
 			.output()
@@ -99,12 +97,22 @@ pub fn main() {
 	);
 }
 
+/// # In path.
+///
+/// This generates a (file/dir) path relative to `MANIFEST_DIR`.
+fn in_path(name: &str) -> PathBuf {
+	let dir = std::env::var("CARGO_MANIFEST_DIR").expect("Missing CARGO_MANIFEST_DIR.");
+	std::fs::canonicalize(dir)
+		.expect("Missing CARGO_MANIFEST_DIR.")
+		.join(name)
+}
+
 /// # Out path.
 ///
 /// This generates a (file/dir) path relative to `OUT_DIR`.
 fn out_path(name: &str) -> PathBuf {
 	let dir = std::env::var("OUT_DIR").expect("Missing OUT_DIR.");
-	let mut out = std::fs::canonicalize(dir).expect("Missing OUT_DIR.");
-	out.push(name);
-	out
+	std::fs::canonicalize(dir)
+		.expect("Missing OUT_DIR.")
+		.join(name)
 }
