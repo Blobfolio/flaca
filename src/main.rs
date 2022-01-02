@@ -208,7 +208,7 @@ fn _main() -> Result<(), FlacaError> {
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
 				// Encode if we can.
-				if let Ok(mut enc) = FlacaImage::try_from((x, &tmpdir)) {
+				if let Ok(mut enc) = FlacaImage::new(x, &tmpdir) {
 					let tmp = x.to_string_lossy();
 					progress.add(&tmp);
 					let _res = enc.compress();
@@ -240,7 +240,7 @@ fn _main() -> Result<(), FlacaError> {
 		// Process!
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
-				if let Ok(mut enc) = FlacaImage::try_from((x, &tmpdir)) {
+				if let Ok(mut enc) = FlacaImage::new(x, &tmpdir) {
 					let _res = enc.compress();
 				}
 			}

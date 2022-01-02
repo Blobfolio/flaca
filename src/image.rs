@@ -11,7 +11,10 @@ use std::{
 	ffi::OsStr,
 	fs,
 	io::Write,
-	path::PathBuf,
+	path::{
+		Path,
+		PathBuf,
+	},
 	process::{
 		Command,
 		Stdio,
@@ -26,26 +29,31 @@ use std::{
 /// This struct holds the state of a given image, updating the file if
 /// compression yields any savings.
 pub struct FlacaImage<'a> {
-	file: &'a PathBuf,
+	file: &'a Path,
 	kind: ImageKind,
 	data: Vec<u8>,
-	tmpdir: &'a PathBuf,
+	tmpdir: &'a Path,
 }
 
-impl<'a> TryFrom<(&'a PathBuf, &'a PathBuf)> for FlacaImage<'a> {
-	type Error = FlacaError;
-
-	/// # From (Image Path, Tmp Dir Path).
-	fn try_from(src: (&'a PathBuf, &'a PathBuf)) -> Result<Self, Self::Error> {
-		// Load the image data.
-		let data = fs::read(src.0).map_err(|_| FlacaError::ReadFail)?;
+impl<'a> FlacaImage<'a> {
+	/// # New.
+	///
+	/// Create a wrapper for a raw image.
+	///
+	/// ## Errors
+	///
+	/// This will return an error if the image is unreadable or invalid.
+	pub fn new(file: &'a Path, tmpdir: &'a Path) -> Result<Self, FlacaError> {
+		// Try to load the data.
+		let data = fs::read(file).map_err(|_| FlacaError::ReadFail)?;
 		if data.is_empty() { Err(FlacaError::EmptyFile) }
+		// Return the result!
 		else {
 			Ok(Self {
-				file: src.0,
+				file,
 				kind: ImageKind::try_from(data.as_slice())?,
 				data,
-				tmpdir: src.1,
+				tmpdir,
 			})
 		}
 	}
@@ -226,13 +234,8 @@ impl FlacaImage<'_> {
 	fn init_zopfli(&self) -> Result<PathBuf, FlacaError> {
 		use std::os::unix::fs::PermissionsExt;
 
-		let zpath = {
-			let mut dir = self.tmpdir.clone();
-			dir.push("zopflipng");
-			dir
-		};
-
 		// Extract if it doesn't already exist.
+		let zpath: PathBuf = self.tmpdir.join("zopflipng");
 		if ! zpath.is_file() {
 			let mut file = std::fs::File::create(&zpath)
 				.map_err(|_| FlacaError::TmpDir)?;
