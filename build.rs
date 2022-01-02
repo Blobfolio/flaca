@@ -18,9 +18,17 @@ use std::{
 pub fn main() {
 	println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
 
-	// Git clone.
+	// Local repo path.
 	let repo = out_path("zopfli-git");
-	if ! repo.is_dir() && ! Command::new("git")
+
+	// If the folder already exists, nuke it.
+	if repo.is_dir() {
+		std::fs::remove_dir_all(&repo).expect("Unable to clear old repo.");
+	}
+
+	// Clone the repository.
+	assert!(
+		Command::new("git")
 			.args(&[
 				OsStr::new("clone"),
 				OsStr::new("https://github.com/google/zopfli"),
@@ -29,20 +37,43 @@ pub fn main() {
 			.stdout(Stdio::null())
 			.stderr(Stdio::null())
 			.status()
-			.map_or(false, |s| s.success()) {
-		panic!("Unable to clone Zopfli repo.");
-	}
+			.map_or(false, |s| s.success()),
+		"Unable to clone Zopfli repo."
+	);
+
+	// Local patch path.
+	let patch = std::fs::canonicalize(
+		PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")
+			.expect("Missing Manifest Dir"))
+			.join("skel/zopfli.patch")
+	).expect("Missing Zopfli patch.");
+
+	// Apply the patch so we can build the binary with LTO.
+	assert!(
+		Command::new("git")
+			.current_dir(&repo)
+			.args(&[
+				OsStr::new("apply"),
+				patch.as_os_str(),
+			])
+			.stdout(Stdio::null())
+			.stderr(Stdio::null())
+			.status()
+			.map_or(false, |s| s.success()),
+		"Unable to patch Zopfli."
+	);
 
 	// Build it.
-	if ! Command::new("make")
+	assert!(
+		Command::new("make")
 		.current_dir(&repo)
 		.args(&["zopflipng"])
 		.stdout(Stdio::null())
 		.stderr(Stdio::null())
 		.status()
-		.map_or(false, |s| s.success()) {
-		panic!("Unable to build Zopflipng.");
-	}
+		.map_or(false, |s| s.success()),
+		"Unable to build Zopflipng."
+	);
 
 	// The bin should exist now.
 	let bin = out_path("zopfli-git/zopflipng");
