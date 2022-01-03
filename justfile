@@ -22,6 +22,7 @@ pkg_dir1    := justfile_directory() + "/src"
 bench_dir   := "/tmp/bench-data"
 cargo_dir   := "/tmp/" + pkg_id + "-cargo"
 cargo_bin   := cargo_dir + "/x86_64-unknown-linux-gnu/release/" + pkg_id
+doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
@@ -93,6 +94,25 @@ rustflags   := "-C link-arg=-s"
 	cargo bashman -m "{{ justfile_directory() }}/Cargo.toml"
 	echo '| [zopflipng](https://github.com/google/zopfli) | | Google | Apache-2.0 |' >> "{{ justfile_directory() }}/CREDITS.md"
 	just _fix-chown "{{ justfile_directory() }}/CREDITS.md"
+
+
+# Build Docs.
+@doc:
+	# Make sure nightly is installed; this version generates better docs.
+	env RUSTUP_PERMIT_COPY_RENAME=true rustup install nightly
+
+	# Make the docs.
+	cargo +nightly doc \
+		--release \
+		--all-features \
+		--no-deps \
+		--target x86_64-unknown-linux-gnu \
+		--target-dir "{{ cargo_dir }}"
+
+	# Move the docs and clean up ownership.
+	[ ! -d "{{ doc_dir }}" ] || rm -rf "{{ doc_dir }}"
+	mv "{{ cargo_dir }}/x86_64-unknown-linux-gnu/doc" "{{ justfile_directory() }}"
+	just _fix-chown "{{ doc_dir }}"
 
 
 # Test Run.
