@@ -52,11 +52,11 @@ impl FlacaImage<'_> {
 	///
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
-	pub(super) fn compress(&mut self) -> Option<bool> {
+	pub(super) fn compress(&mut self) -> bool {
 		let changed: bool = match self.kind {
-			ImageKind::Jpeg => self.mozjpeg()?,
+			ImageKind::Jpeg => self.mozjpeg(),
 			ImageKind::Png => {
-				let a: bool = self.oxipng()?;
+				let a: bool = self.oxipng();
 				let b: bool = self.zopflipng();
 				a || b
 			},
@@ -64,10 +64,9 @@ impl FlacaImage<'_> {
 
 		// Save the newer, smaller version!
 		if changed {
-			write_atomic::write_file(self.file, &self.data).ok()?;
+			write_atomic::write_file(self.file, &self.data).is_ok()
 		}
-
-		Some(changed)
+		else { false }
 	}
 
 	#[inline]
@@ -82,9 +81,12 @@ impl FlacaImage<'_> {
 	///
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
-	fn mozjpeg(&mut self) -> Option<bool> {
-		let new = unsafe { super::jpegtran::jpegtran_mem(&self.data)? };
-		Some(self.maybe_update(&new))
+	fn mozjpeg(&mut self) -> bool {
+		unsafe { super::jpegtran::jpegtran_mem(&self.data) }
+			.map_or(
+				false,
+				|new| self.maybe_update(&new)
+			)
 	}
 
 	/// # Compress w/ `Oxipng`
@@ -102,7 +104,7 @@ impl FlacaImage<'_> {
 	///
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
-	fn oxipng(&mut self) -> Option<bool> {
+	fn oxipng(&mut self) -> bool {
 		use oxipng::{
 			AlphaOptim,
 			Deflaters,
@@ -138,8 +140,11 @@ impl FlacaImage<'_> {
 		});
 
 		// This pass can be done without needless file I/O! Hurray!
-		let new = oxipng::optimize_from_memory(&self.data, &OPTS).ok()?;
-		Some(self.maybe_update(&new))
+		oxipng::optimize_from_memory(&self.data, &OPTS)
+			.map_or(
+				false,
+				|new| self.maybe_update(&new)
+			)
 	}
 
 	/// # Compress w/ `Zopflipng`.
@@ -160,7 +165,7 @@ impl FlacaImage<'_> {
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
 	fn zopflipng(&mut self) -> bool {
-		crate::zopflipng::zopflipng_optimize(&self.data)
+		super::zopflipng::zopflipng_optimize(&self.data)
 			.map_or(
 				false,
 				|new| self.maybe_update(&new)
