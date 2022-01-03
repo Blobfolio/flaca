@@ -171,7 +171,7 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 
 	// Get an output buffer going.
 	let mut outbuffer: *mut c_uchar = ptr::null_mut();
-    let mut outsize: c_ulong = 0;
+	let mut outsize: c_ulong = 0;
 
 	// Turn on "progressive" and "code optimizing" for the output.
 	dstinfo.optimize_coding = true as boolean;

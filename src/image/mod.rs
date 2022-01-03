@@ -1,8 +1,14 @@
 /*!
-# Flaca: Lib
+# Flaca: Images!
 */
 
-use crate::ImageKind;
+mod jpegtran;
+mod kind;
+mod zopflipng;
+
+
+
+use kind::ImageKind;
 use once_cell::sync::Lazy;
 use std::{
 	fs,
@@ -82,7 +88,7 @@ impl FlacaImage<'_> {
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
 	fn mozjpeg(&mut self) -> bool {
-		unsafe { super::jpegtran::jpegtran_mem(&self.data) }
+		unsafe { jpegtran::jpegtran_mem(&self.data) }
 			.map_or(
 				false,
 				|new| self.maybe_update(&new)
@@ -165,7 +171,7 @@ impl FlacaImage<'_> {
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
 	fn zopflipng(&mut self) -> bool {
-		super::zopflipng::zopflipng_optimize(&self.data)
+		zopflipng::zopflipng_optimize(&self.data)
 			.map_or(
 				false,
 				|new| self.maybe_update(&new)

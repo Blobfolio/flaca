@@ -1,16 +1,20 @@
 /*!
 # Flaca: Zopflipng
 
-This contains FFI bindings to zopflipng.
+This contains FFI bindings to libzopflipng, equivalent to:
+```bash
+zopflipng -m <input> <output>
+```
+
+The bindings themselves have been manually transcribed below, but the project's
+`build.rs` includes the relevant `bindgen` notation — commented out — for
+reference.
 */
 
 #[allow(unused_extern_crates)] // This fixes a linker issue.
 extern crate link_cplusplus;
 
-use std::{
-	mem::ManuallyDrop,
-	os::raw::c_char,
-};
+use std::mem::ManuallyDrop;
 
 
 
@@ -205,28 +209,29 @@ pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 	let src_ptr = src.as_ptr();
 	let src_size: u64 = u64::try_from(src.len()).ok()?;
 
-	// Start an output buffer with a slightly larger capacity than the source,
-	// just in case zopfli makes things worse, then immediately dissolve it so
-	// we can play with the raw pointer.
-	let out_cap: usize = src.len().saturating_add(1_048_576);
+	// Start an output buffer that is up to 2MiB larger than the source file,
+	// just in case Zopfli makes a mess of things.
+	let out_cap: usize =
+		if src_size < 2_097_152 { src.len() * 2 }
+		else { src.len().saturating_add(2_097_152) };
 	let out: Vec<u8> = Vec::with_capacity(out_cap);
+
+	// We only actually need the space and pointer, so can dissolve the
+	// vector we just created. We'll create one from the raw parts at the end
+	// if everything works out.
 	let mut out = ManuallyDrop::new(out);
 	let mut out_ptr = out.as_mut_ptr();
 	let mut out_size: u64 = 0;
 
 	// Initialize the options equivalent to calling the binary with the `-m`
-	// flag. We aren't using either strategies or keepchunks, but the C struct
-	// wants mutable pointers to them, so we'll register them explicitly just
-	// in case.
-	let mut strat: Box<[raw::ZopfliPNGFilterStrategy]> = Box::from([]);
-	let mut keep: Box<[*mut c_char]> = Box::from([]);
+	// flag.
 	let options = raw::CZopfliPNGOptions {
 		lossy_transparent: false as _,
 		lossy_8bit: false as _,
-		filter_strategies: strat.as_mut_ptr(),
+		filter_strategies: std::ptr::null_mut(),
 		num_filter_strategies: 0,
 		auto_filter_strategy: true as _,
-		keepchunks: keep.as_mut_ptr(),
+		keepchunks: std::ptr::null_mut(),
 		num_keepchunks: 0,
 		use_zopfli: true as _,
 		num_iterations: 60,

@@ -1,5 +1,5 @@
 /*!
-# Flaca: Error
+# Flaca: Errors
 */
 
 use argyle::ArgyleError;

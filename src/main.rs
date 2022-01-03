@@ -84,12 +84,8 @@ flaca /path/to/assets /path/to/favicon.png …
 
 mod error;
 mod image;
-pub(crate) mod jpegtran;
-mod kind;
-pub(crate) mod zopflipng;
 
 pub(crate) use error::FlacaError;
-pub(crate) use kind::ImageKind;
 pub(crate) use image::FlacaImage;
 
 use argyle::{
