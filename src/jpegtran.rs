@@ -94,7 +94,7 @@ extern "C" {
 /// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>, FlacaError> {
+pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>, FlacaError> {
 	let mut transformoption: jpeg_transform_info =
 		jpeg_transform_info {
 			transform: JXFORM_CODE_JXFORM_NONE,

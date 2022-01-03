@@ -84,8 +84,9 @@ flaca /path/to/assets /path/to/favicon.png …
 
 mod error;
 mod image;
-pub mod jpegtran;
+pub(crate) mod jpegtran;
 mod kind;
+pub(crate) mod zopflipng;
 
 pub use error::FlacaError;
 pub use kind::ImageKind;
@@ -173,16 +174,6 @@ fn _main() -> Result<(), FlacaError> {
 	)
 		.map_err(|_| FlacaError::NoImages)?;
 
-	// Create a temporary directory in case we need it. This should be cleaned
-	// up automatically on program exit.
-	let tmp = tempfile::Builder::new()
-		.prefix(OsStr::new("flaca_"))
-		.tempdir()
-		.ok()
-		.filter(|x| x.path().is_dir())
-		.ok_or(FlacaError::TmpDir)?;
-	let tmpdir = tmp.path().to_path_buf();
-
 	// Controls for early termination.
 	let killed = Arc::from(AtomicBool::new(false));
 	let k2 = Arc::clone(&killed);
@@ -208,7 +199,7 @@ fn _main() -> Result<(), FlacaError> {
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
 				// Encode if we can.
-				if let Ok(mut enc) = FlacaImage::new(x, &tmpdir) {
+				if let Ok(mut enc) = FlacaImage::new(x) {
 					let tmp = x.to_string_lossy();
 					progress.add(&tmp);
 					let _res = enc.compress();
@@ -240,7 +231,7 @@ fn _main() -> Result<(), FlacaError> {
 		// Process!
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
-				if let Ok(mut enc) = FlacaImage::new(x, &tmpdir) {
+				if let Ok(mut enc) = FlacaImage::new(x) {
 					let _res = enc.compress();
 				}
 			}

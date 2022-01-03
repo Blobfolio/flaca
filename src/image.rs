@@ -8,17 +8,8 @@ use crate::{
 };
 use once_cell::sync::Lazy;
 use std::{
-	ffi::OsStr,
 	fs,
-	io::Write,
-	path::{
-		Path,
-		PathBuf,
-	},
-	process::{
-		Command,
-		Stdio,
-	},
+	path::Path,
 };
 
 
@@ -32,7 +23,6 @@ pub struct FlacaImage<'a> {
 	file: &'a Path,
 	kind: ImageKind,
 	data: Vec<u8>,
-	tmpdir: &'a Path,
 }
 
 impl<'a> FlacaImage<'a> {
@@ -43,7 +33,7 @@ impl<'a> FlacaImage<'a> {
 	/// ## Errors
 	///
 	/// This will return an error if the image is unreadable or invalid.
-	pub fn new(file: &'a Path, tmpdir: &'a Path) -> Result<Self, FlacaError> {
+	pub fn new(file: &'a Path) -> Result<Self, FlacaError> {
 		// Try to load the data.
 		let data = fs::read(file).map_err(|_| FlacaError::ReadFail)?;
 		if data.is_empty() { Err(FlacaError::EmptyFile) }
@@ -53,7 +43,6 @@ impl<'a> FlacaImage<'a> {
 				file,
 				kind: ImageKind::try_from(data.as_slice())?,
 				data,
-				tmpdir,
 			})
 		}
 	}
@@ -71,7 +60,8 @@ impl FlacaImage<'_> {
 			ImageKind::Jpeg => self.mozjpeg()?,
 			ImageKind::Png => {
 				let a: bool = self.oxipng()?;
-				self.zopflipng()? || a
+				let b: bool = self.zopflipng();
+				a || b
 			},
 		};
 
@@ -174,86 +164,12 @@ impl FlacaImage<'_> {
 	///
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
-	fn zopflipng(&mut self) -> Result<bool, FlacaError> {
-		// Find/create zopflipng.
-		let zpath = match self.init_zopfli() {
-			Ok(z) => z,
-			Err(_) => { return Ok(false); }
-		};
-
-		// Make a tempfile copy we can throw at zopflipng.
-		let target = tempfile::Builder::new()
-			.suffix(OsStr::new(".png"))
-			.tempfile_in(self.tmpdir)
-			.map_err(|_| FlacaError::WriteFail)?;
-
-		{
-			let mut file = target.as_file();
-			file.write_all(&self.data)
-				.and_then(|_| file.flush())
-				.map_err(|_| FlacaError::WriteFail)?;
-		}
-
-		// Pull the tempfile path.
-		let path = target.path().as_os_str();
-
-		// Execute the linked program.
-		if ! Command::new(zpath)
-			.args(&[
-				OsStr::new("-m"),
-				OsStr::new("-y"),
-				path,
-				path,
-			])
-			.stdout(Stdio::null())
-			.stderr(Stdio::null())
-			.status()
-			.map_or(false, |s| s.success())
-		{
-			return Err(FlacaError::WriteFail);
-		}
-
-		// To see what changed, we need to open and read the file we just
-		// wrote. Sucks to have the unnecessary file I/O, but this is still
-		// much more efficient than using Rust Zopfli bindings directly.
-		let changed: bool = self.maybe_update(
-			&fs::read(path).map_err(|_| FlacaError::ReadFail)?
-		);
-
-		Ok(changed)
-	}
-
-	/// # Extract Zopfli (if possible).
-	///
-	/// The `zopflipng` binary is embedded within the application to improve
-	/// portability, but in order to use it, we have to write it to the
-	/// file system.
-	///
-	/// This gets chucked into our `TempDir` as "zopflipng" and should get
-	/// cleaned up automatically on program exit.
-	fn init_zopfli(&self) -> Result<PathBuf, FlacaError> {
-		use std::os::unix::fs::PermissionsExt;
-
-		// Extract if it doesn't already exist.
-		let zpath: PathBuf = self.tmpdir.join("zopflipng");
-		if ! zpath.is_file() {
-			let mut file = std::fs::File::create(&zpath)
-				.map_err(|_| FlacaError::TmpDir)?;
-
-			// Write the data and make the file executable.
-			file.write_all(include_bytes!(concat!(env!("OUT_DIR"), "/zopfli-git/zopflipng")))
-				.and_then(|_| file.flush())
-				.and_then(|_| file.metadata())
-				.and_then(|meta| {
-					let mut perms = meta.permissions();
-					perms.set_mode(0o755);
-					file.set_permissions(perms)
-				})
-				.map_err(|_| FlacaError::TmpDir)?;
-		}
-
-		// Return the path as it is probably OK.
-		Ok(zpath)
+	fn zopflipng(&mut self) -> bool {
+		crate::zopflipng::zopflipng_optimize(&self.data)
+			.map_or(
+				false,
+				|new| self.maybe_update(&new)
+			)
 	}
 
 	/// # Maybe Update Buffer.
