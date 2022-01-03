@@ -197,7 +197,7 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	// Let's get the data!
 	jpeg_finish_compress(&mut dstinfo);
 	let out: Vec<u8> =
-		if outbuffer.is_null() || outsize == 0 { vec![] }
+		if outbuffer.is_null() || outsize == 0 { Vec::new() }
 		else {
 			let tmp = slice::from_raw_parts(
 				outbuffer,
