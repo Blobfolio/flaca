@@ -2,32 +2,27 @@
 # Flaca: Image Kind
 */
 
-use crate::FlacaError;
-
-
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// # Image Kind.
 ///
 /// This evaluates the file type from its headers, ensuring we process images
 /// correctly even if they have the wrong extension (or don't process them if
 /// they're bunk).
-pub enum ImageKind {
+pub(super) enum ImageKind {
 	/// Jpeg.
 	Jpeg,
 	/// Png.
 	Png,
 }
 
-impl TryFrom<&[u8]> for ImageKind {
-	type Error = FlacaError;
-
-	fn try_from(src: &[u8]) -> Result<Self, Self::Error> {
+impl ImageKind {
+	/// # Parse Kind from Magic Bytes.
+	pub(super) fn parse(src: &[u8]) -> Option<Self> {
 		// If the source is big enough for headers, keep going!
 		if src.len() > 12 {
 			// PNG has just one way to be!
 			if src[..8] == [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n'] {
-				return Ok(Self::Png);
+				return Some(Self::Png);
 			}
 
 			// JPEG has a lot of different possible headers. They all start and
@@ -42,10 +37,10 @@ impl TryFrom<&[u8]> for ImageKind {
 					(src[3] == 0xE1 && src[6..12] == [b'E', b'x', b'i', b'f', 0x00, 0x00])
 				)
 			{
-				return Ok(Self::Jpeg);
+				return Some(Self::Jpeg);
 			}
 		}
 
-		Err(FlacaError::InvalidImageType)
+		None
 	}
 }

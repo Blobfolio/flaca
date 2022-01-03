@@ -88,9 +88,9 @@ pub(crate) mod jpegtran;
 mod kind;
 pub(crate) mod zopflipng;
 
-pub use error::FlacaError;
-pub use kind::ImageKind;
-pub use image::FlacaImage;
+pub(crate) use error::FlacaError;
+pub(crate) use kind::ImageKind;
+pub(crate) use image::FlacaImage;
 
 use argyle::{
 	Argue,
@@ -199,7 +199,7 @@ fn _main() -> Result<(), FlacaError> {
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
 				// Encode if we can.
-				if let Ok(mut enc) = FlacaImage::new(x) {
+				if let Some(mut enc) = FlacaImage::new(x) {
 					let tmp = x.to_string_lossy();
 					progress.add(&tmp);
 					let _res = enc.compress();
@@ -231,7 +231,7 @@ fn _main() -> Result<(), FlacaError> {
 		// Process!
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
-				if let Ok(mut enc) = FlacaImage::new(x) {
+				if let Some(mut enc) = FlacaImage::new(x) {
 					let _res = enc.compress();
 				}
 			}

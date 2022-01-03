@@ -2,10 +2,7 @@
 # Flaca: Lib
 */
 
-use crate::{
-	FlacaError,
-	ImageKind,
-};
+use crate::ImageKind;
 use once_cell::sync::Lazy;
 use std::{
 	fs,
@@ -19,7 +16,7 @@ use std::{
 ///
 /// This struct holds the state of a given image, updating the file if
 /// compression yields any savings.
-pub struct FlacaImage<'a> {
+pub(super) struct FlacaImage<'a> {
 	file: &'a Path,
 	kind: ImageKind,
 	data: Vec<u8>,
@@ -33,15 +30,15 @@ impl<'a> FlacaImage<'a> {
 	/// ## Errors
 	///
 	/// This will return an error if the image is unreadable or invalid.
-	pub fn new(file: &'a Path) -> Result<Self, FlacaError> {
+	pub(super) fn new(file: &'a Path) -> Option<Self> {
 		// Try to load the data.
-		let data = fs::read(file).map_err(|_| FlacaError::ReadFail)?;
-		if data.is_empty() { Err(FlacaError::EmptyFile) }
+		let data = fs::read(file).ok()?;
+		if data.is_empty() { None }
 		// Return the result!
 		else {
-			Ok(Self {
+			Some(Self {
 				file,
-				kind: ImageKind::try_from(data.as_slice())?,
+				kind: ImageKind::parse(data.as_slice())?,
 				data,
 			})
 		}
@@ -55,7 +52,7 @@ impl FlacaImage<'_> {
 	///
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
-	pub fn compress(&mut self) -> Result<(), FlacaError> {
+	pub(super) fn compress(&mut self) -> Option<bool> {
 		let changed: bool = match self.kind {
 			ImageKind::Jpeg => self.mozjpeg()?,
 			ImageKind::Png => {
@@ -67,11 +64,10 @@ impl FlacaImage<'_> {
 
 		// Save the newer, smaller version!
 		if changed {
-			write_atomic::write_file(self.file, &self.data)
-				.map_err(|_| FlacaError::WriteFail)?;
+			write_atomic::write_file(self.file, &self.data).ok()?;
 		}
 
-		Ok(())
+		Some(changed)
 	}
 
 	#[inline]
@@ -86,8 +82,9 @@ impl FlacaImage<'_> {
 	///
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
-	fn mozjpeg(&mut self) -> Result<bool, FlacaError> {
-		Ok(self.maybe_update(&unsafe { super::jpegtran::jpegtran_mem(&self.data)? }))
+	fn mozjpeg(&mut self) -> Option<bool> {
+		let new = unsafe { super::jpegtran::jpegtran_mem(&self.data)? };
+		Some(self.maybe_update(&new))
 	}
 
 	/// # Compress w/ `Oxipng`
@@ -105,7 +102,7 @@ impl FlacaImage<'_> {
 	///
 	/// This method returns an error if there are issues compressing the file
 	/// (other than cases where no savings were possible).
-	fn oxipng(&mut self) -> Result<bool, FlacaError> {
+	fn oxipng(&mut self) -> Option<bool> {
 		use oxipng::{
 			AlphaOptim,
 			Deflaters,
@@ -141,10 +138,8 @@ impl FlacaImage<'_> {
 		});
 
 		// This pass can be done without needless file I/O! Hurray!
-		Ok(self.maybe_update(
-			&oxipng::optimize_from_memory(&self.data, &OPTS)
-				.map_err(|_| FlacaError::ParseFail)?
-		))
+		let new = oxipng::optimize_from_memory(&self.data, &OPTS).ok()?;
+		Some(self.maybe_update(&new))
 	}
 
 	/// # Compress w/ `Zopflipng`.
@@ -180,7 +175,7 @@ impl FlacaImage<'_> {
 		if
 			! new.is_empty() &&
 			new.len() < self.data.len() &&
-			ImageKind::try_from(new).map_or(false, |k| k == self.kind)
+			ImageKind::parse(new).map_or(false, |k| k == self.kind)
 		{
 			self.data.truncate(new.len());
 			self.data[..].copy_from_slice(new);

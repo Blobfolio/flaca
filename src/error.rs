@@ -12,27 +12,15 @@ use std::{
 
 #[derive(Debug, Copy, Clone)]
 /// # Error type.
-pub enum FlacaError {
+pub(super) enum FlacaError {
 	/// # Argyle passthrough.
 	Argue(ArgyleError),
-	/// # File is empty.
-	EmptyFile,
-	/// # File is not a JPEG or PNG.
-	InvalidImageType,
 	/// # Killed Early.
 	Killed,
 	/// # No images.
 	NoImages,
-	/// # Parse issue.
-	ParseFail,
 	/// # Progress Overflow.
 	ProgressOverflow,
-	/// # Unable to read image.
-	ReadFail,
-	/// # Temporary Failure.
-	TmpDir,
-	/// # Unable to save image.
-	WriteFail,
 }
 
 impl AsRef<str> for FlacaError {
@@ -57,18 +45,12 @@ impl From<ArgyleError> for FlacaError {
 impl FlacaError {
 	#[must_use]
 	/// # As Str.
-	pub const fn as_str(self) -> &'static str {
+	pub(super) const fn as_str(self) -> &'static str {
 		match self {
 			Self::Argue(e) => e.as_str(),
-			Self::EmptyFile => "The image is empty.",
-			Self::InvalidImageType => "The image is not a JPEG or PNG.",
 			Self::Killed => "The process was aborted early.",
 			Self::NoImages => "No images were found.",
-			Self::ParseFail => "The image is malformed.",
 			Self::ProgressOverflow => "Progress can only be displayed for up to 4,294,967,295 images. Try again with fewer images or without the -p/--progress flag.",
-			Self::ReadFail => "Unable to read image.",
-			Self::TmpDir => "Unable to manage temporary storage.",
-			Self::WriteFail => "Unable to save image.",
 		}
 	}
 }
