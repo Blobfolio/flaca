@@ -46,7 +46,7 @@ mod raw {
 	#[allow(trivial_casts)]
 	#[allow(deref_nullptr)]
 	#[test]
-	fn bindgen_test_layout_CZopfliPNGOptions() {
+	fn test_bindgen() {
 		assert_eq!(
 			::std::mem::size_of::<CZopfliPNGOptions>(),
 			56usize,
