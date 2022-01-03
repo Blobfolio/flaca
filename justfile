@@ -125,6 +125,21 @@ rustflags   := "-C link-arg=-s"
 		-- {{ ARGS }}
 
 
+# Unit tests!
+test:
+	#!/usr/bin/env bash
+
+	clear
+
+	RUST_TEST_THREADS=1 cargo test \
+		--release \
+		--all-features \
+		--target x86_64-unknown-linux-gnu \
+		--target-dir "{{ cargo_dir }}"
+
+	exit 0
+
+
 # Get/Set version.
 version:
 	#!/usr/bin/env bash
