@@ -17,7 +17,6 @@ looked at to bring this all together were:
 * [mozjpeg-rs](https://github.com/immunant/mozjpeg-rs/blob/master/bin/jpegtran.rs)
 */
 
-use crate::FlacaError;
 use libc::{
 	c_uchar,
 	free,
@@ -94,7 +93,7 @@ extern "C" {
 /// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>, FlacaError> {
+pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	let mut transformoption: jpeg_transform_info =
 		jpeg_transform_info {
 			transform: JXFORM_CODE_JXFORM_NONE,
@@ -152,7 +151,7 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>, FlacaError> {
 	// Abort if transformation is not possible. We aren't cropping or anything,
 	// but this method might still do something with the defaults?
 	if jtransform_request_workspace(&mut srcinfo, &mut transformoption) == 0 {
-		return Err(FlacaError::ParseFail);
+		return None;
 	}
 
 	// Read source file as DCT coefficients.
@@ -172,7 +171,7 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>, FlacaError> {
 
 	// Get an output buffer going.
 	let mut outbuffer: *mut c_uchar = ptr::null_mut();
-    let mut outsize: c_ulong = 0;
+	let mut outsize: c_ulong = 0;
 
 	// Turn on "progressive" and "code optimizing" for the output.
 	dstinfo.optimize_coding = true as boolean;
@@ -198,11 +197,11 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>, FlacaError> {
 	// Let's get the data!
 	jpeg_finish_compress(&mut dstinfo);
 	let out: Vec<u8> =
-		if outbuffer.is_null() || outsize == 0 { vec![] }
+		if outbuffer.is_null() || outsize == 0 { Vec::new() }
 		else {
 			let tmp = slice::from_raw_parts(
 				outbuffer,
-				usize::try_from(outsize).map_err(|_| FlacaError::ParseFail)?
+				usize::try_from(outsize).ok()?
 			).to_vec();
 
 			// The buffer probably needs to be manually freed. I don't think
@@ -220,5 +219,5 @@ pub unsafe fn jpegtran_mem(data: &[u8]) -> Result<Vec<u8>, FlacaError> {
 	jpeg_destroy_decompress(&mut srcinfo);
 
 	// Return the result if any!
-	Ok(out)
+	Some(out)
 }

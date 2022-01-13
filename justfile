@@ -22,6 +22,7 @@ pkg_dir1    := justfile_directory() + "/src"
 bench_dir   := "/tmp/bench-data"
 cargo_dir   := "/tmp/" + pkg_id + "-cargo"
 cargo_bin   := cargo_dir + "/x86_64-unknown-linux-gnu/release/" + pkg_id
+doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
@@ -30,7 +31,7 @@ rustflags   := "-C link-arg=-s"
 
 
 # Build Release!
-@build: clean
+@build:
 	# First let's build the Rust bit.
 	RUSTFLAGS="--emit asm {{ rustflags }}" cargo build \
 		--bin "{{ pkg_id }}" \
@@ -40,10 +41,7 @@ rustflags   := "-C link-arg=-s"
 
 
 # Build Debian package!
-@build-deb: credits build
-	# Do completions/man.
-	cargo bashman -m "{{ justfile_directory() }}/Cargo.toml"
-
+@build-deb: clean credits build
 	# cargo-deb doesn't support target_dir flags yet.
 	[ ! -d "{{ justfile_directory() }}/target" ] || rm -rf "{{ justfile_directory() }}/target"
 	mv "{{ cargo_dir }}" "{{ justfile_directory() }}/target"
@@ -52,11 +50,39 @@ rustflags   := "-C link-arg=-s"
 	cargo-deb \
 		--no-build \
 		-p {{ pkg_id }} \
-		-o "{{ justfile_directory() }}/release" \
+		-o "{{ release_dir }}" \
 		--target x86_64-unknown-linux-gnu
 
 	just _fix-chown "{{ release_dir }}"
 	mv "{{ justfile_directory() }}/target" "{{ cargo_dir }}"
+
+
+# Build Zopflipng Libraries.
+@build-zopfli:
+	# Clone it!
+	[ ! -d "/tmp/zopfli" ] || rm -rf "/tmp/zopfli"
+	git clone https://github.com/google/zopfli.git /tmp/zopfli
+
+	cd /tmp/zopfli && \
+		make libzopfli.a && \
+		make libzopflipng.a
+
+	# Recreate the includes folders.
+	[ ! -d "{{ skel_dir }}/inc" ] || rm -rf "{{ skel_dir }}/inc"
+	mkdir -p "{{ skel_dir }}/inc/zopflipng/lodepng"
+	mkdir -p "{{ skel_dir }}/inc/zopfli"
+
+	# Copy everything over.
+	cp /tmp/zopfli/libzopfli.a "{{ skel_dir }}/inc/"
+	cp /tmp/zopfli/libzopflipng.a "{{ skel_dir }}/inc/"
+	cp /tmp/zopfli/src/zopfli/*.h "{{ skel_dir }}/inc/zopfli/"
+	cp /tmp/zopfli/src/zopflipng/*.h "{{ skel_dir }}/inc/zopflipng/"
+	cp /tmp/zopfli/src/zopflipng/lodepng/*.h "{{ skel_dir }}/inc/zopflipng/lodepng/"
+
+	just _fix-chown "{{ skel_dir }}/inc"
+	rm -rf /tmp/zopfli
+
+	fyi success "Zopfli libraries have been rebuilt!"
 
 
 # Check Release!
@@ -93,16 +119,28 @@ rustflags   := "-C link-arg=-s"
 
 # Generate CREDITS.
 @credits:
-	# Update CREDITS.html.
-	cargo about \
-		generate \
-		-m "{{ justfile_directory() }}/Cargo.toml" \
-		"{{ release_dir }}/credits/about.hbs" > "{{ justfile_directory() }}/CREDITS.md"
-
-	# Fix line endings.
-	sd '\r\n' '\n' "{{ justfile_directory() }}/CREDITS.md"
-
+	cargo bashman -m "{{ justfile_directory() }}/Cargo.toml"
+	echo '| [zopflipng](https://github.com/google/zopfli) | | Google | Apache-2.0 |' >> "{{ justfile_directory() }}/CREDITS.md"
 	just _fix-chown "{{ justfile_directory() }}/CREDITS.md"
+
+
+# Build Docs.
+@doc:
+	# Make sure nightly is installed; this version generates better docs.
+	env RUSTUP_PERMIT_COPY_RENAME=true rustup install nightly
+
+	# Make the docs.
+	cargo +nightly doc \
+		--release \
+		--all-features \
+		--no-deps \
+		--target x86_64-unknown-linux-gnu \
+		--target-dir "{{ cargo_dir }}"
+
+	# Move the docs and clean up ownership.
+	[ ! -d "{{ doc_dir }}" ] || rm -rf "{{ doc_dir }}"
+	mv "{{ cargo_dir }}/x86_64-unknown-linux-gnu/doc" "{{ justfile_directory() }}"
+	just _fix-chown "{{ doc_dir }}"
 
 
 # Test Run.
@@ -113,6 +151,21 @@ rustflags   := "-C link-arg=-s"
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}" \
 		-- {{ ARGS }}
+
+
+# Unit tests!
+test:
+	#!/usr/bin/env bash
+
+	clear
+
+	RUST_TEST_THREADS=1 cargo test \
+		--release \
+		--all-features \
+		--target x86_64-unknown-linux-gnu \
+		--target-dir "{{ cargo_dir }}"
+
+	exit 0
 
 
 # Get/Set version.

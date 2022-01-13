@@ -2,3 +2,4 @@
 **/*.gz
 **/target/
 /Cargo.lock
+/doc/
