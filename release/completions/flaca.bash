@@ -30,7 +30,11 @@ _basher___flaca() {
 
 	case "${prev}" in
 		-l|--list)
-			COMPREPLY=( $( compgen -f "${cur}" ) )
+			if [ -z "$( declare -f _filedir )" ]; then
+				COMPREPLY=( $( compgen -f "${cur}" ) )
+			else
+				COMPREPLY=( $( _filedir ) )
+			fi
 			return 0
 			;;
 		*)
