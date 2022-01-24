@@ -51,13 +51,13 @@ pub fn main() {
 				OsStr::new("https://github.com/google/zopfli"),
 				repo.as_os_str(),
 			]),
-		"Unable to clone Zopfli repo."
+		"Unable to clone Zopfli git repository."
 	);
 
 	// Checkout a specific commit for reproducibility.
 	cmd!(
 		Command::new("git").current_dir(&repo).args(&["checkout", "831773b"]),
-		"Unable to checkout Zopfli repo."
+		"Unable to checkout Zopfli git repository."
 	);
 
 	// Build it.
