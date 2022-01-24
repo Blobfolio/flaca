@@ -42,6 +42,8 @@ cargo build \
     --release
 ```
 
+(This should work under other 64-bit Unix environments too, like MacOS.)
+
 In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`, `git`, `make`, and the dev libraries for `libjpeg` and `libpng`.
 
 The above list may not be exhaustive, though. If you find you need anything else, please open a ticket so this list can be updated!
