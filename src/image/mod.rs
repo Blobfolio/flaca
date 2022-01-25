@@ -32,22 +32,25 @@ pub(super) struct FlacaImage<'a> {
 impl<'a> FlacaImage<'a> {
 	/// # New.
 	///
-	/// Create a wrapper for a raw image. If the image can't be loaded, `None`
-	/// is returned.
-	pub(super) fn new(file: &'a Path) -> Option<Self> {
+	/// Create a wrapper for a raw image. If the image can't be loaded or is
+	/// an unsupported format — e.g. [`ImageKind::Jpeg`] when `jpeg` is false —
+	/// `None` is returned.
+	pub(super) fn new(file: &'a Path, jpeg: bool, png: bool) -> Option<Self> {
 		// Try to load the data.
-		let data = fs::read(file).ok()?;
-		if data.is_empty() { None }
-		// Return the result!
-		else {
-			let size = u64::try_from(data.len()).ok()?;
-			Some(Self {
-				file,
-				kind: ImageKind::parse(data.as_slice())?,
-				data,
-				size,
-			})
-		}
+		let data = fs::read(file).ok().filter(|x| ! x.is_empty())?;
+		let kind = match ImageKind::parse(data.as_slice())? {
+			ImageKind::Jpeg if jpeg => ImageKind::Jpeg,
+			ImageKind::Png if png => ImageKind::Png,
+			_ => return None,
+		};
+
+		let size = u64::try_from(data.len()).ok()?;
+		Some(Self {
+			file,
+			kind,
+			data,
+			size,
+		})
 	}
 }
 

@@ -46,6 +46,14 @@ long = "--help"
 description = "Print help information and exit."
 
 [[package.metadata.bashman.switches]]
+long = "--no-jpeg"
+description = "Skip JPEG images."
+
+[[package.metadata.bashman.switches]]
+long = "--no-png"
+description = "Skip PNG images."
+
+[[package.metadata.bashman.switches]]
 short = "-p"
 long = "--progress"
 description = "Show progress bar while minifying."
