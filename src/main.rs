@@ -265,15 +265,17 @@ USAGE:
     flaca [FLAGS] [OPTIONS] <PATH(S)>...
 
 FLAGS:
-    -h, --help        Prints help information
+    -h, --help        Print help information and exit.
     -p, --progress    Show progress bar while minifying.
-    -V, --version     Prints version information
+    -V, --version     Print version information and exit.
 
 OPTIONS:
-    -l, --list <list>    Read file paths from this list.
+    -l, --list <FILE> Read (absolute) image and/or directory paths from this
+                      text file, one entry per line.
 
 ARGS:
-    <PATH(S)>...    One or more files or directories to compress.
+    <PATH(S)>...      One or more image and/or directory paths to losslessly
+                      compress.
 
 OPTIMIZERS USED:
     MozJPEG   <https://github.com/mozilla/mozjpeg>

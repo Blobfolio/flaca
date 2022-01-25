@@ -43,28 +43,28 @@ credits-dir = "./"
 [[package.metadata.bashman.switches]]
 short = "-h"
 long = "--help"
-description = "Print help information."
+description = "Print help information and exit."
 
 [[package.metadata.bashman.switches]]
 short = "-p"
 long = "--progress"
-description = "Show progress bar while working."
+description = "Show progress bar while minifying."
 
 [[package.metadata.bashman.switches]]
 short = "-V"
 long = "--version"
-description = "Print program version."
+description = "Print version information and exit."
 
 [[package.metadata.bashman.options]]
 short = "-l"
 long = "--list"
 label = "<FILE>"
-description = "Read file paths from this text file."
+description = "Read (absolute) image and/or directory paths from this text file, one entry per line."
 path = true
 
 [[package.metadata.bashman.arguments]]
 label = "<PATH(s)…>"
-description = "Any number of files and directories to crawl and crunch."
+description = "One or more image and/or directory paths to losslessly compress."
 
 [[package.metadata.bashman.sections]]
 name = "OPTIMIZERS"
