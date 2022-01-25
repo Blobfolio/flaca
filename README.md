@@ -44,7 +44,7 @@ cargo build \
 
 (This should work under other 64-bit Unix environments too, like MacOS.)
 
-In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`, `git`, `make`, and the dev libraries for `libjpeg` and `libpng`.
+In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`, `git`, `make`, `nasm`, a C++ compiler, and the dev libraries for `libjpeg` and `libpng`.
 
 The above list may not be exhaustive, though. If you find you need anything else, please open a ticket so this list can be updated!
 
@@ -56,10 +56,13 @@ It's easy. Just run `flaca [FLAGS] [OPTIONS] <PATH(S)>…`.
 
 The following flags and options are available:
 ```
--h, --help           Prints help information
--l, --list <list>    Read file paths from this list (one per line).
+-h, --help           Print help information and exit.
+-l, --list <FILE>    Read (absolute) image and/or directory paths from this
+                     text file, one entry per line.
+    --no-jpeg        Skip JPEG images.
+    --no-png         Skip PNG images.
 -p, --progress       Show progress bar while minifying.
--V, --version        Prints version information
+-V, --version        Print version information and exit.
 ```
 
 You can feed it any number of file or directory paths in one go, and/or toss it a text file using the `-l` option. Directories are recursively searched.
@@ -74,9 +77,26 @@ flaca /path/to/image.jpg
 # Tackle a whole folder at once with a nice progress bar:
 flaca -p /path/to/assets
 
+# Tackle a whole folder, but only look for JPEG images.
+flaca -p --no-png /path/to/assets
+
 # Or load it up with a lot of places separately:
 flaca /path/to/assets /path/to/favicon.png …
 ```
+
+
+
+## Image Format Sanity
+
+Flaca only processes JPEG and PNG image files.
+
+To ease its potential workload, it first checks that each of provided paths end with an appropriate (case-insensitive) file extension: `.jpeg`, `.jpg`, or `.png`. If you pass it `file.exe`, for example, it will simply ignore it.
+
+Of course, file names are totally arbitrary, so during processing, it analyzes the file contents to determine the _actual_ type. If that type turns out to be anything other than `image/jpeg` or `image/png`, the file will likewise be ignored.
+
+In cases where a JPEG image is accidentally assigned a PNG extension, or vice versa, Flaca _will_ still correctly process the image for you, but _won't_ correct the file name. In other words, a PNG incorrectly named `image.jpg` will still be a PNG incorrectly named `image.jpg` after recompression; it might just be a bit smaller.
+
+When either `--no-jpeg` or `--no-png` is set, the extension and type lists are adjusted accordingly. For example, if you choose to skip JPEGs, then only files ending `.png` with a true type of `image/png` will be crunched.
 
 
 

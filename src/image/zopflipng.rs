@@ -14,8 +14,6 @@ reference.
 #[allow(unused_extern_crates)] // This fixes a linker issue.
 extern crate link_cplusplus;
 
-use std::mem::ManuallyDrop;
-
 
 
 #[allow(non_camel_case_types)]
@@ -203,24 +201,14 @@ mod raw {
 
 
 
+#[allow(unused_assignments)]
 #[must_use]
 /// # Optimize!
 pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 	let src_ptr = src.as_ptr();
 	let src_size: u64 = u64::try_from(src.len()).ok()?;
 
-	// Start an output buffer that is up to 2MiB larger than the source file,
-	// just in case Zopfli makes a mess of things.
-	let out_cap: usize =
-		if src_size < 2_097_152 { src.len() * 2 }
-		else { src.len().saturating_add(2_097_152) };
-	let out: Vec<u8> = Vec::with_capacity(out_cap);
-
-	// We only actually need the space and pointer, so can dissolve the
-	// vector we just created. We'll create one from the raw parts at the end
-	// if everything works out.
-	let mut out = ManuallyDrop::new(out);
-	let mut out_ptr = out.as_mut_ptr();
+	let mut out_ptr = std::ptr::null_mut();
 	let mut out_size: u64 = 0;
 
 	// Initialize the options equivalent to calling the binary with the `-m`
@@ -251,18 +239,26 @@ pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 		)
 	};
 
-	// Rebuild the vec so the memory can be dropped, etc.
-	let rebuilt = unsafe {
-		Vec::from_raw_parts(
-			out_ptr,
-			usize::try_from(out_size).unwrap_or_default(),
-			out_cap,
-		)
-	};
+	let out: Vec<u8> =
+		if out_ptr.is_null() || out_size == 0 { Vec::new() }
+		else {
+			unsafe {
+				// Copy the data to a Rust vec.
+				let tmp = std::slice::from_raw_parts(
+					out_ptr,
+					usize::try_from(out_size).unwrap_or_default(),
+				).to_vec();
 
-	// It worked!
-	if res == 0 && 0 < out_size && out_size < src_size {
-		Some(rebuilt)
-	}
+				// Manually free the C memory.
+				libc::free(out_ptr.cast::<libc::c_void>());
+				out_ptr = std::ptr::null_mut();
+				out_size = 0;
+
+				tmp
+			}
+		};
+
+	// Done!
+	if res == 0 { Some(out) }
 	else { None }
 }

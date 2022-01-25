@@ -4,6 +4,8 @@
 
 use std::{
 	ffi::OsStr,
+	fs::File,
+	io::Write,
 	path::PathBuf,
 	process::{
 		Command,
@@ -51,14 +53,25 @@ pub fn main() {
 				OsStr::new("https://github.com/google/zopfli"),
 				repo.as_os_str(),
 			]),
-		"Unable to clone Zopfli repo."
+		"Unable to clone Zopfli git repository."
 	);
 
 	// Checkout a specific commit for reproducibility.
 	cmd!(
 		Command::new("git").current_dir(&repo).args(&["checkout", "831773b"]),
-		"Unable to checkout Zopfli repo."
+		"Unable to checkout Zopfli git repository."
 	);
+
+	{
+		// Patch the Makefile to enable LTO.
+		let makefile = repo.join("Makefile");
+		let content = std::fs::read_to_string(&makefile)
+			.expect("Missing Makefile.")
+			.replace("-O3", "-O3 -flto");
+		File::create(makefile)
+			.and_then(|mut file| file.write_all(content.as_bytes()).and_then(|_| file.flush()))
+			.expect("Unable to patch Makefile.");
+	}
 
 	// Build it.
 	cmd!(

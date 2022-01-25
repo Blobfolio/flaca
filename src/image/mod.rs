@@ -26,53 +26,59 @@ pub(super) struct FlacaImage<'a> {
 	file: &'a Path,
 	kind: ImageKind,
 	data: Vec<u8>,
+	size: u64,
 }
 
 impl<'a> FlacaImage<'a> {
 	/// # New.
 	///
-	/// Create a wrapper for a raw image.
-	///
-	/// ## Errors
-	///
-	/// This will return an error if the image is unreadable or invalid.
-	pub(super) fn new(file: &'a Path) -> Option<Self> {
+	/// Create a wrapper for a raw image. If the image can't be loaded or is
+	/// an unsupported format — e.g. [`ImageKind::Jpeg`] when `jpeg` is false —
+	/// `None` is returned.
+	pub(super) fn new(file: &'a Path, jpeg: bool, png: bool) -> Option<Self> {
 		// Try to load the data.
-		let data = fs::read(file).ok()?;
-		if data.is_empty() { None }
-		// Return the result!
-		else {
-			Some(Self {
-				file,
-				kind: ImageKind::parse(data.as_slice())?,
-				data,
-			})
-		}
+		let data = fs::read(file).ok().filter(|x| ! x.is_empty())?;
+		let kind = match ImageKind::parse(data.as_slice())? {
+			ImageKind::Jpeg if jpeg => ImageKind::Jpeg,
+			ImageKind::Png if png => ImageKind::Png,
+			_ => return None,
+		};
+
+		let size = u64::try_from(data.len()).ok()?;
+		Some(Self {
+			file,
+			kind,
+			data,
+			size,
+		})
 	}
 }
 
 impl FlacaImage<'_> {
+	#[must_use]
 	/// # Compress.
 	///
-	/// ## Errors
+	/// This method will run the lossless compression pass(es) against the
+	/// source image and save the result if it winds up smaller.
 	///
-	/// This method returns an error if there are issues compressing the file
-	/// (other than cases where no savings were possible).
-	pub(super) fn compress(&mut self) -> bool {
-		let changed: bool = match self.kind {
-			ImageKind::Jpeg => self.mozjpeg(),
+	/// A tuple containing the original file size and the new file size is
+	/// returned. If the two values are equal, no savings occurrred.
+	pub(super) fn compress(&mut self) -> (u64, u64) {
+		match self.kind {
+			ImageKind::Jpeg => { self.mozjpeg(); },
 			ImageKind::Png => {
-				let a: bool = self.oxipng();
-				let b: bool = self.zopflipng();
-				a || b
+				self.oxipng();
+				self.zopflipng();
 			},
-		};
-
-		// Save the newer, smaller version!
-		if changed {
-			write_atomic::write_file(self.file, &self.data).is_ok()
 		}
-		else { false }
+
+		// The buffer can't be empty, so if it is smaller than the original
+		// size, savings happened!
+		let after = self.data.len() as u64;
+		if after < self.size && write_atomic::write_file(self.file, &self.data).is_ok() {
+			(self.size, after)
+		}
+		else { (self.size, self.size) }
 	}
 
 	#[inline]
@@ -82,34 +88,17 @@ impl FlacaImage<'_> {
 	/// ```bash
 	/// jpegtran -copy none -optimize -progressive
 	/// ```
-	///
-	/// ## Errors
-	///
-	/// This method returns an error if there are issues compressing the file
-	/// (other than cases where no savings were possible).
 	fn mozjpeg(&mut self) -> bool {
 		unsafe { jpegtran::jpegtran_mem(&self.data) }
-			.map_or(
-				false,
-				|new| self.maybe_update(&new)
-			)
+			.map_or(false, |new| self.maybe_update(new))
 	}
 
 	/// # Compress w/ `Oxipng`
-	///
-	/// Pass the in-memory PNG data to `Oxipng` to see what savings it can come
-	/// up with. If `Oxipng` is unable to parse/fix the file, an `Err` is
-	/// returned (so we can pack up and go home early).
 	///
 	/// The result is comparable to calling:
 	/// ```bash
 	/// oxipng -o 3 -s -a -i 0 --fix
 	/// ```
-	///
-	/// ## Errors
-	///
-	/// This method returns an error if there are issues compressing the file
-	/// (other than cases where no savings were possible).
 	fn oxipng(&mut self) -> bool {
 		use oxipng::{
 			AlphaOptim,
@@ -147,49 +136,31 @@ impl FlacaImage<'_> {
 
 		// This pass can be done without needless file I/O! Hurray!
 		oxipng::optimize_from_memory(&self.data, &OPTS)
-			.map_or(
-				false,
-				|new| self.maybe_update(&new)
-			)
+			.map_or(false, |new| self.maybe_update(new))
 	}
 
 	/// # Compress w/ `Zopflipng`.
 	///
-	/// This method spawns an external call to the `zopflipng` executable
-	/// bundled with flaca. If for some reason that file is missing, this
-	/// compression pass is skipped.
-	///
-	/// This approach is less than ideal for a number of reasons, but to date
-	/// there isn't a workable Rust port of `zopflipng`. `Oxipng` has basic
-	/// `zopfli` support, but with major performance and compression loss
-	/// relative to calling an external `zopflipng` on a second pass.
-	///
-	/// If/when that situation changes, flaca will internalize the operations!
-	///
-	/// ## Errors
-	///
-	/// This method returns an error if there are issues compressing the file
-	/// (other than cases where no savings were possible).
+	/// The result is comparable to calling:
+	/// ```bash
+	/// zopflipng -m
+	/// ```
 	fn zopflipng(&mut self) -> bool {
 		zopflipng::zopflipng_optimize(&self.data)
-			.map_or(
-				false,
-				|new| self.maybe_update(&new)
-			)
+			.map_or(false, |new| self.maybe_update(new))
 	}
 
 	/// # Maybe Update Buffer.
 	///
 	/// This will replace the inline source data with the new version, provided
 	/// the new version has length and is smaller than the original.
-	fn maybe_update(&mut self, new: &[u8]) -> bool {
+	fn maybe_update(&mut self, mut new: Vec<u8>) -> bool {
 		if
 			! new.is_empty() &&
 			new.len() < self.data.len() &&
-			ImageKind::parse(new).map_or(false, |k| k == self.kind)
+			ImageKind::parse(&new).map_or(false, |k| k == self.kind)
 		{
-			self.data.truncate(new.len());
-			self.data[..].copy_from_slice(new);
+			std::mem::swap(&mut self.data, &mut new);
 			true
 		}
 		else { false }

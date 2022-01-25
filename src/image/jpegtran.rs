@@ -170,15 +170,15 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	);
 
 	// Get an output buffer going.
-	let mut outbuffer: *mut c_uchar = ptr::null_mut();
-	let mut outsize: c_ulong = 0;
+	let mut out_ptr: *mut c_uchar = ptr::null_mut();
+	let mut out_size: c_ulong = 0;
 
 	// Turn on "progressive" and "code optimizing" for the output.
 	dstinfo.optimize_coding = true as boolean;
 	jpeg_simple_progression(&mut dstinfo);
 
 	// And load the destination file.
-	jpeg_mem_dest(&mut dstinfo, &mut outbuffer, &mut outsize);
+	jpeg_mem_dest(&mut dstinfo, &mut out_ptr, &mut out_size);
 
 	// Start the compressor. Note: no data is written here.
 	jpeg_write_coefficients(&mut dstinfo, dst_coef_arrays);
@@ -196,19 +196,25 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 
 	// Let's get the data!
 	jpeg_finish_compress(&mut dstinfo);
+
+	// This library doesn't really have a consistent way of handling errors,
+	// but msg_code not changing from its default (of zero) is a reasonable
+	// proxy.
+	let res: bool = 0 == (*dstinfo.common.err).msg_code;
+
 	let out: Vec<u8> =
-		if outbuffer.is_null() || outsize == 0 { Vec::new() }
+		if out_ptr.is_null() || out_size == 0 { Vec::new() }
 		else {
 			let tmp = slice::from_raw_parts(
-				outbuffer,
-				usize::try_from(outsize).ok()?
+				out_ptr,
+				usize::try_from(out_size).ok()?
 			).to_vec();
 
 			// The buffer probably needs to be manually freed. I don't think
 			// jpeg_destroy_compress() handles that for us.
-			free(outbuffer.cast::<mozjpeg_sys::c_void>());
-			outbuffer = ptr::null_mut();
-			outsize = 0;
+			free(out_ptr.cast::<mozjpeg_sys::c_void>());
+			out_ptr = ptr::null_mut();
+			out_size = 0;
 
 			tmp
 		};
@@ -218,6 +224,7 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	jpeg_finish_decompress(&mut srcinfo);
 	jpeg_destroy_decompress(&mut srcinfo);
 
-	// Return the result if any!
-	Some(out)
+	// Done!
+	if res { Some(out) }
+	else { None }
 }

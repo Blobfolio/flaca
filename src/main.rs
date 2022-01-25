@@ -98,7 +98,6 @@ use argyle::{
 use dowser::{
 	Dowser,
 	Extension,
-	utility::du,
 };
 use fyi_msg::{
 	BeforeAfter,
@@ -118,6 +117,7 @@ use std::{
 		Arc,
 		atomic::{
 			AtomicBool,
+			AtomicU64,
 			Ordering::SeqCst,
 		},
 	},
@@ -149,23 +149,20 @@ fn main() {
 ///
 /// This is the actual main, allowing us to easily bubble errors.
 fn _main() -> Result<(), FlacaError> {
-	// The extensions we're going to be looking for.
-	const E_JPG: Extension = Extension::new3(*b"jpg");
-	const E_PNG: Extension = Extension::new3(*b"png");
-	const E_JPEG: Extension = Extension::new4(*b"jpeg");
-
 	// Parse CLI arguments.
 	let args = Argue::new(FLAG_HELP | FLAG_REQUIRED | FLAG_VERSION)?
 		.with_list();
 
+	// Figure out which kinds we're doing.
+	let jpeg: bool = ! args.switch2(b"--no-jpeg", b"--no-jpg");
+	let png: bool = ! args.switch(b"--no-png");
+	if ! png && ! jpeg {
+		return Err(FlacaError::NoImages);
+	}
+
 	// Put it all together!
 	let paths = Vec::<PathBuf>::try_from(
-		Dowser::filtered(|p|
-			Extension::try_from3(p).map_or_else(
-				|| Extension::try_from4(p).map_or(false, |e| e == E_JPEG),
-				|e| e == E_JPG || e == E_PNG
-			)
-		)
+		find_files(jpeg, png)
 			.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
 	)
 		.map_err(|_| FlacaError::NoImages)?;
@@ -181,8 +178,9 @@ fn _main() -> Result<(), FlacaError> {
 			.map_err(|_| FlacaError::ProgressOverflow)?
 			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
 
-		// Check file sizes before we start.
-		let mut ba = BeforeAfter::start(du(&paths));
+		// Keep track of the before and after file sizes as we go.
+		let before: AtomicU64 = AtomicU64::new(0);
+		let after: AtomicU64 = AtomicU64::new(0);
 
 		// Intercept CTRL+C so we can gracefully shut down.
 		let p2 = progress.clone();
@@ -195,10 +193,14 @@ fn _main() -> Result<(), FlacaError> {
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
 				// Encode if we can.
-				if let Some(mut enc) = FlacaImage::new(x) {
+				if let Some(mut enc) = FlacaImage::new(x, jpeg, png) {
 					let tmp = x.to_string_lossy();
 					progress.add(&tmp);
-					let _res = enc.compress();
+
+					let (b, a) = enc.compress();
+					before.fetch_add(b, SeqCst);
+					after.fetch_add(a, SeqCst);
+
 					progress.remove(&tmp);
 				}
 				// Bump the count if we can't.
@@ -208,15 +210,16 @@ fn _main() -> Result<(), FlacaError> {
 			}
 		);
 
-		// Check file sizes again.
-		ba.stop(du(&paths));
-
 		// Finish up.
 		progress.finish();
 
 		if ! killed.load(SeqCst) {
+			// Print a summary.
 			progress.summary(MsgKind::Crunched, "image", "images")
-				.with_bytes_saved(ba)
+				.with_bytes_saved(BeforeAfter::from((
+					before.load(SeqCst),
+					after.load(SeqCst),
+				)))
 				.print();
 		}
 	}
@@ -227,7 +230,7 @@ fn _main() -> Result<(), FlacaError> {
 		// Process!
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
-				if let Some(mut enc) = FlacaImage::new(x) {
+				if let Some(mut enc) = FlacaImage::new(x, jpeg, png) {
 					let _res = enc.compress();
 				}
 			}
@@ -237,6 +240,43 @@ fn _main() -> Result<(), FlacaError> {
 	// Early abort?
 	if killed.load(SeqCst) { Err(FlacaError::Killed) }
 	else { Ok(()) }
+}
+
+/// # Find Files.
+///
+/// This just generates an appropriate `Dowser` path filter given the format(s)
+/// we're looking for.
+///
+/// When not looking for both JPEG and PNG, files with incorrect extensions may
+/// still be returned. We'll filter those edge cases out separately during
+/// traversal.
+fn find_files(jpeg: bool, png: bool) -> Dowser {
+	const E_JPG: Extension = Extension::new3(*b"jpg");
+	const E_PNG: Extension = Extension::new3(*b"png");
+	const E_JPEG: Extension = Extension::new4(*b"jpeg");
+
+	// Both.
+	if jpeg && png {
+		Dowser::filtered(|p|
+			Extension::try_from3(p).map_or_else(
+				|| Extension::try_from4(p).map_or(false, |e| e == E_JPEG),
+				|e| e == E_JPG || e == E_PNG
+			)
+		)
+	}
+	// PNG-only.
+	else if png {
+		Dowser::filtered(|p| Extension::try_from3(p).map_or(false, |e| e == E_PNG))
+	}
+	// JPEG-only.
+	else {
+		Dowser::filtered(|p|
+			Extension::try_from3(p).map_or_else(
+				|| Extension::try_from4(p).map_or(false, |e| e == E_JPEG),
+				|e| e == E_JPG
+			)
+		)
+	}
 }
 
 #[cold]
@@ -265,15 +305,19 @@ USAGE:
     flaca [FLAGS] [OPTIONS] <PATH(S)>...
 
 FLAGS:
-    -h, --help        Prints help information
+    -h, --help        Print help information and exit.
+        --no-jpeg     Skip JPEG images.
+        --no-png      Skip PNG images.
     -p, --progress    Show progress bar while minifying.
-    -V, --version     Prints version information
+    -V, --version     Print version information and exit.
 
 OPTIONS:
-    -l, --list <list>    Read file paths from this list.
+    -l, --list <FILE> Read (absolute) image and/or directory paths from this
+                      text file, one entry per line.
 
 ARGS:
-    <PATH(S)>...    One or more files or directories to compress.
+    <PATH(S)>...      One or more image and/or directory paths to losslessly
+                      compress.
 
 OPTIMIZERS USED:
     MozJPEG   <https://github.com/mozilla/mozjpeg>
