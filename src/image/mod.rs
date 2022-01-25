@@ -31,11 +31,8 @@ pub(super) struct FlacaImage<'a> {
 impl<'a> FlacaImage<'a> {
 	/// # New.
 	///
-	/// Create a wrapper for a raw image.
-	///
-	/// ## Errors
-	///
-	/// This will return an error if the image is unreadable or invalid.
+	/// Create a wrapper for a raw image. If the image can't be loaded, `None`
+	/// is returned.
 	pub(super) fn new(file: &'a Path) -> Option<Self> {
 		// Try to load the data.
 		let data = fs::read(file).ok()?;
@@ -54,10 +51,11 @@ impl<'a> FlacaImage<'a> {
 impl FlacaImage<'_> {
 	/// # Compress.
 	///
-	/// ## Errors
+	/// This method will run the lossless compression pass(es) against the
+	/// source image and save the result if it winds up smaller.
 	///
-	/// This method returns an error if there are issues compressing the file
-	/// (other than cases where no savings were possible).
+	/// This will return `true` if a change was made and written, otherwise
+	/// `false`.
 	pub(super) fn compress(&mut self) -> bool {
 		let changed: bool = match self.kind {
 			ImageKind::Jpeg => self.mozjpeg(),
@@ -82,11 +80,6 @@ impl FlacaImage<'_> {
 	/// ```bash
 	/// jpegtran -copy none -optimize -progressive
 	/// ```
-	///
-	/// ## Errors
-	///
-	/// This method returns an error if there are issues compressing the file
-	/// (other than cases where no savings were possible).
 	fn mozjpeg(&mut self) -> bool {
 		unsafe { jpegtran::jpegtran_mem(&self.data) }
 			.map_or(false, |new| self.maybe_update(new))
@@ -94,19 +87,10 @@ impl FlacaImage<'_> {
 
 	/// # Compress w/ `Oxipng`
 	///
-	/// Pass the in-memory PNG data to `Oxipng` to see what savings it can come
-	/// up with. If `Oxipng` is unable to parse/fix the file, an `Err` is
-	/// returned (so we can pack up and go home early).
-	///
 	/// The result is comparable to calling:
 	/// ```bash
 	/// oxipng -o 3 -s -a -i 0 --fix
 	/// ```
-	///
-	/// ## Errors
-	///
-	/// This method returns an error if there are issues compressing the file
-	/// (other than cases where no savings were possible).
 	fn oxipng(&mut self) -> bool {
 		use oxipng::{
 			AlphaOptim,
@@ -149,21 +133,10 @@ impl FlacaImage<'_> {
 
 	/// # Compress w/ `Zopflipng`.
 	///
-	/// This method spawns an external call to the `zopflipng` executable
-	/// bundled with flaca. If for some reason that file is missing, this
-	/// compression pass is skipped.
-	///
-	/// This approach is less than ideal for a number of reasons, but to date
-	/// there isn't a workable Rust port of `zopflipng`. `Oxipng` has basic
-	/// `zopfli` support, but with major performance and compression loss
-	/// relative to calling an external `zopflipng` on a second pass.
-	///
-	/// If/when that situation changes, flaca will internalize the operations!
-	///
-	/// ## Errors
-	///
-	/// This method returns an error if there are issues compressing the file
-	/// (other than cases where no savings were possible).
+	/// The result is comparable to calling:
+	/// ```bash
+	/// zopflipng -m
+	/// ```
 	fn zopflipng(&mut self) -> bool {
 		zopflipng::zopflipng_optimize(&self.data)
 			.map_or(false, |new| self.maybe_update(new))
