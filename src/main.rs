@@ -98,7 +98,6 @@ use argyle::{
 use dowser::{
 	Dowser,
 	Extension,
-	utility::du,
 };
 use fyi_msg::{
 	BeforeAfter,
@@ -118,6 +117,7 @@ use std::{
 		Arc,
 		atomic::{
 			AtomicBool,
+			AtomicU64,
 			Ordering::SeqCst,
 		},
 	},
@@ -181,8 +181,9 @@ fn _main() -> Result<(), FlacaError> {
 			.map_err(|_| FlacaError::ProgressOverflow)?
 			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
 
-		// Check file sizes before we start.
-		let mut ba = BeforeAfter::start(du(&paths));
+		// Keep track of the before and after file sizes as we go.
+		let before: AtomicU64 = AtomicU64::new(0);
+		let after: AtomicU64 = AtomicU64::new(0);
 
 		// Intercept CTRL+C so we can gracefully shut down.
 		let p2 = progress.clone();
@@ -198,7 +199,11 @@ fn _main() -> Result<(), FlacaError> {
 				if let Some(mut enc) = FlacaImage::new(x) {
 					let tmp = x.to_string_lossy();
 					progress.add(&tmp);
-					let _res = enc.compress();
+
+					let (b, a) = enc.compress();
+					before.fetch_add(b, SeqCst);
+					after.fetch_add(a, SeqCst);
+
 					progress.remove(&tmp);
 				}
 				// Bump the count if we can't.
@@ -208,15 +213,16 @@ fn _main() -> Result<(), FlacaError> {
 			}
 		);
 
-		// Check file sizes again.
-		ba.stop(du(&paths));
-
 		// Finish up.
 		progress.finish();
 
 		if ! killed.load(SeqCst) {
+			// Print a summary.
 			progress.summary(MsgKind::Crunched, "image", "images")
-				.with_bytes_saved(ba)
+				.with_bytes_saved(BeforeAfter::from((
+					before.load(SeqCst),
+					after.load(SeqCst),
+				)))
 				.print();
 		}
 	}

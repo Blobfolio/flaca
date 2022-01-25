@@ -26,6 +26,7 @@ pub(super) struct FlacaImage<'a> {
 	file: &'a Path,
 	kind: ImageKind,
 	data: Vec<u8>,
+	size: u64,
 }
 
 impl<'a> FlacaImage<'a> {
@@ -39,38 +40,42 @@ impl<'a> FlacaImage<'a> {
 		if data.is_empty() { None }
 		// Return the result!
 		else {
+			let size = u64::try_from(data.len()).ok()?;
 			Some(Self {
 				file,
 				kind: ImageKind::parse(data.as_slice())?,
 				data,
+				size,
 			})
 		}
 	}
 }
 
 impl FlacaImage<'_> {
+	#[must_use]
 	/// # Compress.
 	///
 	/// This method will run the lossless compression pass(es) against the
 	/// source image and save the result if it winds up smaller.
 	///
-	/// This will return `true` if a change was made and written, otherwise
-	/// `false`.
-	pub(super) fn compress(&mut self) -> bool {
-		let changed: bool = match self.kind {
-			ImageKind::Jpeg => self.mozjpeg(),
+	/// A tuple containing the original file size and the new file size is
+	/// returned. If the two values are equal, no savings occurrred.
+	pub(super) fn compress(&mut self) -> (u64, u64) {
+		match self.kind {
+			ImageKind::Jpeg => { self.mozjpeg(); },
 			ImageKind::Png => {
-				let a: bool = self.oxipng();
-				let b: bool = self.zopflipng();
-				a || b
+				self.oxipng();
+				self.zopflipng();
 			},
-		};
-
-		// Save the newer, smaller version!
-		if changed {
-			write_atomic::write_file(self.file, &self.data).is_ok()
 		}
-		else { false }
+
+		// The buffer can't be empty, so if it is smaller than the original
+		// size, savings happened!
+		let after = self.data.len() as u64;
+		if after < self.size && write_atomic::write_file(self.file, &self.data).is_ok() {
+			(self.size, after)
+		}
+		else { (self.size, self.size) }
 	}
 
 	#[inline]
