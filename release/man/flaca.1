@@ -1,6 +1,6 @@
-.TH "FLACA" "1" "January 2022" "Flaca v1.8.0" "User Commands"
+.TH "FLACA" "1" "January 2022" "Flaca v1.8.1" "User Commands"
 .SH NAME
-Flaca \- Manual page for flaca v1.8.0.
+Flaca \- Manual page for flaca v1.8.1.
 .SH DESCRIPTION
 Brute\-force, lossless JPEG and PNG compression.
 .SS USAGE:
@@ -9,20 +9,26 @@ flaca [FLAGS] [OPTIONS] <PATH(s)…>
 .SS FLAGS:
 .TP
 \fB\-h\fR, \fB\-\-help\fR
-Print help information.
+Print help information and exit.
+.TP
+\fB\-\-no\-jpeg\fR
+Skip JPEG images.
+.TP
+\fB\-\-no\-png\fR
+Skip PNG images.
 .TP
 \fB\-p\fR, \fB\-\-progress\fR
-Show progress bar while working.
+Show progress bar while minifying.
 .TP
 \fB\-V\fR, \fB\-\-version\fR
-Print program version.
+Print version information and exit.
 .SS OPTIONS:
 .TP
 \fB\-l\fR, \fB\-\-list\fR <FILE>
-Read file paths from this text file.
+Read (absolute) image and/or directory paths from this text file, one entry per line.
 .SS <PATH(S)…>:
 .TP
-Any number of files and directories to crawl and crunch.
+One or more image and/or directory paths to losslessly compress.
 .SS OPTIMIZERS:
 .TP
 \fBMozJPEG\fR

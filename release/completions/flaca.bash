@@ -9,6 +9,8 @@ _basher___flaca() {
 		opts+=("-h")
 		opts+=("--help")
 	fi
+	[[ " ${COMP_LINE} " =~ " --no-jpeg " ]] || opts+=("--no-jpeg")
+	[[ " ${COMP_LINE} " =~ " --no-png " ]] || opts+=("--no-png")
 	if [[ ! " ${COMP_LINE} " =~ " -p " ]] && [[ ! " ${COMP_LINE} " =~ " --progress " ]]; then
 		opts+=("-p")
 		opts+=("--progress")

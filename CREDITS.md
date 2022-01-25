@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   1.8.0
-    Generated: 2022-01-21 04:43:24 UTC
+    Version:   1.8.1
+    Generated: 2022-01-25 06:39:30 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -21,7 +21,7 @@
 | [color_quant](https://github.com/image-rs/color_quant.git) | 1.1.0 | [nwin](mailto:nwin@users.noreply.github.com) | MIT |
 | [crc](https://github.com/mrhooray/crc-rs.git) | 2.1.0 | [Rui Hu](mailto:code@mrhooray.com) and [Akhil Velagapudi](mailto:4@4khil.com) | Apache-2.0 or MIT |
 | [crc-catalog](https://github.com/akhilles/crc-catalog.git) | 1.1.1 | [Akhil Velagapudi](mailto:akhilvelagapudi@gmail.com) | Apache-2.0 or MIT |
-| [crc32fast](https://github.com/srijs/rust-crc32fast) | 1.3.0 | [Sam Rijs](mailto:srijs@airpost.net) and [Alex Crichton](mailto:alex@alexcrichton.com) | Apache-2.0 or MIT |
+| [crc32fast](https://github.com/srijs/rust-crc32fast) | 1.3.1 | [Sam Rijs](mailto:srijs@airpost.net) and [Alex Crichton](mailto:alex@alexcrichton.com) | Apache-2.0 or MIT |
 | [crossbeam-channel](https://github.com/crossbeam-rs/crossbeam) | 0.5.2 |  | Apache-2.0 or MIT |
 | [crossbeam-deque](https://github.com/crossbeam-rs/crossbeam) | 0.8.1 | The Crossbeam Project Developers | Apache-2.0 or MIT |
 | [crossbeam-epoch](https://github.com/crossbeam-rs/crossbeam) | 0.9.6 |  | Apache-2.0 or MIT |
@@ -31,9 +31,9 @@
 | [deflate](https://github.com/image-rs/deflate-rs) | 0.8.6 | [oyvindln](mailto:oyvindln@users.noreply.github.com) | Apache-2.0 or MIT |
 | [dowser](https://github.com/Blobfolio/dowser) | 0.3.5 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [either](https://github.com/bluss/either) | 1.6.1 | bluss | Apache-2.0 or MIT |
-| [fastrand](https://github.com/smol-rs/fastrand) | 1.6.0 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 or MIT |
+| [fastrand](https://github.com/smol-rs/fastrand) | 1.7.0 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 or MIT |
 | [flume](https://github.com/zesterer/flume) | 0.10.10 | [Joshua Barretto](mailto:joshua.s.barretto@gmail.com) | Apache-2.0 or MIT |
-| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.9.2 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.9.3 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [getrandom](https://github.com/rust-random/getrandom) | 0.2.4 | The Rand Project Developers | Apache-2.0 or MIT |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.11.2 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
 | [hermit-abi](https://github.com/hermitcore/libhermit-rs) | 0.1.19 | Stefan Lankes | Apache-2.0 or MIT |
