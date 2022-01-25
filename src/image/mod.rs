@@ -89,10 +89,7 @@ impl FlacaImage<'_> {
 	/// (other than cases where no savings were possible).
 	fn mozjpeg(&mut self) -> bool {
 		unsafe { jpegtran::jpegtran_mem(&self.data) }
-			.map_or(
-				false,
-				|new| self.maybe_update(&new)
-			)
+			.map_or(false, |new| self.maybe_update(new))
 	}
 
 	/// # Compress w/ `Oxipng`
@@ -147,10 +144,7 @@ impl FlacaImage<'_> {
 
 		// This pass can be done without needless file I/O! Hurray!
 		oxipng::optimize_from_memory(&self.data, &OPTS)
-			.map_or(
-				false,
-				|new| self.maybe_update(&new)
-			)
+			.map_or(false, |new| self.maybe_update(new))
 	}
 
 	/// # Compress w/ `Zopflipng`.
@@ -172,24 +166,20 @@ impl FlacaImage<'_> {
 	/// (other than cases where no savings were possible).
 	fn zopflipng(&mut self) -> bool {
 		zopflipng::zopflipng_optimize(&self.data)
-			.map_or(
-				false,
-				|new| self.maybe_update(&new)
-			)
+			.map_or(false, |new| self.maybe_update(new))
 	}
 
 	/// # Maybe Update Buffer.
 	///
 	/// This will replace the inline source data with the new version, provided
 	/// the new version has length and is smaller than the original.
-	fn maybe_update(&mut self, new: &[u8]) -> bool {
+	fn maybe_update(&mut self, mut new: Vec<u8>) -> bool {
 		if
 			! new.is_empty() &&
 			new.len() < self.data.len() &&
-			ImageKind::parse(new).map_or(false, |k| k == self.kind)
+			ImageKind::parse(&new).map_or(false, |k| k == self.kind)
 		{
-			self.data.truncate(new.len());
-			self.data[..].copy_from_slice(new);
+			std::mem::swap(&mut self.data, &mut new);
 			true
 		}
 		else { false }
