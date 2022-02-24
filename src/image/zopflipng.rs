@@ -214,14 +214,14 @@ pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 	// Initialize the options equivalent to calling the binary with the `-m`
 	// flag.
 	let options = raw::CZopfliPNGOptions {
-		lossy_transparent: false as _,
-		lossy_8bit: false as _,
+		lossy_transparent: i32::from(false),
+		lossy_8bit: i32::from(false),
 		filter_strategies: std::ptr::null_mut(),
 		num_filter_strategies: 0,
-		auto_filter_strategy: true as _,
+		auto_filter_strategy: i32::from(true),
 		keepchunks: std::ptr::null_mut(),
 		num_keepchunks: 0,
-		use_zopfli: true as _,
+		use_zopfli: i32::from(true),
 		num_iterations: 60,
 		num_iterations_large: 20,
 		block_split_strategy: 1,
@@ -233,7 +233,7 @@ pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 			src_ptr,
 			src_size,
 			&options,
-			false as _,
+			i32::from(false),
 			&mut out_ptr,
 			&mut out_size,
 		)

@@ -22,7 +22,6 @@ use libc::{
 	free,
 };
 use mozjpeg_sys::{
-	boolean,
 	c_ulong,
 	j_compress_ptr,
 	j_decompress_ptr,
@@ -146,7 +145,7 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	jcopy_markers_setup(&mut srcinfo, JCOPYOPT_NONE);
 
 	// Read the file header to get to the goods.
-	jpeg_read_header(&mut srcinfo, true as boolean);
+	jpeg_read_header(&mut srcinfo, i32::from(true));
 
 	// Abort if transformation is not possible. We aren't cropping or anything,
 	// but this method might still do something with the defaults?
@@ -174,7 +173,7 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	let mut out_size: c_ulong = 0;
 
 	// Turn on "progressive" and "code optimizing" for the output.
-	dstinfo.optimize_coding = true as boolean;
+	dstinfo.optimize_coding = i32::from(true);
 	jpeg_simple_progression(&mut dstinfo);
 
 	// And load the destination file.
