@@ -27,7 +27,7 @@ Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of lossle
 Under the hood, it uses MozJPEG for lossless JPEG (re)compression, and Oxipng/Zopflipng for lossless PNG (re)compression."""
 revision = "1"
 depends = "$auto"
-section = "utility"
+section = "graphics"
 assets = [
     ["./target/x86_64-unknown-linux-gnu/release/flaca", "usr/bin/", "755"],
     ["./release/completions/flaca.bash", "etc/bash_completion.d/", "644"],
