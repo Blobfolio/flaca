@@ -144,6 +144,7 @@ fn main() {
 	}
 }
 
+#[allow(clippy::option_if_let_else)] // This looks bad.
 #[inline]
 /// # Actual Main.
 ///
