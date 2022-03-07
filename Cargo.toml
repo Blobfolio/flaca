@@ -86,7 +86,7 @@ items = [
 [dependencies]
 argyle = "0.5.*"
 ctrlc = "3.2.*"
-dowser = "0.3.*"
+dowser = "0.4.*"
 libc = "0.2.*"
 link-cplusplus = "1.0"
 once_cell = "1.10.*"
