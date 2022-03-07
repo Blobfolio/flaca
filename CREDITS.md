@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   1.8.2
-    Generated: 2022-02-24 17:53:10 UTC
+    Version:   1.8.3
+    Generated: 2022-03-07 19:06:07 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -13,7 +13,7 @@
 | [bit-vec](https://github.com/contain-rs/bit-vec) | 0.6.3 | [Alexis Beingessner](mailto:a.beingessner@gmail.com) | Apache-2.0 or MIT |
 | [bitflags](https://github.com/bitflags/bitflags) | 1.3.2 | The Rust Project Developers | Apache-2.0 or MIT |
 | [bytecount](https://github.com/llogiq/bytecount) | 0.6.2 | [Andre Bogus](mailto:bogusandre@gmail.de) and [Joshua Landau](mailto:joshua@landau.ws) | Apache-2.0 or MIT |
-| [bytemuck](https://github.com/Lokathor/bytemuck) | 1.7.3 | [Lokathor](mailto:zefria@gmail.com) | Apache-2.0, MIT, or Zlib |
+| [bytemuck](https://github.com/Lokathor/bytemuck) | 1.8.0 | [Lokathor](mailto:zefria@gmail.com) | Apache-2.0, MIT, or Zlib |
 | [byteorder](https://github.com/BurntSushi/byteorder) | 1.4.3 | [Andrew Gallant](mailto:jamslam@gmail.com) | MIT or Unlicense |
 | [cfg-if](https://github.com/alexcrichton/cfg-if) | 1.0.0 | [Alex Crichton](mailto:alex@alexcrichton.com) | Apache-2.0 or MIT |
 | [color_quant](https://github.com/image-rs/color_quant.git) | 1.1.0 | [nwin](mailto:nwin@users.noreply.github.com) | MIT |
@@ -27,10 +27,10 @@
 | [ctrlc](https://github.com/Detegr/rust-ctrlc.git) | 3.2.1 | [Antti Keränen](mailto:detegr@gmail.com) | Apache-2.0 or MIT |
 | [dactyl](https://github.com/Blobfolio/dactyl) | 0.2.4 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [deflate](https://github.com/image-rs/deflate-rs) | 0.8.6 | [oyvindln](mailto:oyvindln@users.noreply.github.com) | Apache-2.0 or MIT |
-| [dowser](https://github.com/Blobfolio/dowser) | 0.3.6 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [dowser](https://github.com/Blobfolio/dowser) | 0.4.1 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [either](https://github.com/bluss/either) | 1.6.1 | bluss | Apache-2.0 or MIT |
 | [fastrand](https://github.com/smol-rs/fastrand) | 1.7.0 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 or MIT |
-| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.9.3 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.9.5 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.11.2 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
 | [image](https://github.com/image-rs/image) | 0.23.14 | The image-rs Developers | MIT |
 | [indexmap](https://github.com/bluss/indexmap) | 1.8.0 | bluss and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
@@ -51,7 +51,7 @@
 | [num-rational](https://github.com/rust-num/num-rational) | 0.3.2 | The Rust Project Developers | Apache-2.0 or MIT |
 | [num-traits](https://github.com/rust-num/num-traits) | 0.2.14 | The Rust Project Developers | Apache-2.0 or MIT |
 | [num_cpus](https://github.com/seanmonstar/num_cpus) | 1.13.1 | [Sean McArthur](mailto:sean@seanmonstar.com) | Apache-2.0 or MIT |
-| [once_cell](https://github.com/matklad/once_cell) | 1.9.0 | [Aleksey Kladov](mailto:aleksey.kladov@gmail.com) | Apache-2.0 or MIT |
+| [once_cell](https://github.com/matklad/once_cell) | 1.10.0 | [Aleksey Kladov](mailto:aleksey.kladov@gmail.com) | Apache-2.0 or MIT |
 | [oxipng](https://github.com/shssoichiro/oxipng) | 5.0.1 | [Joshua Holmer](mailto:jholmer.in@gmail.com) | MIT |
 | [parking_lot](https://github.com/Amanieu/parking_lot) | 0.12.0 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
 | [parking_lot_core](https://github.com/Amanieu/parking_lot) | 0.9.1 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
@@ -59,7 +59,7 @@
 | [rayon](https://github.com/rayon-rs/rayon) | 1.5.1 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
 | [rayon-core](https://github.com/rayon-rs/rayon) | 1.9.1 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
 | [remove_dir_all](https://github.com/XAMPPRocky/remove_dir_all.git) | 0.5.3 | [Aaronepower](mailto:theaaronepower@gmail.com) | Apache-2.0 or MIT |
-| [rgb](https://github.com/kornelski/rust-rgb) | 0.8.31 | [Kornel Lesiński](mailto:kornel@geekhood.net) | MIT |
+| [rgb](https://github.com/kornelski/rust-rgb) | 0.8.32 | [Kornel Lesiński](mailto:kornel@geekhood.net) | MIT |
 | [scopeguard](https://github.com/bluss/scopeguard) | 1.1.0 | bluss | Apache-2.0 or MIT |
 | [smallvec](https://github.com/servo/rust-smallvec) | 1.8.0 | The Servo Project Developers | Apache-2.0 or MIT |
 | [tempfile](https://github.com/Stebalien/tempfile) | 3.3.0 | [Steven Allen](mailto:steven@stebalien.com), The Rust Project Developers, [Ashley Mannix](mailto:ashleymannix@live.com.au), and [Jason White](mailto:jasonaw0@gmail.com) | Apache-2.0 or MIT |
