@@ -150,6 +150,10 @@ fn main() {
 ///
 /// This is the actual main, allowing us to easily bubble errors.
 fn _main() -> Result<(), FlacaError> {
+	const E_JPG: Extension = Extension::new3(*b"jpg");
+	const E_PNG: Extension = Extension::new3(*b"png");
+	const E_JPEG: Extension = Extension::new4(*b"jpeg");
+
 	// Parse CLI arguments.
 	let args = Argue::new(FLAG_HELP | FLAG_REQUIRED | FLAG_VERSION)?
 		.with_list();
@@ -157,23 +161,42 @@ fn _main() -> Result<(), FlacaError> {
 	// Figure out which kinds we're doing.
 	let jpeg: bool = ! args.switch2(b"--no-jpeg", b"--no-jpg");
 	let png: bool = ! args.switch(b"--no-png");
-	if ! png && ! jpeg {
+	let progress = args.switch2(b"-p", b"--progress");
+	let iter = Dowser::default()
+		.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x)));
+
+	// Find files!
+	let paths: Vec<PathBuf> = match (jpeg, png) {
+		// Both.
+		(true, true) => iter.filter(|p|
+			Extension::try_from3(p).map_or_else(
+				|| Some(E_JPEG) == Extension::try_from4(p),
+				|e| e == E_JPG || e == E_PNG
+			)
+		).collect(),
+		// JPEG.
+		(true, false) => iter.filter(|p|
+			Extension::try_from3(p).map_or_else(
+				|| Some(E_JPEG) == Extension::try_from4(p),
+				|e| e == E_JPG
+			)
+		).collect(),
+		// PNG.
+		(false, true) => iter.filter(|p| Some(E_PNG) == Extension::try_from3(p)).collect(),
+		// Nothing?!
+		(false, false) => Vec::new(),
+	};
+
+	if paths.is_empty() {
 		return Err(FlacaError::NoImages);
 	}
-
-	// Put it all together!
-	let paths = Vec::<PathBuf>::try_from(
-		find_files(jpeg, png)
-			.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x.as_ref())))
-	)
-		.map_err(|_| FlacaError::NoImages)?;
 
 	// Controls for early termination.
 	let killed = Arc::from(AtomicBool::new(false));
 	let k2 = Arc::clone(&killed);
 
 	// Sexy run-through.
-	if args.switch2(b"-p", b"--progress") {
+	if progress {
 		// Boot up a progress bar.
 		let progress = Progless::try_from(paths.len())
 			.map_err(|_| FlacaError::ProgressOverflow)?
@@ -241,43 +264,6 @@ fn _main() -> Result<(), FlacaError> {
 	// Early abort?
 	if killed.load(SeqCst) { Err(FlacaError::Killed) }
 	else { Ok(()) }
-}
-
-/// # Find Files.
-///
-/// This just generates an appropriate `Dowser` path filter given the format(s)
-/// we're looking for.
-///
-/// When not looking for both JPEG and PNG, files with incorrect extensions may
-/// still be returned. We'll filter those edge cases out separately during
-/// traversal.
-fn find_files(jpeg: bool, png: bool) -> Dowser {
-	const E_JPG: Extension = Extension::new3(*b"jpg");
-	const E_PNG: Extension = Extension::new3(*b"png");
-	const E_JPEG: Extension = Extension::new4(*b"jpeg");
-
-	// Both.
-	if jpeg && png {
-		Dowser::filtered(|p|
-			Extension::try_from3(p).map_or_else(
-				|| Extension::try_from4(p).map_or(false, |e| e == E_JPEG),
-				|e| e == E_JPG || e == E_PNG
-			)
-		)
-	}
-	// PNG-only.
-	else if png {
-		Dowser::filtered(|p| Extension::try_from3(p).map_or(false, |e| e == E_PNG))
-	}
-	// JPEG-only.
-	else {
-		Dowser::filtered(|p|
-			Extension::try_from3(p).map_or_else(
-				|| Extension::try_from4(p).map_or(false, |e| e == E_JPEG),
-				|e| e == E_JPG
-			)
-		)
-	}
 }
 
 #[cold]
