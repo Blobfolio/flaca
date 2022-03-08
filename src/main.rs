@@ -162,6 +162,7 @@ fn _main() -> Result<(), FlacaError> {
 	let jpeg: bool = ! args.switch2(b"--no-jpeg", b"--no-jpg");
 	let png: bool = ! args.switch(b"--no-png");
 	let progress = args.switch2(b"-p", b"--progress");
+
 	let iter = Dowser::default()
 		.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x)));
 
