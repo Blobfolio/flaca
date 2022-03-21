@@ -57,34 +57,6 @@ rustflags   := "-C link-arg=-s"
 	mv "{{ justfile_directory() }}/target" "{{ cargo_dir }}"
 
 
-# Build Zopflipng Libraries.
-@build-zopfli:
-	# Clone it!
-	[ ! -d "/tmp/zopfli" ] || rm -rf "/tmp/zopfli"
-	git clone https://github.com/google/zopfli.git /tmp/zopfli
-
-	cd /tmp/zopfli && \
-		make libzopfli.a && \
-		make libzopflipng.a
-
-	# Recreate the includes folders.
-	[ ! -d "{{ skel_dir }}/inc" ] || rm -rf "{{ skel_dir }}/inc"
-	mkdir -p "{{ skel_dir }}/inc/zopflipng/lodepng"
-	mkdir -p "{{ skel_dir }}/inc/zopfli"
-
-	# Copy everything over.
-	cp /tmp/zopfli/libzopfli.a "{{ skel_dir }}/inc/"
-	cp /tmp/zopfli/libzopflipng.a "{{ skel_dir }}/inc/"
-	cp /tmp/zopfli/src/zopfli/*.h "{{ skel_dir }}/inc/zopfli/"
-	cp /tmp/zopfli/src/zopflipng/*.h "{{ skel_dir }}/inc/zopflipng/"
-	cp /tmp/zopfli/src/zopflipng/lodepng/*.h "{{ skel_dir }}/inc/zopflipng/lodepng/"
-
-	just _fix-chown "{{ skel_dir }}/inc"
-	rm -rf /tmp/zopfli
-
-	fyi success "Zopfli libraries have been rebuilt!"
-
-
 # Check Release!
 @check:
 	# First let's build the Rust bit.
