@@ -169,21 +169,21 @@ fn _main() -> Result<(), FlacaError> {
 	// Find files!
 	let paths: Vec<PathBuf> = match (jpeg, png) {
 		// Both.
-		(true, true) => iter.filter(|p|
+		(true, true) => iter.into_vec(|p|
 			Extension::try_from3(p).map_or_else(
 				|| Some(E_JPEG) == Extension::try_from4(p),
 				|e| e == E_JPG || e == E_PNG
 			)
-		).collect(),
+		),
 		// JPEG.
-		(true, false) => iter.filter(|p|
+		(true, false) => iter.into_vec(|p|
 			Extension::try_from3(p).map_or_else(
 				|| Some(E_JPEG) == Extension::try_from4(p),
 				|e| e == E_JPG
 			)
-		).collect(),
+		),
 		// PNG.
-		(false, true) => iter.filter(|p| Some(E_PNG) == Extension::try_from3(p)).collect(),
+		(false, true) => iter.into_vec(|p| Some(E_PNG) == Extension::try_from3(p)),
 		// Nothing?!
 		(false, false) => Vec::new(),
 	};
