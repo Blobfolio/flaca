@@ -84,7 +84,7 @@ items = [
 ]
 
 [dependencies]
-argyle = "0.5.*"
+argyle = "0.5.*, >=0.5.3"
 ctrlc = "3.2.*"
 dowser = "0.4.*, >=0.4.3"
 libc = "0.2.*"
