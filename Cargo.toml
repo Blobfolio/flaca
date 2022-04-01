@@ -4,7 +4,7 @@ version = "1.8.3"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
-rust-version = "1.56"
+rust-version = "1.59"
 description = "Brute-force, lossless JPEG and PNG compression."
 readme = "README.md"
 publish = false
@@ -112,3 +112,4 @@ features = [ "libdeflater" ]
 [profile.release]
 lto = true
 opt-level = 3
+strip = true
