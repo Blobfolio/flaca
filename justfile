@@ -124,18 +124,13 @@ skel_dir    := justfile_directory() + "/skel"
 
 
 # Unit tests!
-test:
-	#!/usr/bin/env bash
-
+@test:
 	clear
-
 	RUST_TEST_THREADS=1 cargo test \
 		--release \
 		--all-features \
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
-
-	exit 0
 
 
 # Get/Set version.
