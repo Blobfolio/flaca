@@ -85,12 +85,12 @@ items = [
 
 [dependencies]
 argyle = "0.5.*, >=0.5.3"
-ctrlc = "3.2.*"
+ctrlc = "=3.2.1"
 dowser = "0.4.*, >=0.4.3"
 libc = "0.2.*"
-link-cplusplus = "1.0"
-once_cell = "1.10.*"
-rayon = "1.5.*"
+link-cplusplus = "=1.0.6"
+once_cell = "=1.10.0"
+rayon = "=1.5.1"
 write_atomic = "0.2.*"
 
 [dependencies.fyi_msg]
@@ -98,11 +98,11 @@ version = "0.9.*"
 features = [ "progress", "parking_lot_mutex" ]
 
 [dependencies.mozjpeg-sys]
-version = "1.0.*"
+version = "=1.0.1"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
-version = "5.0.*"
+version = "=5.0.1"
 default-features = false
 features = [ "libdeflater" ]
 
