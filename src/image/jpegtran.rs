@@ -50,11 +50,6 @@ use mozjpeg_sys::{
 	jvirt_barray_ptr,
 	JXFORM_CODE_JXFORM_NONE,
 };
-use std::{
-	mem,
-	ptr,
-	slice,
-};
 
 
 
@@ -69,9 +64,6 @@ type JCOPY_OPTION = u32;
 // sources but doesn't export the definitions.
 extern "C" {
 	fn jcopy_markers_setup(srcinfo: j_decompress_ptr, option: JCOPY_OPTION);
-}
-
-extern "C" {
 	fn jcopy_markers_execute(
 		srcinfo: j_decompress_ptr,
 		dstinfo: j_compress_ptr,
@@ -93,42 +85,38 @@ extern "C" {
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
 pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
-	let mut transformoption: jpeg_transform_info =
-		jpeg_transform_info {
-			transform: JXFORM_CODE_JXFORM_NONE,
-			perfect: 0,
-			trim: 0,
-			force_grayscale: 0,
-			crop: 0,
-			slow_hflip: 0,
-			crop_width: 0,
-			crop_width_set: JCROP_CODE_JCROP_UNSET,
-			crop_height: 0,
-			crop_height_set: JCROP_CODE_JCROP_UNSET,
-			crop_xoffset: 0,
-			crop_xoffset_set: JCROP_CODE_JCROP_UNSET,
-			crop_yoffset: 0,
-			crop_yoffset_set: JCROP_CODE_JCROP_UNSET,
-			num_components: 0,
-			workspace_coef_arrays: ptr::null_mut::<jvirt_barray_ptr>(),
-			output_width: 0,
-			output_height: 0,
-			x_crop_offset: 0,
-			y_crop_offset: 0,
-			iMCU_sample_width: 0,
-			iMCU_sample_height: 0,
-		};
+	let mut transformoption = jpeg_transform_info {
+		transform: JXFORM_CODE_JXFORM_NONE,
+		perfect: 0,
+		trim: 0,
+		force_grayscale: 0,
+		crop: 0,
+		slow_hflip: 0,
+		crop_width: 0,
+		crop_width_set: JCROP_CODE_JCROP_UNSET,
+		crop_height: 0,
+		crop_height_set: JCROP_CODE_JCROP_UNSET,
+		crop_xoffset: 0,
+		crop_xoffset_set: JCROP_CODE_JCROP_UNSET,
+		crop_yoffset: 0,
+		crop_yoffset_set: JCROP_CODE_JCROP_UNSET,
+		num_components: 0,
+		workspace_coef_arrays: std::ptr::null_mut::<jvirt_barray_ptr>(),
+		output_width: 0,
+		output_height: 0,
+		x_crop_offset: 0,
+		y_crop_offset: 0,
+		iMCU_sample_width: 0,
+		iMCU_sample_height: 0,
+	};
 
-	let mut jsrcerr: jpeg_error_mgr = mem::zeroed();
-	let mut srcinfo: jpeg_decompress_struct = mem::zeroed();
+	let mut jsrcerr: jpeg_error_mgr = std::mem::zeroed();
+	let mut srcinfo: jpeg_decompress_struct = std::mem::zeroed();
 	srcinfo.common.err = jpeg_std_error(&mut jsrcerr);
 
-	let mut jdsterr: jpeg_error_mgr = mem::zeroed();
-	let mut dstinfo: jpeg_compress_struct = mem::zeroed();
+	let mut jdsterr: jpeg_error_mgr = std::mem::zeroed();
+	let mut dstinfo: jpeg_compress_struct = std::mem::zeroed();
 	dstinfo.common.err = jpeg_std_error(&mut jdsterr);
-
-	let mut src_coef_arrays: *mut jvirt_barray_ptr = ptr::null_mut::<jvirt_barray_ptr>();
-	let mut dst_coef_arrays: *mut jvirt_barray_ptr = ptr::null_mut::<jvirt_barray_ptr>();
 
 	// Initialize the JPEG (de/)compression object with default error handling.
 	jpeg_create_decompress(&mut srcinfo);
@@ -145,23 +133,22 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	jcopy_markers_setup(&mut srcinfo, JCOPYOPT_NONE);
 
 	// Read the file header to get to the goods.
-	jpeg_read_header(&mut srcinfo, i32::from(true));
+	jpeg_read_header(&mut srcinfo, 1);
 
-	// Abort if transformation is not possible. We aren't cropping or anything,
-	// but this method might still do something with the defaults?
+	// Read a few more properties into the source struct.
 	if jtransform_request_workspace(&mut srcinfo, &mut transformoption) == 0 {
 		return None;
 	}
 
 	// Read source file as DCT coefficients.
-	src_coef_arrays = jpeg_read_coefficients(&mut srcinfo);
+	let src_coef_arrays: *mut jvirt_barray_ptr = jpeg_read_coefficients(&mut srcinfo);
 
 	// Initialize destination compression parameters from source values.
 	jpeg_copy_critical_parameters(&srcinfo, &mut dstinfo);
 
 	// Adjust destination parameters if required by transform options, and sync
 	// the coefficient arrays.
-	dst_coef_arrays = jtransform_adjust_parameters(
+	let dst_coef_arrays: *mut jvirt_barray_ptr = jtransform_adjust_parameters(
 		&mut srcinfo,
 		&mut dstinfo,
 		src_coef_arrays,
@@ -169,11 +156,11 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	);
 
 	// Get an output buffer going.
-	let mut out_ptr: *mut c_uchar = ptr::null_mut();
+	let mut out_ptr: *mut c_uchar = std::ptr::null_mut();
 	let mut out_size: c_ulong = 0;
 
 	// Turn on "progressive" and "code optimizing" for the output.
-	dstinfo.optimize_coding = i32::from(true);
+	dstinfo.optimize_coding = 1;
 	jpeg_simple_progression(&mut dstinfo);
 
 	// And load the destination file.
@@ -204,7 +191,7 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	let out: Vec<u8> =
 		if out_ptr.is_null() || out_size == 0 { Vec::new() }
 		else {
-			let tmp = slice::from_raw_parts(
+			let tmp = std::slice::from_raw_parts(
 				out_ptr,
 				usize::try_from(out_size).ok()?
 			).to_vec();
@@ -212,7 +199,7 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 			// The buffer probably needs to be manually freed. I don't think
 			// jpeg_destroy_compress() handles that for us.
 			free(out_ptr.cast::<mozjpeg_sys::c_void>());
-			out_ptr = ptr::null_mut();
+			out_ptr = std::ptr::null_mut();
 			out_size = 0;
 
 			tmp
