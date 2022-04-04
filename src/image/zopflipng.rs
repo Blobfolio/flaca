@@ -20,24 +20,45 @@ mod raw {
 		c_ulong,
 	};
 
-	pub(super) type size_t = c_ulong;
-	pub(super) type ZopfliPNGFilterStrategy = c_uint;
+	type size_t = c_ulong;
+	type ZopfliPNGFilterStrategy = c_uint;
 
 	#[repr(C)]
 	#[derive(Debug, Copy, Clone)]
 	/// # (C) Zopflipng Options.
 	pub(super) struct CZopfliPNGOptions {
-		pub(super) lossy_transparent: c_int,
-		pub(super) lossy_8bit: c_int,
-		pub(super) filter_strategies: *mut ZopfliPNGFilterStrategy,
-		pub(super) num_filter_strategies: c_int,
-		pub(super) auto_filter_strategy: c_int,
-		pub(super) keepchunks: *mut *mut c_char,
-		pub(super) num_keepchunks: c_int,
-		pub(super) use_zopfli: c_int,
-		pub(super) num_iterations: c_int,
-		pub(super) num_iterations_large: c_int,
-		pub(super) block_split_strategy: c_int,
+		lossy_transparent: c_int,
+		lossy_8bit: c_int,
+		filter_strategies: *mut ZopfliPNGFilterStrategy,
+		num_filter_strategies: c_int,
+		auto_filter_strategy: c_int,
+		keepchunks: *mut *mut c_char,
+		num_keepchunks: c_int,
+		use_zopfli: c_int,
+		num_iterations: c_int,
+		num_iterations_large: c_int,
+		block_split_strategy: c_int,
+	}
+
+	impl Default for CZopfliPNGOptions {
+		/// # Default.
+		///
+		/// These settings are equivalent to calling `zopflipng -m`.
+		fn default() -> Self {
+			Self {
+				lossy_transparent: 0, // false
+				lossy_8bit: 0, // false
+				filter_strategies: std::ptr::null_mut(),
+				num_filter_strategies: 0,
+				auto_filter_strategy: 1, // true
+				keepchunks: std::ptr::null_mut(),
+				num_keepchunks: 0,
+				use_zopfli: 1, // true
+				num_iterations: 60,
+				num_iterations_large: 20,
+				block_split_strategy: 1,
+			}
+		}
 	}
 
 	#[cfg(test)]
@@ -211,28 +232,12 @@ pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 	let mut out_ptr = std::ptr::null_mut();
 	let mut out_size: u64 = 0;
 
-	// Initialize the options equivalent to calling the binary with the `-m`
-	// flag.
-	let options = raw::CZopfliPNGOptions {
-		lossy_transparent: i32::from(false),
-		lossy_8bit: i32::from(false),
-		filter_strategies: std::ptr::null_mut(),
-		num_filter_strategies: 0,
-		auto_filter_strategy: i32::from(true),
-		keepchunks: std::ptr::null_mut(),
-		num_keepchunks: 0,
-		use_zopfli: i32::from(true),
-		num_iterations: 60,
-		num_iterations_large: 20,
-		block_split_strategy: 1,
-	};
-
 	// Try to compress!
 	let res = unsafe {
 		raw::CZopfliPNGOptimize(
 			src_ptr,
 			src_size,
-			&options,
+			&raw::CZopfliPNGOptions::default(),
 			i32::from(false),
 			&mut out_ptr,
 			&mut out_size,
