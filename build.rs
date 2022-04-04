@@ -3,7 +3,6 @@
 */
 
 use std::{
-	ffi::OsStr,
 	fs::File,
 	io::Write,
 	path::PathBuf,
@@ -28,6 +27,11 @@ macro_rules! cmd {
 	);
 }
 
+/// # Repo Revision.
+///
+/// For reproducibility, we'll be working from a specific commit.
+const REVISION: &str = "831773b";
+
 
 
 /// # Build Zopflipng.
@@ -39,56 +43,65 @@ pub fn main() {
 
 	// This is where Zopflipng's files will go.
 	let repo = out_path("zopfli-git");
+	let repo_str = repo.to_str().expect("Repo path contains invalid UTF-8.");
 
-	// If the folder already exists, nuke it.
-	if repo.is_dir() {
-		std::fs::remove_dir_all(&repo).expect("Unable to clear old repo.");
+	// Clone the repository if needed.
+	if ! repo.is_dir() {
+		// Clone the repository.
+		cmd!(
+			Command::new("git")
+				.args(&[
+					"clone",
+					"https://github.com/google/zopfli",
+					repo_str,
+				]),
+			"Unable to clone Zopfli git repository."
+		);
 	}
 
-	// Clone the repository.
+	// Checkout.
 	cmd!(
-		Command::new("git")
-			.args(&[
-				OsStr::new("clone"),
-				OsStr::new("https://github.com/google/zopfli"),
-				repo.as_os_str(),
-			]),
-		"Unable to clone Zopfli git repository."
-	);
-
-	// Checkout a specific commit for reproducibility.
-	cmd!(
-		Command::new("git").current_dir(&repo).args(&["checkout", "831773b"]),
+		Command::new("git").current_dir(&repo).args(&["checkout", REVISION]),
 		"Unable to checkout Zopfli git repository."
 	);
 
-	{
-		// Patch the Makefile to enable LTO.
-		let makefile = repo.join("Makefile");
-		let content = std::fs::read_to_string(&makefile)
-			.expect("Missing Makefile.")
-			.replace("-O3", "-O3 -flto");
+	// We might need to patch the makefile to enable LTO.
+	let makefile = repo.join("Makefile");
+	let content = std::fs::read_to_string(&makefile).expect("Missing Makefile.");
+	if ! content.contains("-O3 -flto") {
+		let content = content.replace("-O3", "-O3 -flto");
 		File::create(makefile)
 			.and_then(|mut file| file.write_all(content.as_bytes()).and_then(|_| file.flush()))
 			.expect("Unable to patch Makefile.");
 	}
 
-	// Build it.
-	cmd!(
-		Command::new("make").current_dir(&repo).args(&["libzopfli.a"]),
-		"Unable to build libzopfli.a."
-	);
-	cmd!(
-		Command::new("make").current_dir(&repo).args(&["libzopflipng.a"]),
-		"Unable to build libzopflipng.a."
-	);
+	// Build the main zopfli library.
+	if ! repo.join("libzopfli.a").exists() {
+		cmd!(
+			Command::new("make").current_dir(&repo).args(&["libzopfli.a"]),
+			"Unable to build libzopfli.a."
+		);
+	}
 
-	// Link up the libraries.
 	println!("cargo:rustc-link-lib=static=zopfli");
-	println!("cargo:rustc-link-lib=static=zopflipng");
-	println!("cargo:rustc-link-search=native={}", repo.to_string_lossy());
+	println!("cargo:rustc-link-search=native={}", repo_str);
 
-	// bindings();
+	// Build the zopflipng library.
+	if ! repo.join("libzopflipng.a").exists() {
+		cmd!(
+			Command::new("make").current_dir(&repo).args(&["libzopflipng.a"]),
+			"Unable to build libzopflipng.a."
+		);
+	}
+
+	println!("cargo:rustc-link-lib=static=zopflipng");
+
+	// Link up C++ too, and then we're done!
+	#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+    println!("cargo:rustc-link-lib=c++");
+
+    #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "freebsd")))]
+    println!("cargo:rustc-link-lib=stdc++");
 }
 
 /*

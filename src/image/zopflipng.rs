@@ -11,11 +11,6 @@ The bindings themselves have been manually transcribed below, but the project's
 reference.
 */
 
-#[allow(unused_extern_crates)] // This fixes a linker issue.
-extern crate link_cplusplus;
-
-
-
 #[allow(non_camel_case_types)]
 mod raw {
 	use std::os::raw::{
