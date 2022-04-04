@@ -51,23 +51,14 @@ use mozjpeg_sys::{
 	JXFORM_CODE_JXFORM_NONE,
 };
 
-
-
-#[allow(clippy::upper_case_acronyms)] // It's C, baby.
-const JCOPYOPT_NONE: JCOPY_OPTION = 0;
-
-#[allow(clippy::upper_case_acronyms)] // It's C, baby.
-#[allow(non_camel_case_types)]
-type JCOPY_OPTION = u32;
-
 // We need a couple more things from jpegtran. Mozjpeg-sys includes the right
 // sources but doesn't export the definitions.
 extern "C" {
-	fn jcopy_markers_setup(srcinfo: j_decompress_ptr, option: JCOPY_OPTION);
+	fn jcopy_markers_setup(srcinfo: j_decompress_ptr, option: u32);
 	fn jcopy_markers_execute(
 		srcinfo: j_decompress_ptr,
 		dstinfo: j_compress_ptr,
-		option: JCOPY_OPTION,
+		option: u32,
 	);
 }
 
@@ -122,15 +113,15 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	jpeg_create_decompress(&mut srcinfo);
 	jpeg_create_compress(&mut dstinfo);
 
-	// Sync the error trace levels.
+	// The trace levels should both be zero, but just in case, let's make sure
+	// they're the same.
 	jsrcerr.trace_level = jdsterr.trace_level;
 
 	// Load the source file.
 	jpeg_mem_src(&mut srcinfo, data.as_ptr(), data.len() as c_ulong);
 
-	// Ignore markers. This may not be needed, but isn't currently exported by
-	// mozjpeg_sys.
-	jcopy_markers_setup(&mut srcinfo, JCOPYOPT_NONE);
+	// Ignore markers.
+	jcopy_markers_setup(&mut srcinfo, 0);
 
 	// Read the file header to get to the goods.
 	jpeg_read_header(&mut srcinfo, 1);
@@ -170,7 +161,7 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	jpeg_write_coefficients(&mut dstinfo, dst_coef_arrays);
 
 	// Make sure we aren't copying any markers.
-	jcopy_markers_execute(&mut srcinfo, &mut dstinfo, JCOPYOPT_NONE);
+	jcopy_markers_execute(&mut srcinfo, &mut dstinfo, 0);
 
 	// Execute and write the transformation, if any.
 	jtransform_execute_transform(
