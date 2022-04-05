@@ -105,7 +105,8 @@ version = "=5.0.1"
 default-features = false
 features = [ "libdeflater" ]
 
-# [build-dependencies]
+[build-dependencies]
+cc = "=1.0.73"
 # bindgen = "0.59.*"
 
 [profile.release]

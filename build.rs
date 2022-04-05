@@ -2,38 +2,6 @@
 # Flaca - Build
 */
 
-use std::{
-	fs::File,
-	io::Write,
-	path::PathBuf,
-	process::{
-		Command,
-		Stdio,
-	},
-};
-
-
-
-macro_rules! cmd {
-	($cmd:expr, $oops:literal) => (
-		assert!(
-			$cmd
-				.stdout(Stdio::null())
-				.stderr(Stdio::null())
-				.status()
-				.map_or(false, |s| s.success()),
-			$oops
-		);
-	);
-}
-
-/// # Repo Revision.
-///
-/// For reproducibility, we'll be working from a specific commit.
-const REVISION: &str = "831773b";
-
-
-
 /// # Build Zopflipng.
 ///
 /// Rust's Zopfli implementation is insufficient for our needs; we have to link
@@ -41,67 +9,41 @@ const REVISION: &str = "831773b";
 pub fn main() {
 	println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
 
-	// This is where Zopflipng's files will go.
-	let repo = out_path("zopfli-git");
-	let repo_str = repo.to_str().expect("Repo path contains invalid UTF-8.");
+	// Define some paths.
+	let repo = std::fs::canonicalize("vendor").expect("Missing vendor directory.");
+	let zopfli_src = repo.join("src/zopfli");
+	let zopflipng_src = repo.join("src/zopflipng");
+	let lodepng_src = repo.join("src/zopflipng/lodepng");
 
-	// Clone the repository if needed.
-	if ! repo.is_dir() {
-		// Clone the repository.
-		cmd!(
-			Command::new("git")
-				.args(&[
-					"clone",
-					"https://github.com/google/zopfli",
-					repo_str,
-				]),
-			"Unable to clone Zopfli git repository."
-		);
-	}
-
-	// Checkout.
-	cmd!(
-		Command::new("git").current_dir(&repo).args(&["checkout", REVISION]),
-		"Unable to checkout Zopfli git repository."
-	);
-
-	// We might need to patch the makefile to enable LTO.
-	let makefile = repo.join("Makefile");
-	let content = std::fs::read_to_string(&makefile).expect("Missing Makefile.");
-	if ! content.contains("-O3 -flto") {
-		let content = content.replace("-O3", "-O3 -flto");
-		File::create(makefile)
-			.and_then(|mut file| file.write_all(content.as_bytes()).and_then(|_| file.flush()))
-			.expect("Unable to patch Makefile.");
-	}
-
-	// Build the main zopfli library.
-	if ! repo.join("libzopfli.a").exists() {
-		cmd!(
-			Command::new("make").current_dir(&repo).args(&["libzopfli.a"]),
-			"Unable to build libzopfli.a."
-		);
-	}
-
-	println!("cargo:rustc-link-lib=static=zopfli");
-	println!("cargo:rustc-link-search=native={}", repo_str);
-
-	// Build the zopflipng library.
-	if ! repo.join("libzopflipng.a").exists() {
-		cmd!(
-			Command::new("make").current_dir(&repo).args(&["libzopflipng.a"]),
-			"Unable to build libzopflipng.a."
-		);
-	}
-
-	println!("cargo:rustc-link-lib=static=zopflipng");
-
-	// Link up C++ too, and then we're done!
-	#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
-    println!("cargo:rustc-link-lib=c++");
-
-    #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "freebsd")))]
-    println!("cargo:rustc-link-lib=stdc++");
+	// Build it!
+	cc::Build::new()
+		.includes(&[
+			&lodepng_src,
+			&zopfli_src,
+			&zopflipng_src,
+		])
+		.flag_if_supported("-ansi")
+		.flag_if_supported("-pedantic")
+		.opt_level(3)
+		.pic(true)
+		.static_flag(true)
+		.warnings(false)
+		.cpp(true)
+		.files(&[
+			lodepng_src.join("lodepng.cpp"),
+			lodepng_src.join("lodepng_util.cpp"),
+			zopfli_src.join("blocksplitter.c"),
+			zopfli_src.join("cache.c"),
+			zopfli_src.join("deflate.c"),
+			zopfli_src.join("hash.c"),
+			zopfli_src.join("katajainen.c"),
+			zopfli_src.join("lz77.c"),
+			zopfli_src.join("squeeze.c"),
+			zopfli_src.join("tree.c"),
+			zopfli_src.join("util.c"),
+			zopflipng_src.join("zopflipng_lib.cc"),
+		])
+		.compile("zopflipng");
 }
 
 /*
@@ -136,13 +78,3 @@ fn bindings() {
 		.expect("Couldn't write bindings!");
 }
 */
-
-/// # Out path.
-///
-/// This generates a (file/dir) path relative to `OUT_DIR`.
-fn out_path(name: &str) -> PathBuf {
-	let dir = std::env::var("OUT_DIR").expect("Missing OUT_DIR.");
-	std::fs::canonicalize(dir)
-		.expect("Missing OUT_DIR.")
-		.join(name)
-}
