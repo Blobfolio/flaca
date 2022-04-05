@@ -31,7 +31,7 @@ This application is written in [Rust](https://www.rust-lang.org/) and can altern
 
 ```bash
 # Clone the source.
-git clone https://github.com/Blobfolio/flaca.git
+git clone --recurse-submodules https://github.com/Blobfolio/flaca.git
 
 # Go to it.
 cd flaca
