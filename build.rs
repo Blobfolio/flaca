@@ -17,7 +17,7 @@ pub fn main() {
 
 	// Easy abort.
 	if ! zopfli_src.is_dir() {
-		panic!("Missing zopfli sources; you might need to initialize the vendor submodule.");
+		panic!("Missing zopfli sources; you might need to initialize the ./vendor submodule.");
 	}
 
 	// Build the C first.
