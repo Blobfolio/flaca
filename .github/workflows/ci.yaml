@@ -2,9 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [ "feature/next" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "feature/next" ]
+    branches: [ "master" ]
 
 defaults:
   run:
