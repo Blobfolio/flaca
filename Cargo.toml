@@ -107,7 +107,6 @@ features = [ "libdeflater" ]
 
 [build-dependencies]
 cc = "=1.0.73"
-# bindgen = "0.59.*"
 
 [profile.release]
 lto = true
