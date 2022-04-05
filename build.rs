@@ -22,9 +22,30 @@ pub fn main() {
 
 	// Build the C first.
 	cc::Build::new()
+		.include(&zopfli_src)
+		.flag_if_supported("-ansi")
+		.flag_if_supported("-pedantic")
+		.opt_level(3)
+		.pic(true)
+		.static_flag(true)
+		.warnings(false)
+		.files(&[
+			zopfli_src.join("blocksplitter.c"),
+			zopfli_src.join("cache.c"),
+			zopfli_src.join("deflate.c"),
+			zopfli_src.join("hash.c"),
+			zopfli_src.join("katajainen.c"),
+			zopfli_src.join("lz77.c"),
+			zopfli_src.join("squeeze.c"),
+			zopfli_src.join("tree.c"),
+			zopfli_src.join("util.c"),
+		])
+		.compile("zopfli");
+
+	// And now the C++.
+	cc::Build::new()
 		.includes(&[
 			&lodepng_src,
-			&zopfli_src,
 			&zopflipng_src,
 		])
 		.flag_if_supported("-ansi")
@@ -37,15 +58,6 @@ pub fn main() {
 		.files(&[
 			lodepng_src.join("lodepng.cpp"),
 			lodepng_src.join("lodepng_util.cpp"),
-			zopfli_src.join("blocksplitter.c"),
-			zopfli_src.join("cache.c"),
-			zopfli_src.join("deflate.c"),
-			zopfli_src.join("hash.c"),
-			zopfli_src.join("katajainen.c"),
-			zopfli_src.join("lz77.c"),
-			zopfli_src.join("squeeze.c"),
-			zopfli_src.join("tree.c"),
-			zopfli_src.join("util.c"),
 			zopflipng_src.join("zopflipng_lib.cc"),
 		])
 		.compile("zopflipng");
