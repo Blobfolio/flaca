@@ -15,7 +15,12 @@ pub fn main() {
 	let zopflipng_src = repo.join("src/zopflipng");
 	let lodepng_src = repo.join("src/zopflipng/lodepng");
 
-	// Build it!
+	// Easy abort.
+	if ! zopfli_src.is_dir() {
+		panic!("Missing zopfli sources; you might need to initialize the vendor submodule.");
+	}
+
+	// Build the C first.
 	cc::Build::new()
 		.includes(&[
 			&lodepng_src,
