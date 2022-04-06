@@ -76,7 +76,7 @@ extern "C" {
 /// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
+pub(super) fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	let mut transformoption = jpeg_transform_info {
 		transform: JXFORM_CODE_JXFORM_NONE,
 		perfect: 0,
@@ -102,90 +102,83 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 		iMCU_sample_height: 0,
 	};
 
-	let mut jsrcerr: jpeg_error_mgr = std::mem::zeroed();
-	let mut srcinfo: jpeg_decompress_struct = std::mem::zeroed();
-	srcinfo.common.err = jpeg_std_error(&mut jsrcerr);
+	let mut meta = InOut::default();
 
-	let mut jdsterr: jpeg_error_mgr = std::mem::zeroed();
-	let mut dstinfo: jpeg_compress_struct = std::mem::zeroed();
-	dstinfo.common.err = jpeg_std_error(&mut jdsterr);
+	unsafe {
+		// Load the source file.
+		jpeg_mem_src(&mut meta.src, data.as_ptr(), data.len() as c_ulong);
 
-	// Initialize the JPEG (de/)compression object with default error handling.
-	jpeg_create_decompress(&mut srcinfo);
-	jpeg_create_compress(&mut dstinfo);
+		// Ignore markers.
+		jcopy_markers_setup(&mut meta.src, 0);
 
-	// The trace levels should both be zero, but just in case, let's make sure
-	// they're the same.
-	jsrcerr.trace_level = jdsterr.trace_level;
+		// Read the file header to get to the goods.
+		jpeg_read_header(&mut meta.src, 1);
 
-	// Load the source file.
-	jpeg_mem_src(&mut srcinfo, data.as_ptr(), data.len() as c_ulong);
-
-	// Ignore markers.
-	jcopy_markers_setup(&mut srcinfo, 0);
-
-	// Read the file header to get to the goods.
-	jpeg_read_header(&mut srcinfo, 1);
-
-	// Read a few more properties into the source struct.
-	if jtransform_request_workspace(&mut srcinfo, &mut transformoption) == 0 {
-		return None;
+		// Read a few more properties into the source struct.
+		if jtransform_request_workspace(&mut meta.src, &mut transformoption) == 0 {
+			return None;
+		}
 	}
 
 	// Read source file as DCT coefficients.
-	let src_coef_arrays: *mut jvirt_barray_ptr = jpeg_read_coefficients(&mut srcinfo);
+	let src_coef_arrays: *mut jvirt_barray_ptr = unsafe {
+		jpeg_read_coefficients(&mut meta.src)
+	};
 
 	// Initialize destination compression parameters from source values.
-	jpeg_copy_critical_parameters(&srcinfo, &mut dstinfo);
+	unsafe { jpeg_copy_critical_parameters(&meta.src, &mut meta.dst); }
 
 	// Adjust destination parameters if required by transform options, and sync
 	// the coefficient arrays.
-	let dst_coef_arrays: *mut jvirt_barray_ptr = jtransform_adjust_parameters(
-		&mut srcinfo,
-		&mut dstinfo,
-		src_coef_arrays,
-		&mut transformoption,
-	);
+	let dst_coef_arrays: *mut jvirt_barray_ptr = unsafe {
+		jtransform_adjust_parameters(
+			&mut meta.src,
+			&mut meta.dst,
+			src_coef_arrays,
+			&mut transformoption,
+		)
+	};
 
 	// Get an output buffer going.
 	let mut out_ptr: *mut c_uchar = std::ptr::null_mut();
 	let mut out_size: c_ulong = 0;
 
-	// Turn on "progressive" and "code optimizing" for the output.
-	dstinfo.optimize_coding = 1;
-	jpeg_simple_progression(&mut dstinfo);
+	// Turn on "code optimizing".
+	meta.dst.optimize_coding = 1;
+	unsafe {
+		// Enable "progressive".
+		jpeg_simple_progression(&mut meta.dst);
 
-	// And load the destination file.
-	jpeg_mem_dest(&mut dstinfo, &mut out_ptr, &mut out_size);
+		// And load the destination file.
+		jpeg_mem_dest(&mut meta.dst, &mut out_ptr, &mut out_size);
 
-	// Start the compressor. Note: no data is written here.
-	jpeg_write_coefficients(&mut dstinfo, dst_coef_arrays);
+		// Start the compressor. Note: no data is written here.
+		jpeg_write_coefficients(&mut meta.dst, dst_coef_arrays);
 
-	// Make sure we aren't copying any markers.
-	jcopy_markers_execute(&mut srcinfo, &mut dstinfo, 0);
+		// Make sure we aren't copying any markers.
+		jcopy_markers_execute(&mut meta.src, &mut meta.dst, 0);
 
-	// Execute and write the transformation, if any.
-	jtransform_execute_transform(
-		&mut srcinfo,
-		&mut dstinfo,
-		src_coef_arrays,
-		&mut transformoption,
-	);
+		// Execute and write the transformation, if any.
+		jtransform_execute_transform(
+			&mut meta.src,
+			&mut meta.dst,
+			src_coef_arrays,
+			&mut transformoption,
+		);
+	}
 
 	// Let's get the data!
-	jpeg_finish_compress(&mut dstinfo);
-
-	// This library doesn't really have a consistent way of handling errors,
-	// but msg_code not changing from its default (of zero) is a reasonable
-	// proxy.
-	let mut res: bool = 0 == (*dstinfo.common.err).msg_code;
-
+	let mut res = meta.build();
 	let out: Vec<u8> =
-		if out_ptr.is_null() || out_size == 0 { Vec::new() }
+		if out_ptr.is_null() || out_size == 0 {
+			res = false;
+			Vec::new()
+		}
 		else {
 			let tmp =
-				if let Ok(size) = usize::try_from(out_size) {
-					std::slice::from_raw_parts(out_ptr, size).to_vec()
+				if ! res { Vec::new() }
+				else if let Ok(size) = usize::try_from(out_size) {
+					unsafe { std::slice::from_raw_parts(out_ptr, size) }.to_vec()
 				}
 				else {
 					res = false;
@@ -194,19 +187,78 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 
 			// The buffer probably needs to be manually freed. I don't think
 			// jpeg_destroy_compress() handles that for us.
-			libc::free(out_ptr.cast::<c_void>());
+			unsafe { libc::free(out_ptr.cast::<c_void>()); }
 			out_ptr = std::ptr::null_mut();
 			out_size = 0;
 
 			tmp
 		};
 
-	// Release any memory that's left.
-	jpeg_destroy_compress(&mut dstinfo);
-	jpeg_finish_decompress(&mut srcinfo);
-	jpeg_destroy_decompress(&mut srcinfo);
-
 	// Done!
 	if res { Some(out) }
 	else { None }
+}
+
+
+
+/// # Source and Destination Data.
+///
+/// This wrapper struct exists to help ensure C memory is freed correctly on
+/// exit.
+struct InOut {
+	src_err: jpeg_error_mgr,
+	src: jpeg_decompress_struct,
+	dst_err: jpeg_error_mgr,
+	dst: jpeg_compress_struct,
+	built: bool,
+}
+
+impl Default for InOut {
+	fn default() -> Self {
+		let mut out = Self {
+			src_err: unsafe { std::mem::zeroed() },
+			src: unsafe { std::mem::zeroed() },
+			dst_err: unsafe { std::mem::zeroed() },
+			dst: unsafe { std::mem::zeroed() },
+			built: false,
+		};
+
+		// Initialize the memory.
+		unsafe {
+			out.src.common.err = jpeg_std_error(&mut out.src_err);
+			out.dst.common.err = jpeg_std_error(&mut out.dst_err);
+			jpeg_create_decompress(&mut out.src);
+			jpeg_create_compress(&mut out.dst);
+		}
+
+		// The trace levels should already match, but just in case…
+		out.src_err.trace_level = out.dst_err.trace_level;
+
+		// Done!
+		out
+	}
+}
+
+impl InOut {
+	/// # Finish Compression.
+	fn build(&mut self) -> bool {
+		// Only build once.
+		if self.built { false }
+		else {
+			unsafe { jpeg_finish_compress(&mut self.dst) };
+			self.built = true;
+			0 == unsafe { (*self.dst.common.err).msg_code }
+		}
+	}
+}
+
+impl Drop for InOut {
+	fn drop(&mut self) {
+		self.build();
+		unsafe {
+			jpeg_destroy_compress(&mut self.dst);
+			jpeg_finish_decompress(&mut self.src);
+			jpeg_destroy_decompress(&mut self.src);
+		}
+	}
 }

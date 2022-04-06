@@ -253,25 +253,27 @@ pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 	};
 
 	let out: Vec<u8> =
-		if out_ptr.is_null() || out_size == 0 { Vec::new() }
+		if out_ptr.is_null() || out_size == 0 {
+			res = false;
+			Vec::new()
+		}
 		else {
-			unsafe {
-				let tmp =
-					if let Ok(size) = usize::try_from(out_size) {
-						std::slice::from_raw_parts(out_ptr, size).to_vec()
-					}
-					else {
-						res = false;
-						Vec::new()
-					};
+			let tmp =
+				if ! res { Vec::new() }
+				else if let Ok(size) = usize::try_from(out_size) {
+					unsafe { std::slice::from_raw_parts(out_ptr, size) }.to_vec()
+				}
+				else {
+					res = false;
+					Vec::new()
+				};
 
-				// Manually free the C memory.
-				libc::free(out_ptr.cast::<c_void>());
-				out_ptr = std::ptr::null_mut();
-				out_size = 0;
+			// Manually free the C memory.
+			unsafe { libc::free(out_ptr.cast::<c_void>()); }
+			out_ptr = std::ptr::null_mut();
+			out_size = 0;
 
-				tmp
-			}
+			tmp
 		};
 
 	// Done!
