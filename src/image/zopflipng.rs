@@ -11,11 +11,19 @@ The bindings themselves have been manually transcribed below, but the project's
 reference.
 */
 
+use std::os::raw::{
+	c_ulong,
+	c_void,
+};
+
+
+
 #[allow(non_camel_case_types)]
 mod raw {
 	use std::os::raw::{
 		c_char,
 		c_int,
+		c_uchar,
 		c_uint,
 		c_ulong,
 	};
@@ -210,11 +218,11 @@ mod raw {
 
 	extern "C" {
 		pub(super) fn CZopfliPNGOptimize(
-			origpng: *const ::std::os::raw::c_uchar,
+			origpng: *const c_uchar,
 			origpng_size: size_t,
 			png_options: *const CZopfliPNGOptions,
 			verbose: c_int,
-			resultpng: *mut *mut ::std::os::raw::c_uchar,
+			resultpng: *mut *mut c_uchar,
 			resultpng_size: *mut size_t,
 		) -> c_int;
 	}
@@ -227,18 +235,18 @@ mod raw {
 /// # Optimize!
 pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 	let src_ptr = src.as_ptr();
-	let src_size: u64 = u64::try_from(src.len()).ok()?;
+	let src_size = c_ulong::try_from(src.len()).ok()?;
 
 	let mut out_ptr = std::ptr::null_mut();
-	let mut out_size: u64 = 0;
+	let mut out_size: c_ulong = 0;
 
 	// Try to compress!
-	let res = unsafe {
+	let mut res: bool = 0 == unsafe {
 		raw::CZopfliPNGOptimize(
 			src_ptr,
 			src_size,
 			&raw::CZopfliPNGOptions::default(),
-			i32::from(false),
+			0, // false
 			&mut out_ptr,
 			&mut out_size,
 		)
@@ -248,14 +256,17 @@ pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 		if out_ptr.is_null() || out_size == 0 { Vec::new() }
 		else {
 			unsafe {
-				// Copy the data to a Rust vec.
-				let tmp = std::slice::from_raw_parts(
-					out_ptr,
-					usize::try_from(out_size).unwrap_or_default(),
-				).to_vec();
+				let tmp =
+					if let Ok(size) = usize::try_from(out_size) {
+						std::slice::from_raw_parts(out_ptr, size).to_vec()
+					}
+					else {
+						res = false;
+						Vec::new()
+					};
 
 				// Manually free the C memory.
-				libc::free(out_ptr.cast::<libc::c_void>());
+				libc::free(out_ptr.cast::<c_void>());
 				out_ptr = std::ptr::null_mut();
 				out_size = 0;
 
@@ -264,6 +275,6 @@ pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 		};
 
 	// Done!
-	if res == 0 { Some(out) }
+	if res { Some(out) }
 	else { None }
 }

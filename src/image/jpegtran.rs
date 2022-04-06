@@ -17,12 +17,7 @@ looked at to bring this all together were:
 * [mozjpeg-rs](https://github.com/immunant/mozjpeg-rs/blob/master/bin/jpegtran.rs)
 */
 
-use libc::{
-	c_uchar,
-	free,
-};
 use mozjpeg_sys::{
-	c_ulong,
 	j_compress_ptr,
 	j_decompress_ptr,
 	JCROP_CODE_JCROP_UNSET,
@@ -50,15 +45,21 @@ use mozjpeg_sys::{
 	jvirt_barray_ptr,
 	JXFORM_CODE_JXFORM_NONE,
 };
+use std::os::raw::{
+	c_uchar,
+	c_uint,
+	c_ulong,
+	c_void,
+};
 
 // We need a couple more things from jpegtran. Mozjpeg-sys includes the right
 // sources but doesn't export the definitions.
 extern "C" {
-	fn jcopy_markers_setup(srcinfo: j_decompress_ptr, option: u32);
+	fn jcopy_markers_setup(srcinfo: j_decompress_ptr, option: c_uint);
 	fn jcopy_markers_execute(
 		srcinfo: j_decompress_ptr,
 		dstinfo: j_compress_ptr,
-		option: u32,
+		option: c_uint,
 	);
 }
 
@@ -177,19 +178,23 @@ pub(super) unsafe fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	// This library doesn't really have a consistent way of handling errors,
 	// but msg_code not changing from its default (of zero) is a reasonable
 	// proxy.
-	let res: bool = 0 == (*dstinfo.common.err).msg_code;
+	let mut res: bool = 0 == (*dstinfo.common.err).msg_code;
 
 	let out: Vec<u8> =
 		if out_ptr.is_null() || out_size == 0 { Vec::new() }
 		else {
-			let tmp = std::slice::from_raw_parts(
-				out_ptr,
-				usize::try_from(out_size).ok()?
-			).to_vec();
+			let tmp =
+				if let Ok(size) = usize::try_from(out_size) {
+					std::slice::from_raw_parts(out_ptr, size).to_vec()
+				}
+				else {
+					res = false;
+					Vec::new()
+				};
 
 			// The buffer probably needs to be manually freed. I don't think
 			// jpeg_destroy_compress() handles that for us.
-			free(out_ptr.cast::<mozjpeg_sys::c_void>());
+			libc::free(out_ptr.cast::<c_void>());
 			out_ptr = std::ptr::null_mut();
 			out_size = 0;
 
