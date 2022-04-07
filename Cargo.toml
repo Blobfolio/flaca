@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "1.8.3"
+version = "1.9.0"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
