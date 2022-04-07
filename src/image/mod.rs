@@ -89,7 +89,7 @@ impl FlacaImage<'_> {
 	/// jpegtran -copy none -optimize -progressive
 	/// ```
 	fn mozjpeg(&mut self) -> bool {
-		unsafe { jpegtran::jpegtran_mem(&self.data) }
+		jpegtran::jpegtran_mem(&self.data)
 			.map_or(false, |new| self.maybe_update(new))
 	}
 

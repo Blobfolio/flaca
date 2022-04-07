@@ -26,14 +26,12 @@ doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
-rustflags   := "-C link-arg=-s"
-
 
 
 # Build Release!
 @build:
 	# First let's build the Rust bit.
-	RUSTFLAGS="--emit asm {{ rustflags }}" cargo build \
+	RUSTFLAGS="--emit asm" cargo build \
 		--bin "{{ pkg_id }}" \
 		--release \
 		--target x86_64-unknown-linux-gnu \
@@ -57,38 +55,10 @@ rustflags   := "-C link-arg=-s"
 	mv "{{ justfile_directory() }}/target" "{{ cargo_dir }}"
 
 
-# Build Zopflipng Libraries.
-@build-zopfli:
-	# Clone it!
-	[ ! -d "/tmp/zopfli" ] || rm -rf "/tmp/zopfli"
-	git clone https://github.com/google/zopfli.git /tmp/zopfli
-
-	cd /tmp/zopfli && \
-		make libzopfli.a && \
-		make libzopflipng.a
-
-	# Recreate the includes folders.
-	[ ! -d "{{ skel_dir }}/inc" ] || rm -rf "{{ skel_dir }}/inc"
-	mkdir -p "{{ skel_dir }}/inc/zopflipng/lodepng"
-	mkdir -p "{{ skel_dir }}/inc/zopfli"
-
-	# Copy everything over.
-	cp /tmp/zopfli/libzopfli.a "{{ skel_dir }}/inc/"
-	cp /tmp/zopfli/libzopflipng.a "{{ skel_dir }}/inc/"
-	cp /tmp/zopfli/src/zopfli/*.h "{{ skel_dir }}/inc/zopfli/"
-	cp /tmp/zopfli/src/zopflipng/*.h "{{ skel_dir }}/inc/zopflipng/"
-	cp /tmp/zopfli/src/zopflipng/lodepng/*.h "{{ skel_dir }}/inc/zopflipng/lodepng/"
-
-	just _fix-chown "{{ skel_dir }}/inc"
-	rm -rf /tmp/zopfli
-
-	fyi success "Zopfli libraries have been rebuilt!"
-
-
 # Check Release!
 @check:
 	# First let's build the Rust bit.
-	RUSTFLAGS="{{ rustflags }}" cargo check \
+	cargo check \
 		--release \
 		--all-features \
 		--target x86_64-unknown-linux-gnu \
@@ -110,7 +80,7 @@ rustflags   := "-C link-arg=-s"
 # Clippy.
 @clippy:
 	clear
-	RUSTFLAGS="{{ rustflags }}" cargo clippy \
+	cargo clippy \
 		--release \
 		--all-features \
 		--target x86_64-unknown-linux-gnu \
@@ -145,7 +115,7 @@ rustflags   := "-C link-arg=-s"
 
 # Test Run.
 @run +ARGS:
-	RUSTFLAGS="{{ rustflags }}" cargo run \
+	cargo run \
 		--bin "{{ pkg_id }}" \
 		--release \
 		--target x86_64-unknown-linux-gnu \
@@ -154,18 +124,13 @@ rustflags   := "-C link-arg=-s"
 
 
 # Unit tests!
-test:
-	#!/usr/bin/env bash
-
+@test:
 	clear
-
 	RUST_TEST_THREADS=1 cargo test \
 		--release \
 		--all-features \
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
-
-	exit 0
 
 
 # Get/Set version.

@@ -31,7 +31,7 @@ This application is written in [Rust](https://www.rust-lang.org/) and can altern
 
 ```bash
 # Clone the source.
-git clone https://github.com/Blobfolio/flaca.git
+git clone --recurse-submodules https://github.com/Blobfolio/flaca.git
 
 # Go to it.
 cd flaca
@@ -44,7 +44,7 @@ cargo build \
 
 (This should work under other 64-bit Unix environments too, like MacOS.)
 
-In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`, `git`, `make`, `nasm`, a C++ compiler, and the dev libraries for `libjpeg` and `libpng`.
+In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`, `make`, `nasm`, a C++ compiler, and the dev libraries for `libjpeg` and `libpng`.
 
 The above list may not be exhaustive, though. If you find you need anything else, please open a ticket so this list can be updated!
 

@@ -110,8 +110,6 @@ use rayon::iter::{
 	ParallelIterator,
 };
 use std::{
-	ffi::OsStr,
-	os::unix::ffi::OsStrExt,
 	path::PathBuf,
 	sync::{
 		Arc,
@@ -162,27 +160,31 @@ fn _main() -> Result<(), FlacaError> {
 	let jpeg: bool = ! args.switch2(b"--no-jpeg", b"--no-jpg");
 	let png: bool = ! args.switch(b"--no-png");
 	let progress = args.switch2(b"-p", b"--progress");
-	let iter = Dowser::default()
-		.with_paths(args.args().iter().map(|x| OsStr::from_bytes(x)));
 
 	// Find files!
 	let paths: Vec<PathBuf> = match (jpeg, png) {
 		// Both.
-		(true, true) => iter.filter(|p|
-			Extension::try_from3(p).map_or_else(
-				|| Some(E_JPEG) == Extension::try_from4(p),
-				|e| e == E_JPG || e == E_PNG
-			)
-		).collect(),
+		(true, true) => Dowser::default()
+			.with_paths(args.args_os())
+			.into_vec(|p|
+				Extension::try_from3(p).map_or_else(
+					|| Some(E_JPEG) == Extension::try_from4(p),
+					|e| e == E_JPG || e == E_PNG
+				)
+			),
 		// JPEG.
-		(true, false) => iter.filter(|p|
-			Extension::try_from3(p).map_or_else(
-				|| Some(E_JPEG) == Extension::try_from4(p),
-				|e| e == E_JPG
-			)
-		).collect(),
+		(true, false) => Dowser::default()
+			.with_paths(args.args_os())
+			.into_vec(|p|
+				Extension::try_from3(p).map_or_else(
+					|| Some(E_JPEG) == Extension::try_from4(p),
+					|e| e == E_JPG
+				)
+			),
 		// PNG.
-		(false, true) => iter.filter(|p| Some(E_PNG) == Extension::try_from3(p)).collect(),
+		(false, true) => Dowser::default()
+			.with_paths(args.args_os())
+			.into_vec(|p| Some(E_PNG) == Extension::try_from3(p)),
 		// Nothing?!
 		(false, false) => Vec::new(),
 	};

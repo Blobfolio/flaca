@@ -47,23 +47,28 @@ impl ImageKind {
 
 
 
-#[test]
-fn t_parse() {
-	macro_rules! test_kind {
-		($($file:literal $ty:expr),+) => ($(
-			assert_eq!(
-				std::fs::read($file).ok().and_then(|x| ImageKind::parse(&x)),
-				$ty
-			);
-		)+);
-	}
+#[cfg(test)]
+mod tests {
+	use super::*;
 
-	test_kind!(
-		"./skel/assets/empty.jpg" None,
-		"./skel/assets/executable.sh" None,
-		"./skel/assets/jpg/02.jpg" Some(ImageKind::Jpeg),
-		"./skel/assets/png/02.png" Some(ImageKind::Png),
-		"./skel/assets/wolf.png" Some(ImageKind::Jpeg),
-		"./skel/assets/wolf.jpg" Some(ImageKind::Png)
-	);
+	#[test]
+	fn t_parse() {
+		macro_rules! test_kind {
+			($($file:literal $ty:expr),+) => ($(
+				assert_eq!(
+					std::fs::read($file).ok().and_then(|x| ImageKind::parse(&x)),
+					$ty
+				);
+			)+);
+		}
+
+		test_kind!(
+			"./skel/assets/empty.jpg" None,
+			"./skel/assets/executable.sh" None,
+			"./skel/assets/jpg/02.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/png/02.png" Some(ImageKind::Png),
+			"./skel/assets/wolf.png" Some(ImageKind::Jpeg),
+			"./skel/assets/wolf.jpg" Some(ImageKind::Png)
+		);
+	}
 }
