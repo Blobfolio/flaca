@@ -159,7 +159,7 @@ fn _main() -> Result<(), FlacaError> {
 	// Figure out which kinds we're doing.
 	let jpeg: bool = ! args.switch2(b"--no-jpeg", b"--no-jpg");
 	let png: bool = ! args.switch(b"--no-png");
-	let progress = args.switch2(b"-p", b"--progress");
+	let mut progress = args.switch2(b"-p", b"--progress");
 
 	// Find files!
 	let paths: Vec<PathBuf> = match (jpeg, png) {
@@ -193,6 +193,12 @@ fn _main() -> Result<(), FlacaError> {
 		return Err(FlacaError::NoImages);
 	}
 
+	if progress && 4_294_967_295 < paths.len()  {
+		Msg::warning("Progress can't be displayed when there are more than 4,294,967,295 images.")
+			.print();
+		progress = false;
+	}
+
 	// Controls for early termination.
 	let killed = Arc::from(AtomicBool::new(false));
 	let k2 = Arc::clone(&killed);
@@ -201,7 +207,7 @@ fn _main() -> Result<(), FlacaError> {
 	if progress {
 		// Boot up a progress bar.
 		let progress = Progless::try_from(paths.len())
-			.map_err(|_| FlacaError::ProgressOverflow)?
+			.unwrap()
 			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
 
 		// Keep track of the before and after file sizes as we go.
