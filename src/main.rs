@@ -245,15 +245,13 @@ fn _main() -> Result<(), FlacaError> {
 		// Finish up.
 		progress.finish();
 
-		if ! killed.load(SeqCst) {
-			// Print a summary.
-			progress.summary(MsgKind::Crunched, "image", "images")
-				.with_bytes_saved(BeforeAfter::from((
-					before.load(SeqCst),
-					after.load(SeqCst),
-				)))
-				.print();
-		}
+		// Print a summary.
+		progress.summary(MsgKind::Crunched, "image", "images")
+			.with_bytes_saved(BeforeAfter::from((
+				before.load(SeqCst),
+				after.load(SeqCst),
+			)))
+			.print();
 	}
 	else {
 		// Intercept CTRL+C so we can gracefully shut down.
