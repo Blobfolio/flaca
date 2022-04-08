@@ -51,6 +51,7 @@ use std::os::raw::{
 	c_ulong,
 	c_void,
 };
+use super::ImageKind;
 
 // We need a couple more things from jpegtran. Mozjpeg-sys includes the right
 // sources but doesn't export the definitions.
@@ -76,7 +77,7 @@ extern "C" {
 /// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub(super) fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
+pub(super) fn jpegtran_mem(data: &mut Vec<u8>) {
 	let mut transformoption = jpeg_transform_info {
 		transform: JXFORM_CODE_JXFORM_NONE,
 		perfect: 0,
@@ -103,10 +104,15 @@ pub(super) fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	};
 
 	let mut meta = InOut::default();
+	let data_size = data.len();
+	let src_size = match c_ulong::try_from(data_size) {
+		Ok(s) => s,
+		Err(_) => return,
+	};
 
 	unsafe {
 		// Load the source file.
-		jpeg_mem_src(&mut meta.src, data.as_ptr(), data.len() as c_ulong);
+		jpeg_mem_src(&mut meta.src, data.as_ptr(), src_size);
 
 		// Ignore markers.
 		jcopy_markers_setup(&mut meta.src, 0);
@@ -116,7 +122,7 @@ pub(super) fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 
 		// Read a few more properties into the source struct.
 		if jtransform_request_workspace(&mut meta.src, &mut transformoption) == 0 {
-			return None;
+			return;
 		}
 	}
 
@@ -168,35 +174,26 @@ pub(super) fn jpegtran_mem(data: &[u8]) -> Option<Vec<u8>> {
 	}
 
 	// Let's get the data!
-	let mut res = meta.build();
-	let out: Vec<u8> =
-		if out_ptr.is_null() || out_size == 0 {
-			res = false;
-			Vec::new()
-		}
-		else {
-			let tmp =
-				if ! res { Vec::new() }
-				else if let Ok(size) = usize::try_from(out_size) {
-					unsafe { std::slice::from_raw_parts(out_ptr, size) }.to_vec()
+	let res = meta.build();
+	if 0 < out_size && ! out_ptr.is_null() {
+		// Maybe replace the buffer with our new image!
+		if res {
+			if let Ok(size) = usize::try_from(out_size) {
+				if size < data_size {
+					let tmp = unsafe { std::slice::from_raw_parts(out_ptr, size) };
+					if Some(ImageKind::Jpeg) == ImageKind::parse(tmp) {
+						data.truncate(size);
+						data.copy_from_slice(tmp);
+					}
 				}
-				else {
-					res = false;
-					Vec::new()
-				};
+			}
+		}
 
-			// The buffer probably needs to be manually freed. I don't think
-			// jpeg_destroy_compress() handles that for us.
-			unsafe { libc::free(out_ptr.cast::<c_void>()); }
-			out_ptr = std::ptr::null_mut();
-			out_size = 0;
-
-			tmp
-		};
-
-	// Done!
-	if res { Some(out) }
-	else { None }
+		// The buffer probably needs to be manually freed. I don't think
+		// jpeg_destroy_compress() handles that for us.
+		unsafe { libc::free(out_ptr.cast::<c_void>()); }
+		out_ptr = std::ptr::null_mut();
+	}
 }
 
 

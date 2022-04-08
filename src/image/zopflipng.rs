@@ -15,6 +15,7 @@ use std::os::raw::{
 	c_ulong,
 	c_void,
 };
+use super::ImageKind;
 
 
 
@@ -231,19 +232,21 @@ mod raw {
 
 
 #[allow(unused_assignments)]
-#[must_use]
 /// # Optimize!
-pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
-	let src_ptr = src.as_ptr();
-	let src_size = c_ulong::try_from(src.len()).ok()?;
+pub(super) fn zopflipng_optimize(data: &mut Vec<u8>) {
+	let data_size = data.len();
+	let src_size = match c_ulong::try_from(data_size) {
+		Ok(s) => s,
+		Err(_) => return,
+	};
 
 	let mut out_ptr = std::ptr::null_mut();
 	let mut out_size: c_ulong = 0;
 
 	// Try to compress!
-	let mut res: bool = 0 == unsafe {
+	let res: bool = 0 == unsafe {
 		raw::CZopfliPNGOptimize(
-			src_ptr,
+			data.as_ptr(),
 			src_size,
 			&raw::CZopfliPNGOptions::default(),
 			0, // false
@@ -252,31 +255,22 @@ pub(super) fn zopflipng_optimize(src: &[u8]) -> Option<Vec<u8>> {
 		)
 	};
 
-	let out: Vec<u8> =
-		if out_ptr.is_null() || out_size == 0 {
-			res = false;
-			Vec::new()
-		}
-		else {
-			let tmp =
-				if ! res { Vec::new() }
-				else if let Ok(size) = usize::try_from(out_size) {
-					unsafe { std::slice::from_raw_parts(out_ptr, size) }.to_vec()
+	if 0 < out_size && ! out_ptr.is_null() {
+		// Maybe replace the buffer with our new image!
+		if res {
+			if let Ok(size) = usize::try_from(out_size) {
+				if size < data_size {
+					let tmp = unsafe { std::slice::from_raw_parts(out_ptr, size) };
+					if Some(ImageKind::Png) == ImageKind::parse(tmp) {
+						data.truncate(size);
+						data.copy_from_slice(tmp);
+					}
 				}
-				else {
-					res = false;
-					Vec::new()
-				};
+			}
+		}
 
-			// Manually free the C memory.
-			unsafe { libc::free(out_ptr.cast::<c_void>()); }
-			out_ptr = std::ptr::null_mut();
-			out_size = 0;
-
-			tmp
-		};
-
-	// Done!
-	if res { Some(out) }
-	else { None }
+		// Manually free the C memory.
+		unsafe { libc::free(out_ptr.cast::<c_void>()); }
+		out_ptr = std::ptr::null_mut();
+	}
 }

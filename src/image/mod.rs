@@ -91,10 +91,7 @@ impl FlacaImage<'_> {
 	/// ```bash
 	/// jpegtran -copy none -optimize -progressive
 	/// ```
-	fn mozjpeg(&mut self) -> bool {
-		jpegtran::jpegtran_mem(&self.data)
-			.map_or(false, |new| self.maybe_update(new))
-	}
+	fn mozjpeg(&mut self) { jpegtran::jpegtran_mem(&mut self.data); }
 
 	/// # Compress w/ `Oxipng`
 	///
@@ -102,7 +99,7 @@ impl FlacaImage<'_> {
 	/// ```bash
 	/// oxipng -o 3 -s -a -i 0 --fix
 	/// ```
-	fn oxipng(&mut self) -> bool {
+	fn oxipng(&mut self) {
 		use oxipng::{
 			AlphaOptim,
 			Deflaters,
@@ -137,35 +134,24 @@ impl FlacaImage<'_> {
 			o
 		});
 
-		// This pass can be done without needless file I/O! Hurray!
-		oxipng::optimize_from_memory(&self.data, &OPTS)
-			.map_or(false, |new| self.maybe_update(new))
+		if let Ok(mut new) = oxipng::optimize_from_memory(&self.data, &OPTS) {
+			// Is it worth saving?
+			if
+				! new.is_empty() &&
+				new.len() < self.data.len() &&
+				Some(ImageKind::Png) == ImageKind::parse(&new)
+			{
+				std::mem::swap(&mut self.data, &mut new);
+			}
+		}
 	}
 
+	#[inline]
 	/// # Compress w/ `Zopflipng`.
 	///
 	/// The result is comparable to calling:
 	/// ```bash
 	/// zopflipng -m
 	/// ```
-	fn zopflipng(&mut self) -> bool {
-		zopflipng::zopflipng_optimize(&self.data)
-			.map_or(false, |new| self.maybe_update(new))
-	}
-
-	/// # Maybe Update Buffer.
-	///
-	/// This will replace the inline source data with the new version, provided
-	/// the new version has length and is smaller than the original.
-	fn maybe_update(&mut self, mut new: Vec<u8>) -> bool {
-		if
-			! new.is_empty() &&
-			new.len() < self.data.len() &&
-			ImageKind::parse(&new).map_or(false, |k| k == self.kind)
-		{
-			std::mem::swap(&mut self.data, &mut new);
-			true
-		}
-		else { false }
-	}
+	fn zopflipng(&mut self) { zopflipng::zopflipng_optimize(&mut self.data); }
 }
