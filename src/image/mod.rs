@@ -37,20 +37,23 @@ impl<'a> FlacaImage<'a> {
 	/// `None` is returned.
 	pub(super) fn new(file: &'a Path, jpeg: bool, png: bool) -> Option<Self> {
 		// Try to load the data.
-		let data = fs::read(file).ok().filter(|x| ! x.is_empty())?;
-		let kind = match ImageKind::parse(data.as_slice())? {
-			ImageKind::Jpeg if jpeg => ImageKind::Jpeg,
-			ImageKind::Png if png => ImageKind::Png,
-			_ => return None,
-		};
+		let data = fs::read(file).ok()?;
+		if data.is_empty() { None }
+		else {
+			let kind = match ImageKind::parse(data.as_slice())? {
+				ImageKind::Jpeg if jpeg => ImageKind::Jpeg,
+				ImageKind::Png if png => ImageKind::Png,
+				_ => return None,
+			};
 
-		let size = u64::try_from(data.len()).ok()?;
-		Some(Self {
-			file,
-			kind,
-			data,
-			size,
-		})
+			let size = u64::try_from(data.len()).ok()?;
+			Some(Self {
+				file,
+				kind,
+				data,
+				size,
+			})
+		}
 	}
 }
 
