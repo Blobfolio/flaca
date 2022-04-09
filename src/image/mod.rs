@@ -12,6 +12,10 @@ use kind::ImageKind;
 use once_cell::sync::Lazy;
 use std::{
 	fs,
+	os::raw::{
+		c_ulong,
+		c_void,
+	},
 	path::Path,
 };
 
@@ -84,14 +88,45 @@ impl FlacaImage<'_> {
 		else { (self.size, self.size) }
 	}
 
-	#[inline]
+	#[allow(clippy::cast_possible_truncation)] // It was usize to begin with.
+	#[allow(unused_assignments)]
 	/// # Compress w/ `MozJPEG`.
 	///
 	/// The result is comparable to running:
 	/// ```bash
 	/// jpegtran -copy none -optimize -progressive
 	/// ```
-	fn mozjpeg(&mut self) { jpegtran::jpegtran_mem(&mut self.data); }
+	fn mozjpeg(&mut self) {
+		let mut out_ptr = std::ptr::null_mut();
+		let mut out_size: c_ulong = 0;
+
+		// Try to compress!
+		let res = jpegtran::compress(
+			self.data.as_ptr(),
+			self.size,
+			&mut out_ptr,
+			&mut out_size,
+		);
+
+		if 0 < out_size && ! out_ptr.is_null() {
+			// Maybe replace the buffer with our new image!
+			if res {
+				if let Ok(size) = usize::try_from(out_size) {
+					if size < self.size as usize {
+						let tmp = unsafe { std::slice::from_raw_parts(out_ptr, size) };
+						if Some(ImageKind::Jpeg) == ImageKind::parse(tmp) {
+							self.data.truncate(size);
+							self.data.copy_from_slice(tmp);
+						}
+					}
+				}
+			}
+
+			// Manually free the C memory.
+			unsafe { libc::free(out_ptr.cast::<c_void>()); }
+			out_ptr = std::ptr::null_mut();
+		}
+	}
 
 	/// # Compress w/ `Oxipng`
 	///
@@ -146,12 +181,52 @@ impl FlacaImage<'_> {
 		}
 	}
 
-	#[inline]
+	#[allow(unused_assignments)]
 	/// # Compress w/ `Zopflipng`.
 	///
 	/// The result is comparable to calling:
 	/// ```bash
 	/// zopflipng -m
 	/// ```
-	fn zopflipng(&mut self) { zopflipng::zopflipng_optimize(&mut self.data); }
+	fn zopflipng(&mut self) {
+		let data_size = self.data.len();
+		let src_size = match c_ulong::try_from(data_size) {
+			Ok(s) => s,
+			Err(_) => return,
+		};
+
+		let mut out_ptr = std::ptr::null_mut();
+		let mut out_size: c_ulong = 0;
+
+		// Try to compress!
+		let res: bool = 0 == unsafe {
+			zopflipng::CZopfliPNGOptimize(
+				self.data.as_ptr(),
+				src_size,
+				&zopflipng::CZopfliPNGOptions::default(),
+				0, // false
+				&mut out_ptr,
+				&mut out_size,
+			)
+		};
+
+		if 0 < out_size && ! out_ptr.is_null() {
+			// Maybe replace the buffer with our new image!
+			if res {
+				if let Ok(size) = usize::try_from(out_size) {
+					if size < data_size {
+						let tmp = unsafe { std::slice::from_raw_parts(out_ptr, size) };
+						if Some(ImageKind::Png) == ImageKind::parse(tmp) {
+							self.data.truncate(size);
+							self.data.copy_from_slice(tmp);
+						}
+					}
+				}
+			}
+
+			// Manually free the C memory.
+			unsafe { libc::free(out_ptr.cast::<c_void>()); }
+			out_ptr = std::ptr::null_mut();
+		}
+	}
 }

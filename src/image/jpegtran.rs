@@ -6,8 +6,6 @@ This is essentially a port of the `MozJPEG` code relating to:
 jpegtran -copy none -progressive -optimize
 ```
 
-
-
 ## Reference:
 
 The reference materials are a bit all over the place, but the main sources
@@ -49,9 +47,7 @@ use std::os::raw::{
 	c_uchar,
 	c_uint,
 	c_ulong,
-	c_void,
 };
-use super::ImageKind;
 
 // We need a couple more things from jpegtran. Mozjpeg-sys includes the right
 // sources but doesn't export the definitions.
@@ -66,7 +62,6 @@ extern "C" {
 
 
 
-#[allow(unused_assignments)]
 /// # Jpegtran (Memory Mode)
 ///
 /// ## Errors
@@ -77,7 +72,12 @@ extern "C" {
 /// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub(super) fn jpegtran_mem(data: &mut Vec<u8>) {
+pub(super) fn compress(
+	src_ptr: *const u8,
+	src_size: c_ulong,
+	out_ptr: *mut *mut c_uchar,
+	out_size: &mut c_ulong
+) -> bool {
 	let mut transformoption = jpeg_transform_info {
 		transform: JXFORM_CODE_JXFORM_NONE,
 		perfect: 0,
@@ -104,15 +104,10 @@ pub(super) fn jpegtran_mem(data: &mut Vec<u8>) {
 	};
 
 	let mut meta = InOut::default();
-	let data_size = data.len();
-	let src_size = match c_ulong::try_from(data_size) {
-		Ok(s) => s,
-		Err(_) => return,
-	};
 
 	unsafe {
 		// Load the source file.
-		jpeg_mem_src(&mut meta.src, data.as_ptr(), src_size);
+		jpeg_mem_src(&mut meta.src, src_ptr, src_size);
 
 		// Ignore markers.
 		jcopy_markers_setup(&mut meta.src, 0);
@@ -122,7 +117,7 @@ pub(super) fn jpegtran_mem(data: &mut Vec<u8>) {
 
 		// Read a few more properties into the source struct.
 		if jtransform_request_workspace(&mut meta.src, &mut transformoption) == 0 {
-			return;
+			return false;
 		}
 	}
 
@@ -145,10 +140,6 @@ pub(super) fn jpegtran_mem(data: &mut Vec<u8>) {
 		)
 	};
 
-	// Get an output buffer going.
-	let mut out_ptr: *mut c_uchar = std::ptr::null_mut();
-	let mut out_size: c_ulong = 0;
-
 	// Turn on "code optimizing".
 	meta.dst.optimize_coding = 1;
 	unsafe {
@@ -156,7 +147,7 @@ pub(super) fn jpegtran_mem(data: &mut Vec<u8>) {
 		jpeg_simple_progression(&mut meta.dst);
 
 		// And load the destination file.
-		jpeg_mem_dest(&mut meta.dst, &mut out_ptr, &mut out_size);
+		jpeg_mem_dest(&mut meta.dst, out_ptr, out_size);
 
 		// Start the compressor. Note: no data is written here.
 		jpeg_write_coefficients(&mut meta.dst, dst_coef_arrays);
@@ -173,27 +164,7 @@ pub(super) fn jpegtran_mem(data: &mut Vec<u8>) {
 		);
 	}
 
-	// Let's get the data!
-	let res = meta.build();
-	if 0 < out_size && ! out_ptr.is_null() {
-		// Maybe replace the buffer with our new image!
-		if res {
-			if let Ok(size) = usize::try_from(out_size) {
-				if size < data_size {
-					let tmp = unsafe { std::slice::from_raw_parts(out_ptr, size) };
-					if Some(ImageKind::Jpeg) == ImageKind::parse(tmp) {
-						data.truncate(size);
-						data.copy_from_slice(tmp);
-					}
-				}
-			}
-		}
-
-		// The buffer probably needs to be manually freed. I don't think
-		// jpeg_destroy_compress() handles that for us.
-		unsafe { libc::free(out_ptr.cast::<c_void>()); }
-		out_ptr = std::ptr::null_mut();
-	}
+	meta.build()
 }
 
 
