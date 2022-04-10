@@ -60,7 +60,6 @@ skel_dir    := justfile_directory() + "/skel"
 	# First let's build the Rust bit.
 	cargo check \
 		--release \
-		--all-features \
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 
@@ -82,7 +81,6 @@ skel_dir    := justfile_directory() + "/skel"
 	clear
 	cargo clippy \
 		--release \
-		--all-features \
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 
@@ -102,7 +100,6 @@ skel_dir    := justfile_directory() + "/skel"
 	# Make the docs.
 	cargo +nightly doc \
 		--release \
-		--all-features \
 		--no-deps \
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
@@ -128,7 +125,6 @@ skel_dir    := justfile_directory() + "/skel"
 	clear
 	RUST_TEST_THREADS=1 cargo test \
 		--release \
-		--all-features \
 		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 
