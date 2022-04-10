@@ -190,10 +190,6 @@ impl FlacaImage<'_> {
 	/// ```
 	fn zopflipng(&mut self) {
 		let data_size = self.data.len();
-		let src_size = match c_ulong::try_from(data_size) {
-			Ok(s) => s,
-			Err(_) => return,
-		};
 
 		let mut out_ptr = std::ptr::null_mut();
 		let mut out_size: c_ulong = 0;
@@ -202,7 +198,7 @@ impl FlacaImage<'_> {
 		let res: bool = 0 == unsafe {
 			zopflipng::CZopfliPNGOptimize(
 				self.data.as_ptr(),
-				src_size,
+				data_size as c_ulong,
 				&zopflipng::CZopfliPNGOptions::default(),
 				0, // false
 				&mut out_ptr,
