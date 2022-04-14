@@ -193,6 +193,7 @@ fn _main() -> Result<(), FlacaError> {
 		return Err(FlacaError::NoImages);
 	}
 
+	#[cfg(any(target_pointer_width = "64", target_pointer_width = "128"))]
 	if progress && 4_294_967_295 < paths.len()  {
 		Msg::warning("Progress can't be displayed when there are more than 4,294,967,295 images.")
 			.print();
