@@ -55,15 +55,15 @@ The above list may not be exhaustive, though. If you find you need anything else
 It's easy. Just run `flaca [FLAGS] [OPTIONS] <PATH(S)>…`.
 
 The following flags and options are available:
-```
--h, --help           Print help information and exit.
--l, --list <FILE>    Read (absolute) image and/or directory paths from this
-                     text file, one entry per line.
-    --no-jpeg        Skip JPEG images.
-    --no-png         Skip PNG images.
--p, --progress       Show progress bar while minifying.
--V, --version        Print version information and exit.
-```
+
+| Short | Long | Value | Description |
+| ----- | ---- | ----- | ----------- |
+| `-h` | `--help` | | Print help information and exit. |
+| `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file, one entry per line. |
+| | `--no-jpeg` | | Skip JPEG images. |
+| | `--no-png` | | Skip PNG Images. |
+| `-p` | `--progress` | | Show progress while minifying. |
+| `-V` | `--version` | | Print version information and exit. |
 
 You can feed it any number of file or directory paths in one go, and/or toss it a text file using the `-l` option. Directories are recursively searched.
 
