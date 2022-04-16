@@ -111,5 +111,4 @@ cc = "=1.0.73"
 [profile.release]
 lto = true
 codegen-units = 1
-opt-level = 3
 strip = true
