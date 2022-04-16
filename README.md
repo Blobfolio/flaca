@@ -70,6 +70,7 @@ You can feed it any number of file or directory paths in one go, and/or toss it 
 Flaca can cross filesystem and user boundaries, provided the user running the program has the relevant read/write access. (Not that you should run it as `root`, but if you did, images would still be owned by `www-data` or whatever after compression.)
 
 Some quick examples:
+
 ```bash
 # Compress one file.
 flaca /path/to/image.jpg
