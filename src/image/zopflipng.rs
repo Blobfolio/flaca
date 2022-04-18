@@ -17,7 +17,6 @@ use std::os::raw::{
 	c_ulong,
 };
 
-type size_t = c_ulong;
 type ZopfliPNGFilterStrategy = c_uint;
 
 #[repr(C)]
@@ -61,11 +60,11 @@ impl Default for CZopfliPNGOptions {
 extern "C" {
 	pub(super) fn CZopfliPNGOptimize(
 		origpng: *const c_uchar,
-		origpng_size: size_t,
+		origpng_size: c_ulong,
 		png_options: *const CZopfliPNGOptions,
 		verbose: c_int,
 		resultpng: *mut *mut c_uchar,
-		resultpng_size: *mut size_t,
+		resultpng_size: *mut c_ulong,
 	) -> c_int;
 }
 
