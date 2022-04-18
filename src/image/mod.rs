@@ -143,6 +143,7 @@ impl FlacaImage<'_> {
 		};
 
 		static OPTS: Lazy<Options> = Lazy::new(|| {
+			// Presets 4-6 only apply to Deflaters::Zlib.
 			let mut o: Options = Options::from_preset(3);
 
 			// Alpha optimizations.
