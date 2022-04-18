@@ -147,9 +147,12 @@ fn _main() -> Result<(), FlacaError> {
 		progress = false;
 	}
 
-	// Controls for early termination.
+	// Watch for SIGINT so we can shut down cleanly.
 	let killed = Arc::from(AtomicBool::new(false));
-	let k2 = Arc::clone(&killed);
+	let _res = signal_hook::flag::register(
+		signal_hook::consts::SIGINT,
+		Arc::clone(&killed)
+	);
 
 	// Sexy run-through.
 	if progress {
@@ -162,16 +165,15 @@ fn _main() -> Result<(), FlacaError> {
 		let before: AtomicU64 = AtomicU64::new(0);
 		let after: AtomicU64 = AtomicU64::new(0);
 
-		// Intercept CTRL+C so we can gracefully shut down.
-		let p2 = progress.clone();
-		let _res = ctrlc::set_handler(move || {
-			k2.store(true, SeqCst);
-			p2.set_title(Some(Msg::warning("Early shutdown in progress.")));
-		});
-
 		// Process!
+		let killed2 = AtomicBool::new(false);
 		paths.par_iter().for_each(|x|
-			if ! killed.load(SeqCst) {
+			if killed.load(SeqCst) {
+				if killed2.compare_exchange(false, true, SeqCst, SeqCst).is_ok() {
+					progress.set_title(Some(Msg::warning("Early shutdown in progress.")));
+				}
+			}
+			else {
 				// Encode if we can.
 				if let Some(mut enc) = FlacaImage::new(x, jpeg, png) {
 					let tmp = x.to_string_lossy();
@@ -202,9 +204,6 @@ fn _main() -> Result<(), FlacaError> {
 			.print();
 	}
 	else {
-		// Intercept CTRL+C so we can gracefully shut down.
-		let _res = ctrlc::set_handler(move || { k2.store(true, SeqCst); });
-
 		// Process!
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
