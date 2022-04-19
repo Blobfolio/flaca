@@ -19,8 +19,6 @@ pub(super) enum FlacaError {
 	Killed,
 	/// # No images.
 	NoImages,
-	/// # Progress Overflow.
-	ProgressOverflow,
 }
 
 impl AsRef<str> for FlacaError {
@@ -50,7 +48,6 @@ impl FlacaError {
 			Self::Argue(e) => e.as_str(),
 			Self::Killed => "The process was aborted early.",
 			Self::NoImages => "No images were found.",
-			Self::ProgressOverflow => "Progress can only be displayed for up to 4,294,967,295 images. Try again with fewer images or without the -p/--progress flag.",
 		}
 	}
 }

@@ -2,13 +2,50 @@
 # Flaca - Build
 */
 
+use dowser::Extension;
+use std::{
+	fs::File,
+	io::Write,
+	path::Path,
+};
+
+
+
+/// # Build.
+pub fn main() {
+	println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
+
+	build_exts();
+	build_zopfli();
+}
+
+/// # Pre-Compute Extensions.
+///
+/// We might as well generate the path-matching constants while we're here.
+fn build_exts() {
+	let out = format!(
+		r"
+const E_JPEG: Extension = {};
+const E_JPG: Extension = {};
+const E_PNG: Extension = {};
+",
+		Extension::codegen(b"jpeg"),
+		Extension::codegen(b"jpg"),
+		Extension::codegen(b"png"),
+	);
+
+	let out_path = std::fs::canonicalize(std::env::var("OUT_DIR").expect("Missing OUT_DIR."))
+		.expect("Missing OUT_DIR.")
+		.join("flaca-extensions.rs");
+
+	write(&out_path, out.as_bytes());
+}
+
 /// # Build Zopflipng.
 ///
 /// Rust's Zopfli implementation is insufficient for our needs; we have to link
 /// to the static libs for some FFI action instead.
-pub fn main() {
-	println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
-
+fn build_zopfli() {
 	// Define some paths.
 	let repo = std::fs::canonicalize("vendor").expect("Missing vendor directory.");
 	let zopfli_src = repo.join("src/zopfli");
@@ -61,6 +98,12 @@ pub fn main() {
 			zopflipng_src.join("zopflipng_lib.cc"),
 		])
 		.compile("zopflipng");
+}
+
+/// # Write File.
+fn write(path: &Path, data: &[u8]) {
+	File::create(path).and_then(|mut f| f.write_all(data).and_then(|_| f.flush()))
+		.expect("Unable to write file.");
 }
 
 /*
