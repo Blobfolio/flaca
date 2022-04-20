@@ -93,8 +93,9 @@ fn main() {
 	}
 }
 
-#[allow(clippy::option_if_let_else)] // This looks bad.
 #[inline]
+#[allow(clippy::cast_possible_truncation)] // It fits.
+#[allow(clippy::option_if_let_else)] // This looks bad.
 /// # Actual Main.
 ///
 /// This is the actual main, allowing us to easily bubble errors.
@@ -106,7 +107,6 @@ fn _main() -> Result<(), FlacaError> {
 	// Figure out which kinds we're doing.
 	let jpeg: bool = ! args.switch2(b"--no-jpeg", b"--no-jpg");
 	let png: bool = ! args.switch(b"--no-png");
-	let mut progress = args.switch2(b"-p", b"--progress");
 
 	// Find files!
 	let paths: Vec<PathBuf> = match (jpeg, png) {
@@ -140,12 +140,16 @@ fn _main() -> Result<(), FlacaError> {
 		return Err(FlacaError::NoImages);
 	}
 
-	#[cfg(any(target_pointer_width = "64", target_pointer_width = "128"))]
-	if progress && 4_294_967_295 < paths.len()  {
-		Msg::warning("Progress can't be displayed when there are more than 4,294,967,295 images.")
-			.print();
-		progress = false;
-	}
+	// Should we show progress?
+	let progress =
+		if args.switch2(b"-p", b"--progress") {
+			if paths.len() <= Progless::MAX_TOTAL { true }
+			else {
+				Msg::warning(Progless::MAX_TOTAL_ERROR).print();
+				false
+			}
+		}
+		else { false };
 
 	// Watch for SIGINT so we can shut down cleanly.
 	let killed = Arc::from(AtomicBool::new(false));
@@ -157,22 +161,17 @@ fn _main() -> Result<(), FlacaError> {
 	// Sexy run-through.
 	if progress {
 		// Boot up a progress bar.
-		let progress = Progless::try_from(paths.len())
+		let progress = Progless::try_from(paths.len() as u32)
 			.unwrap()
-			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
+			.with_reticulating_splines("Flaca");
 
 		// Keep track of the before and after file sizes as we go.
 		let before: AtomicU64 = AtomicU64::new(0);
 		let after: AtomicU64 = AtomicU64::new(0);
 
 		// Process!
-		let killed2 = AtomicBool::new(false);
 		paths.par_iter().for_each(|x|
-			if killed.load(SeqCst) {
-				if killed2.compare_exchange(false, true, SeqCst, SeqCst).is_ok() {
-					progress.set_title(Some(Msg::warning("Early shutdown in progress.")));
-				}
-			}
+			if killed.load(SeqCst) { progress.sigint(); }
 			else {
 				// Encode if we can.
 				if let Some(mut enc) = FlacaImage::new(x, jpeg, png) {
