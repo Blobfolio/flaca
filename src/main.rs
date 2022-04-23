@@ -158,6 +158,12 @@ fn _main() -> Result<(), FlacaError> {
 		Arc::clone(&killed)
 	);
 
+	// Initialize our global oxipng compression settings. Doing it here is a
+	// bit strange, but less contentious than leveraging a lazy static within
+	// FlacaImage itself (particularly at scale). As a bonus, the memory can be
+	// freed afterward, making Valgrind happier.
+	let oxi = image::oxipng_options();
+
 	// Sexy run-through.
 	if progress {
 		// Boot up a progress bar.
@@ -178,7 +184,7 @@ fn _main() -> Result<(), FlacaError> {
 					let tmp = x.to_string_lossy();
 					progress.add(&tmp);
 
-					let (b, a) = enc.compress();
+					let (b, a) = enc.compress(&oxi);
 					before.fetch_add(b, SeqCst);
 					after.fetch_add(a, SeqCst);
 
@@ -207,7 +213,7 @@ fn _main() -> Result<(), FlacaError> {
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
 				if let Some(mut enc) = FlacaImage::new(x, jpeg, png) {
-					let _res = enc.compress();
+					let _res = enc.compress(&oxi);
 				}
 			}
 		);

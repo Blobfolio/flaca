@@ -9,7 +9,7 @@ mod zopflipng;
 
 
 use kind::ImageKind;
-use once_cell::sync::Lazy;
+use oxipng::Options as OxipngOptions;
 use std::{
 	fs,
 	os::raw::{
@@ -70,11 +70,11 @@ impl FlacaImage<'_> {
 	///
 	/// A tuple containing the original file size and the new file size is
 	/// returned. If the two values are equal, no savings occurrred.
-	pub(super) fn compress(&mut self) -> (u64, u64) {
+	pub(super) fn compress(&mut self, oxi: &OxipngOptions) -> (u64, u64) {
 		match self.kind {
 			ImageKind::Jpeg => { self.mozjpeg(); },
 			ImageKind::Png => {
-				self.oxipng();
+				self.oxipng(oxi);
 				self.zopflipng();
 			},
 		}
@@ -134,43 +134,8 @@ impl FlacaImage<'_> {
 	/// ```bash
 	/// oxipng -o 3 -s -a -i 0 --fix
 	/// ```
-	fn oxipng(&mut self) {
-		use oxipng::{
-			AlphaOptim,
-			Deflaters,
-			Headers,
-			Options,
-		};
-
-		static OPTS: Lazy<Options> = Lazy::new(|| {
-			// Presets 4-6 only apply to Deflaters::Zlib.
-			let mut o: Options = Options::from_preset(3);
-
-			// Alpha optimizations.
-			o.alphas.insert(AlphaOptim::Black);
-			o.alphas.insert(AlphaOptim::Down);
-			o.alphas.insert(AlphaOptim::Left);
-			o.alphas.insert(AlphaOptim::Right);
-			o.alphas.insert(AlphaOptim::Up);
-			o.alphas.insert(AlphaOptim::White);
-
-			// The alternative deflater seems to perform the same or better
-			// than the default, so I guess that's what we're going to use!
-			o.deflate = Deflaters::Libdeflater;
-
-			// Fix errors when possible.
-			o.fix_errors = true;
-
-			// Strip interlacing.
-			o.interlace.replace(0);
-
-			// Strip what can be safely stripped.
-			o.strip = Headers::All;
-
-			o
-		});
-
-		if let Ok(mut new) = oxipng::optimize_from_memory(&self.data, &OPTS) {
+	fn oxipng(&mut self, opts: &OxipngOptions) {
+		if let Ok(mut new) = oxipng::optimize_from_memory(&self.data, opts) {
 			// Is it worth saving?
 			if
 				! new.is_empty() &&
@@ -226,4 +191,45 @@ impl FlacaImage<'_> {
 			out_ptr = std::ptr::null_mut();
 		}
 	}
+}
+
+
+
+/// # Generate Oxipng Options.
+///
+/// This returns the strongest compression profile available for Oxipng without
+/// using its built-in zopfli deflater. (We run the _full_ zopflipng as a
+/// separate pass, so there's no benefit to doing it within Oxipng.)
+pub(super) fn oxipng_options() -> OxipngOptions {
+	use oxipng::{
+		AlphaOptim,
+		Deflaters,
+		Headers,
+	};
+
+	// Presets 4-6 only apply to Deflaters::Zlib.
+	let mut o = OxipngOptions::from_preset(3);
+
+	// Alpha optimizations.
+	o.alphas.insert(AlphaOptim::Black);
+	o.alphas.insert(AlphaOptim::Down);
+	o.alphas.insert(AlphaOptim::Left);
+	o.alphas.insert(AlphaOptim::Right);
+	o.alphas.insert(AlphaOptim::Up);
+	o.alphas.insert(AlphaOptim::White);
+
+	// The alternative deflater seems to perform the same or better
+	// than the default, so I guess that's what we're going to use!
+	o.deflate = Deflaters::Libdeflater;
+
+	// Fix errors when possible.
+	o.fix_errors = true;
+
+	// Strip interlacing.
+	o.interlace.replace(0);
+
+	// Strip what can be safely stripped.
+	o.strip = Headers::All;
+
+	o
 }
