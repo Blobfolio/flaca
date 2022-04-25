@@ -62,6 +62,7 @@ extern "C" {
 
 
 
+#[allow(unsafe_code)]
 /// # Jpegtran (Memory Mode)
 ///
 /// ## Errors
@@ -182,6 +183,7 @@ struct InOut {
 }
 
 impl Default for InOut {
+	#[allow(unsafe_code)]
 	fn default() -> Self {
 		let mut out = Self {
 			src_err: unsafe { std::mem::zeroed() },
@@ -208,6 +210,7 @@ impl Default for InOut {
 }
 
 impl InOut {
+	#[allow(unsafe_code)]
 	/// # Finish Compression.
 	fn build(&mut self) -> bool {
 		// Only build once.
@@ -221,6 +224,7 @@ impl InOut {
 }
 
 impl Drop for InOut {
+	#[allow(unsafe_code)]
 	fn drop(&mut self) {
 		self.build();
 		unsafe {

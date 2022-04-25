@@ -89,7 +89,7 @@ impl FlacaImage<'_> {
 	}
 
 	#[allow(clippy::cast_possible_truncation)] // It was usize to begin with.
-	#[allow(unused_assignments)]
+	#[allow(unused_assignments, unsafe_code)]
 	/// # Compress w/ `MozJPEG`.
 	///
 	/// The result is comparable to running:
@@ -147,7 +147,7 @@ impl FlacaImage<'_> {
 		}
 	}
 
-	#[allow(unused_assignments)]
+	#[allow(unused_assignments, unsafe_code)]
 	/// # Compress w/ `Zopflipng`.
 	///
 	/// The result is comparable to calling:

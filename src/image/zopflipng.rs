@@ -76,6 +76,7 @@ mod tests {
 
 	#[allow(trivial_casts)]
 	#[allow(deref_nullptr)]
+	#[allow(unsafe_code)]
 	#[test]
 	fn test_bindgen() {
 		assert_eq!(
