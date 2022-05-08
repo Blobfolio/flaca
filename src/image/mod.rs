@@ -44,19 +44,13 @@ impl<'a> FlacaImage<'a> {
 		let data = fs::read(file).ok()?;
 		if data.is_empty() { None }
 		else {
-			let kind = match ImageKind::parse(data.as_slice())? {
-				ImageKind::Jpeg if jpeg => ImageKind::Jpeg,
-				ImageKind::Png if png => ImageKind::Png,
-				_ => return None,
-			};
+			let kind =
+				if png && ImageKind::is_png(&data) { ImageKind::Png }
+				else if jpeg && ImageKind::is_jpeg(&data) { ImageKind::Jpeg }
+				else { return None; };
 
 			let size = u64::try_from(data.len()).ok()?;
-			Some(Self {
-				file,
-				kind,
-				data,
-				size,
-			})
+			Some(Self { file, kind, data, size })
 		}
 	}
 }
@@ -88,8 +82,7 @@ impl FlacaImage<'_> {
 		else { (self.size, self.size) }
 	}
 
-	#[allow(clippy::cast_possible_truncation)] // It was usize to begin with.
-	#[allow(unused_assignments, unsafe_code)]
+	#[allow(clippy::cast_possible_truncation, unused_assignments, unsafe_code)]
 	/// # Compress w/ `MozJPEG`.
 	///
 	/// The result is comparable to running:
@@ -101,7 +94,7 @@ impl FlacaImage<'_> {
 		let mut out_size: c_ulong = 0;
 
 		// Try to compress!
-		let res = jpegtran::compress(
+		let res: bool = jpegtran::compress(
 			self.data.as_ptr(),
 			self.size,
 			&mut out_ptr,
@@ -109,16 +102,11 @@ impl FlacaImage<'_> {
 		);
 
 		if 0 < out_size && ! out_ptr.is_null() {
-			// Maybe replace the buffer with our new image!
-			if res {
-				if let Ok(size) = usize::try_from(out_size) {
-					if size < self.size as usize {
-						let tmp = unsafe { std::slice::from_raw_parts(out_ptr, size) };
-						if Some(ImageKind::Jpeg) == ImageKind::parse(tmp) {
-							self.data.truncate(size);
-							self.data.copy_from_slice(tmp);
-						}
-					}
+			if res && out_size < self.size {
+				let tmp = unsafe { std::slice::from_raw_parts(out_ptr, out_size as usize) };
+				if ImageKind::is_jpeg(tmp) {
+					self.data.truncate(out_size as usize);
+					self.data.copy_from_slice(tmp);
 				}
 			}
 
@@ -136,18 +124,13 @@ impl FlacaImage<'_> {
 	/// ```
 	fn oxipng(&mut self, opts: &OxipngOptions) {
 		if let Ok(mut new) = oxipng::optimize_from_memory(&self.data, opts) {
-			// Is it worth saving?
-			if
-				! new.is_empty() &&
-				new.len() < self.data.len() &&
-				Some(ImageKind::Png) == ImageKind::parse(&new)
-			{
+			if ! new.is_empty() && new.len() < self.data.len() && ImageKind::is_png(&new) {
 				std::mem::swap(&mut self.data, &mut new);
 			}
 		}
 	}
 
-	#[allow(unused_assignments, unsafe_code)]
+	#[allow(clippy::cast_possible_truncation, unused_assignments, unsafe_code)]
 	/// # Compress w/ `Zopflipng`.
 	///
 	/// The result is comparable to calling:
@@ -156,7 +139,6 @@ impl FlacaImage<'_> {
 	/// ```
 	fn zopflipng(&mut self) {
 		let data_size = self.data.len();
-
 		let mut out_ptr = std::ptr::null_mut();
 		let mut out_size: c_ulong = 0;
 
@@ -173,16 +155,11 @@ impl FlacaImage<'_> {
 		};
 
 		if 0 < out_size && ! out_ptr.is_null() {
-			// Maybe replace the buffer with our new image!
-			if res {
-				if let Ok(size) = usize::try_from(out_size) {
-					if size < data_size {
-						let tmp = unsafe { std::slice::from_raw_parts(out_ptr, size) };
-						if Some(ImageKind::Png) == ImageKind::parse(tmp) {
-							self.data.truncate(size);
-							self.data.copy_from_slice(tmp);
-						}
-					}
+			if res && out_size < data_size as c_ulong {
+				let tmp = unsafe { std::slice::from_raw_parts(out_ptr, out_size as usize) };
+				if ImageKind::is_png(tmp) {
+					self.data.truncate(out_size as usize);
+					self.data.copy_from_slice(tmp);
 				}
 			}
 
@@ -211,25 +188,15 @@ pub(super) fn oxipng_options() -> OxipngOptions {
 	let mut o = OxipngOptions::from_preset(3);
 
 	// Alpha optimizations.
-	o.alphas.insert(AlphaOptim::Black);
-	o.alphas.insert(AlphaOptim::Down);
-	o.alphas.insert(AlphaOptim::Left);
-	o.alphas.insert(AlphaOptim::Right);
-	o.alphas.insert(AlphaOptim::Up);
-	o.alphas.insert(AlphaOptim::White);
+	o.alphas.extend([
+		AlphaOptim::Black, AlphaOptim::Down, AlphaOptim::Left,
+		AlphaOptim::Right, AlphaOptim::Up, AlphaOptim::White
+	]);
 
-	// The alternative deflater seems to perform the same or better
-	// than the default, so I guess that's what we're going to use!
-	o.deflate = Deflaters::Libdeflater;
-
-	// Fix errors when possible.
-	o.fix_errors = true;
-
-	// Strip interlacing.
-	o.interlace.replace(0);
-
-	// Strip what can be safely stripped.
-	o.strip = Headers::All;
+	o.deflate = Deflaters::Libdeflater; // Libdeflater usually beats zlib.
+	o.fix_errors = true;                // Fix errors when possible.
+	o.interlace.replace(0);             // Remove interlacing.
+	o.strip = Headers::All;             // Strip all the headers.
 
 	o
 }
