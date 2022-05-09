@@ -306,6 +306,7 @@ extern "C" {
 
 
 #[cfg(test)]
+#[allow(deref_nullptr, non_snake_case, trivial_casts, unsafe_code)]
 mod tests {
 	use super::*;
 
