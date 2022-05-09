@@ -1,10 +1,15 @@
 /*!
 # Flaca: Zopflipng
 
-This contains FFI bindings to libzopflipng, equivalent to:
+The `optimize` method in this module emulates the behaviors of the zopflipng
+CLI tool when called with:
+
 ```bash
 zopflipng -m <input> <output>
 ```
+
+This no longer links to `libzopflipng` itself, but instead reimplements its
+functionality.
 */
 
 use std::os::raw::{

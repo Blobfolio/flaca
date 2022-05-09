@@ -14,6 +14,7 @@ use std::{
 /// # Build.
 pub fn main() {
 	println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
+	println!("cargo:rerun-if-changed=./skel/vendor/");
 
 	build_exts();
 	build_ffi();
@@ -53,11 +54,10 @@ fn build_ffi() {
 
 	// Build Zopfli first.
 	cc::Build::new()
-		.include(&zopfli_src)
-		.include(&lodepng_src)
+		.includes(&[repo, &lodepng_src, &zopfli_src])
+		.cpp(false)
 		.flag_if_supported("-ansi")
 		.flag_if_supported("-pedantic")
-		.opt_level(3)
 		.pic(true)
 		.static_flag(true)
 		.warnings(false)
@@ -74,9 +74,9 @@ fn build_ffi() {
 			lodepng_src.join("lodepng.c"),
 			repo.join("custom_png_deflate.c"),
 		])
-		.compile("zopfli");
+		.compile("zopflipng");
 
-	// bindings_lodepng(&lodepng_src);
+	// bindings(repo, &lodepng_src);
 }
 
 /// # Write File.
@@ -86,9 +86,14 @@ fn write(path: &Path, data: &[u8]) {
 }
 
 /*
-fn bindings_lodepng(lodepng_src: &Path) {
+/// # FFI Bindings.
+///
+/// These have been manually transcribed into the Rust sources, but this
+/// commented-out code can be re-enabled if they ever need to be udpated.
+fn bindings(repo: &Path, lodepng_src: &Path) {
 	let bindings = bindgen::Builder::default()
 		.header(lodepng_src.join("lodepng.h").to_string_lossy())
+		.header(repo.join("custom_png_deflate.h").to_string_lossy())
 		.allowlist_function("lodepng_decode")
 		.allowlist_function("lodepng_encode")
 		.allowlist_function("lodepng_color_mode_copy")
@@ -106,7 +111,7 @@ fn bindings_lodepng(lodepng_src: &Path) {
 
 	let out_path = std::fs::canonicalize(std::env::var("OUT_DIR").expect("Missing OUT_DIR."))
 		.expect("Missing OUT_DIR.")
-		.join("lodepng-bindings.rs");
+		.join("flaca-bindings.rs");
 
 	bindings
 		.write_to_file(&out_path)
