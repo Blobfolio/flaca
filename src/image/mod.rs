@@ -4,6 +4,7 @@
 
 mod jpegtran;
 mod kind;
+pub(self) mod lodepng;
 mod zopflipng;
 
 
@@ -138,34 +139,10 @@ impl FlacaImage<'_> {
 	/// zopflipng -m
 	/// ```
 	fn zopflipng(&mut self) {
-		let data_size = self.data.len();
-		let mut out_ptr = std::ptr::null_mut();
-		let mut out_size: c_ulong = 0;
-
-		// Try to compress!
-		let res: bool = 0 == unsafe {
-			zopflipng::CZopfliPNGOptimize(
-				self.data.as_ptr(),
-				data_size as c_ulong,
-				&zopflipng::CZopfliPNGOptions::default(),
-				0, // false
-				&mut out_ptr,
-				&mut out_size,
-			)
-		};
-
-		if 0 < out_size && ! out_ptr.is_null() {
-			if res && out_size < data_size as c_ulong {
-				let tmp = unsafe { std::slice::from_raw_parts(out_ptr, out_size as usize) };
-				if ImageKind::is_png(tmp) {
-					self.data.truncate(out_size as usize);
-					self.data.copy_from_slice(tmp);
-				}
+		if let Some(mut new) = zopflipng::optimize(&self.data) {
+			if ! new.is_empty() && new.len() < self.data.len() && ImageKind::is_png(&new) {
+				std::mem::swap(&mut self.data, &mut new);
 			}
-
-			// Manually free the C memory.
-			unsafe { libc::free(out_ptr.cast::<c_void>()); }
-			out_ptr = std::ptr::null_mut();
 		}
 	}
 }
