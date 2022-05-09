@@ -60,23 +60,16 @@ impl Decoder {
 		let mut w = 0;
 		let mut h = 0;
 
-		if 0 != unsafe {
-			lodepng_decode(
-				&mut img,
-				&mut w,
-				&mut h,
-				&mut state,
-				src.as_ptr(),
-				src_size,
-			)
-		} { return None; }
+		// Safety: a non-zero response is an error.
+		let res = unsafe {
+			lodepng_decode(&mut img, &mut w, &mut h, &mut state, src.as_ptr(), src_size)
+		};
 
-		// Didn't work?
-		if img.is_null() || w == 0 || h == 0 { None }
-		// Woo!
-		else {
+		// Return it if we got it.
+		if 0 == res && ! img.is_null() && 0 < w && 0 < h {
 			Some(Self { state, img, w, h })
 		}
+		else { None }
 	}
 }
 
@@ -84,6 +77,7 @@ impl Drop for Decoder {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
 		if ! self.img.is_null() {
+			// Safety: the pointer is non-null.
 			unsafe { libc::free(self.img.cast::<c_void>()); }
 		}
 	}
@@ -113,6 +107,7 @@ impl Drop for EncoderImage {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
 		if ! self.is_empty() {
+			// Safety: the pointer is non-null.
 			unsafe { libc::free(self.img.cast::<c_void>()); }
 		}
 	}
@@ -127,7 +122,6 @@ impl EncoderImage {
 
 
 
-#[allow(unsafe_code)]
 /// # Optimize!
 ///
 /// This will attempt to losslessly recompress the source PNG with the
@@ -186,6 +180,18 @@ fn best_strategy(dec: &Decoder, buf: &mut Vec<u8>) -> LodePNGFilterStrategy {
 }
 
 #[allow(unsafe_code)]
+#[inline]
+/// # Encode (Wrapper).
+fn encode(out: &mut EncoderImage, dec: &Decoder, enc: &mut LodePNGState) -> bool {
+	// Safety: a non-zero response is an error.
+	let res = unsafe {
+		lodepng_encode(&mut out.img, &mut out.size, dec.img, dec.w, dec.h, enc)
+	};
+
+	0 == res && ! out.is_empty()
+}
+
+#[allow(unsafe_code)]
 /// # Apply Optimizations.
 ///
 /// This re-encodes the PNG source using the specified strategy, returning the
@@ -206,11 +212,12 @@ fn try_optimize(
 	let mut enc = LodePNGState::default();
 	enc.encoder.zlibsettings.windowsize = window_size;
 
-	let palette = dec.state.info_png.color.colortype == LodePNGColorType_LCT_PALETTE;
-	if palette {
-		unsafe {
-			lodepng_color_mode_copy(&mut enc.info_raw, &dec.state.info_png.color);
-		}
+	// Copy palette details over to the encoder.
+	if dec.state.info_png.color.colortype == LodePNGColorType_LCT_PALETTE {
+		// Safety: a non-zero response is an error.
+		if 0 != unsafe {
+			lodepng_color_mode_copy(&mut enc.info_raw, &dec.state.info_png.color)
+		} { return 0; }
 		enc.info_raw.colortype = LodePNGColorType_LCT_RGBA;
 		enc.info_raw.bitdepth = 8;
 	}
@@ -228,32 +235,27 @@ fn try_optimize(
 
 	// Try to encode it.
 	let mut out = EncoderImage::default();
-	if 0 != unsafe {
-		lodepng_encode(&mut out.img, &mut out.size, dec.img, dec.w, dec.h, &mut enc)
-	} { return 0; }
-
 	let size =
-		if out.is_empty() { 0 }
-		else {
-			let size =
-				if let Ok(size) = usize::try_from(out.size) {
-					// Copy the output to our buffer.
-					buf.resize(size, 0);
-					buf.copy_from_slice(unsafe {
-						std::slice::from_raw_parts(out.img, size)
-					});
-					size
-				}
-				else { 0 };
-
+		if ! encode(&mut out, dec, &mut enc) { 0 }
+		else if let Ok(size) = usize::try_from(out.size) {
+			// Copy the output to our buffer.
+			buf.resize(size, 0);
+			buf.copy_from_slice(unsafe {
+				std::slice::from_raw_parts(out.img, size)
+			});
 			size
-		};
+		}
+		else { 0 };
 
 	// We might be able to shrink really small output even further.
-	if 0 < size && size < 4096 && palette {
-		let size2 = try_optimize_small(dec, buf, &mut enc);
-		if 0 < size2 && size2 < size {
-			return size2;
+	if 0 < size && size < 4096 {
+		if let Some(dec2) = Decoder::new(buf) {
+			if dec2.state.info_png.color.colortype == LodePNGColorType_LCT_PALETTE {
+				let size2 = try_optimize_small(&dec2, buf, &mut enc);
+				if 0 < size2 && size2 < size {
+					return size2;
+				}
+			}
 		}
 	}
 
@@ -272,9 +274,10 @@ fn try_optimize(
 fn try_optimize_small(dec: &Decoder, buf: &mut Vec<u8>, enc: &mut LodePNGState) -> usize {
 	// Pull the color stats.
 	let mut stats = LodePNGColorStats::default();
-	unsafe {
-		lodepng_compute_color_stats(&mut stats, dec.img, dec.w, dec.h, &enc.info_raw);
-	}
+	// Safety: a non-zero response is an error.
+	if 0 != unsafe {
+		lodepng_compute_color_stats(&mut stats, dec.img, dec.w, dec.h, &enc.info_raw)
+	} { return 0; }
 
 	// The image is small for tRNS chunk overhead.
 	if dec.w * dec.h <= 16 && 0 != stats.key {
@@ -299,15 +302,10 @@ fn try_optimize_small(dec: &Decoder, buf: &mut Vec<u8>, enc: &mut LodePNGState) 
 
 	// Try to encode.
 	let mut out = EncoderImage::default();
-	if 0 != unsafe {
-		lodepng_encode(&mut out.img, &mut out.size, dec.img, dec.w, dec.h, enc)
-	} { return 0; }
-
-	// We know the buf fits both usize and c_ulong, so no truncation worries.
-	if ! out.is_empty() && out.size < buf.len() as c_ulong {
+	if encode(&mut out, dec, enc) && out.size < buf.len() as c_ulong {
 		// Copy the content to our buffer!
-		let out_size = out.size as usize;
-		buf.resize(out_size, 0);
+		let out_size = out.size as usize; // This can't overflow.
+		buf.truncate(out_size);
 		buf.copy_from_slice(unsafe {
 			std::slice::from_raw_parts(out.img, out_size)
 		});

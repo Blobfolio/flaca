@@ -2,17 +2,21 @@
 
 #![allow(dead_code, non_upper_case_globals)]
 
-use std::os::raw::{
-	c_ulong,
-	c_uint,
-	c_uchar,
-	c_void,
-	c_char,
-	c_ushort,
+use std::{
+	mem::MaybeUninit,
+	os::raw::{
+		c_ulong,
+		c_uint,
+		c_uchar,
+		c_void,
+		c_char,
+		c_ushort,
+	},
 };
 
-pub(super) type LodePNGColorType = c_uint;
 
+
+pub(super) type LodePNGColorType = c_uint;
 pub(super) const LodePNGColorType_LCT_GREY: LodePNGColorType = 0;
 pub(super) const LodePNGColorType_LCT_RGB: LodePNGColorType = 2;
 pub(super) const LodePNGColorType_LCT_PALETTE: LodePNGColorType = 3;
@@ -20,31 +24,59 @@ pub(super) const LodePNGColorType_LCT_GREY_ALPHA: LodePNGColorType = 4;
 pub(super) const LodePNGColorType_LCT_RGBA: LodePNGColorType = 6;
 pub(super) const LodePNGColorType_LCT_MAX_OCTET_VALUE: LodePNGColorType = 255;
 
+pub(super) type LodePNGFilterStrategy = c_uint;
+pub(super) const LodePNGFilterStrategy_LFS_ZERO: LodePNGFilterStrategy = 0;
+pub(super) const LodePNGFilterStrategy_LFS_ONE: LodePNGFilterStrategy = 1;
+pub(super) const LodePNGFilterStrategy_LFS_TWO: LodePNGFilterStrategy = 2;
+pub(super) const LodePNGFilterStrategy_LFS_THREE: LodePNGFilterStrategy = 3;
+pub(super) const LodePNGFilterStrategy_LFS_FOUR: LodePNGFilterStrategy = 4;
+pub(super) const LodePNGFilterStrategy_LFS_MINSUM: LodePNGFilterStrategy = 5;
+pub(super) const LodePNGFilterStrategy_LFS_ENTROPY: LodePNGFilterStrategy = 6;
+pub(super) const LodePNGFilterStrategy_LFS_BRUTE_FORCE: LodePNGFilterStrategy = 7;
+pub(super) const LodePNGFilterStrategy_LFS_PREDEFINED: LodePNGFilterStrategy = 8;
+
+
+
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub(super) struct LodePNGDecompressSettings {
-	pub(super) ignore_adler32: c_uint,
-	pub(super) ignore_nlen: c_uint,
-	pub(super) max_output_size: c_ulong,
-	pub(super) custom_zlib: Option<
-		unsafe extern "C" fn(
-			arg1: *mut *mut c_uchar,
-			arg2: *mut c_ulong,
-			arg3: *const c_uchar,
-			arg4: c_ulong,
-			arg5: *const LodePNGDecompressSettings,
-		) -> c_uint,
-	>,
-	pub(super) custom_inflate: Option<
-		unsafe extern "C" fn(
-			arg1: *mut *mut c_uchar,
-			arg2: *mut c_ulong,
-			arg3: *const c_uchar,
-			arg4: c_ulong,
-			arg5: *const LodePNGDecompressSettings,
-		) -> c_uint,
-	>,
-	pub(super) custom_context: *const c_void,
+pub(super) struct LodePNGColorMode {
+	pub(super) colortype: LodePNGColorType,
+	pub(super) bitdepth: c_uint,
+	pub(super) palette: *mut c_uchar,
+	pub(super) palettesize: c_ulong,
+	pub(super) key_defined: c_uint,
+	pub(super) key_r: c_uint,
+	pub(super) key_g: c_uint,
+	pub(super) key_b: c_uint,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub(super) struct LodePNGColorStats {
+	pub(super) colored: c_uint,
+	pub(super) key: c_uint,
+	pub(super) key_r: c_ushort,
+	pub(super) key_g: c_ushort,
+	pub(super) key_b: c_ushort,
+	pub(super) alpha: c_uint,
+	pub(super) numcolors: c_uint,
+	pub(super) palette: [c_uchar; 1024usize],
+	pub(super) bits: c_uint,
+	pub(super) numpixels: c_ulong,
+	pub(super) allow_palette: c_uint,
+	pub(super) allow_greyscale: c_uint,
+}
+
+impl Default for LodePNGColorStats {
+	#[allow(unsafe_code)]
+	fn default() -> Self {
+		let mut out = MaybeUninit::<Self>::zeroed();
+		unsafe {
+			// Safety: lodepng_color_stats_init sets the data.
+			lodepng_color_stats_init(out.as_mut_ptr());
+			out.assume_init()
+		}
+	}
 }
 
 #[repr(C)]
@@ -79,43 +111,56 @@ pub(super) struct LodePNGCompressSettings {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub(super) struct LodePNGColorMode {
-	pub(super) colortype: LodePNGColorType,
-	pub(super) bitdepth: c_uint,
-	pub(super) palette: *mut c_uchar,
-	pub(super) palettesize: c_ulong,
-	pub(super) key_defined: c_uint,
-	pub(super) key_r: c_uint,
-	pub(super) key_g: c_uint,
-	pub(super) key_b: c_uint,
-}
-
-extern "C" {
-	pub(super) fn lodepng_color_mode_copy(
-		dest: *mut LodePNGColorMode,
-		source: *const LodePNGColorMode,
-	) -> c_uint;
-}
-
-extern "C" {
-	pub(super) fn custom_png_deflate(
-		dst: *mut *mut c_uchar,
-		dstsize: *mut c_ulong,
-		src: *const c_uchar,
-		srcsize: c_ulong,
-		ctx: *const LodePNGCompressSettings,
-	) -> c_uint;
+pub(super) struct LodePNGDecoderSettings {
+	pub(super) zlibsettings: LodePNGDecompressSettings,
+	pub(super) ignore_crc: c_uint,
+	pub(super) ignore_critical: c_uint,
+	pub(super) ignore_end: c_uint,
+	pub(super) color_convert: c_uint,
+	pub(super) read_text_chunks: c_uint,
+	pub(super) remember_unknown_chunks: c_uint,
+	pub(super) max_text_size: c_ulong,
+	pub(super) max_icc_size: c_ulong,
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub(super) struct LodePNGTime {
-	pub(super) year: c_uint,
-	pub(super) month: c_uint,
-	pub(super) day: c_uint,
-	pub(super) hour: c_uint,
-	pub(super) minute: c_uint,
-	pub(super) second: c_uint,
+#[derive(Debug, Clone)]
+pub(super) struct LodePNGDecompressSettings {
+	pub(super) ignore_adler32: c_uint,
+	pub(super) ignore_nlen: c_uint,
+	pub(super) max_output_size: c_ulong,
+	pub(super) custom_zlib: Option<
+		unsafe extern "C" fn(
+			arg1: *mut *mut c_uchar,
+			arg2: *mut c_ulong,
+			arg3: *const c_uchar,
+			arg4: c_ulong,
+			arg5: *const LodePNGDecompressSettings,
+		) -> c_uint,
+	>,
+	pub(super) custom_inflate: Option<
+		unsafe extern "C" fn(
+			arg1: *mut *mut c_uchar,
+			arg2: *mut c_ulong,
+			arg3: *const c_uchar,
+			arg4: c_ulong,
+			arg5: *const LodePNGDecompressSettings,
+		) -> c_uint,
+	>,
+	pub(super) custom_context: *const c_void,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub(super) struct LodePNGEncoderSettings {
+	pub(super) zlibsettings: LodePNGCompressSettings,
+	pub(super) auto_convert: c_uint,
+	pub(super) filter_palette_zero: c_uint,
+	pub(super) filter_strategy: LodePNGFilterStrategy,
+	pub(super) predefined_filters: *const c_uchar,
+	pub(super) force_palette: c_uint,
+	pub(super) add_id: c_uint,
+	pub(super) text_compression: c_uint,
 }
 
 #[repr(C)]
@@ -166,56 +211,61 @@ pub(super) struct LodePNGInfo {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub(super) struct LodePNGDecoderSettings {
-	pub(super) zlibsettings: LodePNGDecompressSettings,
-	pub(super) ignore_crc: c_uint,
-	pub(super) ignore_critical: c_uint,
-	pub(super) ignore_end: c_uint,
-	pub(super) color_convert: c_uint,
-	pub(super) read_text_chunks: c_uint,
-	pub(super) remember_unknown_chunks: c_uint,
-	pub(super) max_text_size: c_ulong,
-	pub(super) max_icc_size: c_ulong,
+pub(super) struct LodePNGState {
+	pub(super) decoder: LodePNGDecoderSettings,
+	pub(super) encoder: LodePNGEncoderSettings,
+	pub(super) info_raw: LodePNGColorMode,
+	pub(super) info_png: LodePNGInfo,
+	pub(super) error: c_uint,
 }
 
-pub(super) type LodePNGFilterStrategy = c_uint;
-
-pub(super) const LodePNGFilterStrategy_LFS_ZERO: LodePNGFilterStrategy = 0;
-pub(super) const LodePNGFilterStrategy_LFS_ONE: LodePNGFilterStrategy = 1;
-pub(super) const LodePNGFilterStrategy_LFS_TWO: LodePNGFilterStrategy = 2;
-pub(super) const LodePNGFilterStrategy_LFS_THREE: LodePNGFilterStrategy = 3;
-pub(super) const LodePNGFilterStrategy_LFS_FOUR: LodePNGFilterStrategy = 4;
-pub(super) const LodePNGFilterStrategy_LFS_MINSUM: LodePNGFilterStrategy = 5;
-pub(super) const LodePNGFilterStrategy_LFS_ENTROPY: LodePNGFilterStrategy = 6;
-pub(super) const LodePNGFilterStrategy_LFS_BRUTE_FORCE: LodePNGFilterStrategy = 7;
-pub(super) const LodePNGFilterStrategy_LFS_PREDEFINED: LodePNGFilterStrategy = 8;
-
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub(super) struct LodePNGColorStats {
-	pub(super) colored: c_uint,
-	pub(super) key: c_uint,
-	pub(super) key_r: c_ushort,
-	pub(super) key_g: c_ushort,
-	pub(super) key_b: c_ushort,
-	pub(super) alpha: c_uint,
-	pub(super) numcolors: c_uint,
-	pub(super) palette: [c_uchar; 1024usize],
-	pub(super) bits: c_uint,
-	pub(super) numpixels: c_ulong,
-	pub(super) allow_palette: c_uint,
-	pub(super) allow_greyscale: c_uint,
-}
-
-impl Default for LodePNGColorStats {
+impl Default for LodePNGState {
 	#[allow(unsafe_code)]
 	fn default() -> Self {
+		let mut out = MaybeUninit::<Self>::zeroed();
 		unsafe {
-			let mut out: Self = std::mem::zeroed();
-			lodepng_color_stats_init(&mut out);
-			out
+			// Safety: lodepng_state_init sets the data.
+			lodepng_state_init(out.as_mut_ptr());
+			out.assume_init()
 		}
 	}
+}
+
+impl Drop for LodePNGState {
+	#[allow(unsafe_code)]
+	fn drop(&mut self) {
+		unsafe { lodepng_state_cleanup(self) }
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub(super) struct LodePNGTime {
+	pub(super) year: c_uint,
+	pub(super) month: c_uint,
+	pub(super) day: c_uint,
+	pub(super) hour: c_uint,
+	pub(super) minute: c_uint,
+	pub(super) second: c_uint,
+}
+
+
+
+extern "C" {
+	pub(super) fn custom_png_deflate(
+		dst: *mut *mut c_uchar,
+		dstsize: *mut c_ulong,
+		src: *const c_uchar,
+		srcsize: c_ulong,
+		ctx: *const LodePNGCompressSettings,
+	) -> c_uint;
+}
+
+extern "C" {
+	pub(super) fn lodepng_color_mode_copy(
+		dest: *mut LodePNGColorMode,
+		source: *const LodePNGColorMode,
+	) -> c_uint;
 }
 
 extern "C" {
@@ -230,55 +280,6 @@ extern "C" {
 		h: c_uint,
 		mode_in: *const LodePNGColorMode,
 	) -> c_uint;
-}
-
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub(super) struct LodePNGEncoderSettings {
-	pub(super) zlibsettings: LodePNGCompressSettings,
-	pub(super) auto_convert: c_uint,
-	pub(super) filter_palette_zero: c_uint,
-	pub(super) filter_strategy: LodePNGFilterStrategy,
-	pub(super) predefined_filters: *const c_uchar,
-	pub(super) force_palette: c_uint,
-	pub(super) add_id: c_uint,
-	pub(super) text_compression: c_uint,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub(super) struct LodePNGState {
-	pub(super) decoder: LodePNGDecoderSettings,
-	pub(super) encoder: LodePNGEncoderSettings,
-	pub(super) info_raw: LodePNGColorMode,
-	pub(super) info_png: LodePNGInfo,
-	pub(super) error: c_uint,
-}
-
-impl Default for LodePNGState {
-	#[allow(unsafe_code)]
-	fn default() -> Self {
-		unsafe {
-			let mut out: Self = std::mem::zeroed();
-			lodepng_state_init(&mut out);
-			out
-		}
-	}
-}
-
-impl Drop for LodePNGState {
-	#[allow(unsafe_code)]
-	fn drop(&mut self) {
-		unsafe { lodepng_state_cleanup(self) }
-	}
-}
-
-extern "C" {
-	pub(super) fn lodepng_state_init(state: *mut LodePNGState);
-}
-
-extern "C" {
-	pub(super) fn lodepng_state_cleanup(state: *mut LodePNGState);
 }
 
 extern "C" {
@@ -301,6 +302,14 @@ extern "C" {
 		h: c_uint,
 		state: *mut LodePNGState,
 	) -> c_uint;
+}
+
+extern "C" {
+	pub(super) fn lodepng_state_cleanup(state: *mut LodePNGState);
+}
+
+extern "C" {
+	pub(super) fn lodepng_state_init(state: *mut LodePNGState);
 }
 
 
