@@ -209,10 +209,10 @@ fn try_optimize(
 	let palette = dec.state.info_png.color.colortype == LodePNGColorType_LCT_PALETTE;
 	if palette {
 		unsafe {
-			lodepng_color_mode_copy(&mut enc.info_png.color, &dec.state.info_png.color);
+			lodepng_color_mode_copy(&mut enc.info_raw, &dec.state.info_png.color);
 		}
-		enc.info_png.color.colortype = LodePNGColorType_LCT_RGBA;
-		enc.info_png.color.bitdepth = 8;
+		enc.info_raw.colortype = LodePNGColorType_LCT_RGBA;
+		enc.info_raw.bitdepth = 8;
 	}
 
 	enc.encoder.filter_palette_zero = 0;
