@@ -117,6 +117,54 @@ pub(super) struct LodePNGCompressSettings {
 	pub(super) custom_context: *const c_void,
 }
 
+#[derive(Debug)]
+/// # PNG Decoder.
+///
+/// This struct holds a `LodePNGState` and the image it decoded. This exists
+/// primarily to enforce cleanup on destruction.
+pub(super) struct LodePNGDecoder {
+	pub(super) state: LodePNGState,
+	pub(super) img: *mut c_uchar,
+	pub(super) w: c_uint,
+	pub(super) h: c_uint,
+}
+
+impl LodePNGDecoder {
+	#[allow(unsafe_code)]
+	/// # New.
+	///
+	/// Try to decode a PNG image.
+	pub(super) fn new(src: &[u8]) -> Option<Self> {
+		let src_size = c_ulong::try_from(src.len()).ok()?;
+
+		let mut state = LodePNGState::default();
+		let mut img = std::ptr::null_mut();
+		let mut w = 0;
+		let mut h = 0;
+
+		// Safety: a non-zero response is an error.
+		let res = unsafe {
+			lodepng_decode(&mut img, &mut w, &mut h, &mut state, src.as_ptr(), src_size)
+		};
+
+		// Return it if we got it.
+		if 0 == res && ! img.is_null() && 0 < w && 0 < h {
+			Some(Self { state, img, w, h })
+		}
+		else { None }
+	}
+}
+
+impl Drop for LodePNGDecoder {
+	#[allow(unsafe_code)]
+	fn drop(&mut self) {
+		if ! self.img.is_null() {
+			// Safety: the pointer is non-null.
+			unsafe { libc::free(self.img.cast::<c_void>()); }
+		}
+	}
+}
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub(super) struct LodePNGDecoderSettings {
@@ -156,6 +204,67 @@ pub(super) struct LodePNGDecompressSettings {
 		) -> c_uint,
 	>,
 	pub(super) custom_context: *const c_void,
+}
+
+#[derive(Debug)]
+pub(super) struct LodePNGEncodedImage {
+	pub(super) img: *mut c_uchar,
+	pub(super) size: c_ulong,
+}
+
+impl Default for LodePNGEncodedImage {
+	fn default() -> Self {
+		Self {
+			img: std::ptr::null_mut(),
+			size: 0,
+		}
+	}
+}
+
+impl Drop for LodePNGEncodedImage {
+	#[allow(unsafe_code)]
+	fn drop(&mut self) {
+		if ! self.is_empty() {
+			// Safety: the pointer is non-null.
+			unsafe { libc::free(self.img.cast::<c_void>()); }
+		}
+	}
+}
+
+impl LodePNGEncodedImage {
+	/// # Is Empty?
+	///
+	/// This returns true if the image has not been initialized.
+	pub(super) fn is_empty(&self) -> bool { 0 == self.size || self.img.is_null() }
+}
+
+#[derive(Debug, Default)]
+/// # PNG Encoder.
+///
+/// This struct holds a `LodePNGState`, and provides a wrapper for easier
+/// encoding. This exists primarily to enforce cleanup on destruction.
+pub(super) struct LodePNGEncoder {
+	pub(super) state: LodePNGState,
+}
+
+impl LodePNGEncoder {
+	#[allow(unsafe_code)]
+	/// # Encode!
+	pub(super) fn encode(&mut self, dec: &LodePNGDecoder) -> Option<LodePNGEncodedImage> {
+		let mut out = LodePNGEncodedImage::default();
+
+		// Safety: a non-zero response is an error.
+		let res = unsafe {
+			lodepng_encode(
+				&mut out.img, &mut out.size,
+				dec.img, dec.w, dec.h,
+				&mut self.state
+			)
+		};
+
+		if 0 == res && ! out.is_empty() { Some(out) }
+		else { None }
+	}
 }
 
 #[repr(C)]
@@ -310,6 +419,33 @@ extern "C" {
 		h: c_uint,
 		state: *mut LodePNGState,
 	) -> c_uint;
+}
+
+extern "C" {
+	pub(super) fn lodepng_inspect(
+		w: *mut c_uint,
+		h: *mut c_uint,
+		state: *mut LodePNGState,
+		in_: *const c_uchar,
+		insize: c_ulong,
+	) -> c_uint;
+}
+
+#[allow(unsafe_code)]
+/// # Is `LCT_PALETTE`?
+///
+/// This is largely a rewrite of the C++ `lodepng::getPNGHeaderInfo`, which
+/// Zopflipng uses to confirm the image has a palette color mode.
+pub(super) fn lodepng_is_lct_palette(src: &[u8]) -> bool {
+	let mut state = LodePNGState::default();
+	let mut w = 0;
+	let mut h = 0;
+
+	// Safety: a non-zero response indicates an error.
+	0 == unsafe {
+		lodepng_inspect(&mut w, &mut h, &mut state, src.as_ptr(), src.len() as c_ulong)
+	}
+	&& state.info_png.color.colortype == LodePNGColorType_LCT_PALETTE
 }
 
 extern "C" {
