@@ -12,21 +12,14 @@ This no longer links to `libzopflipng` itself, but instead reimplements its
 functionality.
 */
 
-use std::os::raw::{
-	c_ulong,
-	c_uint,
-};
+use std::os::raw::c_uint;
 use super::lodepng::{
 	custom_png_deflate,
-	lodepng_color_mode_copy,
-	lodepng_compute_color_stats,
+	DecodedImage,
 	lodepng_is_lct_palette,
-	LodePNGColorStats,
 	LodePNGColorType_LCT_PALETTE,
 	LodePNGColorType_LCT_RGB,
 	LodePNGColorType_LCT_RGBA,
-	LodePNGDecoder,
-	LodePNGEncoder,
 	LodePNGFilterStrategy,
 	LodePNGFilterStrategy_LFS_ENTROPY,
 	LodePNGFilterStrategy_LFS_FOUR,
@@ -35,6 +28,7 @@ use super::lodepng::{
 	LodePNGFilterStrategy_LFS_THREE,
 	LodePNGFilterStrategy_LFS_TWO,
 	LodePNGFilterStrategy_LFS_ZERO,
+	LodePNGState,
 };
 
 
@@ -48,12 +42,13 @@ use super::lodepng::{
 /// Note: 16-bit transformations are not lossless; such images will have their
 /// bit depths reduced to a more typical 8 bits.
 pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
-	let decoded = LodePNGDecoder::new(src)?;
+	let mut dec = LodePNGState::default();
+	let img = dec.decode(src)?;
 
 	// Encode!
 	let mut buf: Vec<u8> = Vec::new();
-	let strategy = best_strategy(&decoded, &mut buf);
-	let out_size = try_optimize(&decoded, 32_768, strategy, true, &mut buf);
+	let strategy = best_strategy(&dec, &img, &mut buf);
+	let out_size = try_optimize(&dec, &img, 32_768, strategy, true, &mut buf);
 
 	// Return it if better and nonzero!
 	if 0 < out_size && out_size < src.len() { Some(buf) }
@@ -71,7 +66,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
 /// The lodepng `LFS_PREDEFINED` filter strategy is currently unsupported, but
 /// that doesn't come up very often, so the "best" selection should still be
 /// the actual best in most cases.
-fn best_strategy(dec: &LodePNGDecoder, buf: &mut Vec<u8>) -> LodePNGFilterStrategy {
+fn best_strategy(dec: &LodePNGState, img: &DecodedImage, buf: &mut Vec<u8>) -> LodePNGFilterStrategy {
 	let mut size: usize = usize::MAX;
 	let mut strategy = LodePNGFilterStrategy_LFS_ZERO;
 
@@ -86,7 +81,7 @@ fn best_strategy(dec: &LodePNGDecoder, buf: &mut Vec<u8>) -> LodePNGFilterStrate
 		LodePNGFilterStrategy_LFS_ENTROPY,
 	] {
 		// If smaller and nonzero, note which strategy got us there.
-		let size2 = try_optimize(dec, 8192, s, false, buf);
+		let size2 = try_optimize(dec, img, 8192, s, false, buf);
 		if 0 < size2 && size2 < size {
 			size = size2;
 			strategy = s;
@@ -96,7 +91,6 @@ fn best_strategy(dec: &LodePNGDecoder, buf: &mut Vec<u8>) -> LodePNGFilterStrate
 	strategy
 }
 
-#[allow(unsafe_code)]
 /// # Apply Optimizations.
 ///
 /// This re-encodes the PNG source using the specified strategy, returning the
@@ -107,56 +101,46 @@ fn best_strategy(dec: &LodePNGDecoder, buf: &mut Vec<u8>) -> LodePNGFilterStrate
 /// modes. The latter is used to test different strategies, while the former
 /// is used for the final output.
 fn try_optimize(
-	dec: &LodePNGDecoder,
+	dec: &LodePNGState,
+	img: &DecodedImage,
 	window_size: c_uint,
 	strategy: LodePNGFilterStrategy,
 	use_zopfli: bool,
 	buf: &mut Vec<u8>
 ) -> usize {
 	// Start the encoder.
-	let mut enc = LodePNGEncoder::default();
-	enc.state.encoder.zlibsettings.windowsize = window_size;
+	let mut enc = LodePNGState::default();
+	enc.encoder.zlibsettings.windowsize = window_size;
 
 	// Copy palette details over to the encoder.
-	if dec.state.info_png.color.colortype == LodePNGColorType_LCT_PALETTE {
-		// Safety: a non-zero response is an error.
-		if 0 != unsafe {
-			lodepng_color_mode_copy(&mut enc.state.info_raw, &dec.state.info_png.color)
-		} { return 0; }
-		enc.state.info_raw.colortype = LodePNGColorType_LCT_RGBA;
-		enc.state.info_raw.bitdepth = 8;
+	if dec.info_png.color.colortype == LodePNGColorType_LCT_PALETTE {
+		if ! enc.copy_color_mode(dec) { return 0; }
+		enc.info_raw.colortype = LodePNGColorType_LCT_RGBA;
+		enc.info_raw.bitdepth = 8;
 	}
 
-	enc.state.encoder.filter_palette_zero = 0;
-	enc.state.encoder.filter_strategy = strategy;
-	enc.state.encoder.add_id = 0;
-	enc.state.encoder.text_compression = 1;
+	enc.encoder.filter_palette_zero = 0;
+	enc.encoder.filter_strategy = strategy;
+	enc.encoder.add_id = 0;
+	enc.encoder.text_compression = 1;
 
 	// For final compression, enable the custom zopfli deflater.
 	if use_zopfli {
-		enc.state.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
-		enc.state.encoder.zlibsettings.custom_context = std::ptr::null_mut();
+		enc.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
+		enc.encoder.zlibsettings.custom_context = std::ptr::null_mut();
 	}
 
 	// Try to encode it.
-	let size = enc.encode(dec).map_or(
-		0,
-		|out| usize::try_from(out.size).map_or(
-			0,
-			|size| {
-				// Copy the output to our buffer.
-				buf.resize(size, 0);
-				buf.copy_from_slice(unsafe {
-					std::slice::from_raw_parts(out.img, size)
-				});
-				size
-			}
-		)
-	);
+	let size = enc.encode(img).map_or(0, |out| {
+		// Copy the output to our buffer.
+		buf.truncate(0);
+		buf.extend_from_slice(&out);
+		out.size
+	});
 
 	// We might be able to shrink really small output even further.
 	if 0 < size && size < 4096 && lodepng_is_lct_palette(buf) {
-		let size2 = try_optimize_small(dec, buf, &mut enc);
+		let size2 = try_optimize_small(img, buf, &mut enc);
 		if 0 < size2 && size2 < size {
 			return size2;
 		}
@@ -166,7 +150,7 @@ fn try_optimize(
 	size
 }
 
-#[allow(clippy::cast_possible_truncation, unsafe_code)]
+#[allow(clippy::cast_possible_truncation)]
 /// # Apply Optimizations (Small).
 ///
 /// For really small images, space can sometimes be saved by nuking the
@@ -174,45 +158,41 @@ fn try_optimize(
 ///
 /// This will return the number of bytes written if smaller output is produced,
 /// otherwise zero.
-fn try_optimize_small(dec: &LodePNGDecoder, buf: &mut Vec<u8>, enc: &mut LodePNGEncoder) -> usize {
+fn try_optimize_small(img: &DecodedImage, buf: &mut Vec<u8>, enc: &mut LodePNGState) -> usize {
 	// Pull the color stats.
-	let mut stats = LodePNGColorStats::default();
-	// Safety: a non-zero response is an error.
-	if 0 != unsafe {
-		lodepng_compute_color_stats(&mut stats, dec.img, dec.w, dec.h, &enc.state.info_raw)
-	} { return 0; }
+	let mut stats = match enc.compute_color_stats(img) {
+		Some(s) => s,
+		None => return 0,
+	};
 
 	// The image is small for tRNS chunk overhead.
-	if dec.w * dec.h <= 16 && 0 != stats.key {
+	if img.w * img.h <= 16 && 0 != stats.key {
 		stats.alpha = 1;
 	}
 
 	// Set the encoding color mode to RGB/RGBA.
-	enc.state.encoder.auto_convert = 0;
-	enc.state.info_png.color.colortype =
+	enc.encoder.auto_convert = 0;
+	enc.info_png.color.colortype =
 		if 0 == stats.alpha { LodePNGColorType_LCT_RGB }
 		else { LodePNGColorType_LCT_RGBA };
-	enc.state.info_png.color.bitdepth = 8;
+	enc.info_png.color.bitdepth = 8;
 
 	// Rekey if necessary.
 	if 0 == stats.alpha && 0 != stats.key {
-		enc.state.info_png.color.key_defined = 1;
-		enc.state.info_png.color.key_r = c_uint::from(stats.key_r) & 255;
-		enc.state.info_png.color.key_g = c_uint::from(stats.key_g) & 255;
-		enc.state.info_png.color.key_b = c_uint::from(stats.key_b) & 255;
+		enc.info_png.color.key_defined = 1;
+		enc.info_png.color.key_r = c_uint::from(stats.key_r) & 255;
+		enc.info_png.color.key_g = c_uint::from(stats.key_g) & 255;
+		enc.info_png.color.key_b = c_uint::from(stats.key_b) & 255;
 	}
-	else { enc.state.info_png.color.key_defined = 0; }
+	else { enc.info_png.color.key_defined = 0; }
 
 	// Try to encode.
-	if let Some(out) = enc.encode(dec) {
-		if out.size < buf.len() as c_ulong {
+	if let Some(out) = enc.encode(img) {
+		if out.size < buf.len() {
 			// Copy the content to our buffer!
-			let out_size = out.size as usize; // This can't overflow.
-			buf.truncate(out_size);
-			buf.copy_from_slice(unsafe {
-				std::slice::from_raw_parts(out.img, out_size)
-			});
-			return out_size
+			buf.truncate(out.size);
+			buf.copy_from_slice(&out);
+			return out.size;
 		}
 	}
 
