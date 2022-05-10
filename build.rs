@@ -100,7 +100,6 @@ fn bindings(repo: &Path, lodepng_src: &Path) {
 		.allowlist_function("lodepng_compute_color_stats")
 		.allowlist_function("lodepng_decode")
 		.allowlist_function("lodepng_encode")
-		.allowlist_function("lodepng_inspect")
 		.allowlist_function("lodepng_state_cleanup")
 		.allowlist_function("lodepng_state_init")
 		.allowlist_type("LodePNGColorStats")

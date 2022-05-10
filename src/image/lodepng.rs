@@ -22,6 +22,7 @@ use std::{
 		c_ushort,
 	},
 };
+use super::kind::PNG_MAGIC;
 
 
 
@@ -435,31 +436,21 @@ extern "C" {
 	) -> c_uint;
 }
 
-extern "C" {
-	pub(super) fn lodepng_inspect(
-		w: *mut c_uint,
-		h: *mut c_uint,
-		state: *mut LodePNGState,
-		in_: *const c_uchar,
-		insize: c_ulong,
-	) -> c_uint;
-}
-
-#[allow(unsafe_code)]
 /// # Is `LCT_PALETTE`?
 ///
 /// This parses a raw image's headers to determine whether or not it was
 /// encoded with a palette-based color mode.
 pub(super) fn lodepng_is_lct_palette(src: &[u8]) -> bool {
-	let mut state = LodePNGState::default();
-	let mut w = 0;
-	let mut h = 0;
-
-	// Safety: a non-zero response indicates an error.
-	0 == unsafe {
-		lodepng_inspect(&mut w, &mut h, &mut state, src.as_ptr(), src.len() as c_ulong)
-	}
-	&& state.info_png.color.colortype == LodePNGColorType_LCT_PALETTE
+	29 < src.len() &&
+	// The 9th byte of the IDHR chunk is our color type.
+	c_uint::from(src[25]) == LodePNGColorType_LCT_PALETTE &&
+	// Sanity checks:
+	// The file starts with the PNG magic header.
+	src[..8] == PNG_MAGIC &&
+	// The first section is indeed IHDR.
+	src[12..16] == *b"IHDR" &&
+	// IHDR chunk should be 13 bytes.
+	u32::from_be_bytes([src[8], src[9], src[10], src[11]]) == 13
 }
 
 extern "C" {
