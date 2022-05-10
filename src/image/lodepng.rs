@@ -14,7 +14,6 @@ use std::{
 	mem::MaybeUninit,
 	ops::Deref,
 	os::raw::{
-		c_ulong,
 		c_uint,
 		c_uchar,
 		c_void,
@@ -109,7 +108,7 @@ pub(super) struct LodePNGColorMode {
 	pub(super) colortype: LodePNGColorType,
 	pub(super) bitdepth: c_uint,
 	pub(super) palette: *mut c_uchar,
-	pub(super) palettesize: c_ulong,
+	pub(super) palettesize: usize,
 	pub(super) key_defined: c_uint,
 	pub(super) key_r: c_uint,
 	pub(super) key_g: c_uint,
@@ -128,7 +127,7 @@ pub(super) struct LodePNGColorStats {
 	pub(super) numcolors: c_uint,
 	pub(super) palette: [c_uchar; 1024usize],
 	pub(super) bits: c_uint,
-	pub(super) numpixels: c_ulong,
+	pub(super) numpixels: usize,
 	pub(super) allow_palette: c_uint,
 	pub(super) allow_greyscale: c_uint,
 }
@@ -157,18 +156,18 @@ pub(super) struct LodePNGCompressSettings {
 	pub(super) custom_zlib: Option<
 		unsafe extern "C" fn(
 			arg1: *mut *mut c_uchar,
-			arg2: *mut c_ulong,
+			arg2: *mut usize,
 			arg3: *const c_uchar,
-			arg4: c_ulong,
+			arg4: usize,
 			arg5: *const LodePNGCompressSettings,
 		) -> c_uint,
 	>,
 	pub(super) custom_deflate: Option<
 		unsafe extern "C" fn(
 			arg1: *mut *mut c_uchar,
-			arg2: *mut c_ulong,
+			arg2: *mut usize,
 			arg3: *const c_uchar,
-			arg4: c_ulong,
+			arg4: usize,
 			arg5: *const LodePNGCompressSettings,
 		) -> c_uint,
 	>,
@@ -185,8 +184,8 @@ pub(super) struct LodePNGDecoderSettings {
 	pub(super) color_convert: c_uint,
 	pub(super) read_text_chunks: c_uint,
 	pub(super) remember_unknown_chunks: c_uint,
-	pub(super) max_text_size: c_ulong,
-	pub(super) max_icc_size: c_ulong,
+	pub(super) max_text_size: usize,
+	pub(super) max_icc_size: usize,
 }
 
 #[repr(C)]
@@ -194,22 +193,22 @@ pub(super) struct LodePNGDecoderSettings {
 pub(super) struct LodePNGDecompressSettings {
 	pub(super) ignore_adler32: c_uint,
 	pub(super) ignore_nlen: c_uint,
-	pub(super) max_output_size: c_ulong,
+	pub(super) max_output_size: usize,
 	pub(super) custom_zlib: Option<
 		unsafe extern "C" fn(
 			arg1: *mut *mut c_uchar,
-			arg2: *mut c_ulong,
+			arg2: *mut usize,
 			arg3: *const c_uchar,
-			arg4: c_ulong,
+			arg4: usize,
 			arg5: *const LodePNGDecompressSettings,
 		) -> c_uint,
 	>,
 	pub(super) custom_inflate: Option<
 		unsafe extern "C" fn(
 			arg1: *mut *mut c_uchar,
-			arg2: *mut c_ulong,
+			arg2: *mut usize,
 			arg3: *const c_uchar,
-			arg4: c_ulong,
+			arg4: usize,
 			arg5: *const LodePNGDecompressSettings,
 		) -> c_uint,
 	>,
@@ -240,10 +239,10 @@ pub(super) struct LodePNGInfo {
 	pub(super) background_r: c_uint,
 	pub(super) background_g: c_uint,
 	pub(super) background_b: c_uint,
-	pub(super) text_num: c_ulong,
+	pub(super) text_num: usize,
 	pub(super) text_keys: *mut *mut c_char,
 	pub(super) text_strings: *mut *mut c_char,
-	pub(super) itext_num: c_ulong,
+	pub(super) itext_num: usize,
 	pub(super) itext_keys: *mut *mut c_char,
 	pub(super) itext_langtags: *mut *mut c_char,
 	pub(super) itext_transkeys: *mut *mut c_char,
@@ -272,7 +271,7 @@ pub(super) struct LodePNGInfo {
 	pub(super) iccp_profile: *mut c_uchar,
 	pub(super) iccp_profile_size: c_uint,
 	pub(super) unknown_chunks_data: [*mut c_uchar; 3usize],
-	pub(super) unknown_chunks_size: [c_ulong; 3usize],
+	pub(super) unknown_chunks_size: [usize; 3usize],
 }
 
 #[repr(C)]
@@ -328,15 +327,13 @@ impl LodePNGState {
 	#[allow(unsafe_code)]
 	/// # Decode!
 	pub(super) fn decode(&mut self, src: &[u8]) -> Option<DecodedImage> {
-		let src_size = c_ulong::try_from(src.len()).ok()?;
-
 		let mut buf = std::ptr::null_mut();
 		let mut w = 0;
 		let mut h = 0;
 
 		// Safety: a non-zero response is an error.
 		let res = unsafe {
-			lodepng_decode(&mut buf, &mut w, &mut h, self, src.as_ptr(), src_size)
+			lodepng_decode(&mut buf, &mut w, &mut h, self, src.as_ptr(), src.len())
 		};
 
 		// Return it if we got it.
@@ -349,23 +346,17 @@ impl LodePNGState {
 	#[allow(unsafe_code)]
 	/// # Encode!
 	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedImage> {
-		let mut out = EncodedImage::default();
-		let mut out_size = 0;
-
 		// Safety: a non-zero response is an error.
+		let mut out = EncodedImage::default();
 		let res = unsafe {
 			lodepng_encode(
-				&mut out.buf, &mut out_size,
+				&mut out.buf, &mut out.size,
 				img.buf, img.w, img.h,
 				self
 			)
 		};
 
-		if 0 == res && 0 < out_size && ! out.buf.is_null() {
-			let size = usize::try_from(out_size).ok()?;
-			out.size = size;
-			Some(out)
-		}
+		if 0 == res && 0 < out.size && ! out.buf.is_null() { Some(out) }
 		else { None }
 	}
 }
@@ -385,11 +376,11 @@ pub(super) struct LodePNGTime {
 
 extern "C" {
 	pub(super) fn custom_png_deflate(
-		dst: *mut *mut c_uchar,
-		dstsize: *mut c_ulong,
-		src: *const c_uchar,
-		srcsize: c_ulong,
-		ctx: *const LodePNGCompressSettings,
+		out: *mut *mut c_uchar,
+		outsize: *mut usize,
+		in_: *const c_uchar,
+		insize: usize,
+		settings: *const LodePNGCompressSettings,
 	) -> c_uint;
 }
 
@@ -421,14 +412,14 @@ extern "C" {
 		h: *mut c_uint,
 		state: *mut LodePNGState,
 		in_: *const c_uchar,
-		insize: c_ulong,
+		insize: usize,
 	) -> c_uint;
 }
 
 extern "C" {
 	pub(super) fn lodepng_encode(
 		out: *mut *mut c_uchar,
-		outsize: *mut c_ulong,
+		outsize: *mut usize,
 		image: *const c_uchar,
 		w: c_uint,
 		h: c_uint,

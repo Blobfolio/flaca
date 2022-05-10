@@ -105,6 +105,7 @@ fn bindings(repo: &Path, lodepng_src: &Path) {
 		.allowlist_type("LodePNGColorStats")
 		.allowlist_type("LodePNGCompressSettings")
 		.allowlist_type("LodePNGState")
+		.size_t_is_usize(true)
 		.derive_debug(true)
 		.generate()
 		.expect("Unable to generate bindings");
