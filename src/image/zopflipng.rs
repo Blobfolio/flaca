@@ -120,24 +120,23 @@ fn try_optimize(
 		enc.encoder.zlibsettings.custom_context = std::ptr::null_mut();
 	}
 
-	// Try to encode it.
-	let size = enc.encode(img).map_or(0, |out| {
-		// Copy the output to our buffer.
+	// Encode and write to the buffer if it worked.
+	if let Some(out) = enc.encode(img) {
 		buf.truncate(0);
 		buf.extend_from_slice(&out);
-		out.size
-	});
 
-	// We might be able to shrink really small output even further.
-	if 0 < size && size < 4096 && LodePNGColorType::LCT_PALETTE.image_is_type(buf) {
-		let size2 = try_optimize_small(img, buf, &mut enc);
-		if 0 < size2 && size2 < size {
-			return size2;
+		// We might be able to save a couple bytes by nuking the palette if the
+		// image is already really small.
+		if out.size < 4096 && LodePNGColorType::LCT_PALETTE.image_is_type(buf) {
+			let size2 = try_optimize_small(img, buf, &mut enc);
+			if 0 < size2 && size2 < out.size {
+				return size2;
+			}
 		}
-	}
 
-	// Return the number of bytes written.
-	size
+		out.size
+	}
+	else { 0 }
 }
 
 #[allow(clippy::cast_possible_truncation)]
@@ -176,10 +175,10 @@ fn try_optimize_small(img: &DecodedImage, buf: &mut Vec<u8>, enc: &mut LodePNGSt
 	}
 	else { enc.info_png.color.key_defined = 0; }
 
-	// Try to encode.
+	// Encode and write to the buffer if it worked (and is smaller than the
+	// previous value).
 	if let Some(out) = enc.encode(img) {
 		if out.size < buf.len() {
-			// Copy the content to our buffer!
 			buf.truncate(out.size);
 			buf.copy_from_slice(&out);
 			return out.size;
