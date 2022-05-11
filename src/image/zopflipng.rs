@@ -14,7 +14,6 @@ functionality.
 
 use std::os::raw::c_uint;
 use super::lodepng::{
-	custom_png_deflate,
 	DecodedImage,
 	LodePNGColorType,
 	LodePNGFilterStrategy,
@@ -115,10 +114,7 @@ fn try_optimize(
 	enc.encoder.text_compression = 1;
 
 	// For final compression, enable the custom zopfli deflater.
-	if use_zopfli {
-		enc.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
-		enc.encoder.zlibsettings.custom_context = std::ptr::null_mut();
-	}
+	if use_zopfli { enc.use_zopfli(); }
 
 	// Encode and write to the buffer if it worked.
 	if let Some(out) = enc.encode(img) {

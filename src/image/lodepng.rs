@@ -382,6 +382,12 @@ impl LodePNGState {
 		if 0 == res && 0 < out.size && ! out.buf.is_null() { Some(out) }
 		else { None }
 	}
+
+	/// # Use Zopfli.
+	pub(super) fn use_zopfli(&mut self) {
+		self.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
+		self.encoder.zlibsettings.custom_context = std::ptr::null_mut();
+	}
 }
 
 #[repr(C)]
