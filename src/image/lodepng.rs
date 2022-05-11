@@ -125,10 +125,10 @@ impl Default for LodePNGColorStats {
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub(super) enum LodePNGColorType {
-	// LCT_GREY = 0,
+	LCT_GREY = 0,
 	LCT_RGB = 2,
 	LCT_PALETTE = 3,
-	// LCT_GREY_ALPHA = 4,
+	LCT_GREY_ALPHA = 4,
 	LCT_RGBA = 6,
 	// LCT_MAX_OCTET_VALUE = 255,
 }
@@ -473,12 +473,22 @@ mod tests {
 
 	#[test]
 	fn t_image_is_type() {
-		let raw = std::fs::read("skel/assets/png/01.png").expect("Missing 01.png");
-		assert!(LodePNGColorType::LCT_RGB.image_is_type(&raw), "{}", raw[25]);
-		assert!(! LodePNGColorType::LCT_PALETTE.image_is_type(&raw), "{}", raw[25]);
+		for (p, t) in [
+			("skel/assets/png/01.png", LodePNGColorType::LCT_RGB),
+			("skel/assets/png/02.png", LodePNGColorType::LCT_RGBA),
+			("skel/assets/png/04.png", LodePNGColorType::LCT_GREY),
+			("skel/assets/png/small-bwa.png", LodePNGColorType::LCT_GREY_ALPHA),
+		] {
+			let raw = match std::fs::read(p) {
+				Ok(x) => x,
+				_ => panic!("Missing {}", p),
+			};
+			assert!(t.image_is_type(&raw));
+		}
 
-		let raw = std::fs::read("skel/assets/png/02.png").expect("Missing 02.png");
-		assert!(LodePNGColorType::LCT_RGBA.image_is_type(&raw), "{}", raw[25]);
+		// Let's test a negative to make sure we aren't doing something silly.
+		let raw = std::fs::read("skel/assets/png/01.png").unwrap();
+		assert!(! LodePNGColorType::LCT_GREY.image_is_type(&raw));
 	}
 
 	#[test]

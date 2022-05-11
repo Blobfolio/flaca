@@ -151,19 +151,20 @@ fn try_optimize_small(img: &DecodedImage, buf: &mut Vec<u8>, enc: &mut LodePNGSt
 	};
 
 	// The image is small for tRNS chunk overhead.
-	if img.w * img.h <= 16 && 0 != stats.key {
-		stats.alpha = 1;
-	}
+	if img.w * img.h <= 16 && 0 < stats.key { stats.alpha = 1; }
 
 	// Set the encoding color mode to RGB/RGBA.
 	enc.encoder.auto_convert = 0;
-	enc.info_png.color.colortype =
-		if 0 == stats.alpha { LodePNGColorType::LCT_RGB }
-		else { LodePNGColorType::LCT_RGBA };
-	enc.info_png.color.bitdepth = 8;
+	enc.info_png.color.colortype = match (0 < stats.alpha, 0 < stats.colored) {
+		(true, true) => LodePNGColorType::LCT_RGBA,
+		(false, true) => LodePNGColorType::LCT_RGB,
+		(false, false) => LodePNGColorType::LCT_GREY,
+		(true, false) => LodePNGColorType::LCT_GREY_ALPHA,
+	};
+	enc.info_png.color.bitdepth = 8.min(stats.bits);
 
 	// Rekey if necessary.
-	if 0 == stats.alpha && 0 != stats.key {
+	if 0 == stats.alpha && 0 < stats.key {
 		enc.info_png.color.key_defined = 1;
 		enc.info_png.color.key_r = c_uint::from(stats.key_r) & 255;
 		enc.info_png.color.key_g = c_uint::from(stats.key_g) & 255;
