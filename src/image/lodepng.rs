@@ -21,7 +21,6 @@ use std::{
 		c_ushort,
 	},
 };
-use super::kind::PNG_MAGIC;
 
 
 
@@ -140,16 +139,17 @@ impl LodePNGColorType {
 	/// This parses a raw image's headers to determine whether or not it was
 	/// encoded with the given color type.
 	pub(super) fn image_is_type(self, src: &[u8]) -> bool {
-		29 < src.len() &&
-		// The 9th byte of the IDHR chunk is our color type.
+		30 < src.len() &&
+		// The 10th byte of the IDHR chunk is our color type. We should check
+		// this first since it's just one byte.
 		src[25] == self as u8 &&
-		// Sanity checks:
-		// The file starts with the PNG magic header.
-		src[..8] == PNG_MAGIC &&
-		// The first section is indeed IHDR.
-		src[12..16] == *b"IHDR" &&
-		// IHDR chunk should be 13 bytes.
-		u32::from_be_bytes([src[8], src[9], src[10], src[11]]) == 13
+		// Just to make sure we're looking at a (probably) valid PNG, let's
+		// check that it starts with the PNG magic header, a chunk size of 13,
+		// and a chunk type of IHDR, in that order.
+		src[..16].eq(&[
+			0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n',
+			0, 0, 0, 13, b'I', b'H', b'D', b'R'
+		])
 	}
 }
 
@@ -464,6 +464,16 @@ extern "C" {
 #[allow(deref_nullptr, non_snake_case, trivial_casts, unsafe_code)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn t_image_is_type() {
+		let raw = std::fs::read("skel/assets/png/01.png").expect("Missing 01.png");
+		assert!(LodePNGColorType::LCT_RGB.image_is_type(&raw), "{}", raw[25]);
+		assert!(! LodePNGColorType::LCT_PALETTE.image_is_type(&raw), "{}", raw[25]);
+
+		let raw = std::fs::read("skel/assets/png/02.png").expect("Missing 02.png");
+		assert!(LodePNGColorType::LCT_RGBA.image_is_type(&raw), "{}", raw[25]);
+	}
 
 	#[test]
 	fn bindgen_test_layout_LodePNGState() {

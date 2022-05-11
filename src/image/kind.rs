@@ -2,9 +2,6 @@
 # Flaca: Image Kind
 */
 
-/// # PNG Magic Header.
-pub(super) const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n'];
-
 
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -35,7 +32,9 @@ impl ImageKind {
 	}
 
 	/// # Is PNG?
-	pub(super) fn is_png(src: &[u8]) -> bool { 8 < src.len() && src[..8] == PNG_MAGIC }
+	pub(super) fn is_png(src: &[u8]) -> bool {
+		8 < src.len() && src[..8] == [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n']
+	}
 }
 
 
