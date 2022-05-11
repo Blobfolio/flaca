@@ -155,10 +155,14 @@ fn _main() -> Result<(), FlacaError> {
 
 	// Watch for SIGINT so we can shut down cleanly.
 	let killed = Arc::from(AtomicBool::new(false));
-	let _res = signal_hook::flag::register(
+	let _res = signal_hook::flag::register_conditional_shutdown(
+		signal_hook::consts::SIGINT,
+		1,
+		Arc::clone(&killed)
+	).and_then(|_| signal_hook::flag::register(
 		signal_hook::consts::SIGINT,
 		Arc::clone(&killed)
-	);
+	));
 
 	// Initialize our global oxipng compression settings. Doing it here is a
 	// bit strange, but less contentious than leveraging a lazy static within
@@ -265,6 +269,11 @@ OPTIONS:
 ARGS:
     <PATH(S)>...      One or more image and/or directory paths to losslessly
                       compress.
+
+EARLY EXIT:
+    Compression can take a while. If you need to abort the process early, press
+    ", "\x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m once to quit after the active jobs have finished (skipping all
+    remaining images in the queue), or twice to shut down immediately.
 
 OPTIMIZERS USED:
     MozJPEG   <https://github.com/mozilla/mozjpeg>

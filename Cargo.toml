@@ -75,6 +75,15 @@ label = "<PATH(s)…>"
 description = "One or more image and/or directory paths to losslessly compress."
 
 [[package.metadata.bashman.sections]]
+name = "EARLY EXIT"
+inside = false
+lines = [
+	"Compression can take a while. If you need to abort the process early, press",
+	"CTRL+C once to quit after the active jobs have finished (skipping all",
+	"remaining images in the queue), or twice to shut down immediately."
+]
+
+[[package.metadata.bashman.sections]]
 name = "OPTIMIZERS"
 inside = true
 items = [
