@@ -8,7 +8,7 @@ The `custom_png_deflate` extern is not part of lodepng, but gets attached to
 `LodePNGState` instances, so is included here as well.
 */
 
-#![allow(dead_code, non_upper_case_globals)]
+#![allow(non_camel_case_types, non_upper_case_globals)]
 
 use std::{
 	mem::MaybeUninit,
@@ -22,27 +22,6 @@ use std::{
 	},
 };
 use super::kind::PNG_MAGIC;
-
-
-
-pub(super) type LodePNGColorType = c_uint;
-pub(super) const LodePNGColorType_LCT_GREY: LodePNGColorType = 0;
-pub(super) const LodePNGColorType_LCT_RGB: LodePNGColorType = 2;
-pub(super) const LodePNGColorType_LCT_PALETTE: LodePNGColorType = 3;
-pub(super) const LodePNGColorType_LCT_GREY_ALPHA: LodePNGColorType = 4;
-pub(super) const LodePNGColorType_LCT_RGBA: LodePNGColorType = 6;
-pub(super) const LodePNGColorType_LCT_MAX_OCTET_VALUE: LodePNGColorType = 255;
-
-pub(super) type LodePNGFilterStrategy = c_uint;
-pub(super) const LodePNGFilterStrategy_LFS_ZERO: LodePNGFilterStrategy = 0;
-pub(super) const LodePNGFilterStrategy_LFS_ONE: LodePNGFilterStrategy = 1;
-pub(super) const LodePNGFilterStrategy_LFS_TWO: LodePNGFilterStrategy = 2;
-pub(super) const LodePNGFilterStrategy_LFS_THREE: LodePNGFilterStrategy = 3;
-pub(super) const LodePNGFilterStrategy_LFS_FOUR: LodePNGFilterStrategy = 4;
-pub(super) const LodePNGFilterStrategy_LFS_MINSUM: LodePNGFilterStrategy = 5;
-pub(super) const LodePNGFilterStrategy_LFS_ENTROPY: LodePNGFilterStrategy = 6;
-pub(super) const LodePNGFilterStrategy_LFS_BRUTE_FORCE: LodePNGFilterStrategy = 7;
-pub(super) const LodePNGFilterStrategy_LFS_PREDEFINED: LodePNGFilterStrategy = 8;
 
 
 
@@ -144,6 +123,36 @@ impl Default for LodePNGColorStats {
 	}
 }
 
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub(super) enum LodePNGColorType {
+	// LCT_GREY = 0,
+	LCT_RGB = 2,
+	LCT_PALETTE = 3,
+	// LCT_GREY_ALPHA = 4,
+	LCT_RGBA = 6,
+	// LCT_MAX_OCTET_VALUE = 255,
+}
+
+impl LodePNGColorType {
+	/// # Confirm Raw Image Color Type
+	///
+	/// This parses a raw image's headers to determine whether or not it was
+	/// encoded with the given color type.
+	pub(super) fn image_is_type(self, src: &[u8]) -> bool {
+		29 < src.len() &&
+		// The 9th byte of the IDHR chunk is our color type.
+		src[25] == self as u8 &&
+		// Sanity checks:
+		// The file starts with the PNG magic header.
+		src[..8] == PNG_MAGIC &&
+		// The first section is indeed IHDR.
+		src[12..16] == *b"IHDR" &&
+		// IHDR chunk should be 13 bytes.
+		u32::from_be_bytes([src[8], src[9], src[10], src[11]]) == 13
+	}
+}
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub(super) struct LodePNGCompressSettings {
@@ -226,6 +235,20 @@ pub(super) struct LodePNGEncoderSettings {
 	pub(super) force_palette: c_uint,
 	pub(super) add_id: c_uint,
 	pub(super) text_compression: c_uint,
+}
+
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub(super) enum LodePNGFilterStrategy {
+	LFS_ZERO = 0,
+	LFS_ONE = 1,
+	LFS_TWO = 2,
+	LFS_THREE = 3,
+	LFS_FOUR = 4,
+	LFS_MINSUM = 5,
+	LFS_ENTROPY = 6,
+	// LFS_BRUTE_FORCE = 7,
+	// LFS_PREDEFINED = 8,
 }
 
 #[repr(C)]
@@ -425,23 +448,6 @@ extern "C" {
 		h: c_uint,
 		state: *mut LodePNGState,
 	) -> c_uint;
-}
-
-/// # Is `LCT_PALETTE`?
-///
-/// This parses a raw image's headers to determine whether or not it was
-/// encoded with a palette-based color mode.
-pub(super) fn lodepng_is_lct_palette(src: &[u8]) -> bool {
-	29 < src.len() &&
-	// The 9th byte of the IDHR chunk is our color type.
-	c_uint::from(src[25]) == LodePNGColorType_LCT_PALETTE &&
-	// Sanity checks:
-	// The file starts with the PNG magic header.
-	src[..8] == PNG_MAGIC &&
-	// The first section is indeed IHDR.
-	src[12..16] == *b"IHDR" &&
-	// IHDR chunk should be 13 bytes.
-	u32::from_be_bytes([src[8], src[9], src[10], src[11]]) == 13
 }
 
 extern "C" {

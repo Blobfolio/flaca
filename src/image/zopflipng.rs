@@ -16,18 +16,8 @@ use std::os::raw::c_uint;
 use super::lodepng::{
 	custom_png_deflate,
 	DecodedImage,
-	lodepng_is_lct_palette,
-	LodePNGColorType_LCT_PALETTE,
-	LodePNGColorType_LCT_RGB,
-	LodePNGColorType_LCT_RGBA,
+	LodePNGColorType,
 	LodePNGFilterStrategy,
-	LodePNGFilterStrategy_LFS_ENTROPY,
-	LodePNGFilterStrategy_LFS_FOUR,
-	LodePNGFilterStrategy_LFS_MINSUM,
-	LodePNGFilterStrategy_LFS_ONE,
-	LodePNGFilterStrategy_LFS_THREE,
-	LodePNGFilterStrategy_LFS_TWO,
-	LodePNGFilterStrategy_LFS_ZERO,
 	LodePNGState,
 };
 
@@ -68,17 +58,17 @@ pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
 /// the actual best in most cases.
 fn best_strategy(dec: &LodePNGState, img: &DecodedImage, buf: &mut Vec<u8>) -> LodePNGFilterStrategy {
 	let mut size: usize = usize::MAX;
-	let mut strategy = LodePNGFilterStrategy_LFS_ZERO;
+	let mut strategy = LodePNGFilterStrategy::LFS_ZERO;
 
 	// Loop the strategies.
 	for s in [
-		LodePNGFilterStrategy_LFS_ZERO,
-		LodePNGFilterStrategy_LFS_ONE,
-		LodePNGFilterStrategy_LFS_TWO,
-		LodePNGFilterStrategy_LFS_THREE,
-		LodePNGFilterStrategy_LFS_FOUR,
-		LodePNGFilterStrategy_LFS_MINSUM,
-		LodePNGFilterStrategy_LFS_ENTROPY,
+		LodePNGFilterStrategy::LFS_ZERO,
+		LodePNGFilterStrategy::LFS_ONE,
+		LodePNGFilterStrategy::LFS_TWO,
+		LodePNGFilterStrategy::LFS_THREE,
+		LodePNGFilterStrategy::LFS_FOUR,
+		LodePNGFilterStrategy::LFS_MINSUM,
+		LodePNGFilterStrategy::LFS_ENTROPY,
 	] {
 		// If smaller and nonzero, note which strategy got us there.
 		let size2 = try_optimize(dec, img, 8192, s, false, buf);
@@ -113,9 +103,9 @@ fn try_optimize(
 	enc.encoder.zlibsettings.windowsize = window_size;
 
 	// Copy palette details over to the encoder.
-	if dec.info_png.color.colortype == LodePNGColorType_LCT_PALETTE {
+	if dec.info_png.color.colortype == LodePNGColorType::LCT_PALETTE {
 		if ! enc.copy_color_mode(dec) { return 0; }
-		enc.info_raw.colortype = LodePNGColorType_LCT_RGBA;
+		enc.info_raw.colortype = LodePNGColorType::LCT_RGBA;
 		enc.info_raw.bitdepth = 8;
 	}
 
@@ -139,7 +129,7 @@ fn try_optimize(
 	});
 
 	// We might be able to shrink really small output even further.
-	if 0 < size && size < 4096 && lodepng_is_lct_palette(buf) {
+	if 0 < size && size < 4096 && LodePNGColorType::LCT_PALETTE.image_is_type(buf) {
 		let size2 = try_optimize_small(img, buf, &mut enc);
 		if 0 < size2 && size2 < size {
 			return size2;
@@ -173,8 +163,8 @@ fn try_optimize_small(img: &DecodedImage, buf: &mut Vec<u8>, enc: &mut LodePNGSt
 	// Set the encoding color mode to RGB/RGBA.
 	enc.encoder.auto_convert = 0;
 	enc.info_png.color.colortype =
-		if 0 == stats.alpha { LodePNGColorType_LCT_RGB }
-		else { LodePNGColorType_LCT_RGBA };
+		if 0 == stats.alpha { LodePNGColorType::LCT_RGB }
+		else { LodePNGColorType::LCT_RGBA };
 	enc.info_png.color.bitdepth = 8;
 
 	// Rekey if necessary.
