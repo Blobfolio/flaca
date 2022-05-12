@@ -151,11 +151,11 @@ fn try_optimize_small(img: &DecodedImage, buf: &mut Vec<u8>, enc: &mut LodePNGSt
 
 	// Set the encoding color mode to RGB/RGBA.
 	enc.encoder.auto_convert = 0;
-	enc.info_png.color.colortype = match (0 < stats.alpha, 0 < stats.colored) {
+	enc.info_png.color.colortype = match (0 < stats.colored, 0 < stats.alpha) {
+		(true, false) => LodePNGColorType::LCT_RGB,
 		(true, true) => LodePNGColorType::LCT_RGBA,
-		(false, true) => LodePNGColorType::LCT_RGB,
 		(false, false) => LodePNGColorType::LCT_GREY,
-		(true, false) => LodePNGColorType::LCT_GREY_ALPHA,
+		(false, true) => LodePNGColorType::LCT_GREY_ALPHA,
 	};
 	enc.info_png.color.bitdepth = 8.min(stats.bits);
 
