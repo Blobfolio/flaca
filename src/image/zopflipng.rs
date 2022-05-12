@@ -56,11 +56,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
 /// that doesn't come up very often, so the "best" selection should still be
 /// the actual best in most cases.
 fn best_strategy(dec: &LodePNGState, img: &DecodedImage, buf: &mut Vec<u8>) -> LodePNGFilterStrategy {
-	let mut size: usize = usize::MAX;
-	let mut strategy = LodePNGFilterStrategy::LFS_ZERO;
-
-	// Loop the strategies.
-	for s in [
+	[
 		LodePNGFilterStrategy::LFS_ZERO,
 		LodePNGFilterStrategy::LFS_ONE,
 		LodePNGFilterStrategy::LFS_TWO,
@@ -68,16 +64,15 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage, buf: &mut Vec<u8>) -> L
 		LodePNGFilterStrategy::LFS_FOUR,
 		LodePNGFilterStrategy::LFS_MINSUM,
 		LodePNGFilterStrategy::LFS_ENTROPY,
-	] {
-		// If smaller and nonzero, note which strategy got us there.
-		let size2 = try_optimize(dec, img, 8192, s, false, buf);
-		if 0 < size2 && size2 < size {
-			size = size2;
-			strategy = s;
-		}
-	}
-
-	strategy
+	]
+		.into_iter()
+		.filter_map(|s| {
+			let size = try_optimize(dec, img, 8192, s, false, buf);
+			if 0 < size { Some((size, s)) }
+			else { None }
+		})
+		.min_by(|a, b| a.0.cmp(&b.0))
+		.map_or(LodePNGFilterStrategy::LFS_ZERO, |(_, s)| s)
 }
 
 /// # Apply Optimizations.
