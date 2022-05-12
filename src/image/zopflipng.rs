@@ -130,6 +130,7 @@ fn try_optimize(
 	else { 0 }
 }
 
+#[cold]
 #[allow(clippy::cast_possible_truncation)]
 /// # Apply Optimizations (Small).
 ///
