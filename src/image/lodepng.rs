@@ -81,7 +81,7 @@ impl Deref for EncodedImage {
 drop_img!(EncodedImage);
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct LodePNGColorMode {
 	pub(super) colortype: LodePNGColorType,
 	pub(super) bitdepth: c_uint,
@@ -94,7 +94,7 @@ pub(super) struct LodePNGColorMode {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct LodePNGColorStats {
 	pub(super) colored: c_uint,
 	pub(super) key: c_uint,
@@ -154,7 +154,7 @@ impl LodePNGColorType {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct LodePNGCompressSettings {
 	pub(super) btype: c_uint,
 	pub(super) use_lz77: c_uint,
@@ -184,7 +184,7 @@ pub(super) struct LodePNGCompressSettings {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct LodePNGDecoderSettings {
 	pub(super) zlibsettings: LodePNGDecompressSettings,
 	pub(super) ignore_crc: c_uint,
@@ -198,7 +198,7 @@ pub(super) struct LodePNGDecoderSettings {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct LodePNGDecompressSettings {
 	pub(super) ignore_adler32: c_uint,
 	pub(super) ignore_nlen: c_uint,
@@ -225,7 +225,7 @@ pub(super) struct LodePNGDecompressSettings {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct LodePNGEncoderSettings {
 	pub(super) zlibsettings: LodePNGCompressSettings,
 	pub(super) auto_convert: c_uint,
@@ -252,7 +252,7 @@ pub(super) enum LodePNGFilterStrategy {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct LodePNGInfo {
 	pub(super) compression_method: c_uint,
 	pub(super) filter_method: c_uint,
@@ -298,7 +298,7 @@ pub(super) struct LodePNGInfo {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct LodePNGState {
 	pub(super) decoder: LodePNGDecoderSettings,
 	pub(super) encoder: LodePNGEncoderSettings,
