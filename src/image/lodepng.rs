@@ -138,7 +138,7 @@ impl LodePNGColorType {
 	///
 	/// This parses a raw image's headers to determine whether or not it was
 	/// encoded with the given color type.
-	pub(super) fn image_is_type(self, src: &[u8]) -> bool {
+	pub(super) fn is_match(self, src: &[u8]) -> bool {
 		30 < src.len() &&
 		// The 10th byte of the IDHR chunk is our color type. We should check
 		// this first since it's just one byte.
@@ -148,7 +148,7 @@ impl LodePNGColorType {
 		// and a chunk type of IHDR, in that order.
 		src[..16].eq(&[
 			0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n',
-			0, 0, 0, 13, b'I', b'H', b'D', b'R'
+			0,    0,    0,    13,   b'I',  b'H',  b'D', b'R',
 		])
 	}
 }
@@ -472,7 +472,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn t_image_is_type() {
+	fn t_color_type_is_match() {
 		for (p, t) in [
 			("skel/assets/png/01.png", LodePNGColorType::LCT_RGB),
 			("skel/assets/png/02.png", LodePNGColorType::LCT_RGBA),
@@ -483,12 +483,12 @@ mod tests {
 				Ok(x) => x,
 				_ => panic!("Missing {}", p),
 			};
-			assert!(t.image_is_type(&raw));
+			assert!(t.is_match(&raw));
 		}
 
 		// Let's test a negative to make sure we aren't doing something silly.
 		let raw = std::fs::read("skel/assets/png/01.png").unwrap();
-		assert!(! LodePNGColorType::LCT_GREY.image_is_type(&raw));
+		assert!(! LodePNGColorType::LCT_GREY.is_match(&raw));
 	}
 
 	#[test]

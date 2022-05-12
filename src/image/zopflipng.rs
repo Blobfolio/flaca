@@ -118,7 +118,7 @@ fn try_optimize(
 
 		// We might be able to save a couple bytes by nuking the palette if the
 		// image is already really small.
-		if out.size < 4096 && LodePNGColorType::LCT_PALETTE.image_is_type(buf) {
+		if out.size < 4096 && LodePNGColorType::LCT_PALETTE.is_match(buf) {
 			let size2 = try_optimize_small(img, buf, &mut enc);
 			if 0 < size2 && size2 < out.size {
 				return size2;
