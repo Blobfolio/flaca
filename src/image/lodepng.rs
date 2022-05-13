@@ -328,26 +328,6 @@ impl Drop for LodePNGState {
 
 impl LodePNGState {
 	#[allow(unsafe_code)]
-	/// # Compute Color Stats.
-	pub(super) fn compute_color_stats(&self, img: &DecodedImage) -> Option<LodePNGColorStats> {
-		let mut stats = LodePNGColorStats::default();
-		// Safety: a non-zero response is an error.
-		if 0 == unsafe {
-			lodepng_compute_color_stats(&mut stats, img.buf, img.w, img.h, &self.info_raw)
-		} { Some(stats) }
-		else { None }
-	}
-
-	#[allow(unsafe_code)]
-	/// # Copy Color Mode.
-	pub(super) fn copy_color_mode(&mut self, dec: &Self) -> bool {
-		// Safety: a non-zero response is an error.
-		0 == unsafe {
-			lodepng_color_mode_copy(&mut self.info_raw, &dec.info_png.color)
-		}
-	}
-
-	#[allow(unsafe_code)]
 	/// # Decode!
 	pub(super) fn decode(&mut self, src: &[u8]) -> Option<DecodedImage> {
 		let mut buf = std::ptr::null_mut();
@@ -383,10 +363,79 @@ impl LodePNGState {
 		else { None }
 	}
 
-	/// # Use Zopfli.
-	pub(super) fn use_zopfli(&mut self) {
-		self.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
-		self.encoder.zlibsettings.custom_context = std::ptr::null_mut();
+	#[allow(unsafe_code)]
+	/// # Set Up Encoder.
+	///
+	/// This configures and returns a new state for encoding purposes.
+	pub(super) fn encoder(
+		dec: &Self,
+		strategy: LodePNGFilterStrategy,
+		use_zopfli: bool
+	) -> Option<Self> {
+		let mut enc = Self::default();
+
+		// Copy palette details over to the encoder.
+		if dec.info_png.color.colortype == LodePNGColorType::LCT_PALETTE {
+			if 0 != unsafe {
+				lodepng_color_mode_copy(&mut enc.info_raw, &dec.info_png.color)
+			} { return None; }
+			enc.info_raw.colortype = LodePNGColorType::LCT_RGBA;
+			enc.info_raw.bitdepth = 8;
+		}
+
+		enc.encoder.filter_palette_zero = 0;
+		enc.encoder.filter_strategy = strategy;
+		enc.encoder.add_id = 0;
+		enc.encoder.text_compression = 1;
+
+		// For final compression, enable the custom zopfli deflater.
+		if use_zopfli {
+			enc.encoder.zlibsettings.windowsize = 32_768;
+			enc.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
+			enc.encoder.zlibsettings.custom_context = std::ptr::null_mut();
+		}
+		else {
+			enc.encoder.zlibsettings.windowsize = 8_192;
+		}
+
+		Some(enc)
+	}
+
+	#[allow(unsafe_code)]
+	/// # Prepare Encoder for Encoding (a small image).
+	///
+	/// This updates an existing encoder to potentially further optimize a
+	/// really small image.
+	pub(super) fn prepare_encoder_small(&mut self, img: &DecodedImage) -> bool {
+		// Safety: a non-zero response is an error.
+		let mut stats = LodePNGColorStats::default();
+		if 0 != unsafe {
+			lodepng_compute_color_stats(&mut stats, img.buf, img.w, img.h, &self.info_raw)
+		} { return false; }
+
+		// The image is small for tRNS chunk overhead.
+		if img.w * img.h <= 16 && 0 < stats.key { stats.alpha = 1; }
+
+		// Set the encoding color mode to RGB/RGBA.
+		self.encoder.auto_convert = 0;
+		self.info_png.color.colortype = match (0 < stats.colored, 0 < stats.alpha) {
+			(true, false) => LodePNGColorType::LCT_RGB,
+			(true, true) => LodePNGColorType::LCT_RGBA,
+			(false, false) => LodePNGColorType::LCT_GREY,
+			(false, true) => LodePNGColorType::LCT_GREY_ALPHA,
+		};
+		self.info_png.color.bitdepth = 8.min(stats.bits);
+
+		// Rekey if necessary.
+		if 0 == stats.alpha && 0 < stats.key {
+			self.info_png.color.key_defined = 1;
+			self.info_png.color.key_r = c_uint::from(stats.key_r) & 255;
+			self.info_png.color.key_g = c_uint::from(stats.key_g) & 255;
+			self.info_png.color.key_b = c_uint::from(stats.key_b) & 255;
+		}
+		else { self.info_png.color.key_defined = 0; }
+
+		true
 	}
 }
 

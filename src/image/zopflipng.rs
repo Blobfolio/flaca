@@ -12,7 +12,6 @@ This no longer links to `libzopflipng` itself, but instead reimplements its
 functionality.
 */
 
-use std::os::raw::c_uint;
 use super::lodepng::{
 	DecodedImage,
 	LodePNGColorType,
@@ -35,12 +34,11 @@ pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
 	let img = dec.decode(src)?;
 
 	// Encode!
-	let mut buf: Vec<u8> = Vec::new();
-	let strategy = best_strategy(&dec, &img, &mut buf);
-	let out_size = try_optimize(&dec, &img, 32_768, strategy, true, &mut buf);
+	let strategy = best_strategy(&dec, &img);
+	let out = optimize_slow(&dec, &img, strategy)?;
 
 	// Return it if better and nonzero!
-	if 0 < out_size && out_size < src.len() { Some(buf) }
+	if out.len() < src.len() { Some(out) }
 	else { None }
 }
 
@@ -53,9 +51,8 @@ pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
 /// output.
 ///
 /// The lodepng `LFS_PREDEFINED` filter strategy is currently unsupported, but
-/// that doesn't come up very often, so the "best" selection should still be
-/// the actual best in most cases.
-fn best_strategy(dec: &LodePNGState, img: &DecodedImage, buf: &mut Vec<u8>) -> LodePNGFilterStrategy {
+/// isn't very common so shouldn't affect compression much one way or another.
+fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrategy {
 	[
 		LodePNGFilterStrategy::LFS_ZERO,
 		LodePNGFilterStrategy::LFS_ONE,
@@ -66,68 +63,62 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage, buf: &mut Vec<u8>) -> L
 		LodePNGFilterStrategy::LFS_ENTROPY,
 	]
 		.into_iter()
-		.filter_map(|s| {
-			let size = try_optimize(dec, img, 8192, s, false, buf);
-			if 0 < size { Some((size, s)) }
-			else { None }
-		})
+		.filter_map(|s| optimize_fast(dec, img, s).map(|size| (size, s)))
 		.min_by(|a, b| a.0.cmp(&b.0))
 		.map_or(LodePNGFilterStrategy::LFS_ZERO, |(_, s)| s)
 }
 
-/// # Apply Optimizations.
+/// # Test Optimizations.
 ///
-/// This re-encodes the PNG source using the specified strategy, returning the
-/// number of bytes written to the output buffer, or zero if there was an
-/// error.
+/// This tests a given filter strategy (without the zopfli overhead) to get an
+/// idea for the potential savings it would yield.
 ///
-/// The `use_zopfli` argument toggles between slow (true) and fast (false)
-/// modes. The latter is used to test different strategies, while the former
-/// is used for the final output.
-fn try_optimize(
+/// This will return the resulting size if it worked.
+fn optimize_fast(
 	dec: &LodePNGState,
 	img: &DecodedImage,
-	window_size: c_uint,
 	strategy: LodePNGFilterStrategy,
-	use_zopfli: bool,
-	buf: &mut Vec<u8>
-) -> usize {
-	// Start the encoder.
-	let mut enc = LodePNGState::default();
-	enc.encoder.zlibsettings.windowsize = window_size;
-
-	// Copy palette details over to the encoder.
-	if dec.info_png.color.colortype == LodePNGColorType::LCT_PALETTE {
-		if ! enc.copy_color_mode(dec) { return 0; }
-		enc.info_raw.colortype = LodePNGColorType::LCT_RGBA;
-		enc.info_raw.bitdepth = 8;
-	}
-
-	enc.encoder.filter_palette_zero = 0;
-	enc.encoder.filter_strategy = strategy;
-	enc.encoder.add_id = 0;
-	enc.encoder.text_compression = 1;
-
-	// For final compression, enable the custom zopfli deflater.
-	if use_zopfli { enc.use_zopfli(); }
-
+) -> Option<usize> {
 	// Encode and write to the buffer if it worked.
-	if let Some(out) = enc.encode(img) {
-		buf.truncate(0);
-		buf.extend_from_slice(&out);
+	let mut enc = LodePNGState::encoder(dec, strategy, false)?;
+	let out = enc.encode(img)?;
 
-		// We might be able to save a couple bytes by nuking the palette if the
-		// image is already really small.
-		if out.size < 4096 && LodePNGColorType::LCT_PALETTE.is_match(buf) {
-			let size2 = try_optimize_small(img, buf, &mut enc);
-			if 0 < size2 && size2 < out.size {
-				return size2;
+	// We might be able to save a couple bytes by nuking the palette if the
+	// image is already really small.
+	if
+		out.size < 4096 &&
+		LodePNGColorType::LCT_PALETTE.is_match(&out) &&
+		enc.prepare_encoder_small(img)
+	{
+		if let Some(out2) = enc.encode(img) {
+			if out2.size < out.size {
+				return Some(out2.size);
 			}
 		}
-
-		out.size
 	}
-	else { 0 }
+
+	Some(out.size)
+}
+
+/// # Apply Optimizations.
+///
+/// This re-encodes the PNG source using the specified strategy, returning a
+/// newly-allocated image if everything works out.
+fn optimize_slow(
+	dec: &LodePNGState,
+	img: &DecodedImage,
+	strategy: LodePNGFilterStrategy,
+) -> Option<Vec<u8>> {
+	// Encode and write to the buffer if it worked.
+	let mut enc = LodePNGState::encoder(dec, strategy, true)?;
+	enc.encode(img)
+		.map(|out| {
+			let out = out.to_vec();
+			if out.len() < 4096 && LodePNGColorType::LCT_PALETTE.is_match(&out) {
+				optimize_slow_small(img, out, &mut enc)
+			}
+			else { out }
+		})
 }
 
 #[cold]
@@ -137,46 +128,17 @@ fn try_optimize(
 /// For really small images, space can sometimes be saved by nuking the
 /// palette and going with RGB/RGBA instead.
 ///
-/// This will return the number of bytes written if smaller output is produced,
-/// otherwise zero.
-fn try_optimize_small(img: &DecodedImage, buf: &mut Vec<u8>, enc: &mut LodePNGState) -> usize {
-	// Pull the color stats.
-	let mut stats = match enc.compute_color_stats(img) {
-		Some(s) => s,
-		None => return 0,
-	};
-
-	// The image is small for tRNS chunk overhead.
-	if img.w * img.h <= 16 && 0 < stats.key { stats.alpha = 1; }
-
-	// Set the encoding color mode to RGB/RGBA.
-	enc.encoder.auto_convert = 0;
-	enc.info_png.color.colortype = match (0 < stats.colored, 0 < stats.alpha) {
-		(true, false) => LodePNGColorType::LCT_RGB,
-		(true, true) => LodePNGColorType::LCT_RGBA,
-		(false, false) => LodePNGColorType::LCT_GREY,
-		(false, true) => LodePNGColorType::LCT_GREY_ALPHA,
-	};
-	enc.info_png.color.bitdepth = 8.min(stats.bits);
-
-	// Rekey if necessary.
-	if 0 == stats.alpha && 0 < stats.key {
-		enc.info_png.color.key_defined = 1;
-		enc.info_png.color.key_r = c_uint::from(stats.key_r) & 255;
-		enc.info_png.color.key_g = c_uint::from(stats.key_g) & 255;
-		enc.info_png.color.key_b = c_uint::from(stats.key_b) & 255;
-	}
-	else { enc.info_png.color.key_defined = 0; }
-
-	// Encode and write to the buffer if it worked (and is smaller than the
-	// previous value).
-	if let Some(out) = enc.encode(img) {
-		if out.size < buf.len() {
-			buf.truncate(out.size);
-			buf.copy_from_slice(&out);
-			return out.size;
+/// This will either return a new-new image or pass through the previously-
+/// created new image if the trick doesn't work.
+fn optimize_slow_small(img: &DecodedImage, mut buf: Vec<u8>, enc: &mut LodePNGState) -> Vec<u8> {
+	if enc.prepare_encoder_small(img) {
+		if let Some(out) = enc.encode(img) {
+			if out.size < buf.len() {
+				buf.truncate(out.size);
+				buf.copy_from_slice(&out);
+			}
 		}
 	}
 
-	0
+	buf
 }
