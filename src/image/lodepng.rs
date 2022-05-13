@@ -24,6 +24,7 @@ use std::{
 
 
 
+/// # Helper: drop impl for Decoded/EncodedImage structs.
 macro_rules! drop_img {
 	($ty:ty) => (
 		impl Drop for $ty {
@@ -321,9 +322,7 @@ impl Default for LodePNGState {
 
 impl Drop for LodePNGState {
 	#[allow(unsafe_code)]
-	fn drop(&mut self) {
-		unsafe { lodepng_state_cleanup(self) }
-	}
+	fn drop(&mut self) { unsafe { lodepng_state_cleanup(self) } }
 }
 
 impl LodePNGState {
@@ -340,7 +339,7 @@ impl LodePNGState {
 		};
 
 		// Return it if we got it.
-		if 0 == res && ! buf.is_null() && 0 < w && 0 < h {
+		if 0 == res && ! buf.is_null() && 0 != w && 0 != h {
 			Some(DecodedImage { buf, w, h })
 		}
 		else { None }
@@ -359,7 +358,7 @@ impl LodePNGState {
 			)
 		};
 
-		if 0 == res && 0 < out.size && ! out.buf.is_null() { Some(out) }
+		if 0 == res && 0 != out.size && ! out.buf.is_null() { Some(out) }
 		else { None }
 	}
 
@@ -414,11 +413,11 @@ impl LodePNGState {
 		} { return false; }
 
 		// The image is small for tRNS chunk overhead.
-		if img.w * img.h <= 16 && 0 < stats.key { stats.alpha = 1; }
+		if img.w * img.h <= 16 && 0 != stats.key { stats.alpha = 1; }
 
 		// Set the encoding color mode to RGB/RGBA.
 		self.encoder.auto_convert = 0;
-		self.info_png.color.colortype = match (0 < stats.colored, 0 < stats.alpha) {
+		self.info_png.color.colortype = match (0 != stats.colored, 0 != stats.alpha) {
 			(true, false) => LodePNGColorType::LCT_RGB,
 			(true, true) => LodePNGColorType::LCT_RGBA,
 			(false, false) => LodePNGColorType::LCT_GREY,
@@ -427,7 +426,7 @@ impl LodePNGState {
 		self.info_png.color.bitdepth = 8.min(stats.bits);
 
 		// Rekey if necessary.
-		if 0 == stats.alpha && 0 < stats.key {
+		if 0 == stats.alpha && 0 != stats.key {
 			self.info_png.color.key_defined = 1;
 			self.info_png.color.key_r = c_uint::from(stats.key_r) & 255;
 			self.info_png.color.key_g = c_uint::from(stats.key_g) & 255;
