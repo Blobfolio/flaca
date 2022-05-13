@@ -14,6 +14,7 @@ functionality.
 
 use super::lodepng::{
 	DecodedImage,
+	EncodedImage,
 	LodePNGColorType,
 	LodePNGFilterStrategy,
 	LodePNGState,
@@ -35,10 +36,10 @@ pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
 
 	// Encode!
 	let strategy = best_strategy(&dec, &img);
-	let out = optimize_slow(&dec, &img, strategy)?;
+	let out = encode(&dec, &img, strategy, true)?;
 
 	// Return it if better and nonzero!
-	if out.len() < src.len() { Some(out) }
+	if out.size < src.len() { Some(out.to_vec()) }
 	else { None }
 }
 
@@ -49,9 +50,6 @@ pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
 /// This attempts to find the best filtering strategy for the image by trying
 /// all of them in fast mode, and picking whichever produces the smallest
 /// output.
-///
-/// The lodepng `LFS_PREDEFINED` filter strategy is currently unsupported, but
-/// isn't very common so shouldn't affect compression much one way or another.
 fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrategy {
 	[
 		LodePNGFilterStrategy::LFS_ZERO,
@@ -63,24 +61,23 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrateg
 		LodePNGFilterStrategy::LFS_ENTROPY,
 	]
 		.into_iter()
-		.filter_map(|s| optimize_fast(dec, img, s).map(|size| (size, s)))
+		.filter_map(|s| encode(dec, img, s, false).map(|out| (out.size, s)))
 		.min_by(|a, b| a.0.cmp(&b.0))
 		.map_or(LodePNGFilterStrategy::LFS_ZERO, |(_, s)| s)
 }
 
-/// # Test Optimizations.
+/// # Apply Optimizations.
 ///
-/// This tests a given filter strategy (without the zopfli overhead) to get an
-/// idea for the potential savings it would yield.
-///
-/// This will return the resulting size if it worked.
-fn optimize_fast(
+/// This attempts to re-encode an image using the provided filter strategy,
+/// returning an `EncodedImage` object if it all works out.
+fn encode(
 	dec: &LodePNGState,
 	img: &DecodedImage,
 	strategy: LodePNGFilterStrategy,
-) -> Option<usize> {
+	slow: bool,
+) -> Option<EncodedImage> {
 	// Encode and write to the buffer if it worked.
-	let mut enc = LodePNGState::encoder(dec, strategy, false)?;
+	let mut enc = LodePNGState::encoder(dec, strategy, slow)?;
 	let out = enc.encode(img)?;
 
 	// We might be able to save a couple bytes by nuking the palette if the
@@ -92,53 +89,10 @@ fn optimize_fast(
 	{
 		if let Some(out2) = enc.encode(img) {
 			if out2.size < out.size {
-				return Some(out2.size);
+				return Some(out2);
 			}
 		}
 	}
 
-	Some(out.size)
-}
-
-/// # Apply Optimizations.
-///
-/// This re-encodes the PNG source using the specified strategy, returning a
-/// newly-allocated image if everything works out.
-fn optimize_slow(
-	dec: &LodePNGState,
-	img: &DecodedImage,
-	strategy: LodePNGFilterStrategy,
-) -> Option<Vec<u8>> {
-	// Encode and write to the buffer if it worked.
-	let mut enc = LodePNGState::encoder(dec, strategy, true)?;
-	enc.encode(img)
-		.map(|out| {
-			let out = out.to_vec();
-			if out.len() < 4096 && LodePNGColorType::LCT_PALETTE.is_match(&out) {
-				optimize_slow_small(img, out, &mut enc)
-			}
-			else { out }
-		})
-}
-
-#[cold]
-#[allow(clippy::cast_possible_truncation)]
-/// # Apply Optimizations (Small).
-///
-/// For really small images, space can sometimes be saved by nuking the
-/// palette and going with RGB/RGBA instead.
-///
-/// This will either return a new-new image or pass through the previously-
-/// created new image if the trick doesn't work.
-fn optimize_slow_small(img: &DecodedImage, mut buf: Vec<u8>, enc: &mut LodePNGState) -> Vec<u8> {
-	if enc.prepare_encoder_small(img) {
-		if let Some(out) = enc.encode(img) {
-			if out.size < buf.len() {
-				buf.truncate(out.size);
-				buf.copy_from_slice(&out);
-			}
-		}
-	}
-
-	buf
+	Some(out)
 }

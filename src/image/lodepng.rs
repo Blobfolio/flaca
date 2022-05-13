@@ -248,8 +248,8 @@ pub(super) enum LodePNGFilterStrategy {
 	LFS_FOUR = 4,
 	LFS_MINSUM = 5,
 	LFS_ENTROPY = 6,
-	// LFS_BRUTE_FORCE = 7,
-	// LFS_PREDEFINED = 8,
+	// LFS_BRUTE_FORCE = 7, // This strategy is redundant.
+	// LFS_PREDEFINED = 8,  // This strategy is redundant.
 }
 
 #[repr(C)]
@@ -375,6 +375,7 @@ impl LodePNGState {
 
 		// Copy palette details over to the encoder.
 		if dec.info_png.color.colortype == LodePNGColorType::LCT_PALETTE {
+			// Safety: a non-zero response indicates an error.
 			if 0 != unsafe {
 				lodepng_color_mode_copy(&mut enc.info_raw, &dec.info_png.color)
 			} { return None; }
