@@ -141,7 +141,7 @@ impl FlacaImage<'_> {
 	fn zopflipng(&mut self) {
 		if let Some(mut new) = zopflipng::optimize(&self.data) {
 			// This only returns a result if smaller than the source. We just
-			// need to check the header.
+			// need to verify the output isn't unrecognizably corrupt.
 			if ImageKind::is_png(&new) {
 				std::mem::swap(&mut self.data, &mut new);
 			}

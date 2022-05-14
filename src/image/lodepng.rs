@@ -137,20 +137,13 @@ pub(super) enum LodePNGColorType {
 impl LodePNGColorType {
 	/// # Confirm Raw Image Color Type
 	///
-	/// This parses a raw image's headers to determine whether or not it was
-	/// encoded with the given color type.
-	pub(super) fn is_match(self, src: &[u8]) -> bool {
-		30 < src.len() &&
-		// The 10th byte of the IDHR chunk is our color type. We should check
-		// this first since it's just one byte.
-		src[25] == self as u8 &&
-		// Just to make sure we're looking at a (probably) valid PNG, let's
-		// check that it starts with the PNG magic header, a chunk size of 13,
-		// and a chunk type of IHDR, in that order.
-		src[..16].eq(&[
-			0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n',
-			0,    0,    0,    13,   b'I',  b'H',  b'D', b'R',
-		])
+	/// This reads the color type from the raw image header to check if it
+	/// matches `self`.
+	///
+	/// Note to future self: 25 == 16 (start of IHDR chunk) + 4 (be32 width) + 4
+	/// (be32 height) + 1 (bitdepth).
+	pub(super) const fn is_match(self, src: &[u8]) -> bool {
+		25 < src.len() && src[25] == self as u8
 	}
 }
 
