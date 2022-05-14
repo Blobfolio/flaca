@@ -2,24 +2,43 @@
 # Flaca: Image Kind
 */
 
+use std::ops::{
+	BitAnd,
+	Not,
+};
 
 
+#[repr(u8)]
+#[allow(clippy::redundant_pub_crate)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// # Image Kind.
 ///
 /// This evaluates the file type from its headers, ensuring we process images
 /// correctly even if they have the wrong extension (or don't process them if
 /// they're bunk).
-pub(super) enum ImageKind {
+pub(crate) enum ImageKind {
 	/// # Jpeg.
-	Jpeg,
+	Jpeg = 0b0001,
 	/// # Png.
-	Png,
+	Png  = 0b0010,
+}
+
+impl BitAnd<ImageKind> for u8 {
+	type Output = Self;
+	fn bitand(self, rhs: ImageKind) -> Self::Output { self & (rhs as Self) }
+}
+
+impl Not for ImageKind {
+	type Output = u8;
+	fn not(self) -> Self::Output { ! (self as u8) }
 }
 
 impl ImageKind {
+	/// # All Kinds.
+	pub(crate) const ALL: u8 =  0b0011;
+
 	/// # Is JPEG?
-	pub(super) fn is_jpeg(src: &[u8]) -> bool {
+	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
 		12 < src.len() &&
 		src[..3] == [0xFF, 0xD8, 0xFF] &&
 		src[src.len() - 2..] == [0xFF, 0xD9] &&
@@ -32,8 +51,29 @@ impl ImageKind {
 	}
 
 	/// # Is PNG?
-	pub(super) fn is_png(src: &[u8]) -> bool {
+	pub(crate) fn is_png(src: &[u8]) -> bool {
 		8 < src.len() && src[..8] == [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n']
+	}
+
+	/// # Parse.
+	pub(crate) fn parse(src: &[u8]) -> Option<Self> {
+		if 12 < src.len() {
+			if src[..8] == [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n'] {
+				Some(Self::Png)
+			}
+			else if
+				src[..3] == [0xFF, 0xD8, 0xFF] &&
+				src[src.len() - 2..] == [0xFF, 0xD9] &&
+				(
+					src[3] == 0xDB ||
+					src[3] == 0xEE ||
+					src[3..12] == [0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01] ||
+					(src[3] == 0xE1 && src[6..12] == [b'E', b'x', b'i', b'f', 0x00, 0x00])
+				)
+			{ Some(Self::Jpeg) }
+			else { None }
+		}
+		else { None }
 	}
 }
 
@@ -55,14 +95,17 @@ mod tests {
 					Some(ImageKind::Jpeg) => {
 						assert!(ImageKind::is_jpeg(&raw));
 						assert!(! ImageKind::is_png(&raw));
+						assert_eq!(Some(ImageKind::Jpeg), ImageKind::parse(&raw));
 					},
 					Some(ImageKind::Png) => {
 						assert!(! ImageKind::is_jpeg(&raw));
 						assert!(ImageKind::is_png(&raw));
+						assert_eq!(Some(ImageKind::Png), ImageKind::parse(&raw));
 					},
 					_ => {
 						assert!(! ImageKind::is_jpeg(&raw));
 						assert!(! ImageKind::is_png(&raw));
+						assert_eq!(None, ImageKind::parse(&raw));
 					},
 				}
 			)+);

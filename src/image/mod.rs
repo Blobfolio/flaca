@@ -3,7 +3,7 @@
 */
 
 mod jpegtran;
-mod kind;
+pub(super) mod kind;
 pub(self) mod lodepng;
 mod zopflipng;
 
@@ -40,18 +40,17 @@ impl<'a> FlacaImage<'a> {
 	/// Create a wrapper for a raw image. If the image can't be loaded or is
 	/// an unsupported format — e.g. [`ImageKind::Jpeg`] when `jpeg` is false —
 	/// `None` is returned.
-	pub(super) fn new(file: &'a Path, jpeg: bool, png: bool) -> Option<Self> {
+	pub(super) fn new(file: &'a Path, kinds: u8) -> Option<Self> {
 		// Try to load the data.
 		let data = fs::read(file).ok()?;
 		if data.is_empty() { None }
 		else {
-			let kind =
-				if png && ImageKind::is_png(&data) { ImageKind::Png }
-				else if jpeg && ImageKind::is_jpeg(&data) { ImageKind::Jpeg }
-				else { return None; };
-
-			let size = u64::try_from(data.len()).ok()?;
-			Some(Self { file, kind, data, size })
+			let kind = ImageKind::parse(&data)?;
+			if kind as u8 == kinds & kind  {
+				let size = u64::try_from(data.len()).ok()?;
+				Some(Self { file, kind, data, size })
+			}
+			else { None }
 		}
 	}
 }

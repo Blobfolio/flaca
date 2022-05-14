@@ -34,7 +34,10 @@ mod error;
 mod image;
 
 pub(crate) use error::FlacaError;
-pub(crate) use image::FlacaImage;
+pub(crate) use image::{
+	FlacaImage,
+	kind::ImageKind,
+};
 
 use argyle::{
 	Argue,
@@ -107,36 +110,38 @@ fn _main() -> Result<(), FlacaError> {
 		.with_list();
 
 	// Figure out which kinds we're doing.
-	let jpeg: bool = ! args.switch2(b"--no-jpeg", b"--no-jpg");
-	let png: bool = ! args.switch(b"--no-png");
+	let mut kinds = ImageKind::ALL;
+	if args.switch2(b"--no-jpeg", b"--no-jpg") { kinds &= ! ImageKind::Jpeg; }
+	if args.switch(b"--no-png") { kinds &= ! ImageKind::Png; }
 
 	// Find files!
-	let paths: Vec<PathBuf> = match (jpeg, png) {
-		// Both.
-		(true, true) => Dowser::default()
-			.with_paths(args.args_os())
-			.into_vec(|p|
-				Extension::try_from3(p).map_or_else(
-					|| Some(E_JPEG) == Extension::try_from4(p),
-					|e| e == E_JPG || e == E_PNG
+	let paths: Vec<PathBuf> =
+		if ImageKind::ALL == kinds {
+			Dowser::default()
+				.with_paths(args.args_os())
+				.into_vec(|p|
+					Extension::try_from3(p).map_or_else(
+						|| Some(E_JPEG) == Extension::try_from4(p),
+						|e| e == E_JPG || e == E_PNG
+					)
 				)
-			),
-		// JPEG.
-		(true, false) => Dowser::default()
-			.with_paths(args.args_os())
-			.into_vec(|p|
-				Extension::try_from3(p).map_or_else(
-					|| Some(E_JPEG) == Extension::try_from4(p),
-					|e| e == E_JPG
+		}
+		else if ImageKind::Jpeg as u8 == kinds {
+			Dowser::default()
+				.with_paths(args.args_os())
+				.into_vec(|p|
+					Extension::try_from3(p).map_or_else(
+						|| Some(E_JPEG) == Extension::try_from4(p),
+						|e| e == E_JPG
+					)
 				)
-			),
-		// PNG.
-		(false, true) => Dowser::default()
-			.with_paths(args.args_os())
-			.into_vec(|p| Some(E_PNG) == Extension::try_from3(p)),
-		// Nothing?!
-		(false, false) => Vec::new(),
-	};
+		}
+		else if ImageKind::Png as u8 == kinds {
+			Dowser::default()
+				.with_paths(args.args_os())
+				.into_vec(|p| Some(E_PNG) == Extension::try_from3(p))
+		}
+		else { Vec::new() };
 
 	if paths.is_empty() {
 		return Err(FlacaError::NoImages);
@@ -186,7 +191,7 @@ fn _main() -> Result<(), FlacaError> {
 			if killed.load(SeqCst) { progress.sigint(); }
 			else {
 				// Encode if we can.
-				if let Some(mut enc) = FlacaImage::new(x, jpeg, png) {
+				if let Some(mut enc) = FlacaImage::new(x, kinds) {
 					let tmp = x.to_string_lossy();
 					progress.add(&tmp);
 
@@ -218,7 +223,7 @@ fn _main() -> Result<(), FlacaError> {
 		// Process!
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
-				if let Some(mut enc) = FlacaImage::new(x, jpeg, png) {
+				if let Some(mut enc) = FlacaImage::new(x, kinds) {
 					let _res = enc.compress(&oxi);
 				}
 			}
