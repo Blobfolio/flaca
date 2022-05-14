@@ -58,15 +58,6 @@ pub(super) struct EncodedImage {
 	pub(super) size: usize,
 }
 
-impl Default for EncodedImage {
-	fn default() -> Self {
-		Self {
-			buf: std::ptr::null_mut(),
-			size: 0,
-		}
-	}
-}
-
 impl Deref for EncodedImage {
 	type Target = [u8];
 
@@ -341,17 +332,18 @@ impl LodePNGState {
 	#[allow(unsafe_code)]
 	/// # Encode!
 	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedImage> {
+		let mut buf = std::ptr::null_mut();
+		let mut size = 0;
+
 		// Safety: a non-zero response is an error.
-		let mut out = EncodedImage::default();
 		let res = unsafe {
-			lodepng_encode(
-				&mut out.buf, &mut out.size,
-				img.buf, img.w, img.h,
-				self
-			)
+			lodepng_encode(&mut buf, &mut size, img.buf, img.w, img.h, self)
 		};
 
-		if 0 == res && 0 != out.size && ! out.buf.is_null() { Some(out) }
+		// Return it if we got it.
+		if 0 == res && 0 != size && ! buf.is_null() {
+			Some(EncodedImage { buf, size })
+		}
 		else { None }
 	}
 
@@ -372,6 +364,7 @@ impl LodePNGState {
 			if 0 != unsafe {
 				lodepng_color_mode_copy(&mut enc.info_raw, &dec.info_png.color)
 			} { return None; }
+
 			enc.info_raw.colortype = LodePNGColorType::LCT_RGBA;
 			enc.info_raw.bitdepth = 8;
 		}
@@ -406,7 +399,7 @@ impl LodePNGState {
 			lodepng_compute_color_stats(&mut stats, img.buf, img.w, img.h, &self.info_raw)
 		} { return false; }
 
-		// The image is small for tRNS chunk overhead.
+		// The image is too small for tRNS chunk overhead.
 		if img.w * img.h <= 16 && 0 != stats.key { stats.alpha = 1; }
 
 		// Set the encoding color mode to RGB/RGBA.
