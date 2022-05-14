@@ -12,7 +12,6 @@ The `custom_png_deflate` extern is not part of lodepng, but gets attached to
 
 use std::{
 	mem::MaybeUninit,
-	ops::Deref,
 	os::raw::{
 		c_uint,
 		c_uchar,
@@ -21,23 +20,7 @@ use std::{
 		c_ushort,
 	},
 };
-
-
-
-/// # Helper: drop impl for Decoded/EncodedImage structs.
-macro_rules! drop_img {
-	($ty:ty) => (
-		impl Drop for $ty {
-			#[allow(unsafe_code)]
-			fn drop(&mut self) {
-				if ! self.buf.is_null() {
-					unsafe { libc::free(self.buf.cast::<c_void>()); }
-					self.buf = std::ptr::null_mut();
-				}
-			}
-		}
-	);
-}
+use super::ffi::EncodedImage;
 
 
 
@@ -49,28 +32,15 @@ pub(super) struct DecodedImage {
 	pub(super) h: c_uint,
 }
 
-drop_img!(DecodedImage);
-
-#[derive(Debug)]
-/// # Encoded Image.
-pub(super) struct EncodedImage {
-	pub(super) buf: *mut c_uchar,
-	pub(super) size: usize,
-}
-
-impl Deref for EncodedImage {
-	type Target = [u8];
-
+impl Drop for DecodedImage {
 	#[allow(unsafe_code)]
-	fn deref(&self) -> &Self::Target {
-		if 0 == self.size || self.buf.is_null() { &[] }
-		else {
-			unsafe { std::slice::from_raw_parts(self.buf, self.size) }
+	fn drop(&mut self) {
+		if ! self.buf.is_null() {
+			unsafe { libc::free(self.buf.cast::<c_void>()); }
+			self.buf = std::ptr::null_mut();
 		}
 	}
 }
-
-drop_img!(EncodedImage);
 
 #[repr(C)]
 #[derive(Debug)]
@@ -331,19 +301,15 @@ impl LodePNGState {
 
 	#[allow(unsafe_code)]
 	/// # Encode!
-	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedImage> {
-		let mut buf = std::ptr::null_mut();
-		let mut size = 0;
-
+	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedImage<usize>> {
 		// Safety: a non-zero response is an error.
+		let mut out = EncodedImage::default();
 		let res = unsafe {
-			lodepng_encode(&mut buf, &mut size, img.buf, img.w, img.h, self)
+			lodepng_encode(&mut out.buf, &mut out.size, img.buf, img.w, img.h, self)
 		};
 
 		// Return it if we got it.
-		if 0 == res && 0 != size && ! buf.is_null() {
-			Some(EncodedImage { buf, size })
-		}
+		if 0 == res && ! out.is_empty() { Some(out) }
 		else { None }
 	}
 

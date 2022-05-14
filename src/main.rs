@@ -34,10 +34,7 @@ mod error;
 mod image;
 
 pub(crate) use error::FlacaError;
-pub(crate) use image::{
-	FlacaImage,
-	kind::ImageKind,
-};
+pub(crate) use image::kind::ImageKind;
 
 use argyle::{
 	Argue,
@@ -190,21 +187,15 @@ fn _main() -> Result<(), FlacaError> {
 		paths.par_iter().for_each(|x|
 			if killed.load(SeqCst) { progress.sigint(); }
 			else {
-				// Encode if we can.
-				if let Some(mut enc) = FlacaImage::new(x, kinds) {
-					let tmp = x.to_string_lossy();
-					progress.add(&tmp);
+				let tmp = x.to_string_lossy();
+				progress.add(&tmp);
 
-					let (b, a) = enc.compress(&oxi);
+				if let Some((b, a)) = image::encode(x, kinds, &oxi) {
 					before.fetch_add(b, SeqCst);
 					after.fetch_add(a, SeqCst);
+				}
 
-					progress.remove(&tmp);
-				}
-				// Bump the count if we can't.
-				else {
-					progress.increment();
-				}
+				progress.remove(&tmp);
 			}
 		);
 
@@ -223,9 +214,7 @@ fn _main() -> Result<(), FlacaError> {
 		// Process!
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
-				if let Some(mut enc) = FlacaImage::new(x, kinds) {
-					let _res = enc.compress(&oxi);
-				}
+				let _res = image::encode(x, kinds, &oxi);
 			}
 		);
 	}

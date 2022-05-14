@@ -3,6 +3,7 @@
 */
 
 mod jpegtran;
+pub(self) mod ffi;
 pub(super) mod kind;
 pub(self) mod lodepng;
 mod zopflipng;
@@ -11,151 +12,111 @@ mod zopflipng;
 
 use kind::ImageKind;
 use oxipng::Options as OxipngOptions;
-use std::{
-	fs,
-	os::raw::{
-		c_ulong,
-		c_void,
-	},
-	path::Path,
-};
+use std::path::Path;
 
 
 
-#[derive(Debug)]
-/// # Flaca Image.
+/// # Encode Image.
 ///
-/// This struct holds the state of a given image, updating the file if
-/// compression yields any savings.
-pub(super) struct FlacaImage<'a> {
-	file: &'a Path,
-	kind: ImageKind,
-	data: Vec<u8>,
-	size: u64,
+/// This will attempt to losslessly re-encode the image, overriding the
+/// original if the compression results in savings.
+///
+/// The before and after sizes are returned, unless there's an error or the
+/// image is invalid. In cases where compression doesn't help, the before and
+/// after sizes will be identical.
+pub(super) fn encode(file: &Path, kinds: u8, oxi: &OxipngOptions) -> Option<(u64, u64)> {
+	// Read the file.
+	let mut raw = std::fs::read(file).ok()?;
+	if raw.is_empty() { return None; }
+	let before = u64::try_from(raw.len()).ok()?;
+
+	// Do PNG stuff?
+	if ImageKind::is_png(&raw) {
+		if 0 == kinds & ImageKind::Png { return None; }
+		encode_oxipng(&mut raw, oxi);
+		encode_zopflipng(&mut raw);
+	}
+	// Do JPEG stuff?
+	else if ImageKind::is_jpeg(&raw) {
+		if 0 == kinds & ImageKind::Jpeg { return None; }
+		encode_mozjpeg(&mut raw);
+	}
+	// Bad image.
+	else { return None; }
+
+	// Save it if better.
+	let after = raw.len() as u64;
+	if after < before && write_atomic::write_file(file, &raw).is_ok() {
+		Some((before, after))
+	}
+	else { Some((before, before)) }
 }
 
-impl<'a> FlacaImage<'a> {
-	/// # New.
-	///
-	/// Create a wrapper for a raw image. If the image can't be loaded or is
-	/// an unsupported format — e.g. [`ImageKind::Jpeg`] when `jpeg` is false —
-	/// `None` is returned.
-	pub(super) fn new(file: &'a Path, kinds: u8) -> Option<Self> {
-		// Try to load the data.
-		let data = fs::read(file).ok()?;
-		if data.is_empty() { None }
-		else {
-			let kind = ImageKind::parse(&data)?;
-			if kind as u8 == kinds & kind  {
-				let size = u64::try_from(data.len()).ok()?;
-				Some(Self { file, kind, data, size })
-			}
-			else { None }
-		}
-	}
-}
-
-impl FlacaImage<'_> {
-	#[must_use]
-	/// # Compress.
-	///
-	/// This method will run the lossless compression pass(es) against the
-	/// source image and save the result if it winds up smaller.
-	///
-	/// A tuple containing the original file size and the new file size is
-	/// returned. If the two values are equal, no savings occurrred.
-	pub(super) fn compress(&mut self, oxi: &OxipngOptions) -> (u64, u64) {
-		match self.kind {
-			ImageKind::Jpeg => { self.mozjpeg(); },
-			ImageKind::Png => {
-				self.oxipng(oxi);
-				self.zopflipng();
-			},
-		}
-
-		// The buffer can't be empty, so if it is smaller than the original
-		// size, savings happened!
-		let after = self.data.len() as u64;
-		if after < self.size && write_atomic::write_file(self.file, &self.data).is_ok() {
-			(self.size, after)
-		}
-		else { (self.size, self.size) }
-	}
-
-	#[allow(clippy::cast_possible_truncation, unused_assignments, unsafe_code)]
-	/// # Compress w/ `MozJPEG`.
-	///
-	/// The result is comparable to running:
-	/// ```bash
-	/// jpegtran -copy none -optimize -progressive
-	/// ```
-	fn mozjpeg(&mut self) {
-		let mut out_ptr = std::ptr::null_mut();
-		let mut out_size: c_ulong = 0;
-
-		// Try to compress!
-		let res: bool = jpegtran::compress(
-			self.data.as_ptr(),
-			self.size,
-			&mut out_ptr,
-			&mut out_size,
-		);
-
-		if 0 < out_size && ! out_ptr.is_null() {
-			if res && out_size < self.size {
-				let tmp = unsafe { std::slice::from_raw_parts(out_ptr, out_size as usize) };
-				if ImageKind::is_jpeg(tmp) {
-					self.data.truncate(out_size as usize);
-					self.data.copy_from_slice(tmp);
-				}
-			}
-
-			// Manually free the C memory.
-			unsafe { libc::free(out_ptr.cast::<c_void>()); }
-			out_ptr = std::ptr::null_mut();
-		}
-	}
-
-	/// # Compress w/ `Oxipng`
-	///
-	/// The result is comparable to calling:
-	/// ```bash
-	/// oxipng -o 3 -s -a -i 0 --fix
-	/// ```
-	fn oxipng(&mut self, opts: &OxipngOptions) {
-		if let Ok(mut new) = oxipng::optimize_from_memory(&self.data, opts) {
-			if ! new.is_empty() && new.len() < self.data.len() && ImageKind::is_png(&new) {
-				std::mem::swap(&mut self.data, &mut new);
-			}
-		}
-	}
-
-	#[allow(clippy::cast_possible_truncation, unused_assignments, unsafe_code)]
-	/// # Compress w/ `Zopflipng`.
-	///
-	/// The result is comparable to calling:
-	/// ```bash
-	/// zopflipng -m
-	/// ```
-	fn zopflipng(&mut self) {
-		if let Some(mut new) = zopflipng::optimize(&self.data) {
-			// This only returns a result if smaller than the source. We just
-			// need to verify the output isn't unrecognizably corrupt.
-			if ImageKind::is_png(&new) {
-				std::mem::swap(&mut self.data, &mut new);
-			}
+/// # Compress w/ `MozJPEG`.
+///
+/// The result is comparable to running:
+///
+/// ```bash
+/// jpegtran -copy none -optimize -progressive
+/// ```
+fn encode_mozjpeg(raw: &mut Vec<u8>) {
+	if let Some(new) = jpegtran::optimize(raw) {
+		let slice: &[u8] = &new;
+		if ImageKind::is_jpeg(slice) {
+			raw.truncate(slice.len());
+			raw.copy_from_slice(slice);
 		}
 	}
 }
 
+/// # Compress w/ `Oxipng`
+///
+/// The result is comparable to calling:
+///
+/// ```bash
+/// oxipng -o 3 -s -a -i 0 --fix
+/// ```
+fn encode_oxipng(raw: &mut Vec<u8>, opts: &OxipngOptions) {
+	if let Ok(mut new) = oxipng::optimize_from_memory(raw, opts) {
+		if ! new.is_empty() && new.len() < raw.len() && ImageKind::is_png(&new) {
+			std::mem::swap(raw, &mut new);
+		}
+	}
+}
 
+/// # Compress w/ `Zopflipng`.
+///
+/// The result is comparable to calling:
+///
+/// ```bash
+/// zopflipng -m
+/// ```
+fn encode_zopflipng(raw: &mut Vec<u8>) {
+	if let Some(new) = zopflipng::optimize(raw) {
+		let slice: &[u8] = &new;
+		if ImageKind::is_png(slice) {
+			raw.truncate(slice.len());
+			raw.copy_from_slice(slice);
+		}
+	}
+}
 
 #[inline]
 /// # Generate Oxipng Options.
 ///
-/// This returns the strongest compression profile available for Oxipng without
-/// using its built-in zopfli deflater. (We run the _full_ zopflipng as a
-/// separate pass, so there's no benefit to doing it within Oxipng.)
+/// This returns the strongest possible Oxipng compression profile (minus
+/// zopfli, which we try separately).
+///
+/// This is basically just "preset 3", with:
+/// * Error fixing enabled;
+/// * Libdeflater;
+/// * All the alpha optimizations;
+/// * Interlacing disabled;
+/// * All headers stripped;
+///
+/// This struct unfortunately uses a lot of heavy `IndexSet` objects, so
+/// constructing it manually (and _once_) shaves about ⅓ to ½ of a second off
+/// the compression time for each PNG.
 pub(super) fn oxipng_options() -> OxipngOptions {
 	use oxipng::{
 		AlphaOptim,
@@ -164,12 +125,6 @@ pub(super) fn oxipng_options() -> OxipngOptions {
 		IndexSet,
 	};
 
-	// This is the configuration for "preset 3", plus:
-	// * fix errors
-	// * use libdeflater
-	// * check all the alphas
-	// * strip all headers
-	// * disable interlacing
 	OxipngOptions {
 		backup: false,
 		pretend: false,

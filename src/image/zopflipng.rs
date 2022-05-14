@@ -12,9 +12,9 @@ This no longer links to `libzopflipng` itself, but instead reimplements its
 functionality.
 */
 
+use super::ffi::EncodedImage;
 use super::lodepng::{
 	DecodedImage,
-	EncodedImage,
 	LodePNGColorType,
 	LodePNGFilterStrategy,
 	LodePNGState,
@@ -30,7 +30,7 @@ use super::lodepng::{
 ///
 /// Note: 16-bit transformations are not lossless; such images will have their
 /// bit depths reduced to a more typical 8 bits.
-pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
+pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
 	let mut dec = LodePNGState::default();
 	let img = dec.decode(src)?;
 
@@ -39,7 +39,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<Vec<u8>> {
 	let out = encode(&dec, &img, strategy, true)?;
 
 	// Return it if better and nonzero!
-	if out.size < src.len() { Some(out.to_vec()) }
+	if out.size < src.len() { Some(out) }
 	else { None }
 }
 
@@ -75,7 +75,7 @@ fn encode(
 	img: &DecodedImage,
 	strategy: LodePNGFilterStrategy,
 	slow: bool,
-) -> Option<EncodedImage> {
+) -> Option<EncodedImage<usize>> {
 	// Encode and write to the buffer if it worked.
 	let mut enc = LodePNGState::encoder(dec, strategy, slow)?;
 	let out = enc.encode(img)?;
