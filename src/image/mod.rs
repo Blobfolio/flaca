@@ -151,6 +151,7 @@ impl FlacaImage<'_> {
 
 
 
+#[inline]
 /// # Generate Oxipng Options.
 ///
 /// This returns the strongest compression profile available for Oxipng without
@@ -161,21 +162,36 @@ pub(super) fn oxipng_options() -> OxipngOptions {
 		AlphaOptim,
 		Deflaters,
 		Headers,
+		IndexSet,
 	};
 
-	// Presets 4-6 only apply to Deflaters::Zlib.
-	let mut o = OxipngOptions::from_preset(3);
-
-	// Alpha optimizations.
-	o.alphas.extend([
-		AlphaOptim::Black, AlphaOptim::Down, AlphaOptim::Left,
-		AlphaOptim::Right, AlphaOptim::Up, AlphaOptim::White
-	]);
-
-	o.deflate = Deflaters::Libdeflater; // Libdeflater usually beats zlib.
-	o.fix_errors = true;                // Fix errors when possible.
-	o.interlace.replace(0);             // Remove interlacing.
-	o.strip = Headers::All;             // Strip all the headers.
-
-	o
+	// This is the configuration for "preset 3", plus:
+	// * fix errors
+	// * use libdeflater
+	// * check all the alphas
+	// * strip all headers
+	// * disable interlacing
+	OxipngOptions {
+		backup: false,
+		pretend: false,
+		fix_errors: true,
+		force: false,
+		preserve_attrs: false,
+		filter: IndexSet::from([0, 1, 2, 3, 4, 5]),
+		interlace: Some(0),
+		alphas: IndexSet::from([
+			AlphaOptim::NoOp,
+			AlphaOptim::Black, AlphaOptim::Down, AlphaOptim::Left,
+			AlphaOptim::Right, AlphaOptim::Up, AlphaOptim::White,
+		]),
+		bit_depth_reduction: true,
+		color_type_reduction: true,
+		palette_reduction: true,
+		grayscale_reduction: true,
+		idat_recoding: true,
+		strip: Headers::All,
+		deflate: Deflaters::Libdeflater,
+		use_heuristics: false,
+		timeout: None,
+	}
 }
