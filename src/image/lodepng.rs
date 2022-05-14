@@ -369,7 +369,7 @@ impl LodePNGState {
 	pub(super) fn encoder(
 		dec: &Self,
 		strategy: LodePNGFilterStrategy,
-		use_zopfli: bool
+		slow: bool
 	) -> Option<Self> {
 		let mut enc = Self::default();
 
@@ -389,7 +389,7 @@ impl LodePNGState {
 		enc.encoder.text_compression = 1;
 
 		// For final compression, enable the custom zopfli deflater.
-		if use_zopfli {
+		if slow {
 			enc.encoder.zlibsettings.windowsize = 32_768;
 			enc.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
 			enc.encoder.zlibsettings.custom_context = std::ptr::null_mut();
