@@ -64,7 +64,10 @@ use std::{
 		atomic::{
 			AtomicBool,
 			AtomicU64,
-			Ordering::SeqCst,
+			Ordering::{
+				Relaxed,
+				SeqCst,
+			},
 		},
 	},
 };
@@ -157,14 +160,7 @@ fn _main() -> Result<(), FlacaError> {
 
 	// Watch for SIGINT so we can shut down cleanly.
 	let killed = Arc::from(AtomicBool::new(false));
-	let _res = signal_hook::flag::register_conditional_shutdown(
-		signal_hook::consts::SIGINT,
-		1,
-		Arc::clone(&killed)
-	).and_then(|_| signal_hook::flag::register(
-		signal_hook::consts::SIGINT,
-		Arc::clone(&killed)
-	));
+	let k2 = Arc::clone(&killed);
 
 	// Initialize our global oxipng compression settings. Doing it here is a
 	// bit strange, but less contentious than leveraging a lazy static within
@@ -179,14 +175,24 @@ fn _main() -> Result<(), FlacaError> {
 			.unwrap()
 			.with_reticulating_splines("Flaca");
 
+		// Intercept CTRL+C so we can gracefully shut down.
+		let p2 = progress.clone();
+		let _res = ctrlc::set_handler(move ||
+			// Once stops new progress items from being started.
+			if k2.compare_exchange(false, true, SeqCst, Relaxed).is_ok() {
+				p2.sigint();
+			}
+			// Twice shuts down immediately.
+			else { std::process::exit(1); }
+		);
+
 		// Keep track of the before and after file sizes as we go.
 		let before: AtomicU64 = AtomicU64::new(0);
 		let after: AtomicU64 = AtomicU64::new(0);
 
 		// Process!
 		paths.par_iter().for_each(|x|
-			if killed.load(SeqCst) { progress.sigint(); }
-			else {
+			if ! killed.load(SeqCst) {
 				let tmp = x.to_string_lossy();
 				progress.add(&tmp);
 
@@ -199,10 +205,8 @@ fn _main() -> Result<(), FlacaError> {
 			}
 		);
 
-		// Finish up.
-		progress.finish();
-
 		// Print a summary.
+		progress.finish();
 		progress.summary(MsgKind::Crunched, "image", "images")
 			.with_bytes_saved(BeforeAfter::from((
 				before.load(SeqCst),
@@ -211,12 +215,18 @@ fn _main() -> Result<(), FlacaError> {
 			.print();
 	}
 	else {
-		// Process!
-		paths.par_iter().for_each(|x|
-			if ! killed.load(SeqCst) {
-				let _res = image::encode(x, kinds, &oxi);
+		// Intercept CTRL+C so we can gracefully shut down.
+		let _res = ctrlc::set_handler(move ||
+			// Force immediate shutdown on second CTRL+C.
+			if k2.compare_exchange(false, true, SeqCst, SeqCst).is_err() {
+				std::process::exit(1);
 			}
 		);
+
+		// Process!
+		paths.par_iter().for_each(|x| if ! killed.load(SeqCst) {
+			let _res = image::encode(x, kinds, &oxi);
+		});
 	}
 
 	// Early abort?
