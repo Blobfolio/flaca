@@ -58,10 +58,7 @@ use rayon::iter::{
 	ParallelIterator,
 };
 use std::{
-	path::{
-		Path,
-		PathBuf,
-	},
+	path::Path,
 	sync::{
 		Arc,
 		atomic::{
@@ -123,7 +120,7 @@ fn _main() -> Result<(), FlacaError> {
 		_ => return Err(FlacaError::NoImages),
 	};
 
-	let paths: Vec<PathBuf> = Dowser::default()
+	let paths = Dowser::default()
 		.with_paths(args.args_os())
 		.into_vec(cb);
 
