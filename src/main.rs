@@ -214,6 +214,7 @@ fn find_all(p: &Path) -> bool {
 	)
 }
 
+#[cold]
 /// # Find JPEG Images.
 fn find_jpeg(p: &Path) -> bool {
 	Extension::try_from3(p).map_or_else(
@@ -222,6 +223,7 @@ fn find_jpeg(p: &Path) -> bool {
 	)
 }
 
+#[cold]
 /// # Find PNG Images.
 fn find_png(p: &Path) -> bool { Some(E_PNG) == Extension::try_from3(p) }
 
