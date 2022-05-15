@@ -105,7 +105,7 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 /// # Generate Oxipng Options.
 ///
 /// This returns the strongest possible Oxipng compression profile (minus
-/// zopfli, which we try separately).
+/// the zopfli bits, which we try in a separate pass).
 ///
 /// This is basically just "preset 3", with:
 /// * Error fixing enabled;
@@ -113,10 +113,6 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 /// * All the alpha optimizations;
 /// * Interlacing disabled;
 /// * All headers stripped;
-///
-/// This struct unfortunately uses a lot of heavy `IndexSet` objects, so
-/// constructing it manually (and _once_) shaves about ⅓ to ½ of a second off
-/// the compression time for each PNG.
 pub(super) fn oxipng_options() -> OxipngOptions {
 	use oxipng::{
 		AlphaOptim,

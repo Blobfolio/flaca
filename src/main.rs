@@ -135,10 +135,10 @@ fn _main() -> Result<(), FlacaError> {
 	let killed = Arc::from(AtomicBool::new(false));
 	let k2 = Arc::clone(&killed);
 
-	// Initialize our global oxipng compression settings. Doing it here is a
-	// bit strange, but less contentious than leveraging a lazy static within
-	// FlacaImage itself (particularly at scale). As a bonus, the memory can be
-	// freed afterward, making Valgrind happier.
+	// Initialize the oxipng compression options. Doing that here is a bit
+	// strange, but it is less contentious to use a shared reference to this
+	// object than to try to leverage a Lazy Static in a more appropriate
+	// location.
 	let oxi = image::oxipng_options();
 
 	// Sexy run-through.
