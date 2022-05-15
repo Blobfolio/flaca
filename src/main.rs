@@ -187,7 +187,7 @@ fn _main() -> Result<(), FlacaError> {
 		// Intercept CTRL+C so we can gracefully shut down.
 		let _res = ctrlc::set_handler(move ||
 			// Force immediate shutdown on second CTRL+C.
-			if k2.compare_exchange(false, true, SeqCst, SeqCst).is_err() {
+			if k2.compare_exchange(false, true, SeqCst, Relaxed).is_err() {
 				std::process::exit(1);
 			}
 		);
