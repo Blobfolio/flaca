@@ -58,7 +58,10 @@ use rayon::iter::{
 	ParallelIterator,
 };
 use std::{
-	path::PathBuf,
+	path::{
+		Path,
+		PathBuf,
+	},
 	sync::{
 		Arc,
 		atomic::{
@@ -109,37 +112,20 @@ fn _main() -> Result<(), FlacaError> {
 
 	// Figure out which kinds we're doing.
 	let mut kinds = ImageKind::ALL;
-	if args.switch2(b"--no-jpeg", b"--no-jpg") { kinds &= ! ImageKind::Jpeg; }
-	if args.switch(b"--no-png") { kinds &= ! ImageKind::Png; }
+	if args.switch2(b"--no-jpeg", b"--no-jpg") { kinds &= ! ImageKind::JPEG; }
+	if args.switch(b"--no-png") { kinds &= ! ImageKind::PNG; }
 
 	// Find files!
-	let paths: Vec<PathBuf> =
-		if ImageKind::ALL == kinds {
-			Dowser::default()
-				.with_paths(args.args_os())
-				.into_vec(|p|
-					Extension::try_from3(p).map_or_else(
-						|| Some(E_JPEG) == Extension::try_from4(p),
-						|e| e == E_JPG || e == E_PNG
-					)
-				)
-		}
-		else if ImageKind::Jpeg as u8 == kinds {
-			Dowser::default()
-				.with_paths(args.args_os())
-				.into_vec(|p|
-					Extension::try_from3(p).map_or_else(
-						|| Some(E_JPEG) == Extension::try_from4(p),
-						|e| e == E_JPG
-					)
-				)
-		}
-		else if ImageKind::Png as u8 == kinds {
-			Dowser::default()
-				.with_paths(args.args_os())
-				.into_vec(|p| Some(E_PNG) == Extension::try_from3(p))
-		}
-		else { Vec::new() };
+	let cb = match kinds {
+		ImageKind::ALL => find_all,
+		ImageKind::JPEG => find_jpeg,
+		ImageKind::PNG => find_png,
+		_ => return Err(FlacaError::NoImages),
+	};
+
+	let paths: Vec<PathBuf> = Dowser::default()
+		.with_paths(args.args_os())
+		.into_vec(cb);
 
 	if paths.is_empty() {
 		return Err(FlacaError::NoImages);
@@ -219,6 +205,25 @@ fn _main() -> Result<(), FlacaError> {
 	if killed.load(SeqCst) { Err(FlacaError::Killed) }
 	else { Ok(()) }
 }
+
+/// # Find JPEG and PNG Images.
+fn find_all(p: &Path) -> bool {
+	Extension::try_from3(p).map_or_else(
+		|| Some(E_JPEG) == Extension::try_from4(p),
+		|e| e == E_JPG || e == E_PNG
+	)
+}
+
+/// # Find JPEG Images.
+fn find_jpeg(p: &Path) -> bool {
+	Extension::try_from3(p).map_or_else(
+		|| Some(E_JPEG) == Extension::try_from4(p),
+		|e| e == E_JPG
+	)
+}
+
+/// # Find PNG Images.
+fn find_png(p: &Path) -> bool { Some(E_PNG) == Extension::try_from3(p) }
 
 #[cold]
 /// # Print Help.

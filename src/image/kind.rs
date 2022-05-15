@@ -2,10 +2,7 @@
 # Flaca: Image Kind
 */
 
-use std::ops::{
-	BitAnd,
-	Not,
-};
+use std::ops::BitAnd;
 
 
 #[repr(u8)]
@@ -20,7 +17,7 @@ pub(crate) enum ImageKind {
 	/// # Jpeg.
 	Jpeg = 0b0001,
 	/// # Png.
-	Png  = 0b0010,
+	Png =  0b0010,
 }
 
 impl BitAnd<ImageKind> for u8 {
@@ -28,14 +25,15 @@ impl BitAnd<ImageKind> for u8 {
 	fn bitand(self, rhs: ImageKind) -> Self::Output { self & (rhs as Self) }
 }
 
-impl Not for ImageKind {
-	type Output = u8;
-	fn not(self) -> Self::Output { ! (self as u8) }
-}
-
 impl ImageKind {
 	/// # All Kinds.
-	pub(crate) const ALL: u8 =  0b0011;
+	pub(crate) const ALL: u8 = 0b0011;
+
+	/// # JPEG Kind.
+	pub(crate) const JPEG: u8 = Self::Jpeg as u8;
+
+	/// # PNG Kind.
+	pub(crate) const PNG: u8 =  Self::Png as u8;
 
 	/// # Is JPEG?
 	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
