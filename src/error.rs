@@ -3,6 +3,7 @@
 */
 
 use argyle::ArgyleError;
+use fyi_msg::ProglessError;
 use std::{
 	error::Error,
 	fmt,
@@ -13,12 +14,14 @@ use std::{
 #[derive(Debug, Copy, Clone)]
 /// # Error type.
 pub(super) enum FlacaError {
-	/// # Argyle passthrough.
+	/// # Argyle Passthrough.
 	Argue(ArgyleError),
 	/// # Killed Early.
 	Killed,
-	/// # No images.
+	/// # No Images.
 	NoImages,
+	/// # Progress Passthrough.
+	Progress(ProglessError),
 }
 
 impl AsRef<str> for FlacaError {
@@ -40,6 +43,11 @@ impl From<ArgyleError> for FlacaError {
 	fn from(err: ArgyleError) -> Self { Self::Argue(err) }
 }
 
+impl From<ProglessError> for FlacaError {
+	#[inline]
+	fn from(err: ProglessError) -> Self { Self::Progress(err) }
+}
+
 impl FlacaError {
 	#[must_use]
 	/// # As Str.
@@ -48,6 +56,7 @@ impl FlacaError {
 			Self::Argue(e) => e.as_str(),
 			Self::Killed => "The process was aborted early.",
 			Self::NoImages => "No images were found.",
+			Self::Progress(e) => e.as_str(),
 		}
 	}
 }
