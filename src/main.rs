@@ -65,6 +65,7 @@ use std::{
 			AtomicBool,
 			AtomicU64,
 			Ordering::{
+				Acquire,
 				Relaxed,
 				SeqCst,
 			},
@@ -150,13 +151,13 @@ fn _main() -> Result<(), FlacaError> {
 		// Process!
 		sigint(Arc::clone(&killed), Some(progress.clone()));
 		paths.par_iter().for_each(|x|
-			if ! killed.load(SeqCst) {
+			if ! killed.load(Acquire) {
 				let tmp = x.to_string_lossy();
 				progress.add(&tmp);
 
 				if let Some((b, a)) = image::encode(x, kinds, &oxi) {
-					before.fetch_add(b, SeqCst);
-					after.fetch_add(a, SeqCst);
+					before.fetch_add(b, Relaxed);
+					after.fetch_add(a, Relaxed);
 				}
 
 				progress.remove(&tmp);
@@ -167,21 +168,21 @@ fn _main() -> Result<(), FlacaError> {
 		progress.finish();
 		progress.summary(MsgKind::Crunched, "image", "images")
 			.with_bytes_saved(BeforeAfter::from((
-				before.load(SeqCst),
-				after.load(SeqCst),
+				before.into_inner(),
+				after.into_inner(),
 			)))
 			.print();
 	}
 	// Silent run-through.
 	else {
 		sigint(Arc::clone(&killed), None);
-		paths.par_iter().for_each(|x| if ! killed.load(SeqCst) {
+		paths.par_iter().for_each(|x| if ! killed.load(Acquire) {
 			let _res = image::encode(x, kinds, &oxi);
 		});
 	}
 
 	// Early abort?
-	if killed.load(SeqCst) { Err(FlacaError::Killed) }
+	if killed.load(Acquire) { Err(FlacaError::Killed) }
 	else { Ok(()) }
 }
 
