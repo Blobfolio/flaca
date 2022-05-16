@@ -130,7 +130,6 @@ fn _main() -> Result<(), FlacaError> {
 
 	// Watch for SIGINT so we can shut down cleanly.
 	let killed = Arc::from(AtomicBool::new(false));
-	let k2 = Arc::clone(&killed);
 
 	// Initialize the oxipng compression options. Doing that here is a bit
 	// strange, but it is less contentious to use a shared reference to this
@@ -144,22 +143,12 @@ fn _main() -> Result<(), FlacaError> {
 		let progress = Progless::try_from(paths.len())?
 			.with_reticulating_splines("Flaca");
 
-		// Intercept CTRL+C so we can gracefully shut down.
-		let p2 = progress.clone();
-		let _res = ctrlc::set_handler(move ||
-			// Once stops new progress items from being started.
-			if k2.compare_exchange(false, true, SeqCst, Relaxed).is_ok() {
-				p2.sigint();
-			}
-			// Twice shuts down immediately.
-			else { std::process::exit(1); }
-		);
-
 		// Keep track of the before and after file sizes as we go.
 		let before: AtomicU64 = AtomicU64::new(0);
 		let after: AtomicU64 = AtomicU64::new(0);
 
 		// Process!
+		sigint(Arc::clone(&killed), Some(progress.clone()));
 		paths.par_iter().for_each(|x|
 			if ! killed.load(SeqCst) {
 				let tmp = x.to_string_lossy();
@@ -183,16 +172,9 @@ fn _main() -> Result<(), FlacaError> {
 			)))
 			.print();
 	}
+	// Silent run-through.
 	else {
-		// Intercept CTRL+C so we can gracefully shut down.
-		let _res = ctrlc::set_handler(move ||
-			// Force immediate shutdown on second CTRL+C.
-			if k2.compare_exchange(false, true, SeqCst, Relaxed).is_err() {
-				std::process::exit(1);
-			}
-		);
-
-		// Process!
+		sigint(Arc::clone(&killed), None);
 		paths.par_iter().for_each(|x| if ! killed.load(SeqCst) {
 			let _res = image::encode(x, kinds, &oxi);
 		});
@@ -275,4 +257,16 @@ OPTIMIZERS USED:
     Zopflipng <https://github.com/google/zopfli>
 "
 	));
+}
+
+/// # Hook Up CTRL+C.
+///
+/// Once stops processing new items, twice forces immediate shutdown.
+fn sigint(killed: Arc<AtomicBool>, progress: Option<Progless>) {
+	let _res = ctrlc::set_handler(move ||
+		if killed.compare_exchange(false, true, SeqCst, Relaxed).is_ok() {
+			if let Some(p) = &progress { p.sigint(); }
+		}
+		else { std::process::exit(1); }
+	);
 }
