@@ -14,9 +14,10 @@ use std::{
 /// # Build.
 pub fn main() {
 	println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
+	println!("cargo:rerun-if-changed=./skel/vendor/");
 
 	build_exts();
-	build_zopfli();
+	build_ffi();
 }
 
 /// # Pre-Compute Extensions.
@@ -45,24 +46,18 @@ const E_PNG: Extension = {};
 ///
 /// Rust's Zopfli implementation is insufficient for our needs; we have to link
 /// to the static libs for some FFI action instead.
-fn build_zopfli() {
+fn build_ffi() {
 	// Define some paths.
-	let repo = std::fs::canonicalize("vendor").expect("Missing vendor directory.");
-	let zopfli_src = repo.join("src/zopfli");
-	let zopflipng_src = repo.join("src/zopflipng");
-	let lodepng_src = repo.join("src/zopflipng/lodepng");
+	let repo = Path::new("skel/vendor");
+	let zopfli_src = repo.join("zopfli");
+	let lodepng_src = repo.join("lodepng");
 
-	// Easy abort.
-	if ! zopfli_src.is_dir() {
-		panic!("Missing zopfli sources; you might need to initialize the ./vendor submodule.");
-	}
-
-	// Build the C first.
+	// Build Zopfli first.
 	cc::Build::new()
-		.include(&zopfli_src)
+		.includes(&[repo, &lodepng_src, &zopfli_src])
+		.cpp(false)
 		.flag_if_supported("-ansi")
 		.flag_if_supported("-pedantic")
-		.opt_level(3)
 		.pic(true)
 		.static_flag(true)
 		.warnings(false)
@@ -76,28 +71,12 @@ fn build_zopfli() {
 			zopfli_src.join("squeeze.c"),
 			zopfli_src.join("tree.c"),
 			zopfli_src.join("util.c"),
-		])
-		.compile("zopfli");
-
-	// And now the C++.
-	cc::Build::new()
-		.includes(&[
-			&lodepng_src,
-			&zopflipng_src,
-		])
-		.flag_if_supported("-ansi")
-		.flag_if_supported("-pedantic")
-		.opt_level(3)
-		.pic(true)
-		.static_flag(true)
-		.warnings(false)
-		.cpp(true)
-		.files(&[
-			lodepng_src.join("lodepng.cpp"),
-			lodepng_src.join("lodepng_util.cpp"),
-			zopflipng_src.join("zopflipng_lib.cc"),
+			lodepng_src.join("lodepng.c"),
+			repo.join("custom_png_deflate.c"),
 		])
 		.compile("zopflipng");
+
+	// bindings(repo, &lodepng_src);
 }
 
 /// # Write File.
@@ -107,34 +86,38 @@ fn write(path: &Path, data: &[u8]) {
 }
 
 /*
-/// # Bindings.
+/// # FFI Bindings.
 ///
-/// These have been manually transcribed and brought into the project source,
-/// but for reference, this code was used to generate a rough blueprint for us.
-fn bindings() {
-	let root_zopfli = out_path("zopfli-git/src/zopfli");
-	let root_zopflipng = out_path("zopfli-git/src/zopflipng");
-	let root_lodepng = out_path("zopfli-git/src/zopflipng/lodepng");
-
+/// These have been manually transcribed into the Rust sources, but this
+/// commented-out code can be re-enabled if they ever need to be udpated.
+fn bindings(repo: &Path, lodepng_src: &Path) {
 	let bindings = bindgen::Builder::default()
-		.clang_args(&[
-			"-x",
-			"c++",
-			"-std=c++14",
-		])
-		.header(root_zopfli.join("zopfli.h").to_string_lossy())
-		.header(root_zopflipng.join("zopflipng_lib.h").to_string_lossy())
-		.header(root_lodepng.join("lodepng.h").to_string_lossy())
-		.header(root_lodepng.join("lodepng_util.h").to_string_lossy())
-		.allowlist_type("ZopfliPNGFilterStrategy")
-		.allowlist_type("CZopfliPNGOptions")
-		.allowlist_function("CZopfliPNGOptimize")
+		.header(lodepng_src.join("lodepng.h").to_string_lossy())
+		.header(repo.join("custom_png_deflate.h").to_string_lossy())
+		.allowlist_function("custom_png_deflate")
+		.allowlist_function("lodepng_color_mode_copy")
+		.allowlist_function("lodepng_color_stats_init")
+		.allowlist_function("lodepng_compute_color_stats")
+		.allowlist_function("lodepng_decode")
+		.allowlist_function("lodepng_encode")
+		.allowlist_function("lodepng_state_cleanup")
+		.allowlist_function("lodepng_state_init")
+		.allowlist_type("LodePNGColorStats")
+		.allowlist_type("LodePNGCompressSettings")
+		.allowlist_type("LodePNGState")
+		.size_t_is_usize(true)
+		.rustified_enum("LodePNGColorType")
+		.rustified_enum("LodePNGFilterStrategy")
 		.derive_debug(true)
 		.generate()
 		.expect("Unable to generate bindings");
 
+	let out_path = std::fs::canonicalize(std::env::var("OUT_DIR").expect("Missing OUT_DIR."))
+		.expect("Missing OUT_DIR.")
+		.join("flaca-bindings.rs");
+
 	bindings
-		.write_to_file(out_path("bindings.rs"))
+		.write_to_file(&out_path)
 		.expect("Couldn't write bindings!");
 }
 */

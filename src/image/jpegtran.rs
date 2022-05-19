@@ -44,10 +44,12 @@ use mozjpeg_sys::{
 	JXFORM_CODE_JXFORM_NONE,
 };
 use std::os::raw::{
-	c_uchar,
 	c_uint,
 	c_ulong,
 };
+use super::ffi::EncodedImage;
+
+
 
 // We need a couple more things from jpegtran. Mozjpeg-sys includes the right
 // sources but doesn't export the definitions.
@@ -62,6 +64,7 @@ extern "C" {
 
 
 
+#[allow(unsafe_code)]
 /// # Jpegtran (Memory Mode)
 ///
 /// ## Errors
@@ -72,12 +75,7 @@ extern "C" {
 /// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub(super) fn compress(
-	src_ptr: *const u8,
-	src_size: c_ulong,
-	out_ptr: *mut *mut c_uchar,
-	out_size: &mut c_ulong
-) -> bool {
+pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<c_ulong>> {
 	let mut transformoption = jpeg_transform_info {
 		transform: JXFORM_CODE_JXFORM_NONE,
 		perfect: 0,
@@ -104,10 +102,11 @@ pub(super) fn compress(
 	};
 
 	let mut meta = InOut::default();
+	let src_size = src.len() as c_ulong; // We know this fits.
 
 	unsafe {
 		// Load the source file.
-		jpeg_mem_src(&mut meta.src, src_ptr, src_size);
+		jpeg_mem_src(&mut meta.src, src.as_ptr(), src_size);
 
 		// Ignore markers.
 		jcopy_markers_setup(&mut meta.src, 0);
@@ -117,7 +116,7 @@ pub(super) fn compress(
 
 		// Read a few more properties into the source struct.
 		if jtransform_request_workspace(&mut meta.src, &mut transformoption) == 0 {
-			return false;
+			return None;
 		}
 	}
 
@@ -142,12 +141,13 @@ pub(super) fn compress(
 
 	// Turn on "code optimizing".
 	meta.dst.optimize_coding = 1;
+	let mut out = EncodedImage::default();
 	unsafe {
 		// Enable "progressive".
 		jpeg_simple_progression(&mut meta.dst);
 
 		// And load the destination file.
-		jpeg_mem_dest(&mut meta.dst, out_ptr, out_size);
+		jpeg_mem_dest(&mut meta.dst, &mut out.buf, &mut out.size);
 
 		// Start the compressor. Note: no data is written here.
 		jpeg_write_coefficients(&mut meta.dst, dst_coef_arrays);
@@ -164,7 +164,11 @@ pub(super) fn compress(
 		);
 	}
 
-	meta.build()
+	// Return it if we got it!
+	if meta.build() && ! out.is_empty() && out.size < src_size {
+		Some(out)
+	}
+	else { None }
 }
 
 
@@ -182,6 +186,7 @@ struct InOut {
 }
 
 impl Default for InOut {
+	#[allow(unsafe_code)]
 	fn default() -> Self {
 		let mut out = Self {
 			src_err: unsafe { std::mem::zeroed() },
@@ -208,6 +213,7 @@ impl Default for InOut {
 }
 
 impl InOut {
+	#[allow(unsafe_code)]
 	/// # Finish Compression.
 	fn build(&mut self) -> bool {
 		// Only build once.
@@ -221,6 +227,7 @@ impl InOut {
 }
 
 impl Drop for InOut {
+	#[allow(unsafe_code)]
 	fn drop(&mut self) {
 		self.build();
 		unsafe {

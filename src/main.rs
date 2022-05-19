@@ -2,6 +2,8 @@
 # Flaca
 */
 
+#![deny(unsafe_code)]
+
 #![warn(
 	clippy::filetype_is_file,
 	clippy::integer_division,
@@ -32,7 +34,7 @@ mod error;
 mod image;
 
 pub(crate) use error::FlacaError;
-pub(crate) use image::FlacaImage;
+pub(crate) use image::kind::ImageKind;
 
 use argyle::{
 	Argue,
@@ -56,13 +58,17 @@ use rayon::iter::{
 	ParallelIterator,
 };
 use std::{
-	path::PathBuf,
+	path::Path,
 	sync::{
 		Arc,
 		atomic::{
 			AtomicBool,
 			AtomicU64,
-			Ordering::SeqCst,
+			Ordering::{
+				Acquire,
+				Relaxed,
+				SeqCst,
+			},
 		},
 	},
 };
@@ -93,7 +99,6 @@ fn main() {
 	}
 }
 
-#[allow(clippy::option_if_let_else)] // This looks bad.
 #[inline]
 /// # Actual Main.
 ///
@@ -104,120 +109,103 @@ fn _main() -> Result<(), FlacaError> {
 		.with_list();
 
 	// Figure out which kinds we're doing.
-	let jpeg: bool = ! args.switch2(b"--no-jpeg", b"--no-jpg");
-	let png: bool = ! args.switch(b"--no-png");
-	let mut progress = args.switch2(b"-p", b"--progress");
+	let mut kinds = ImageKind::ALL;
+	if args.switch2(b"--no-jpeg", b"--no-jpg") { kinds &= ! ImageKind::JPEG; }
+	if args.switch(b"--no-png") { kinds &= ! ImageKind::PNG; }
 
 	// Find files!
-	let paths: Vec<PathBuf> = match (jpeg, png) {
-		// Both.
-		(true, true) => Dowser::default()
-			.with_paths(args.args_os())
-			.into_vec(|p|
-				Extension::try_from3(p).map_or_else(
-					|| Some(E_JPEG) == Extension::try_from4(p),
-					|e| e == E_JPG || e == E_PNG
-				)
-			),
-		// JPEG.
-		(true, false) => Dowser::default()
-			.with_paths(args.args_os())
-			.into_vec(|p|
-				Extension::try_from3(p).map_or_else(
-					|| Some(E_JPEG) == Extension::try_from4(p),
-					|e| e == E_JPG
-				)
-			),
-		// PNG.
-		(false, true) => Dowser::default()
-			.with_paths(args.args_os())
-			.into_vec(|p| Some(E_PNG) == Extension::try_from3(p)),
-		// Nothing?!
-		(false, false) => Vec::new(),
+	let cb = match kinds {
+		ImageKind::ALL => find_all,
+		ImageKind::JPEG => find_jpeg,
+		ImageKind::PNG => find_png,
+		_ => return Err(FlacaError::NoImages),
 	};
+
+	let paths = Dowser::default()
+		.with_paths(args.args_os())
+		.into_vec(cb);
 
 	if paths.is_empty() {
 		return Err(FlacaError::NoImages);
 	}
 
-	#[cfg(any(target_pointer_width = "64", target_pointer_width = "128"))]
-	if progress && 4_294_967_295 < paths.len()  {
-		Msg::warning("Progress can't be displayed when there are more than 4,294,967,295 images.")
-			.print();
-		progress = false;
-	}
-
 	// Watch for SIGINT so we can shut down cleanly.
 	let killed = Arc::from(AtomicBool::new(false));
-	let _res = signal_hook::flag::register(
-		signal_hook::consts::SIGINT,
-		Arc::clone(&killed)
-	);
+
+	// Initialize the oxipng compression options. Doing that here is a bit
+	// strange, but it is less contentious to use a shared reference to this
+	// object than to try to leverage a Lazy Static in a more appropriate
+	// location.
+	let oxi = image::oxipng_options();
 
 	// Sexy run-through.
-	if progress {
+	if args.switch2(b"-p", b"--progress") {
 		// Boot up a progress bar.
-		let progress = Progless::try_from(paths.len())
-			.unwrap()
-			.with_title(Some(Msg::custom("Flaca", 199, "Reticulating splines\u{2026}")));
+		let progress = Progless::try_from(paths.len())?
+			.with_reticulating_splines("Flaca");
 
 		// Keep track of the before and after file sizes as we go.
 		let before: AtomicU64 = AtomicU64::new(0);
 		let after: AtomicU64 = AtomicU64::new(0);
 
 		// Process!
-		let killed2 = AtomicBool::new(false);
+		sigint(Arc::clone(&killed), Some(progress.clone()));
 		paths.par_iter().for_each(|x|
-			if killed.load(SeqCst) {
-				if killed2.compare_exchange(false, true, SeqCst, SeqCst).is_ok() {
-					progress.set_title(Some(Msg::warning("Early shutdown in progress.")));
-				}
-			}
-			else {
-				// Encode if we can.
-				if let Some(mut enc) = FlacaImage::new(x, jpeg, png) {
-					let tmp = x.to_string_lossy();
-					progress.add(&tmp);
+			if ! killed.load(Acquire) {
+				let tmp = x.to_string_lossy();
+				progress.add(&tmp);
 
-					let (b, a) = enc.compress();
-					before.fetch_add(b, SeqCst);
-					after.fetch_add(a, SeqCst);
+				if let Some((b, a)) = image::encode(x, kinds, &oxi) {
+					before.fetch_add(b, Relaxed);
+					after.fetch_add(a, Relaxed);
+				}
 
-					progress.remove(&tmp);
-				}
-				// Bump the count if we can't.
-				else {
-					progress.increment();
-				}
+				progress.remove(&tmp);
 			}
 		);
 
-		// Finish up.
-		progress.finish();
-
 		// Print a summary.
+		progress.finish();
 		progress.summary(MsgKind::Crunched, "image", "images")
 			.with_bytes_saved(BeforeAfter::from((
-				before.load(SeqCst),
-				after.load(SeqCst),
+				before.into_inner(),
+				after.into_inner(),
 			)))
 			.print();
 	}
+	// Silent run-through.
 	else {
-		// Process!
-		paths.par_iter().for_each(|x|
-			if ! killed.load(SeqCst) {
-				if let Some(mut enc) = FlacaImage::new(x, jpeg, png) {
-					let _res = enc.compress();
-				}
-			}
-		);
+		sigint(Arc::clone(&killed), None);
+		paths.par_iter().for_each(|x| if ! killed.load(Acquire) {
+			let _res = image::encode(x, kinds, &oxi);
+		});
 	}
 
 	// Early abort?
-	if killed.load(SeqCst) { Err(FlacaError::Killed) }
+	if killed.load(Acquire) { Err(FlacaError::Killed) }
 	else { Ok(()) }
 }
+
+/// # Find JPEG and PNG Images.
+fn find_all(p: &Path) -> bool {
+	Extension::try_from3(p).map_or_else(
+		|| Some(E_JPEG) == Extension::try_from4(p),
+		|e| e == E_JPG || e == E_PNG
+	)
+}
+
+#[cold]
+/// # Find JPEG Images.
+fn find_jpeg(p: &Path) -> bool {
+	Extension::try_from3(p).map_or_else(
+		|| Some(E_JPEG) == Extension::try_from4(p),
+		|e| e == E_JPG
+	)
+}
+
+#[cold]
+/// # Find PNG Images.
+fn find_png(p: &Path) -> bool { Some(E_PNG) == Extension::try_from3(p) }
 
 #[cold]
 /// # Print Help.
@@ -259,10 +247,27 @@ ARGS:
     <PATH(S)>...      One or more image and/or directory paths to losslessly
                       compress.
 
+EARLY EXIT:
+    Compression can take a while. If you need to abort the process early, press
+    ", "\x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m once to quit after the active jobs have finished (skipping all
+    remaining images in the queue), or twice to shut down immediately.
+
 OPTIMIZERS USED:
     MozJPEG   <https://github.com/mozilla/mozjpeg>
     Oxipng    <https://github.com/shssoichiro/oxipng>
     Zopflipng <https://github.com/google/zopfli>
 "
 	));
+}
+
+/// # Hook Up CTRL+C.
+///
+/// Once stops processing new items, twice forces immediate shutdown.
+fn sigint(killed: Arc<AtomicBool>, progress: Option<Progless>) {
+	let _res = ctrlc::set_handler(move ||
+		if killed.compare_exchange(false, true, SeqCst, Relaxed).is_ok() {
+			if let Some(p) = &progress { p.sigint(); }
+		}
+		else { std::process::exit(1); }
+	);
 }

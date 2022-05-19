@@ -2,46 +2,55 @@
 # Flaca: Image Kind
 */
 
+use std::ops::BitAnd;
+
+
+#[repr(u8)]
+#[allow(clippy::redundant_pub_crate)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// # Image Kind.
 ///
 /// This evaluates the file type from its headers, ensuring we process images
 /// correctly even if they have the wrong extension (or don't process them if
 /// they're bunk).
-pub(super) enum ImageKind {
-	/// Jpeg.
-	Jpeg,
-	/// Png.
-	Png,
+pub(crate) enum ImageKind {
+	/// # Jpeg.
+	Jpeg = 0b0001,
+	/// # Png.
+	Png =  0b0010,
+}
+
+impl BitAnd<ImageKind> for u8 {
+	type Output = Self;
+	fn bitand(self, rhs: ImageKind) -> Self::Output { self & (rhs as Self) }
 }
 
 impl ImageKind {
-	/// # Parse Kind from Magic Bytes.
-	pub(super) fn parse(src: &[u8]) -> Option<Self> {
-		// If the source is big enough for headers, keep going!
-		if 12 < src.len() {
-			// PNG has just one way to be!
-			if src[..8] == [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n'] {
-				return Some(Self::Png);
-			}
+	/// # All Kinds.
+	pub(crate) const ALL: u8 = 0b0011;
 
-			// JPEG has a lot of different possible headers. They all start and
-			// end the same way, but have some differences in the middle.
-			if
-				src[..3] == [0xFF, 0xD8, 0xFF] &&
-				src[src.len() - 2..] == [0xFF, 0xD9] &&
-				(
-					src[3] == 0xDB ||
-					src[3] == 0xEE ||
-					src[3..12] == [0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01] ||
-					(src[3] == 0xE1 && src[6..12] == [b'E', b'x', b'i', b'f', 0x00, 0x00])
-				)
-			{
-				return Some(Self::Jpeg);
-			}
-		}
+	/// # JPEG Kind.
+	pub(crate) const JPEG: u8 = Self::Jpeg as u8;
 
-		None
+	/// # PNG Kind.
+	pub(crate) const PNG: u8 =  Self::Png as u8;
+
+	/// # Is JPEG?
+	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
+		12 < src.len() &&
+		src[..3] == [0xFF, 0xD8, 0xFF] &&
+		src[src.len() - 2..] == [0xFF, 0xD9] &&
+		(
+			src[3] == 0xDB ||
+			src[3] == 0xEE ||
+			src[3..12] == [0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01] ||
+			(src[3] == 0xE1 && src[6..12] == [b'E', b'x', b'i', b'f', 0x00, 0x00])
+		)
+	}
+
+	/// # Is PNG?
+	pub(crate) fn is_png(src: &[u8]) -> bool {
+		8 < src.len() && src[..8] == [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n']
 	}
 }
 
@@ -55,10 +64,24 @@ mod tests {
 	fn t_parse() {
 		macro_rules! test_kind {
 			($($file:literal $ty:expr),+) => ($(
-				assert_eq!(
-					std::fs::read($file).ok().and_then(|x| ImageKind::parse(&x)),
-					$ty
-				);
+				let raw = match std::fs::read($file) {
+					Ok(f) => f,
+					Err(_) => panic!("Unable to open {}.", $file),
+				};
+				match $ty {
+					Some(ImageKind::Jpeg) => {
+						assert!(ImageKind::is_jpeg(&raw));
+						assert!(! ImageKind::is_png(&raw));
+					},
+					Some(ImageKind::Png) => {
+						assert!(! ImageKind::is_jpeg(&raw));
+						assert!(ImageKind::is_png(&raw));
+					},
+					_ => {
+						assert!(! ImageKind::is_jpeg(&raw));
+						assert!(! ImageKind::is_png(&raw));
+					},
+				}
 			)+);
 		}
 
