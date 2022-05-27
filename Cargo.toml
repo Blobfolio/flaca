@@ -11,7 +11,6 @@ publish = false
 exclude = [
 	".gitignore",
 	".righteous-sandbox.json",
-	"about.toml",
 	"doc",
 	"justfile",
 	"release",
