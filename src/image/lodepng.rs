@@ -248,6 +248,11 @@ pub(super) struct LodePNGInfo {
 	pub(super) iccp_name: *mut c_char,
 	pub(super) iccp_profile: *mut c_uchar,
 	pub(super) iccp_profile_size: c_uint,
+	pub(super) sbit_defined: c_uint,
+	pub(super) sbit_r: c_uint,
+	pub(super) sbit_g: c_uint,
+	pub(super) sbit_b: c_uint,
+	pub(super) sbit_a: c_uint,
 	pub(super) unknown_chunks_data: [*mut c_uchar; 3usize],
 	pub(super) unknown_chunks_size: [usize; 3usize],
 }
@@ -496,7 +501,7 @@ mod tests {
 	fn bindgen_test_layout_LodePNGState() {
 		assert_eq!(
 			::std::mem::size_of::<LodePNGState>(),
-			528usize,
+			544usize,
 			concat!("Size of: ", stringify!(LodePNGState))
 		);
 		assert_eq!(
@@ -504,56 +509,91 @@ mod tests {
 			8usize,
 			concat!("Alignment of ", stringify!(LodePNGState))
 		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGState>())).decoder as *const _ as usize },
-			0usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGState),
-				"::",
-				stringify!(decoder)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGState>())).encoder as *const _ as usize },
-			80usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGState),
-				"::",
-				stringify!(encoder)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGState>())).info_raw as *const _ as usize },
-			168usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGState),
-				"::",
-				stringify!(info_raw)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGState>())).info_png as *const _ as usize },
-			208usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGState),
-				"::",
-				stringify!(info_png)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGState>())).error as *const _ as usize },
-			520usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGState),
-				"::",
-				stringify!(error)
-			)
-		);
+		fn test_field_decoder() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGState>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).decoder) as usize - ptr as usize
+				},
+				0usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGState),
+					"::",
+					stringify!(decoder)
+				)
+			);
+		}
+		test_field_decoder();
+		fn test_field_encoder() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGState>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).encoder) as usize - ptr as usize
+				},
+				80usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGState),
+					"::",
+					stringify!(encoder)
+				)
+			);
+		}
+		test_field_encoder();
+		fn test_field_info_raw() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGState>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).info_raw) as usize - ptr as usize
+				},
+				168usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGState),
+					"::",
+					stringify!(info_raw)
+				)
+			);
+		}
+		test_field_info_raw();
+		fn test_field_info_png() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGState>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).info_png) as usize - ptr as usize
+				},
+				208usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGState),
+					"::",
+					stringify!(info_png)
+				)
+			);
+		}
+		test_field_info_png();
+		fn test_field_error() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGState>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).error) as usize - ptr as usize
+				},
+				536usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGState),
+					"::",
+					stringify!(error)
+				)
+			);
+		}
+		test_field_error();
 	}
 
 	#[test]
@@ -938,7 +978,7 @@ mod tests {
 	fn bindgen_test_layout_LodePNGInfo() {
 		assert_eq!(
 			::std::mem::size_of::<LodePNGInfo>(),
-			312usize,
+			328usize,
 			concat!("Size of: ", stringify!(LodePNGInfo))
 		);
 		assert_eq!(
@@ -946,416 +986,788 @@ mod tests {
 			8usize,
 			concat!("Alignment of ", stringify!(LodePNGInfo))
 		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).compression_method as *const _ as usize },
-			0usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(compression_method)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).filter_method as *const _ as usize },
-			4usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(filter_method)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).interlace_method as *const _ as usize },
-			8usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(interlace_method)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).color as *const _ as usize },
-			16usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(color)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).background_defined as *const _ as usize },
-			56usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(background_defined)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).background_r as *const _ as usize },
-			60usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(background_r)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).background_g as *const _ as usize },
-			64usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(background_g)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).background_b as *const _ as usize },
-			68usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(background_b)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).text_num as *const _ as usize },
-			72usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(text_num)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).text_keys as *const _ as usize },
-			80usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(text_keys)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).text_strings as *const _ as usize },
-			88usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(text_strings)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).itext_num as *const _ as usize },
-			96usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(itext_num)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).itext_keys as *const _ as usize },
-			104usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(itext_keys)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).itext_langtags as *const _ as usize },
-			112usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(itext_langtags)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).itext_transkeys as *const _ as usize },
-			120usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(itext_transkeys)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).itext_strings as *const _ as usize },
-			128usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(itext_strings)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).time_defined as *const _ as usize },
-			136usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(time_defined)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).time as *const _ as usize },
-			140usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(time)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).phys_defined as *const _ as usize },
-			164usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(phys_defined)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).phys_x as *const _ as usize },
-			168usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(phys_x)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).phys_y as *const _ as usize },
-			172usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(phys_y)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).phys_unit as *const _ as usize },
-			176usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(phys_unit)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).gama_defined as *const _ as usize },
-			180usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(gama_defined)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).gama_gamma as *const _ as usize },
-			184usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(gama_gamma)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).chrm_defined as *const _ as usize },
-			188usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(chrm_defined)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).chrm_white_x as *const _ as usize },
-			192usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(chrm_white_x)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).chrm_white_y as *const _ as usize },
-			196usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(chrm_white_y)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).chrm_red_x as *const _ as usize },
-			200usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(chrm_red_x)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).chrm_red_y as *const _ as usize },
-			204usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(chrm_red_y)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).chrm_green_x as *const _ as usize },
-			208usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(chrm_green_x)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).chrm_green_y as *const _ as usize },
-			212usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(chrm_green_y)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).chrm_blue_x as *const _ as usize },
-			216usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(chrm_blue_x)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).chrm_blue_y as *const _ as usize },
-			220usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(chrm_blue_y)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).srgb_defined as *const _ as usize },
-			224usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(srgb_defined)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).srgb_intent as *const _ as usize },
-			228usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(srgb_intent)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).iccp_defined as *const _ as usize },
-			232usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(iccp_defined)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).iccp_name as *const _ as usize },
-			240usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(iccp_name)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).iccp_profile as *const _ as usize },
-			248usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(iccp_profile)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).iccp_profile_size as *const _ as usize },
-			256usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(iccp_profile_size)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).unknown_chunks_data as *const _ as usize },
-			264usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(unknown_chunks_data)
-			)
-		);
-		assert_eq!(
-			unsafe { &(*(::std::ptr::null::<LodePNGInfo>())).unknown_chunks_size as *const _ as usize },
-			288usize,
-			concat!(
-				"Offset of field: ",
-				stringify!(LodePNGInfo),
-				"::",
-				stringify!(unknown_chunks_size)
-			)
-		);
+		fn test_field_compression_method() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).compression_method) as usize - ptr as usize
+				},
+				0usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(compression_method)
+				)
+			);
+		}
+		test_field_compression_method();
+		fn test_field_filter_method() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).filter_method) as usize - ptr as usize
+				},
+				4usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(filter_method)
+				)
+			);
+		}
+		test_field_filter_method();
+		fn test_field_interlace_method() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).interlace_method) as usize - ptr as usize
+				},
+				8usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(interlace_method)
+				)
+			);
+		}
+		test_field_interlace_method();
+		fn test_field_color() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).color) as usize - ptr as usize
+				},
+				16usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(color)
+				)
+			);
+		}
+		test_field_color();
+		fn test_field_background_defined() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).background_defined) as usize - ptr as usize
+				},
+				56usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(background_defined)
+				)
+			);
+		}
+		test_field_background_defined();
+		fn test_field_background_r() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).background_r) as usize - ptr as usize
+				},
+				60usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(background_r)
+				)
+			);
+		}
+		test_field_background_r();
+		fn test_field_background_g() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).background_g) as usize - ptr as usize
+				},
+				64usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(background_g)
+				)
+			);
+		}
+		test_field_background_g();
+		fn test_field_background_b() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).background_b) as usize - ptr as usize
+				},
+				68usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(background_b)
+				)
+			);
+		}
+		test_field_background_b();
+		fn test_field_text_num() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).text_num) as usize - ptr as usize
+				},
+				72usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(text_num)
+				)
+			);
+		}
+		test_field_text_num();
+		fn test_field_text_keys() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).text_keys) as usize - ptr as usize
+				},
+				80usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(text_keys)
+				)
+			);
+		}
+		test_field_text_keys();
+		fn test_field_text_strings() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).text_strings) as usize - ptr as usize
+				},
+				88usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(text_strings)
+				)
+			);
+		}
+		test_field_text_strings();
+		fn test_field_itext_num() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).itext_num) as usize - ptr as usize
+				},
+				96usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(itext_num)
+				)
+			);
+		}
+		test_field_itext_num();
+		fn test_field_itext_keys() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).itext_keys) as usize - ptr as usize
+				},
+				104usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(itext_keys)
+				)
+			);
+		}
+		test_field_itext_keys();
+		fn test_field_itext_langtags() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).itext_langtags) as usize - ptr as usize
+				},
+				112usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(itext_langtags)
+				)
+			);
+		}
+		test_field_itext_langtags();
+		fn test_field_itext_transkeys() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).itext_transkeys) as usize - ptr as usize
+				},
+				120usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(itext_transkeys)
+				)
+			);
+		}
+		test_field_itext_transkeys();
+		fn test_field_itext_strings() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).itext_strings) as usize - ptr as usize
+				},
+				128usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(itext_strings)
+				)
+			);
+		}
+		test_field_itext_strings();
+		fn test_field_time_defined() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).time_defined) as usize - ptr as usize
+				},
+				136usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(time_defined)
+				)
+			);
+		}
+		test_field_time_defined();
+		fn test_field_time() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).time) as usize - ptr as usize
+				},
+				140usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(time)
+				)
+			);
+		}
+		test_field_time();
+		fn test_field_phys_defined() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).phys_defined) as usize - ptr as usize
+				},
+				164usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(phys_defined)
+				)
+			);
+		}
+		test_field_phys_defined();
+		fn test_field_phys_x() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).phys_x) as usize - ptr as usize
+				},
+				168usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(phys_x)
+				)
+			);
+		}
+		test_field_phys_x();
+		fn test_field_phys_y() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).phys_y) as usize - ptr as usize
+				},
+				172usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(phys_y)
+				)
+			);
+		}
+		test_field_phys_y();
+		fn test_field_phys_unit() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).phys_unit) as usize - ptr as usize
+				},
+				176usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(phys_unit)
+				)
+			);
+		}
+		test_field_phys_unit();
+		fn test_field_gama_defined() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).gama_defined) as usize - ptr as usize
+				},
+				180usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(gama_defined)
+				)
+			);
+		}
+		test_field_gama_defined();
+		fn test_field_gama_gamma() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).gama_gamma) as usize - ptr as usize
+				},
+				184usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(gama_gamma)
+				)
+			);
+		}
+		test_field_gama_gamma();
+		fn test_field_chrm_defined() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).chrm_defined) as usize - ptr as usize
+				},
+				188usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(chrm_defined)
+				)
+			);
+		}
+		test_field_chrm_defined();
+		fn test_field_chrm_white_x() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).chrm_white_x) as usize - ptr as usize
+				},
+				192usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(chrm_white_x)
+				)
+			);
+		}
+		test_field_chrm_white_x();
+		fn test_field_chrm_white_y() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).chrm_white_y) as usize - ptr as usize
+				},
+				196usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(chrm_white_y)
+				)
+			);
+		}
+		test_field_chrm_white_y();
+		fn test_field_chrm_red_x() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).chrm_red_x) as usize - ptr as usize
+				},
+				200usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(chrm_red_x)
+				)
+			);
+		}
+		test_field_chrm_red_x();
+		fn test_field_chrm_red_y() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).chrm_red_y) as usize - ptr as usize
+				},
+				204usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(chrm_red_y)
+				)
+			);
+		}
+		test_field_chrm_red_y();
+		fn test_field_chrm_green_x() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).chrm_green_x) as usize - ptr as usize
+				},
+				208usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(chrm_green_x)
+				)
+			);
+		}
+		test_field_chrm_green_x();
+		fn test_field_chrm_green_y() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).chrm_green_y) as usize - ptr as usize
+				},
+				212usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(chrm_green_y)
+				)
+			);
+		}
+		test_field_chrm_green_y();
+		fn test_field_chrm_blue_x() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).chrm_blue_x) as usize - ptr as usize
+				},
+				216usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(chrm_blue_x)
+				)
+			);
+		}
+		test_field_chrm_blue_x();
+		fn test_field_chrm_blue_y() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).chrm_blue_y) as usize - ptr as usize
+				},
+				220usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(chrm_blue_y)
+				)
+			);
+		}
+		test_field_chrm_blue_y();
+		fn test_field_srgb_defined() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).srgb_defined) as usize - ptr as usize
+				},
+				224usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(srgb_defined)
+				)
+			);
+		}
+		test_field_srgb_defined();
+		fn test_field_srgb_intent() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).srgb_intent) as usize - ptr as usize
+				},
+				228usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(srgb_intent)
+				)
+			);
+		}
+		test_field_srgb_intent();
+		fn test_field_iccp_defined() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).iccp_defined) as usize - ptr as usize
+				},
+				232usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(iccp_defined)
+				)
+			);
+		}
+		test_field_iccp_defined();
+		fn test_field_iccp_name() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).iccp_name) as usize - ptr as usize
+				},
+				240usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(iccp_name)
+				)
+			);
+		}
+		test_field_iccp_name();
+		fn test_field_iccp_profile() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).iccp_profile) as usize - ptr as usize
+				},
+				248usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(iccp_profile)
+				)
+			);
+		}
+		test_field_iccp_profile();
+		fn test_field_iccp_profile_size() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).iccp_profile_size) as usize - ptr as usize
+				},
+				256usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(iccp_profile_size)
+				)
+			);
+		}
+		test_field_iccp_profile_size();
+		fn test_field_sbit_defined() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).sbit_defined) as usize - ptr as usize
+				},
+				260usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(sbit_defined)
+				)
+			);
+		}
+		test_field_sbit_defined();
+		fn test_field_sbit_r() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).sbit_r) as usize - ptr as usize
+				},
+				264usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(sbit_r)
+				)
+			);
+		}
+		test_field_sbit_r();
+		fn test_field_sbit_g() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).sbit_g) as usize - ptr as usize
+				},
+				268usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(sbit_g)
+				)
+			);
+		}
+		test_field_sbit_g();
+		fn test_field_sbit_b() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).sbit_b) as usize - ptr as usize
+				},
+				272usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(sbit_b)
+				)
+			);
+		}
+		test_field_sbit_b();
+		fn test_field_sbit_a() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).sbit_a) as usize - ptr as usize
+				},
+				276usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(sbit_a)
+				)
+			);
+		}
+		test_field_sbit_a();
+		fn test_field_unknown_chunks_data() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).unknown_chunks_data) as usize - ptr as usize
+				},
+				280usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(unknown_chunks_data)
+				)
+			);
+		}
+		test_field_unknown_chunks_data();
+		fn test_field_unknown_chunks_size() {
+			assert_eq!(
+				unsafe {
+					let uninit = ::std::mem::MaybeUninit::<LodePNGInfo>::uninit();
+					let ptr = uninit.as_ptr();
+					::std::ptr::addr_of!((*ptr).unknown_chunks_size) as usize - ptr as usize
+				},
+				304usize,
+				concat!(
+					"Offset of field: ",
+					stringify!(LodePNGInfo),
+					"::",
+					stringify!(unknown_chunks_size)
+				)
+			);
+		}
+		test_field_unknown_chunks_size();
 	}
 
 	#[test]
