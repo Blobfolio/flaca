@@ -56,11 +56,14 @@ fn build_ffi() {
 	cc::Build::new()
 		.includes(&[repo, &lodepng_src, &zopfli_src])
 		.cpp(false)
+		.flag_if_supported("-W")
 		.flag_if_supported("-ansi")
 		.flag_if_supported("-pedantic")
+		.flag_if_supported("-lm")
+		.flag_if_supported("-Wno-unused-function")
+		.flag_if_supported("-Wno-unused")
 		.pic(true)
 		.static_flag(true)
-		.warnings(false)
 		.files(&[
 			zopfli_src.join("blocksplitter.c"),
 			zopfli_src.join("cache.c"),
@@ -74,6 +77,8 @@ fn build_ffi() {
 			lodepng_src.join("lodepng.c"),
 			repo.join("custom_png_deflate.c"),
 		])
+		.define("LODEPNG_NO_COMPILE_DISK", None)
+		.define("LODEPNG_NO_COMPILE_CPP", None)
 		.compile("zopflipng");
 
 	// bindings(repo, &lodepng_src);
