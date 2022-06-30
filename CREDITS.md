@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.0.1
-    Generated: 2022-06-19 03:29:46 UTC
+    Version:   2.0.2
+    Generated: 2022-06-30 19:52:12 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -22,17 +22,17 @@
 | [crossbeam-channel](https://github.com/crossbeam-rs/crossbeam) | 0.5.5 |  | Apache-2.0 or MIT |
 | [crossbeam-deque](https://github.com/crossbeam-rs/crossbeam) | 0.8.1 | The Crossbeam Project Developers | Apache-2.0 or MIT |
 | [crossbeam-epoch](https://github.com/crossbeam-rs/crossbeam) | 0.9.9 |  | Apache-2.0 or MIT |
-| [crossbeam-utils](https://github.com/crossbeam-rs/crossbeam) | 0.8.9 |  | Apache-2.0 or MIT |
+| [crossbeam-utils](https://github.com/crossbeam-rs/crossbeam) | 0.8.10 |  | Apache-2.0 or MIT |
 | [ctrlc](https://github.com/Detegr/rust-ctrlc.git) | 3.2.2 | [Antti Keränen](mailto:detegr@gmail.com) | Apache-2.0 or MIT |
 | [dactyl](https://github.com/Blobfolio/dactyl) | 0.4.0 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [deflate](https://github.com/image-rs/deflate-rs) | 0.8.6 | [oyvindln](mailto:oyvindln@users.noreply.github.com) | Apache-2.0 or MIT |
 | [dowser](https://github.com/Blobfolio/dowser) | 0.5.2 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
-| [either](https://github.com/bluss/either) | 1.6.1 | bluss | Apache-2.0 or MIT |
+| [either](https://github.com/bluss/either) | 1.7.0 | bluss | Apache-2.0 or MIT |
 | [fastrand](https://github.com/smol-rs/fastrand) | 1.7.0 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 or MIT |
-| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.9.12 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.9.13 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.12.1 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
 | [image](https://github.com/image-rs/image) | 0.23.14 | The image-rs Developers | MIT |
-| [indexmap](https://github.com/bluss/indexmap) | 1.9.0 |  | Apache-2.0 or MIT |
+| [indexmap](https://github.com/bluss/indexmap) | 1.9.1 |  | Apache-2.0 or MIT |
 | [itertools](https://github.com/rust-itertools/itertools) | 0.10.3 | bluss | Apache-2.0 or MIT |
 | [libc](https://github.com/rust-lang/libc) | 0.2.126 | The Rust Project Developers | Apache-2.0 or MIT |
 | [libdeflate-sys](https://github.com/adamkewley/libdeflater) | 0.7.5 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
