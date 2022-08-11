@@ -1,6 +1,6 @@
-.TH "FLACA" "1" "June 2022" "Flaca v2.0.2" "User Commands"
+.TH "FLACA" "1" "August 2022" "Flaca v2.0.3" "User Commands"
 .SH NAME
-Flaca \- Manual page for flaca v2.0.2.
+Flaca \- Manual page for flaca v2.0.3.
 .SH DESCRIPTION
 Brute\-force, lossless JPEG and PNG compression.
 .SS USAGE:
@@ -30,11 +30,17 @@ Read (absolute) image and/or directory paths from this text file, one entry per 
 .TP
 One or more image and/or directory paths to losslessly compress.
 .SH EARLY EXIT
-Compression can take a while. If you need to abort the process early, press
+Press CTRL+C once to quit as soon as the already\-in\-progress operations have
 .RE
-CTRL+C once to quit after the active jobs have finished (skipping all
+finished (ignoring any pending images still in the queue).
 .RE
-remaining images in the queue), or twice to shut down immediately.
+
+.RE
+Press CTRL+C a second time if you need to exit IMMEDIATELY, but note that doing
+.RE
+so may leave artifacts (temporary files) behind, and in rare cases, lead to
+.RE
+image corruption.
 .SS OPTIMIZERS:
 .TP
 \fBMozJPEG\fR
