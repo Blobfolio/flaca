@@ -251,9 +251,12 @@ ARGS:
                       compress.
 
 EARLY EXIT:
-    Compression can take a while. If you need to abort the process early, press
-    ", "\x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m once to quit after the active jobs have finished (skipping all
-    remaining images in the queue), or twice to shut down immediately.
+    Press ", "\x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m once to quit as soon as the already-in-progress operations
+    have finished (ignoring any pending images still in the queue).
+
+    Press \x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m a second time if you need to exit IMMEDIATELY, but note that
+    doing so may leave artifacts (temporary files) behind, and in rare cases,
+    lead to image corruption.
 
 OPTIMIZERS USED:
     MozJPEG   <https://github.com/mozilla/mozjpeg>

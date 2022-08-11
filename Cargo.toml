@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "2.0.2"
+version = "2.0.3"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -77,9 +77,12 @@ description = "One or more image and/or directory paths to losslessly compress."
 name = "EARLY EXIT"
 inside = false
 lines = [
-	"Compression can take a while. If you need to abort the process early, press",
-	"CTRL+C once to quit after the active jobs have finished (skipping all",
-	"remaining images in the queue), or twice to shut down immediately."
+	"Press CTRL+C once to quit as soon as the already-in-progress operations have",
+	"finished (ignoring any pending images still in the queue).",
+	"",
+	"Press CTRL+C a second time if you need to exit IMMEDIATELY, but note that doing",
+	"so may leave artifacts (temporary files) behind, and in rare cases, lead to",
+	"image corruption.",
 ]
 
 [[package.metadata.bashman.sections]]
