@@ -96,7 +96,7 @@ items = [
 
 [dependencies]
 argyle = "0.6.*"
-ctrlc = "=3.2.2"
+ctrlc = "=3.2.3"
 dowser = "0.5.*"
 libc = "0.2.*"
 rayon = "=1.5.3"
