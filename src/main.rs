@@ -57,6 +57,7 @@ use fyi_msg::{
 	Progless,
 };
 use rayon::iter::{
+	IndexedParallelIterator,
 	IntoParallelRefIterator,
 	ParallelIterator,
 };
@@ -153,7 +154,7 @@ fn _main() -> Result<(), FlacaError> {
 
 		// Process!
 		sigint(Arc::clone(&killed), Some(progress.clone()));
-		paths.par_iter().for_each(|x|
+		paths.par_iter().with_max_len(1).for_each(|x|
 			if ! killed.load(Acquire) {
 				let tmp = x.to_string_lossy();
 				progress.add(&tmp);
