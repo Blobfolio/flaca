@@ -103,7 +103,7 @@ rayon = "=1.5.3"
 write_atomic = "0.2.*"
 
 [dependencies.fyi_msg]
-version = "0.9.*, >=0.9.8"
+version = "0.10.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
