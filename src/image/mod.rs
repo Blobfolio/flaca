@@ -123,8 +123,9 @@ pub(super) fn oxipng_options() -> OxipngOptions {
 
 	OxipngOptions {
 		backup: false,
-		pretend: false,
 		fix_errors: true,
+		check: false,
+		pretend: false,
 		force: false,
 		preserve_attrs: false,
 		filter: IndexSet::from([0, 1, 2, 3, 4, 5]),
