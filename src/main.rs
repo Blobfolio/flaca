@@ -127,7 +127,7 @@ fn _main() -> Result<(), FlacaError> {
 
 	let paths = Dowser::default()
 		.with_paths(args.args_os())
-		.into_vec(cb);
+		.into_vec_filtered(cb);
 
 	if paths.is_empty() {
 		return Err(FlacaError::NoImages);
