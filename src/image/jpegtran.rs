@@ -43,7 +43,7 @@ use mozjpeg_sys::{
 	jvirt_barray_ptr,
 	JXFORM_CODE_JXFORM_NONE,
 };
-use std::os::raw::{
+use std::ffi::{
 	c_uint,
 	c_ulong,
 };

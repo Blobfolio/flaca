@@ -5,12 +5,12 @@ This module contains some general-purpose FFI helpers.
 */
 
 use std::{
-	ops::Deref,
-	os::raw::{
+	ffi::{
 		c_uchar,
 		c_ulong,
 		c_void,
 	},
+	ops::Deref,
 };
 
 
