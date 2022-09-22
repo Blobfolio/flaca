@@ -11,14 +11,14 @@ The `custom_png_deflate` extern is not part of lodepng, but gets attached to
 #![allow(non_camel_case_types, non_upper_case_globals)]
 
 use std::{
-	mem::MaybeUninit,
-	os::raw::{
+	ffi::{
 		c_uint,
 		c_uchar,
 		c_void,
 		c_char,
 		c_ushort,
 	},
+	mem::MaybeUninit,
 };
 use super::ffi::EncodedImage;
 

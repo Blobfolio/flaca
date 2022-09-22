@@ -1,8 +1,9 @@
 # Flaca
 
-[![Build Status](https://github.com/Blobfolio/flaca/workflows/Build/badge.svg)](https://github.com/Blobfolio/flaca/actions)
-[![Dependency Status](https://deps.rs/repo/github/blobfolio/flaca/status.svg)](https://deps.rs/repo/github/blobfolio/flaca)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/Blobfolio/flaca)
+[![ci](https://img.shields.io/github/workflow/status/Blobfolio/flaca/Build.svg?style=flat-square&label=ci)](https://github.com/Blobfolio/flaca/actions)
+[![deps.rs](https://deps.rs/repo/github/blobfolio/flaca/status.svg?style=flat-square&label=deps.rs)](https://deps.rs/repo/github/blobfolio/flaca)<br>
+[![license](https://img.shields.io/badge/license-wtfpl-ff1493?style=flat-square)](https://en.wikipedia.org/wiki/WTFPL)
+[![contributions welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square&label=contributions)](https://github.com/Blobfolio/flaca/issues)
 
 Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of maximally, **losslessly** compressing JPEG and PNG images for use in production **web environments**.
 
