@@ -94,7 +94,7 @@ fn write(path: &Path, data: &[u8]) {
 /// # FFI Bindings.
 ///
 /// These have been manually transcribed into the Rust sources, but this
-/// commented-out code can be re-enabled if they ever need to be udpated.
+/// commented-out code can be re-enabled if they ever need to be updated.
 fn bindings(repo: &Path, lodepng_src: &Path) {
 	let bindings = bindgen::Builder::default()
 		.header(lodepng_src.join("lodepng.h").to_string_lossy())
