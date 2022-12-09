@@ -111,9 +111,8 @@ version = "=1.0.3"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
-version = "=6.0.1"
+version = "=7.0.0"
 default-features = false
-features = [ "libdeflater" ]
 
 [build-dependencies]
 cc = "=1.0.77"
