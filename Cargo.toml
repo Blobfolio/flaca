@@ -99,7 +99,7 @@ argyle = "0.6.*"
 ctrlc = "=3.2.3"
 dowser = "0.6.*"
 libc = "0.2.*"
-rayon = "=1.6.0"
+rayon = "=1.6.1"
 write_atomic = "0.2.*"
 
 [dependencies.fyi_msg]
