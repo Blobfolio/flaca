@@ -119,6 +119,7 @@ pub(super) fn oxipng_options() -> OxipngOptions {
 		Deflaters,
 		Headers,
 		IndexSet,
+		RowFilter,
 	};
 
 	OxipngOptions {
@@ -128,7 +129,18 @@ pub(super) fn oxipng_options() -> OxipngOptions {
 		pretend: false,
 		force: false,
 		preserve_attrs: false,
-		filter: IndexSet::from([0, 1, 2, 3, 4, 5]),
+		filter: IndexSet::from([
+			RowFilter::None,
+			RowFilter::Average,
+			RowFilter::BigEnt,
+			RowFilter::Bigrams,
+			RowFilter::Brute,
+			RowFilter::Entropy,
+			RowFilter::MinSum,
+			RowFilter::Paeth,
+			RowFilter::Sub,
+			RowFilter::Up,
+		]),
 		interlace: Some(0),
 		alphas: IndexSet::from([
 			AlphaOptim::NoOp,
@@ -141,8 +153,8 @@ pub(super) fn oxipng_options() -> OxipngOptions {
 		grayscale_reduction: true,
 		idat_recoding: true,
 		strip: Headers::All,
-		deflate: Deflaters::Libdeflater,
-		use_heuristics: false,
+		deflate: Deflaters::Libdeflater { compression: 12 },
+		fast_evaluation: false,
 		timeout: None,
 	}
 }
