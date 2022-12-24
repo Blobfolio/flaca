@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.0.8
-    Generated: 2022-12-15 18:09:52 UTC
+    Version:   2.0.9
+    Generated: 2022-12-24 16:49:47 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -32,7 +32,7 @@
 | [image](https://github.com/image-rs/image) | 0.24.5 | The image-rs Developers | MIT |
 | [indexmap](https://github.com/bluss/indexmap) | 1.9.2 |  | Apache-2.0 or MIT |
 | [itertools](https://github.com/rust-itertools/itertools) | 0.10.5 | bluss | Apache-2.0 or MIT |
-| [libc](https://github.com/rust-lang/libc) | 0.2.138 | The Rust Project Developers | Apache-2.0 or MIT |
+| [libc](https://github.com/rust-lang/libc) | 0.2.139 | The Rust Project Developers | Apache-2.0 or MIT |
 | [libdeflate-sys](https://github.com/adamkewley/libdeflater) | 0.11.0 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [libdeflater](https://github.com/adamkewley/libdeflater) | 0.11.0 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [log](https://github.com/rust-lang/log) | 0.4.17 | The Rust Project Developers | Apache-2.0 or MIT |
@@ -42,8 +42,8 @@
 | [num-integer](https://github.com/rust-num/num-integer) | 0.1.45 | The Rust Project Developers | Apache-2.0 or MIT |
 | [num-rational](https://github.com/rust-num/num-rational) | 0.4.1 | The Rust Project Developers | Apache-2.0 or MIT |
 | [num-traits](https://github.com/rust-num/num-traits) | 0.2.15 | The Rust Project Developers | Apache-2.0 or MIT |
-| [num_cpus](https://github.com/seanmonstar/num_cpus) | 1.14.0 | [Sean McArthur](mailto:sean@seanmonstar.com) | Apache-2.0 or MIT |
-| [oxipng](https://github.com/shssoichiro/oxipng) | 7.0.0 | [Joshua Holmer](mailto:jholmer.in@gmail.com) | MIT |
+| [num_cpus](https://github.com/seanmonstar/num_cpus) | 1.15.0 | [Sean McArthur](mailto:sean@seanmonstar.com) | Apache-2.0 or MIT |
+| [oxipng](https://github.com/shssoichiro/oxipng) | 8.0.0 | [Joshua Holmer](mailto:jholmer.in@gmail.com) | MIT |
 | [png](https://github.com/image-rs/image-png.git) | 0.17.7 | The image-rs Developers | Apache-2.0 or MIT |
 | [radium](https://github.com/bitvecto-rs/radium) | 0.7.0 | [Nika Layzell](mailto:nika@thelayzells.com) and [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
 | [rayon](https://github.com/rayon-rs/rayon) | 1.6.1 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
