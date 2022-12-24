@@ -115,10 +115,10 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 /// * All headers stripped;
 pub(super) fn oxipng_options() -> OxipngOptions {
 	use oxipng::{
-		AlphaOptim,
 		Deflaters,
 		Headers,
 		IndexSet,
+		Interlacing,
 		RowFilter,
 	};
 
@@ -141,12 +141,8 @@ pub(super) fn oxipng_options() -> OxipngOptions {
 			RowFilter::Sub,
 			RowFilter::Up,
 		]),
-		interlace: Some(0),
-		alphas: IndexSet::from([
-			AlphaOptim::NoOp,
-			AlphaOptim::Black, AlphaOptim::Down, AlphaOptim::Left,
-			AlphaOptim::Right, AlphaOptim::Up, AlphaOptim::White,
-		]),
+		interlace: Some(Interlacing::None),
+		optimize_alpha: true,
 		bit_depth_reduction: true,
 		color_type_reduction: true,
 		palette_reduction: true,
