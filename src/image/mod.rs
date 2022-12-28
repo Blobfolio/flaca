@@ -24,7 +24,7 @@ use std::path::Path;
 /// The before and after sizes are returned, unless there's an error or the
 /// image is invalid. In cases where compression doesn't help, the before and
 /// after sizes will be identical.
-pub(super) fn encode(file: &Path, kinds: u8, oxi: &OxipngOptions) -> Option<(u64, u64)> {
+pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions) -> Option<(u64, u64)> {
 	// Read the file.
 	let mut raw = std::fs::read(file).ok()?;
 	if raw.is_empty() { return None; }
@@ -32,13 +32,13 @@ pub(super) fn encode(file: &Path, kinds: u8, oxi: &OxipngOptions) -> Option<(u64
 
 	// Do PNG stuff?
 	if ImageKind::is_png(&raw) {
-		if 0 == kinds & ImageKind::Png { return None; }
+		if ImageKind::None == kinds & ImageKind::Png { return None; }
 		encode_oxipng(&mut raw, oxi);
 		encode_zopflipng(&mut raw);
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
-		if 0 == kinds & ImageKind::Jpeg { return None; }
+		if ImageKind::None == kinds & ImageKind::Jpeg { return None; }
 		encode_mozjpeg(&mut raw);
 	}
 	// Bad image.

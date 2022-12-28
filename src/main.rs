@@ -61,18 +61,15 @@ use rayon::iter::{
 	IntoParallelRefIterator,
 	ParallelIterator,
 };
-use std::{
-	path::Path,
-	sync::{
-		Arc,
-		atomic::{
-			AtomicBool,
-			AtomicU64,
-			Ordering::{
-				Acquire,
-				Relaxed,
-				SeqCst,
-			},
+use std::sync::{
+	Arc,
+	atomic::{
+		AtomicBool,
+		AtomicU64,
+		Ordering::{
+			Acquire,
+			Relaxed,
+			SeqCst,
 		},
 	},
 };
@@ -113,21 +110,17 @@ fn _main() -> Result<(), FlacaError> {
 		.with_list();
 
 	// Figure out which kinds we're doing.
-	let mut kinds = ImageKind::ALL;
-	if args.switch2(b"--no-jpeg", b"--no-jpg") { kinds &= ! ImageKind::JPEG; }
-	if args.switch(b"--no-png") { kinds &= ! ImageKind::PNG; }
-
-	// Find files!
-	let cb = match kinds {
-		ImageKind::ALL => find_all,
-		ImageKind::JPEG => find_jpeg,
-		ImageKind::PNG => find_png,
-		_ => return Err(FlacaError::NoImages),
-	};
+	let mut kinds = ImageKind::All;
+	if args.switch2(b"--no-jpeg", b"--no-jpg") { kinds &= ! (ImageKind::Jpeg as u8); }
+	if args.switch(b"--no-png") { kinds &= ! (ImageKind::Png as u8); }
+	if ImageKind::None == kinds { return Err(FlacaError::NoImages); }
 
 	let paths = Dowser::default()
 		.with_paths(args.args_os())
-		.into_vec_filtered(cb);
+		.into_vec_filtered(|p| Extension::try_from3(p).map_or_else(
+			|| Some(E_JPEG) == Extension::try_from4(p),
+			|e| e == E_JPG || e == E_PNG
+		));
 
 	if paths.is_empty() {
 		return Err(FlacaError::NoImages);
@@ -189,27 +182,6 @@ fn _main() -> Result<(), FlacaError> {
 	if killed.load(Acquire) { Err(FlacaError::Killed) }
 	else { Ok(()) }
 }
-
-/// # Find JPEG and PNG Images.
-fn find_all(p: &Path) -> bool {
-	Extension::try_from3(p).map_or_else(
-		|| Some(E_JPEG) == Extension::try_from4(p),
-		|e| e == E_JPG || e == E_PNG
-	)
-}
-
-#[cold]
-/// # Find JPEG Images.
-fn find_jpeg(p: &Path) -> bool {
-	Extension::try_from3(p).map_or_else(
-		|| Some(E_JPEG) == Extension::try_from4(p),
-		|e| e == E_JPG
-	)
-}
-
-#[cold]
-/// # Find PNG Images.
-fn find_png(p: &Path) -> bool { Some(E_PNG) == Extension::try_from3(p) }
 
 #[cold]
 /// # Print Help.

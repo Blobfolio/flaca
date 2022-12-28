@@ -2,7 +2,10 @@
 # Flaca: Image Kind
 */
 
-use std::ops::BitAnd;
+use std::ops::{
+	BitAnd,
+	BitAndAssign,
+};
 
 
 #[repr(u8)]
@@ -14,27 +17,44 @@ use std::ops::BitAnd;
 /// correctly even if they have the wrong extension (or don't process them if
 /// they're bunk).
 pub(crate) enum ImageKind {
+	/// # All.
+	All =  0b0011,
+
 	/// # Jpeg.
 	Jpeg = 0b0001,
+
 	/// # Png.
 	Png =  0b0010,
+
+	/// # None.
+	None = 0b0000,
 }
 
-impl BitAnd<ImageKind> for u8 {
+impl BitAnd for ImageKind {
 	type Output = Self;
-	fn bitand(self, rhs: ImageKind) -> Self::Output { self & (rhs as Self) }
+	fn bitand(self, rhs: Self) -> Self::Output {
+		Self::from((self as u8) & (rhs as u8))
+	}
+}
+
+impl BitAndAssign<u8> for ImageKind {
+	fn bitand_assign(&mut self, rhs: u8) {
+		*self = Self::from((*self as u8) & rhs);
+	}
+}
+
+impl From<u8> for ImageKind {
+	fn from(src: u8) -> Self {
+		match src {
+			0b0011 => Self::All,
+			0b0001 => Self::Jpeg,
+			0b0010 => Self::Png,
+			_ => Self::None,
+		}
+	}
 }
 
 impl ImageKind {
-	/// # All Kinds.
-	pub(crate) const ALL: u8 = 0b0011;
-
-	/// # JPEG Kind.
-	pub(crate) const JPEG: u8 = Self::Jpeg as u8;
-
-	/// # PNG Kind.
-	pub(crate) const PNG: u8 =  Self::Png as u8;
-
 	/// # Is JPEG?
 	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
 		12 < src.len() &&

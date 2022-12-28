@@ -1,6 +1,6 @@
 # Flaca
 
-[![ci](https://img.shields.io/github/workflow/status/Blobfolio/flaca/Build.svg?style=flat-square&label=ci)](https://github.com/Blobfolio/flaca/actions)
+[![ci](https://img.shields.io/github/actions/workflow/status/Blobfolio/flaca/ci.yaml?style=flat-square&label=ci)](https://github.com/Blobfolio/flaca/actions)
 [![deps.rs](https://deps.rs/repo/github/blobfolio/flaca/status.svg?style=flat-square&label=deps.rs)](https://deps.rs/repo/github/blobfolio/flaca)<br>
 [![license](https://img.shields.io/badge/license-wtfpl-ff1493?style=flat-square)](https://en.wikipedia.org/wiki/WTFPL)
 [![contributions welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square&label=contributions)](https://github.com/Blobfolio/flaca/issues)
@@ -99,7 +99,7 @@ Of course, file names are totally arbitrary, so during processing, it analyzes t
 
 In cases where a JPEG image is accidentally assigned a PNG extension, or vice versa, Flaca _will_ still correctly process the image for you, but _won't_ correct the file name. In other words, a PNG incorrectly named `image.jpg` will still be a PNG incorrectly named `image.jpg` after recompression; it might just be a bit smaller.
 
-When either `--no-jpeg` or `--no-png` is set, the extension and type lists are adjusted accordingly. For example, if you choose to skip JPEGs, then only files ending `.png` with a true type of `image/png` will be crunched.
+This is also true when using the `--no-jpeg` or `--no-png` flags, except the true type must match the not-no type or it will be skipped.
 
 
 
