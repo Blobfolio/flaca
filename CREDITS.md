@@ -1,13 +1,13 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.0.9
-    Generated: 2022-12-24 16:49:47 UTC
+    Version:   2.0.10
+    Generated: 2022-12-28 04:29:35 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
 | [adler](https://github.com/jonas-schievink/adler.git) | 1.0.2 | [Jonas Schievink](mailto:jonasschievink@gmail.com) | 0BSD, Apache-2.0, or MIT |
 | [ahash](https://github.com/tkaitchuck/ahash) | 0.8.2 | [Tom Kaitchuck](mailto:tom.kaitchuck@gmail.com) | Apache-2.0 or MIT |
-| [argyle](https://github.com/Blobfolio/argyle) | 0.6.3 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [argyle](https://github.com/Blobfolio/argyle) | 0.6.4 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [bitflags](https://github.com/bitflags/bitflags) | 1.3.2 | The Rust Project Developers | Apache-2.0 or MIT |
 | [bitvec](https://github.com/bitvecto-rs/bitvec) | 1.0.1 |  | MIT |
 | [bytecount](https://github.com/llogiq/bytecount) | 0.6.3 | [Andre Bogus](mailto:bogusandre@gmail.de) and [Joshua Landau](mailto:joshua@landau.ws) | Apache-2.0 or MIT |
@@ -27,7 +27,7 @@
 | [fastrand](https://github.com/smol-rs/fastrand) | 1.8.0 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 or MIT |
 | [flate2](https://github.com/rust-lang/flate2-rs) | 1.0.25 | [Alex Crichton](mailto:alex@alexcrichton.com) and [Josh Triplett](mailto:josh@joshtriplett.org) | Apache-2.0 or MIT |
 | [funty](https://github.com/myrrlyn/funty) | 2.0.0 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
-| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.10.3 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.10.4 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.12.3 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
 | [image](https://github.com/image-rs/image) | 0.24.5 | The image-rs Developers | MIT |
 | [indexmap](https://github.com/bluss/indexmap) | 1.9.2 |  | Apache-2.0 or MIT |
