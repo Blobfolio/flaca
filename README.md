@@ -107,7 +107,7 @@ This is also true when using the `--no-jpeg` or `--no-png` flags, except the tru
 
 See also: [CREDITS.md](CREDITS.md)
 
-Copyright © 2022 [Blobfolio, LLC](https://blobfolio.com) &lt;hello@blobfolio.com&gt;
+Copyright © 2023 [Blobfolio, LLC](https://blobfolio.com) &lt;hello@blobfolio.com&gt;
 
 This work is free. You can redistribute it and/or modify it under the terms of the Do What The Fuck You Want To Public License, Version 2.
 
