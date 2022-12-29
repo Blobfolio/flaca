@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.0.10
-    Generated: 2022-12-28 04:29:35 UTC
+    Version:   2.0.11
+    Generated: 2022-12-29 04:42:51 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -27,7 +27,7 @@
 | [fastrand](https://github.com/smol-rs/fastrand) | 1.8.0 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 or MIT |
 | [flate2](https://github.com/rust-lang/flate2-rs) | 1.0.25 | [Alex Crichton](mailto:alex@alexcrichton.com) and [Josh Triplett](mailto:josh@joshtriplett.org) | Apache-2.0 or MIT |
 | [funty](https://github.com/myrrlyn/funty) | 2.0.0 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
-| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.10.4 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [fyi_msg](https://github.com/Blobfolio/fyi) | 0.10.5 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.12.3 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
 | [image](https://github.com/image-rs/image) | 0.24.5 | The image-rs Developers | MIT |
 | [indexmap](https://github.com/bluss/indexmap) | 1.9.2 |  | Apache-2.0 or MIT |
