@@ -46,6 +46,11 @@ use argyle::{
 	FLAG_REQUIRED,
 	FLAG_VERSION,
 };
+use dactyl::{
+	NiceElapsed,
+	NiceU64,
+	traits::NiceInflection,
+};
 use dowser::{
 	Dowser,
 	Extension,
@@ -122,7 +127,8 @@ fn _main() -> Result<(), FlacaError> {
 			|e| e == E_JPG || e == E_PNG
 		));
 
-	if paths.is_empty() {
+	let total = paths.len() as u64;
+	if total == 0 {
 		return Err(FlacaError::NoImages);
 	}
 
@@ -138,10 +144,10 @@ fn _main() -> Result<(), FlacaError> {
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
 		// Boot up a progress bar.
-		let progress = Progless::try_from(paths.len())?
-			.with_reticulating_splines("Flaca");
+		let progress = Progless::try_from(total)?.with_reticulating_splines("Flaca");
 
 		// Keep track of the before and after file sizes as we go.
+		let skipped: AtomicU64 = AtomicU64::new(0);
 		let before: AtomicU64 = AtomicU64::new(0);
 		let after: AtomicU64 = AtomicU64::new(0);
 
@@ -156,14 +162,26 @@ fn _main() -> Result<(), FlacaError> {
 					before.fetch_add(b, Relaxed);
 					after.fetch_add(a, Relaxed);
 				}
+				else { skipped.fetch_add(1, Relaxed); }
 
 				progress.remove(&tmp);
 			}
 		);
 
 		// Print a summary.
-		progress.finish();
-		progress.summary(MsgKind::Crunched, "image", "images")
+		let elapsed = progress.finish();
+		let skipped = skipped.load(Acquire);
+		if skipped == 0 {
+			progress.summary(MsgKind::Crunched, "image", "images")
+		}
+		else {
+			Msg::crunched(format!(
+				"{}\x1b[2m/\x1b[0m{} in {}.",
+				NiceU64::from(total - skipped),
+				total.nice_inflect("image", "images"),
+				NiceElapsed::from(elapsed),
+			))
+		}
 			.with_bytes_saved(BeforeAfter::from((
 				before.into_inner(),
 				after.into_inner(),

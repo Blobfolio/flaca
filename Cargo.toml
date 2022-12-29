@@ -97,13 +97,14 @@ items = [
 [dependencies]
 argyle = "0.6.*"
 ctrlc = "=3.2.4"
+dactyl = "0.4.*"
 dowser = "0.6.*"
 libc = "0.2.*"
 rayon = "=1.6.1"
 write_atomic = "0.2.*"
 
 [dependencies.fyi_msg]
-version = "0.10.*"
+version = "0.10.*, >= 0.10.5"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
