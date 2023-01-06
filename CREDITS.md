@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.0.11
-    Generated: 2022-12-29 04:42:51 UTC
+    Version:   2.1.0
+    Generated: 2023-01-06 03:34:24 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
