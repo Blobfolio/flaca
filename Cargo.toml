@@ -98,7 +98,7 @@ items = [
 argyle = "0.6.*"
 ctrlc = "=3.2.4"
 dactyl = "0.4.*"
-dowser = "0.6.*"
+dowser = "0.7.*"
 libc = "0.2.*"
 rayon = "=1.6.1"
 write_atomic = "0.2.*"
@@ -117,7 +117,7 @@ default-features = false
 
 [build-dependencies]
 cc = "1.0.*"
-dowser = "0.6.*"
+dowser = "0.7.*"
 
 [profile.release]
 lto = true
