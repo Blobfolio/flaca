@@ -64,6 +64,7 @@ The following flags and options are available:
 | `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file, one entry per line. |
 | | `--no-jpeg` | | Skip JPEG images. |
 | | `--no-png` | | Skip PNG Images. |
+| `-z` | `--zopfli-iterations` | Override the number of zopfli iterations when compressing PNGs. |
 | `-p` | `--progress` | | Show progress while minifying. |
 | `-V` | `--version` | | Print version information and exit. |
 
@@ -85,6 +86,17 @@ flaca -p --no-png /path/to/assets
 
 # Or load it up with a lot of places separately:
 flaca /path/to/assets /path/to/favicon.png …
+
+# Zopfli compression is slow and scales more or less linearly with the number
+# of iterations set. Flaca uses the same default as zopflipng: 60 for small
+# images, 20 for larger ones. If you're willing to trade longer processing 
+# times for extra (potential) byte savings, you can try scaling up the 
+# iteration count:
+flaca -z 500 /path/to/favicon.png
+
+# Or, conversely, if you want to speed up PNG compression at the expense of a
+# few extra bytes, try dialing the count back:
+flaca /path/to/huge.png -z 1
 ```
 
 
