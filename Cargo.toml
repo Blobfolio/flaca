@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "2.1.1"
+version = "2.1.2"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -69,6 +69,13 @@ label = "<FILE>"
 description = "Read (absolute) image and/or directory paths from this text file, one entry per line."
 path = true
 
+[[package.metadata.bashman.options]]
+short = "-z"
+long = "--zopfli-iterations"
+label = "<NUM>"
+description = "Apply NUM zopfli iterations when compressing PNG images. Higher values result in better compression (up to a point), but longer processing times. The default is 60 for images under 200kb, and 20 for larger ones."
+path = false
+
 [[package.metadata.bashman.arguments]]
 label = "<PATH(s)…>"
 description = "One or more image and/or directory paths to losslessly compress."
@@ -96,7 +103,7 @@ items = [
 
 [dependencies]
 argyle = "0.6.*"
-ctrlc = "=3.2.4"
+ctrlc = "=3.2.5"
 dactyl = "0.4.*"
 dowser = "0.7.*"
 libc = "0.2.*"

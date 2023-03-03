@@ -22,6 +22,10 @@ _basher___flaca() {
 		opts+=("-l")
 		opts+=("--list")
 	fi
+	if [[ ! " ${COMP_LINE} " =~ " -z " ]] && [[ ! " ${COMP_LINE} " =~ " --zopfli-iterations " ]]; then
+		opts+=("-z")
+		opts+=("--zopfli-iterations")
+	fi
 	opts=" ${opts[@]} "
 	if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
 		COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

@@ -49,7 +49,10 @@ use argyle::{
 use dactyl::{
 	NiceElapsed,
 	NiceU64,
-	traits::NiceInflection,
+	traits::{
+		BytesToUnsigned,
+		NiceInflection,
+	},
 };
 use dowser::{
 	Dowser,
@@ -119,6 +122,11 @@ fn _main() -> Result<(), FlacaError> {
 	if args.switch2(b"--no-jpeg", b"--no-jpg") { kinds &= ! (ImageKind::Jpeg as u8); }
 	if args.switch(b"--no-png") { kinds &= ! (ImageKind::Png as u8); }
 	if ImageKind::None == kinds { return Err(FlacaError::NoImages); }
+
+	// Zopfli iterations.
+	if let Some(n) = args.option2(b"-z", b"--zopfli-iterations").and_then(u16::btou) {
+		image::set_zopfli_iterations(n);
+	}
 
 	let paths = Dowser::default()
 		.with_paths(args.args_os())
@@ -236,7 +244,11 @@ FLAGS:
 OPTIONS:
     -l, --list <FILE> Read (absolute) image and/or directory paths from this
                       text file, one entry per line.
-
+    -z, --zopfli-iterations <NUM>
+                      Apply NUM zopfli iterations when compressing PNG images.
+                      Higher values result in better compression (up to a
+                      point), but longer processing times. The default is 60
+                      for images under 200kb, and 20 for larger ones.
 ARGS:
     <PATH(S)>...      One or more image and/or directory paths to losslessly
                       compress.

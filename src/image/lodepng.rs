@@ -12,11 +12,11 @@ The `custom_png_deflate` extern is not part of lodepng, but gets attached to
 
 use std::{
 	ffi::{
-		c_uint,
-		c_uchar,
-		c_void,
 		c_char,
+		c_uchar,
+		c_uint,
 		c_ushort,
+		c_void,
 	},
 	mem::MaybeUninit,
 };
@@ -349,7 +349,7 @@ impl LodePNGState {
 		if slow {
 			enc.encoder.zlibsettings.windowsize = 32_768;
 			enc.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
-			enc.encoder.zlibsettings.custom_context = std::ptr::null_mut();
+			enc.encoder.zlibsettings.custom_context = super::zopfli_iterations().cast::<c_void>();
 		}
 		else {
 			enc.encoder.zlibsettings.windowsize = 8_192;

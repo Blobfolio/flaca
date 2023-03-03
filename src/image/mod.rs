@@ -12,7 +12,35 @@ mod zopflipng;
 
 use kind::ImageKind;
 use oxipng::Options as OxipngOptions;
-use std::path::Path;
+use std::{
+	os::raw::c_int,
+	path::Path,
+	sync::Once,
+};
+
+
+
+/// # Number of Zopfli Iterations.
+pub(self) static mut ITERATIONS: c_int = 0;
+static INIT_ITERATIONS: Once = Once::new();
+
+#[allow(unsafe_code, clippy::cast_lossless)]
+/// # Set Iteration Count.
+pub(super) fn set_zopfli_iterations(num: u16) {
+	if num != 0 {
+		// Safety: this is called by main.rs before any processing begins.
+		unsafe {
+			INIT_ITERATIONS.call_once(|| { ITERATIONS = num as _; });
+		}
+	}
+}
+
+#[allow(unsafe_code)]
+/// # Return Iteration Count.
+pub(self) fn zopfli_iterations() -> *const c_int {
+	// Safety: mutations, if any, will have already happened by this point.
+	unsafe { &ITERATIONS }
+}
 
 
 
