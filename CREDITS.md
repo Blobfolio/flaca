@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.1.2
-    Generated: 2023-03-03 19:01:43 UTC
+    Version:   2.1.3
+    Generated: 2023-03-09 17:53:56 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -32,7 +32,7 @@
 | [image](https://github.com/image-rs/image) | 0.24.5 | The image-rs Developers | MIT |
 | [indexmap](https://github.com/bluss/indexmap) | 1.9.2 |  | Apache-2.0 or MIT |
 | [itertools](https://github.com/rust-itertools/itertools) | 0.10.5 | bluss | Apache-2.0 or MIT |
-| [libc](https://github.com/rust-lang/libc) | 0.2.139 | The Rust Project Developers | Apache-2.0 or MIT |
+| [libc](https://github.com/rust-lang/libc) | 0.2.140 | The Rust Project Developers | Apache-2.0 or MIT |
 | [libdeflate-sys](https://github.com/adamkewley/libdeflater) | 0.11.0 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [libdeflater](https://github.com/adamkewley/libdeflater) | 0.11.0 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [log](https://github.com/rust-lang/log) | 0.4.17 | The Rust Project Developers | Apache-2.0 or MIT |
@@ -46,16 +46,15 @@
 | [oxipng](https://github.com/shssoichiro/oxipng) | 8.0.0 | [Joshua Holmer](mailto:jholmer.in@gmail.com) | MIT |
 | [png](https://github.com/image-rs/image-png.git) | 0.17.7 | The image-rs Developers | Apache-2.0 or MIT |
 | [radium](https://github.com/bitvecto-rs/radium) | 0.7.0 | [Nika Layzell](mailto:nika@thelayzells.com) and [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
-| [rayon](https://github.com/rayon-rs/rayon) | 1.6.1 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
-| [rayon-core](https://github.com/rayon-rs/rayon) | 1.10.2 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
-| [remove_dir_all](https://github.com/XAMPPRocky/remove_dir_all.git) | 0.5.3 | [Aaronepower](mailto:theaaronepower@gmail.com) | Apache-2.0 or MIT |
+| [rayon](https://github.com/rayon-rs/rayon) | 1.7.0 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
+| [rayon-core](https://github.com/rayon-rs/rayon) | 1.11.0 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
 | [rgb](https://github.com/kornelski/rust-rgb) | 0.8.36 | [Kornel Lesiński](mailto:kornel@geekhood.net) | MIT |
 | [rustc-hash](https://github.com/rust-lang-nursery/rustc-hash) | 1.1.0 | The Rust Project Developers | Apache-2.0 or MIT |
 | [scopeguard](https://github.com/bluss/scopeguard) | 1.1.0 | bluss | Apache-2.0 or MIT |
 | [tap](https://github.com/myrrlyn/tap) | 1.0.1 | [Elliott Linder](mailto:elliott.darfink@gmail.com) and [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
-| [tempfile](https://github.com/Stebalien/tempfile) | 3.3.0 | [Steven Allen](mailto:steven@stebalien.com), The Rust Project Developers, [Ashley Mannix](mailto:ashleymannix@live.com.au), and [Jason White](mailto:jasonaw0@gmail.com) | Apache-2.0 or MIT |
+| [tempfile](https://github.com/Stebalien/tempfile) | 3.4.0 | [Steven Allen](mailto:steven@stebalien.com), The Rust Project Developers, [Ashley Mannix](mailto:ashleymannix@live.com.au), and [Jason White](mailto:me@jasonwhite.io) | Apache-2.0 or MIT |
 | [term_size](https://github.com/kbknapp/term_size-rs.git) | 0.3.2 | [Kevin K.](mailto:kbknapp@gmail.com) and [Benjamin Sago](mailto:ogham@bsago.me) | Apache-2.0 or MIT |
 | [unicode-width](https://github.com/unicode-rs/unicode-width) | 0.1.10 | [kwantam](mailto:kwantam@gmail.com) and [Manish Goregaokar](mailto:manishsmail@gmail.com) | Apache-2.0 or MIT |
-| [write_atomic](https://github.com/Blobfolio/write_atomic) | 0.2.9 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [write_atomic](https://github.com/Blobfolio/write_atomic) | 0.3.0 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [wyz](https://github.com/myrrlyn/wyz) | 0.5.1 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
 | [zopflipng](https://github.com/google/zopfli) | | Google | Apache-2.0 |
