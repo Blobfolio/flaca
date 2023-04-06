@@ -26,11 +26,11 @@ static INIT_ITERATIONS: Once = Once::new();
 
 #[allow(unsafe_code, clippy::cast_lossless)]
 /// # Set Iteration Count.
-pub(super) fn set_zopfli_iterations(num: u16) {
-	if num != 0 {
+pub(super) fn set_zopfli_iterations(num: i32) {
+	if 0 < num {
 		// Safety: this is called by main.rs before any processing begins.
 		unsafe {
-			INIT_ITERATIONS.call_once(|| { ITERATIONS = num as _; });
+			INIT_ITERATIONS.call_once(|| { ITERATIONS = num; });
 		}
 	}
 }

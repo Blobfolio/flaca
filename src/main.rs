@@ -50,7 +50,7 @@ use dactyl::{
 	NiceElapsed,
 	NiceU64,
 	traits::{
-		BytesToUnsigned,
+		BytesToSigned,
 		NiceInflection,
 	},
 };
@@ -124,7 +124,10 @@ fn _main() -> Result<(), FlacaError> {
 	if ImageKind::None == kinds { return Err(FlacaError::NoImages); }
 
 	// Zopfli iterations.
-	if let Some(n) = args.option2(b"-z", b"--zopfli-iterations").and_then(u16::btou) {
+	if let Some(n) = args.option(b"-z") {
+		let n = i32::btoi(n)
+			.filter(|n| 0 < *n)
+			.ok_or(FlacaError::ZopfliIterations)?;
 		image::set_zopfli_iterations(n);
 	}
 
@@ -244,11 +247,13 @@ FLAGS:
 OPTIONS:
     -l, --list <FILE> Read (absolute) image and/or directory paths from this
                       text file, one entry per line.
-    -z, --zopfli-iterations <NUM>
-                      Apply NUM zopfli iterations when compressing PNG images.
-                      Higher values result in better compression (up to a
-                      point), but longer processing times. The default is 60
-                      for images under 200kb, and 20 for larger ones.
+    -z <NUM>          Run NUM lz77 backward/forward iterations during zopfli
+                      PNG encoding passes. More iterations yield better
+                      compression (up to a point), but require *significantly*
+                      longer processing times. In practice, values beyond 500
+                      are unlikely to save more than a few bytes, and could
+                      take *days* to complete! Haha. [default: 20 or 60,
+                      depending on the file size]
 ARGS:
     <PATH(S)>...      One or more image and/or directory paths to losslessly
                       compress.
