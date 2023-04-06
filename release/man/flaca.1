@@ -1,6 +1,6 @@
-.TH "FLACA" "1" "March 2023" "Flaca v2.1.3" "User Commands"
+.TH "FLACA" "1" "April 2023" "Flaca v2.1.4" "User Commands"
 .SH NAME
-Flaca \- Manual page for flaca v2.1.3.
+Flaca \- Manual page for flaca v2.1.4.
 .SH DESCRIPTION
 Brute\-force, lossless JPEG and PNG compression.
 .SS USAGE:
@@ -27,8 +27,8 @@ Print version information and exit.
 \fB\-l\fR, \fB\-\-list\fR <FILE>
 Read (absolute) image and/or directory paths from this text file, one entry per line.
 .TP
-\fB\-z\fR, \fB\-\-zopfli\-iterations\fR <NUM>
-Apply NUM zopfli iterations when compressing PNG images. Higher values result in better compression (up to a point), but longer processing times. The default is 60 for images under 200kb, and 20 for larger ones.
+\fB\-z\fR <NUM>
+Run NUM lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. In practice, values beyond 500 are unlikely to save more than a few bytes, and could take *days* to complete! Haha. [default: 20 or 60, depending on the file size]
 .SS <PATH(S)…>:
 .TP
 One or more image and/or directory paths to losslessly compress.

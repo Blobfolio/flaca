@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.1.3
-    Generated: 2023-03-09 17:53:56 UTC
+    Version:   2.1.4
+    Generated: 2023-04-06 18:19:39 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -29,10 +29,10 @@
 | [funty](https://github.com/myrrlyn/funty) | 2.0.0 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
 | [fyi_msg](https://github.com/Blobfolio/fyi) | 0.10.7 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.12.3 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
-| [image](https://github.com/image-rs/image) | 0.24.5 | The image-rs Developers | MIT |
-| [indexmap](https://github.com/bluss/indexmap) | 1.9.2 |  | Apache-2.0 or MIT |
+| [image](https://github.com/image-rs/image) | 0.24.6 | The image-rs Developers | MIT |
+| [indexmap](https://github.com/bluss/indexmap) | 1.9.3 |  | Apache-2.0 or MIT |
 | [itertools](https://github.com/rust-itertools/itertools) | 0.10.5 | bluss | Apache-2.0 or MIT |
-| [libc](https://github.com/rust-lang/libc) | 0.2.140 | The Rust Project Developers | Apache-2.0 or MIT |
+| [libc](https://github.com/rust-lang/libc) | 0.2.141 | The Rust Project Developers | Apache-2.0 or MIT |
 | [libdeflate-sys](https://github.com/adamkewley/libdeflater) | 0.11.0 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [libdeflater](https://github.com/adamkewley/libdeflater) | 0.11.0 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [log](https://github.com/rust-lang/log) | 0.4.17 | The Rust Project Developers | Apache-2.0 or MIT |
@@ -52,9 +52,9 @@
 | [rustc-hash](https://github.com/rust-lang-nursery/rustc-hash) | 1.1.0 | The Rust Project Developers | Apache-2.0 or MIT |
 | [scopeguard](https://github.com/bluss/scopeguard) | 1.1.0 | bluss | Apache-2.0 or MIT |
 | [tap](https://github.com/myrrlyn/tap) | 1.0.1 | [Elliott Linder](mailto:elliott.darfink@gmail.com) and [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
-| [tempfile](https://github.com/Stebalien/tempfile) | 3.4.0 | [Steven Allen](mailto:steven@stebalien.com), The Rust Project Developers, [Ashley Mannix](mailto:ashleymannix@live.com.au), and [Jason White](mailto:me@jasonwhite.io) | Apache-2.0 or MIT |
+| [tempfile](https://github.com/Stebalien/tempfile) | 3.5.0 | [Steven Allen](mailto:steven@stebalien.com), The Rust Project Developers, [Ashley Mannix](mailto:ashleymannix@live.com.au), and [Jason White](mailto:me@jasonwhite.io) | Apache-2.0 or MIT |
 | [term_size](https://github.com/kbknapp/term_size-rs.git) | 0.3.2 | [Kevin K.](mailto:kbknapp@gmail.com) and [Benjamin Sago](mailto:ogham@bsago.me) | Apache-2.0 or MIT |
 | [unicode-width](https://github.com/unicode-rs/unicode-width) | 0.1.10 | [kwantam](mailto:kwantam@gmail.com) and [Manish Goregaokar](mailto:manishsmail@gmail.com) | Apache-2.0 or MIT |
-| [write_atomic](https://github.com/Blobfolio/write_atomic) | 0.3.0 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [write_atomic](https://github.com/Blobfolio/write_atomic) | 0.3.1 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [wyz](https://github.com/myrrlyn/wyz) | 0.5.1 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
 | [zopflipng](https://github.com/google/zopfli) | | Google | Apache-2.0 |
