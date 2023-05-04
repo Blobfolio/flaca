@@ -48,6 +48,7 @@ jobs:
 
     - name: Build
       run: |
+        cargo build --bin flaca --target ${{ matrix.target }}
         cargo build --bin flaca --release --target ${{ matrix.target }}
 
     - name: Clippy
@@ -56,4 +57,5 @@ jobs:
 
     - name: Test
       run: |
+        cargo test --target ${{ matrix.target }}
         cargo test --release --target ${{ matrix.target }}
