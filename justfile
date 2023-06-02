@@ -55,15 +55,6 @@ skel_dir    := justfile_directory() + "/skel"
 	mv "{{ justfile_directory() }}/target" "{{ cargo_dir }}"
 
 
-# Check Release!
-@check:
-	# First let's build the Rust bit.
-	cargo check \
-		--release \
-		--target x86_64-unknown-linux-gnu \
-		--target-dir "{{ cargo_dir }}"
-
-
 @clean:
 	# Most things go here.
 	[ ! -d "{{ cargo_dir }}" ] || rm -rf "{{ cargo_dir }}"
@@ -123,6 +114,9 @@ skel_dir    := justfile_directory() + "/skel"
 # Unit tests!
 @test:
 	clear
+	RUST_TEST_THREADS=1 cargo test \
+		--target x86_64-unknown-linux-gnu \
+		--target-dir "{{ cargo_dir }}"
 	RUST_TEST_THREADS=1 cargo test \
 		--release \
 		--target x86_64-unknown-linux-gnu \
