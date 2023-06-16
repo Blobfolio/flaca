@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "2.2.0"
+version = "2.2.1"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -114,7 +114,7 @@ version = "0.11.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
-version = "=1.0.6"
+version = "=1.1.0"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
