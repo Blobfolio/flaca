@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.2.2
-    Generated: 2023-08-24 18:44:37 UTC
+    Version:   2.2.3
+    Generated: 2023-08-27 16:15:22 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -39,7 +39,7 @@
 | [log](https://github.com/rust-lang/log) | 0.4.20 | The Rust Project Developers | Apache-2.0 or MIT |
 | [memoffset](https://github.com/Gilnaa/memoffset) | 0.9.0 | [Gilad Naaman](mailto:gilad.naaman@gmail.com) | MIT |
 | [miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) | 0.7.1 | [Frommi](mailto:daniil.liferenko@gmail.com) and [oyvindln](mailto:oyvindln@users.noreply.github.com) | Apache-2.0, MIT, or Zlib |
-| [mozjpeg-sys](https://github.com/kornelski/mozjpeg-sys.git) | 1.1.0 | [Kornel](mailto:kornel@geekhood.net) | IJG AND Zlib AND BSD-3-Clause |
+| [mozjpeg-sys](https://github.com/kornelski/mozjpeg-sys.git) | 2.0.0 | [Kornel](mailto:kornel@geekhood.net) | IJG AND Zlib AND BSD-3-Clause |
 | [num-integer](https://github.com/rust-num/num-integer) | 0.1.45 | The Rust Project Developers | Apache-2.0 or MIT |
 | [num-rational](https://github.com/rust-num/num-rational) | 0.4.1 | The Rust Project Developers | Apache-2.0 or MIT |
 | [num-traits](https://github.com/rust-num/num-traits) | 0.2.16 | The Rust Project Developers | Apache-2.0 or MIT |
