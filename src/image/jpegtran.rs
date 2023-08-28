@@ -53,7 +53,7 @@ use super::ffi::EncodedImage;
 
 // We need a couple more things from jpegtran. Mozjpeg-sys includes the right
 // sources but doesn't export the definitions.
-extern "C" {
+extern "C-unwind" {
 	fn jcopy_markers_setup(srcinfo: j_decompress_ptr, option: c_uint);
 	fn jcopy_markers_execute(
 		srcinfo: j_decompress_ptr,
