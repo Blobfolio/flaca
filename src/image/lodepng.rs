@@ -118,7 +118,7 @@ pub(super) struct LodePNGCompressSettings {
 	pub(super) nicematch: c_uint,
 	pub(super) lazymatching: c_uint,
 	pub(super) custom_zlib: Option<
-		unsafe extern "C" fn(
+		unsafe extern "C-unwind" fn(
 			arg1: *mut *mut c_uchar,
 			arg2: *mut usize,
 			arg3: *const c_uchar,
@@ -127,7 +127,7 @@ pub(super) struct LodePNGCompressSettings {
 		) -> c_uint,
 	>,
 	pub(super) custom_deflate: Option<
-		unsafe extern "C" fn(
+		unsafe extern "C-unwind" fn(
 			arg1: *mut *mut c_uchar,
 			arg2: *mut usize,
 			arg3: *const c_uchar,
@@ -159,7 +159,7 @@ pub(super) struct LodePNGDecompressSettings {
 	pub(super) ignore_nlen: c_uint,
 	pub(super) max_output_size: usize,
 	pub(super) custom_zlib: Option<
-		unsafe extern "C" fn(
+		unsafe extern "C-unwind" fn(
 			arg1: *mut *mut c_uchar,
 			arg2: *mut usize,
 			arg3: *const c_uchar,
@@ -168,7 +168,7 @@ pub(super) struct LodePNGDecompressSettings {
 		) -> c_uint,
 	>,
 	pub(super) custom_inflate: Option<
-		unsafe extern "C" fn(
+		unsafe extern "C-unwind" fn(
 			arg1: *mut *mut c_uchar,
 			arg2: *mut usize,
 			arg3: *const c_uchar,
@@ -409,7 +409,7 @@ pub(super) struct LodePNGTime {
 
 
 
-extern "C" {
+extern "C-unwind" {
 	pub(super) fn custom_png_deflate(
 		out: *mut *mut c_uchar,
 		outsize: *mut usize,
@@ -419,18 +419,18 @@ extern "C" {
 	) -> c_uint;
 }
 
-extern "C" {
+extern "C-unwind" {
 	pub(super) fn lodepng_color_mode_copy(
 		dest: *mut LodePNGColorMode,
 		source: *const LodePNGColorMode,
 	) -> c_uint;
 }
 
-extern "C" {
+extern "C-unwind" {
 	pub(super) fn lodepng_color_stats_init(stats: *mut LodePNGColorStats);
 }
 
-extern "C" {
+extern "C-unwind" {
 	pub(super) fn lodepng_compute_color_stats(
 		stats: *mut LodePNGColorStats,
 		image: *const c_uchar,
@@ -440,7 +440,7 @@ extern "C" {
 	) -> c_uint;
 }
 
-extern "C" {
+extern "C-unwind" {
 	pub(super) fn lodepng_decode(
 		out: *mut *mut c_uchar,
 		w: *mut c_uint,
@@ -451,7 +451,7 @@ extern "C" {
 	) -> c_uint;
 }
 
-extern "C" {
+extern "C-unwind" {
 	pub(super) fn lodepng_encode(
 		out: *mut *mut c_uchar,
 		outsize: *mut usize,
@@ -462,11 +462,11 @@ extern "C" {
 	) -> c_uint;
 }
 
-extern "C" {
+extern "C-unwind" {
 	pub(super) fn lodepng_state_cleanup(state: *mut LodePNGState);
 }
 
-extern "C" {
+extern "C-unwind" {
 	pub(super) fn lodepng_state_init(state: *mut LodePNGState);
 }
 
