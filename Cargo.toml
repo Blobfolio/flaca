@@ -126,6 +126,6 @@ cc = "1.0.*"
 dowser = "0.8.*"
 
 [profile.release]
-lto = false
+lto = true
 codegen-units = 1
 strip = true
