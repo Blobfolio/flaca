@@ -1,10 +1,10 @@
 [package]
 name = "flaca"
-version = "2.3.0"
+version = "2.4.0"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
-rust-version = "1.71"
+rust-version = "1.73"
 description = "Brute-force, lossless JPEG and PNG compression."
 readme = "README.md"
 publish = false
@@ -106,8 +106,8 @@ ctrlc = "3.4.*"
 dactyl = "0.5.*"
 dowser = "0.8.*"
 libc = "0.2.*"
-rayon = "1.7.*"
-write_atomic = "0.4.*"
+rayon = "1.8.*"
+write_atomic = "0.5.*"
 
 [dependencies.fyi_msg]
 version = "0.11.*"
@@ -126,6 +126,6 @@ cc = "1.0.*"
 dowser = "0.8.*"
 
 [profile.release]
-lto = false
+lto = true
 codegen-units = 1
 strip = true

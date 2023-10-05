@@ -95,7 +95,7 @@ include!(concat!(env!("OUT_DIR"), "/flaca-extensions.rs"));
 /// processing is done by `_main()`.
 fn main() {
 	match _main() {
-		Ok(_) => {},
+		Ok(()) => {},
 		Err(FlacaError::Argue(ArgyleError::WantsVersion)) => {
 			println!(concat!("Flaca v", env!("CARGO_PKG_VERSION")));
 		},
