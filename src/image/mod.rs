@@ -144,19 +144,15 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 pub(super) fn oxipng_options() -> OxipngOptions {
 	use oxipng::{
 		Deflaters,
-		Headers,
 		IndexSet,
 		Interlacing,
 		RowFilter,
+		StripChunks,
 	};
 
 	OxipngOptions {
-		backup: false,
 		fix_errors: true,
-		check: false,
-		pretend: false,
 		force: false,
-		preserve_attrs: false,
 		filter: IndexSet::from([
 			RowFilter::None,
 			RowFilter::Average,
@@ -176,7 +172,8 @@ pub(super) fn oxipng_options() -> OxipngOptions {
 		palette_reduction: true,
 		grayscale_reduction: true,
 		idat_recoding: true,
-		strip: Headers::All,
+		scale_16: false,
+		strip: StripChunks::All,
 		deflate: Deflaters::Libdeflater { compression: 12 },
 		fast_evaluation: false,
 		timeout: None,
