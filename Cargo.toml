@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "2.4.1"
+version = "2.4.2"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -103,7 +103,7 @@ items = [
 [dependencies]
 argyle = "0.6.*"
 ctrlc = "3.4.*"
-dactyl = "0.5.*"
+dactyl = "0.6.*"
 dowser = "0.8.*"
 libc = "0.2.*"
 rayon = "1.8.*"
@@ -114,7 +114,7 @@ version = "0.11.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
-version = "=2.0.3"
+version = "=2.0.5"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
