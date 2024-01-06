@@ -125,7 +125,11 @@ default-features = false
 cc = "1.0.*"
 dowser = "0.8.*"
 
+[profile.release.package."*"]
+opt-level = 3
+
 [profile.release]
 lto = true
 codegen-units = 1
+opt-level = 1
 strip = true
