@@ -67,7 +67,17 @@ pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions) -> Opti
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
 		if ImageKind::None == kinds & ImageKind::Jpeg { return None; }
-		encode_mozjpeg(&mut raw);
+
+		// Mozjpeg usually panics on error, so we have to do a weird little
+		// dance to keep it from killing the whole thread.
+		raw = std::panic::catch_unwind(move || {
+			encode_mozjpeg(&mut raw);
+			raw
+		}).ok()?;
+
+		// Double-check the image type again, just in case the copy itself
+		// panicked.
+		if ! ImageKind::is_jpeg(&raw) { return None; }
 	}
 	// Bad image.
 	else { return None; }
