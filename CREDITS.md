@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.4.3
-    Generated: 2024-01-06 06:34:27 UTC
+    Version:   2.4.4
+    Generated: 2024-01-08 04:24:33 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -24,7 +24,7 @@
 | [fyi_msg](https://github.com/Blobfolio/fyi) | 0.11.8 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.14.3 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
 | [indexmap](https://github.com/bluss/indexmap) | 2.1.0 |  | Apache-2.0 or MIT |
-| [libc](https://github.com/rust-lang/libc) | 0.2.151 | The Rust Project Developers | Apache-2.0 or MIT |
+| [libc](https://github.com/rust-lang/libc) | 0.2.152 | The Rust Project Developers | Apache-2.0 or MIT |
 | [libdeflate-sys](https://github.com/adamkewley/libdeflater) | 1.19.0 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [libdeflater](https://github.com/adamkewley/libdeflater) | 1.19.0 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [log](https://github.com/rust-lang/log) | 0.4.20 | The Rust Project Developers | Apache-2.0 or MIT |
