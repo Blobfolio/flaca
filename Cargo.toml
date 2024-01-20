@@ -66,7 +66,7 @@ description = "Print version information and exit."
 short = "-l"
 long = "--list"
 label = "<FILE>"
-description = "Read (absolute) image and/or directory paths from this text file, one entry per line."
+description = "Read (absolute) image and/or directory paths from this text file — or STDIN if '-' — one entry per line, instead of or in addition to (actually trailing) <PATH(S)>."
 path = true
 
 [[package.metadata.bashman.options]]
@@ -101,7 +101,7 @@ items = [
 ]
 
 [dependencies]
-argyle = "0.6.*"
+argyle = "0.7.*"
 ctrlc = "3.4.*"
 dactyl = "0.6.*"
 dowser = "0.8.*"
