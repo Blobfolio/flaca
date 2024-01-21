@@ -223,7 +223,7 @@ fn helper() {
  `.   `--'        \__,--'-.
    `--/       ,-.  ______/
      (o-.     ,o- /
-      `. ;        \    ", "\x1b[38;5;199mFlaca\x1b[0;38;5;69m v", env!("CARGO_PKG_VERSION"), "\x1b[0m", r"
+      `. ;        \    ", "\x1b[38;5;199mFlaca\x1b[0;38;5;69m v", env!("CARGO_PKG_VERSION"), "\x1b[0m", r#"
        |:          \   Brute-force, lossless
       ,'`       ,   \  JPEG and PNG compression.
      (o o ,  --'     :
@@ -246,7 +246,8 @@ FLAGS:
 
 OPTIONS:
     -l, --list <FILE> Read (absolute) image and/or directory paths from this
-                      text file, one entry per line.
+                      text file — or STDIN if "-" — one entry per line, instead
+                      of or in addition to (actually trailing) <PATH(S)>.
     -z <NUM>          Run NUM lz77 backward/forward iterations during zopfli
                       PNG encoding passes. More iterations yield better
                       compression (up to a point), but require *significantly*
@@ -259,7 +260,7 @@ ARGS:
                       compress.
 
 EARLY EXIT:
-    Press ", "\x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m once to quit as soon as the already-in-progress operations
+    Press "#, "\x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m once to quit as soon as the already-in-progress operations
     have finished (ignoring any pending images still in the queue).
 
     Press \x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m a second time if you need to exit IMMEDIATELY, but note that

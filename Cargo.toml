@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "2.4.4"
+version = "2.4.5"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -28,7 +28,7 @@ revision = "1"
 depends = "$auto"
 section = "graphics"
 assets = [
-    ["./target/x86_64-unknown-linux-gnu/release/flaca", "usr/bin/", "755"],
+    ["./target/release/flaca", "usr/bin/", "755"],
     ["./release/completions/flaca.bash", "etc/bash_completion.d/", "644"],
     ["./release/man/flaca.1.gz", "usr/share/man/man1/", "644"],
 ]
@@ -66,7 +66,7 @@ description = "Print version information and exit."
 short = "-l"
 long = "--list"
 label = "<FILE>"
-description = "Read (absolute) image and/or directory paths from this text file, one entry per line."
+description = "Read (absolute) image and/or directory paths from this text file — or STDIN if '-' — one entry per line, instead of or in addition to (actually trailing) <PATH(S)>."
 path = true
 
 [[package.metadata.bashman.options]]
@@ -101,7 +101,7 @@ items = [
 ]
 
 [dependencies]
-argyle = "0.6.*"
+argyle = "0.7.*"
 ctrlc = "3.4.*"
 dactyl = "0.6.*"
 dowser = "0.8.*"

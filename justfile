@@ -21,7 +21,7 @@ pkg_dir1    := justfile_directory() + "/src"
 
 bench_dir   := "/tmp/bench-data"
 cargo_dir   := "/tmp/" + pkg_id + "-cargo"
-cargo_bin   := cargo_dir + "/x86_64-unknown-linux-gnu/release/" + pkg_id
+cargo_bin   := cargo_dir + "/release/" + pkg_id
 doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
@@ -36,7 +36,6 @@ export RUSTFLAGS := "-C target-cpu=x86-64-v3"
 	cargo build \
 		--bin "{{ pkg_id }}" \
 		--release \
-		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 
 
@@ -50,8 +49,7 @@ export RUSTFLAGS := "-C target-cpu=x86-64-v3"
 	cargo-deb \
 		--no-build \
 		-p {{ pkg_id }} \
-		-o "{{ release_dir }}" \
-		--target x86_64-unknown-linux-gnu
+		-o "{{ release_dir }}"
 
 	just _fix-chown "{{ release_dir }}"
 	mv "{{ justfile_directory() }}/target" "{{ cargo_dir }}"
@@ -74,7 +72,6 @@ export RUSTFLAGS := "-C target-cpu=x86-64-v3"
 	clear
 	cargo clippy \
 		--release \
-		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 
 
@@ -94,12 +91,11 @@ export RUSTFLAGS := "-C target-cpu=x86-64-v3"
 	cargo +nightly doc \
 		--release \
 		--no-deps \
-		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 
 	# Move the docs and clean up ownership.
 	[ ! -d "{{ doc_dir }}" ] || rm -rf "{{ doc_dir }}"
-	mv "{{ cargo_dir }}/x86_64-unknown-linux-gnu/doc" "{{ justfile_directory() }}"
+	mv "{{ cargo_dir }}/doc" "{{ justfile_directory() }}"
 	just _fix-chown "{{ doc_dir }}"
 
 
@@ -108,7 +104,6 @@ export RUSTFLAGS := "-C target-cpu=x86-64-v3"
 	cargo run \
 		--bin "{{ pkg_id }}" \
 		--release \
-		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}" \
 		-- {{ ARGS }}
 
@@ -117,11 +112,9 @@ export RUSTFLAGS := "-C target-cpu=x86-64-v3"
 @test:
 	clear
 	RUST_TEST_THREADS=1 cargo test \
-		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 	RUST_TEST_THREADS=1 cargo test \
 		--release \
-		--target x86_64-unknown-linux-gnu \
 		--target-dir "{{ cargo_dir }}"
 
 
