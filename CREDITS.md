@@ -1,19 +1,19 @@
 # Project Dependencies
     Package:   flaca
-    Version:   2.4.4
-    Generated: 2024-01-08 04:24:33 UTC
+    Version:   2.4.5
+    Generated: 2024-01-21 05:28:01 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
 | [ahash](https://github.com/tkaitchuck/ahash) | 0.8.7 | [Tom Kaitchuck](mailto:tom.kaitchuck@gmail.com) | Apache-2.0 or MIT |
-| [argyle](https://github.com/Blobfolio/argyle) | 0.6.8 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
+| [argyle](https://github.com/Blobfolio/argyle) | 0.7.0 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [bitvec](https://github.com/bitvecto-rs/bitvec) | 1.0.1 |  | MIT |
 | [bytecount](https://github.com/llogiq/bytecount) | 0.6.7 | [Andre Bogus](mailto:bogusandre@gmail.de) and [Joshua Landau](mailto:joshua@landau.ws) | Apache-2.0 or MIT |
 | [bytemuck](https://github.com/Lokathor/bytemuck) | 1.14.0 | [Lokathor](mailto:zefria@gmail.com) | Apache-2.0, MIT, or Zlib |
 | [cfg-if](https://github.com/alexcrichton/cfg-if) | 1.0.0 | [Alex Crichton](mailto:alex@alexcrichton.com) | Apache-2.0 or MIT |
-| [crossbeam-deque](https://github.com/crossbeam-rs/crossbeam) | 0.8.4 |  | Apache-2.0 or MIT |
-| [crossbeam-epoch](https://github.com/crossbeam-rs/crossbeam) | 0.9.17 |  | Apache-2.0 or MIT |
-| [crossbeam-utils](https://github.com/crossbeam-rs/crossbeam) | 0.8.18 |  | Apache-2.0 or MIT |
+| [crossbeam-deque](https://github.com/crossbeam-rs/crossbeam) | 0.8.5 |  | Apache-2.0 or MIT |
+| [crossbeam-epoch](https://github.com/crossbeam-rs/crossbeam) | 0.9.18 |  | Apache-2.0 or MIT |
+| [crossbeam-utils](https://github.com/crossbeam-rs/crossbeam) | 0.8.19 |  | Apache-2.0 or MIT |
 | [ctrlc](https://github.com/Detegr/rust-ctrlc.git) | 3.4.2 | [Antti Keränen](mailto:detegr@gmail.com) | Apache-2.0 or MIT |
 | [dactyl](https://github.com/Blobfolio/dactyl) | 0.6.0 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [dowser](https://github.com/Blobfolio/dowser) | 0.8.1 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
@@ -31,8 +31,8 @@
 | [mozjpeg-sys](https://github.com/kornelski/mozjpeg-sys.git) | 2.0.5 | [Kornel](mailto:kornel@geekhood.net) | IJG AND Zlib AND BSD-3-Clause |
 | [oxipng](https://github.com/shssoichiro/oxipng) | 9.0.0 | [Joshua Holmer](mailto:jholmer.in@gmail.com) | MIT |
 | [radium](https://github.com/bitvecto-rs/radium) | 0.7.0 | [Nika Layzell](mailto:nika@thelayzells.com) and [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
-| [rayon](https://github.com/rayon-rs/rayon) | 1.8.0 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
-| [rayon-core](https://github.com/rayon-rs/rayon) | 1.12.0 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
+| [rayon](https://github.com/rayon-rs/rayon) | 1.8.1 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
+| [rayon-core](https://github.com/rayon-rs/rayon) | 1.12.1 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
 | [rgb](https://github.com/kornelski/rust-rgb) | 0.8.37 | [Kornel Lesiński](mailto:kornel@geekhood.net) | MIT |
 | [rustc-hash](https://github.com/rust-lang-nursery/rustc-hash) | 1.1.0 | The Rust Project Developers | Apache-2.0 or MIT |
 | [tap](https://github.com/myrrlyn/tap) | 1.0.1 | [Elliott Linder](mailto:elliott.darfink@gmail.com) and [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
