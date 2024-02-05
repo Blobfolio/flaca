@@ -202,7 +202,7 @@ pub(super) enum LodePNGFilterStrategy {
 	LFS_FOUR = 4,
 	LFS_MINSUM = 5,
 	LFS_ENTROPY = 6,
-	// LFS_BRUTE_FORCE = 7, // This strategy is redundant.
+	LFS_BRUTE_FORCE = 7,
 	// LFS_PREDEFINED = 8,  // This strategy is redundant.
 }
 
