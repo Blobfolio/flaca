@@ -349,7 +349,6 @@ impl LodePNGState {
 		if slow {
 			enc.encoder.zlibsettings.windowsize = 32_768;
 			enc.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
-			enc.encoder.zlibsettings.custom_context = super::zopfli_iterations().cast::<c_void>();
 		}
 		else {
 			enc.encoder.zlibsettings.windowsize = 8_192;
