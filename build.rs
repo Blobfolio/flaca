@@ -42,10 +42,16 @@ const E_PNG: Extension = {};
 	write(&out_path, out.as_bytes());
 }
 
-/// # Build Zopflipng.
+/// # Build `zopfli`/`lodepng`.
 ///
-/// Rust's Zopfli implementation is insufficient for our needs; we have to link
-/// to the static libs for some FFI action instead.
+/// The Rust ports of these libraries are missing features that noticeably
+/// affect PNG compression, and are quite a bit slower than the original C
+/// libraries as well. Unless/until that changes, we'll have to work with the
+/// originals.
+///
+/// The relevant `zopflipng` bits, though, were easily ported to the Flaca
+/// library proper, so we can at least avoid the headaches associated with C++
+/// interop!
 fn build_ffi() {
 	// Define some paths.
 	let repo = Path::new("skel/vendor");

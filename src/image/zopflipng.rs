@@ -59,6 +59,7 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrateg
 		LodePNGFilterStrategy::LFS_FOUR,
 		LodePNGFilterStrategy::LFS_MINSUM,
 		LodePNGFilterStrategy::LFS_ENTROPY,
+		LodePNGFilterStrategy::LFS_BRUTE_FORCE,
 	]
 		.into_iter()
 		.filter_map(|s| encode(dec, img, s, false).map(|out| (out.size, s)))

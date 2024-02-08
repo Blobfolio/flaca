@@ -202,7 +202,7 @@ pub(super) enum LodePNGFilterStrategy {
 	LFS_FOUR = 4,
 	LFS_MINSUM = 5,
 	LFS_ENTROPY = 6,
-	// LFS_BRUTE_FORCE = 7, // This strategy is redundant.
+	LFS_BRUTE_FORCE = 7,
 	// LFS_PREDEFINED = 8,  // This strategy is redundant.
 }
 
@@ -349,7 +349,6 @@ impl LodePNGState {
 		if slow {
 			enc.encoder.zlibsettings.windowsize = 32_768;
 			enc.encoder.zlibsettings.custom_deflate = Some(custom_png_deflate);
-			enc.encoder.zlibsettings.custom_context = super::zopfli_iterations().cast::<c_void>();
 		}
 		else {
 			enc.encoder.zlibsettings.windowsize = 8_192;
