@@ -61,7 +61,7 @@ The following flags and options are available:
 | Short | Long | Value | Description |
 | ----- | ---- | ----- | ----------- |
 | `-h` | `--help` | | Print help information and exit. |
-| `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file, one entry per line. |
+| `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file — or STDIN if "-" — one entry per line, instead of or in addition to the trailing `<PATH(S)>`. |
 | | `--no-jpeg` | | Skip JPEG images. |
 | | `--no-png` | | Skip PNG Images. |
 | `-z` | `--zopfli-iterations` | Override the number of zopfli iterations when compressing PNGs. |
