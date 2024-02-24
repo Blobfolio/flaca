@@ -27,6 +27,7 @@ release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
 export RUSTFLAGS := "-C target-cpu=x86-64-v3"
+export LIBDEFLATE_NO_PKG_CONFIG := "1"
 
 
 
