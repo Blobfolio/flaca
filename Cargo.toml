@@ -121,6 +121,7 @@ version = "=9.0.0"
 default-features = false
 
 [build-dependencies]
+bindgen = "0.69.*"
 cc = "1.0.*"
 dowser = "0.9.*"
 

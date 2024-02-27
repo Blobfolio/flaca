@@ -6,7 +6,10 @@ use dowser::Extension;
 use std::{
 	fs::File,
 	io::Write,
-	path::Path,
+	path::{
+		Path,
+		PathBuf,
+	},
 };
 
 
@@ -35,11 +38,7 @@ const E_PNG: Extension = {};
 		Extension::codegen(b"png"),
 	);
 
-	let out_path = std::fs::canonicalize(std::env::var("OUT_DIR").expect("Missing OUT_DIR."))
-		.expect("Missing OUT_DIR.")
-		.join("flaca-extensions.rs");
-
-	write(&out_path, out.as_bytes());
+	write(&out_path("flaca-extensions.rs"), out.as_bytes());
 }
 
 /// # Build `zopfli`/`lodepng`.
@@ -87,7 +86,16 @@ fn build_ffi() {
 		.define("LODEPNG_NO_COMPILE_CPP", None)
 		.compile("zopflipng");
 
-	// bindings(repo, &lodepng_src);
+	bindings(repo, &lodepng_src);
+}
+
+/// # Output Path.
+///
+/// Append the sub-path to OUT_DIR and return it.
+fn out_path(stub: &str) -> PathBuf {
+	std::fs::canonicalize(std::env::var("OUT_DIR").expect("Missing OUT_DIR."))
+		.expect("Missing OUT_DIR.")
+		.join(stub)
 }
 
 /// # Write File.
@@ -96,7 +104,6 @@ fn write(path: &Path, data: &[u8]) {
 		.expect("Unable to write file.");
 }
 
-/*
 /// # FFI Bindings.
 ///
 /// These have been manually transcribed into the Rust sources, but this
@@ -116,19 +123,61 @@ fn bindings(repo: &Path, lodepng_src: &Path) {
 		.allowlist_type("LodePNGColorStats")
 		.allowlist_type("LodePNGCompressSettings")
 		.allowlist_type("LodePNGState")
-		.size_t_is_usize(true)
 		.rustified_enum("LodePNGColorType")
 		.rustified_enum("LodePNGFilterStrategy")
 		.derive_debug(true)
+		.merge_extern_blocks(true)
+		.no_copy("LodePNGState")
+		.size_t_is_usize(true)
+		.sort_semantically(true)
 		.generate()
 		.expect("Unable to generate bindings");
 
-	let out_path = std::fs::canonicalize(std::env::var("OUT_DIR").expect("Missing OUT_DIR."))
-		.expect("Missing OUT_DIR.")
-		.join("flaca-bindings.rs");
+	// Save the bindings to a string.
+	let mut out = Vec::new();
+	bindings.write(Box::new(&mut out)).expect("Unable to write bindings.");
+	let mut out = String::from_utf8(out)
+		.expect("Bindings contain invalid UTF-8.")
+		.replace("    ", "\t");
 
-	bindings
-		.write_to_file(&out_path)
-		.expect("Couldn't write bindings!");
+	// Move the tests out into their own string so we can include them in a
+	// test-specific module.
+	let mut tests = String::new();
+	while let Some(from) = out.find("#[test]") {
+		let sub = &out[from..];
+		let Some(to) = sub.find("\n}\n") else { break; };
+		let test = &sub[..to + 3];
+		assert!(
+			test.starts_with("#[test]") && test.ends_with("\n}\n"),
+			"Invalid binding test clip:\n{test:?}\n",
+		);
+
+		tests.push_str(test);
+		out.replace_range(from..from + to + 3, "");
+	}
+
+	// Allow dead code for these two enum variants we aren't using.
+	for i in ["LCT_MAX_OCTET_VALUE = 255,", "LFS_PREDEFINED = 8,"] {
+		out = out.replace(i, &format!("#[allow(dead_code)] {i}"));
+	}
+
+	// Switch from pub to pub(super).
+	out = out.replace("pub ", "pub(super) ");
+
+	// Double-check our replacements were actually for visibility, rather than
+	// an (unlikely) accidental substring match like "mypub = 5". That would
+	// generate a compiler error on its own, but this makes it clearer what
+	// went wrong.
+	for w in out.as_bytes().windows(12) {
+		if w.ends_with(b"pub(super) ") {
+			assert!(
+				w[0].is_ascii_whitespace(),
+				"Invalid bindgen visibility replacement!",
+			);
+		}
+	}
+
+	// Write the bindings and tests.
+	write(&out_path("lodepng-bindgen.rs"), out.as_bytes());
+	write(&out_path("lodepng-bindgen-tests.rs"), tests.as_bytes());
 }
-*/
