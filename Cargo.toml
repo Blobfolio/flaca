@@ -105,7 +105,7 @@ ctrlc = "=3.4.2"
 dactyl = "0.7.*"
 dowser = "0.9.*"
 libc = "0.2.*"
-rayon = "1.8.*"
+rayon = "1.9.*"
 write_atomic = "0.5.*"
 
 [dependencies.fyi_msg]
