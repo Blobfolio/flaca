@@ -270,21 +270,6 @@ static int GetLengthScore(int length, int distance) {
   return distance > 1024 ? length - 1 : length;
 }
 
-void ZopfliVerifyLenDist(const unsigned char* data, size_t datasize, size_t pos,
-                         unsigned short dist, unsigned short length) {
-
-  /* TODO(lode): make this only run in a debug compile, it's for assert only. */
-  size_t i;
-
-  assert(pos + length <= datasize);
-  for (i = 0; i < length; i++) {
-    if (data[pos - dist + i] != data[pos + i]) {
-      assert(data[pos - dist + i] == data[pos + i]);
-      break;
-    }
-  }
-}
-
 /*
 Finds how long the match of scan and match is. Can be used to find how many
 bytes starting from scan, and from match, are equal. Returns the last byte
@@ -598,7 +583,6 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
         dist = prev_match;
         lengthscore = prevlengthscore;
         /* Add to output. */
-        ZopfliVerifyLenDist(in, inend, i - 1, dist, leng);
         ZopfliStoreLitLenDist(leng, dist, i - 1, store);
         for (j = 2; j < leng; j++) {
           assert(i < inend);
@@ -619,7 +603,6 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
 
     /* Add to output. */
     if (lengthscore >= ZOPFLI_MIN_MATCH) {
-      ZopfliVerifyLenDist(in, inend, i, dist, leng);
       ZopfliStoreLitLenDist(leng, dist, i, store);
     } else {
       leng = 1;
