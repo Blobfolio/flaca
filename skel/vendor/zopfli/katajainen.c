@@ -133,12 +133,9 @@ int ZopfliLengthLimitedCodeLengths(
   Node* leaves = (Node*)malloc(n * sizeof(*leaves));
 
   /* Initialize all bitlengths at 0. */
-  for (i = 0; i < n; i++) {
-    bitlengths[i] = 0;
-  }
-
   /* Count used symbols and place them in the leaves. */
   for (i = 0; i < n; i++) {
+    bitlengths[i] = 0;
     if (frequencies[i]) {
       leaves[numsymbols].weight = frequencies[i];
       leaves[numsymbols].count = i;  /* Index of symbol this leaf represents. */

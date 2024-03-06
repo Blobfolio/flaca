@@ -1,5 +1,5 @@
 diff --git a/zopfli/blocksplitter.c b/zopfli/blocksplitter.c
-index 161783d..3eac273 100644
+index 161783d..62cc425 100644
 --- a/zopfli/blocksplitter.c
 +++ b/zopfli/blocksplitter.c
 @@ -24,7 +24,6 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
@@ -30,7 +30,27 @@ index 161783d..3eac273 100644
          vp[i] = f(p[i], context);
        }
        besti = 0;
-@@ -274,7 +277,7 @@ void ZopfliBlockSplitLZ77(const ZopfliOptions* options,
+@@ -224,9 +227,8 @@ void ZopfliBlockSplitLZ77(const ZopfliOptions* options,
+ 
+   if (lz77->size < 10) return;  /* This code fails on tiny files. */
+ 
+-  done = (unsigned char*)malloc(lz77->size);
++  done = (unsigned char*)calloc(lz77->size, 1);
+   if (!done) exit(-1); /* Allocation failed. */
+-  for (i = 0; i < lz77->size; i++) done[i] = 0;
+ 
+   lstart = 0;
+   lend = lz77->size;
+@@ -265,16 +267,12 @@ void ZopfliBlockSplitLZ77(const ZopfliOptions* options,
+     }
+   }
+ 
+-  if (options->verbose) {
+-    PrintBlockSplitPoints(lz77, *splitpoints, *npoints);
+-  }
+-
+   free(done);
+ }
  
  void ZopfliBlockSplit(const ZopfliOptions* options,
                        const unsigned char* in, size_t instart, size_t inend,
@@ -39,7 +59,7 @@ index 161783d..3eac273 100644
    size_t pos = 0;
    size_t i;
    ZopfliBlockState s;
-@@ -298,19 +301,47 @@ void ZopfliBlockSplit(const ZopfliOptions* options,
+@@ -298,19 +296,47 @@ void ZopfliBlockSplit(const ZopfliOptions* options,
    ZopfliBlockSplitLZ77(options,
                         &store, maxblocks,
                         &lz77splitpoints, &nlz77points);
@@ -79,11 +99,11 @@ index 161783d..3eac273 100644
 +    store.size += shift2;
 +    store.dists -= shift2;
 +    store.litlens -= shift2;
-   }
++  }
 +  else{
 +    InitStats(*stats);
 +    GetStatistics(&store, *stats);
-+  }
+   }
 +
    assert(*npoints == nlz77points);
  
@@ -109,11 +129,77 @@ index d1d622f..e4b769f 100644
  
  /*
  Divides the input into equal blocks, does not even take LZ77 lengths into
+diff --git a/zopfli/cache.c b/zopfli/cache.c
+index 6b9444f..438a9ed 100644
+--- a/zopfli/cache.c
++++ b/zopfli/cache.c
+@@ -28,9 +28,9 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
+ void ZopfliInitCache(size_t blocksize, ZopfliLongestMatchCache* lmc) {
+   size_t i;
+   lmc->length = (unsigned short*)malloc(sizeof(unsigned short) * blocksize);
+-  lmc->dist = (unsigned short*)malloc(sizeof(unsigned short) * blocksize);
++  lmc->dist = (unsigned short*)calloc(blocksize, sizeof(unsigned short));
+   /* Rather large amount of memory. */
+-  lmc->sublen = (unsigned char*)malloc(ZOPFLI_CACHE_LENGTH * 3 * blocksize);
++  lmc->sublen = (unsigned char*)calloc(ZOPFLI_CACHE_LENGTH * 3 * blocksize, 1);
+   if(lmc->sublen == NULL) {
+     fprintf(stderr,
+         "Error: Out of memory. Tried allocating %lu bytes of memory.\n",
+@@ -41,8 +41,6 @@ void ZopfliInitCache(size_t blocksize, ZopfliLongestMatchCache* lmc) {
+   /* length > 0 and dist 0 is invalid combination, which indicates on purpose
+   that this cache value is not filled in yet. */
+   for (i = 0; i < blocksize; i++) lmc->length[i] = 1;
+-  for (i = 0; i < blocksize; i++) lmc->dist[i] = 0;
+-  for (i = 0; i < ZOPFLI_CACHE_LENGTH * blocksize * 3; i++) lmc->sublen[i] = 0;
+ }
+ 
+ void ZopfliCleanCache(ZopfliLongestMatchCache* lmc) {
 diff --git a/zopfli/deflate.c b/zopfli/deflate.c
-index c5abda9..0ee42b0 100644
+index c5abda9..5814e8a 100644
 --- a/zopfli/deflate.c
 +++ b/zopfli/deflate.c
-@@ -813,6 +813,8 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -128,7 +128,7 @@ static size_t EncodeTree(const unsigned* ll_lengths,
+   int size_only = !out;
+   size_t result_size = 0;
+ 
+-  for(i = 0; i < 19; i++) clcounts[i] = 0;
++  for (i = 0; i < 19; i++) clcounts[i] = 0;
+ 
+   /* Trim zeros. */
+   while (hlit > 0 && ll_lengths[257 + hlit - 1] == 0) hlit--;
+@@ -449,8 +449,7 @@ void OptimizeHuffmanForRle(int length, size_t* counts) {
+   }
+   /* 2) Let's mark all population counts that already can be encoded
+   with an rle code.*/
+-  good_for_rle = (int*)malloc((unsigned)length * sizeof(int));
+-  for (i = 0; i < length; ++i) good_for_rle[i] = 0;
++  good_for_rle = (int*)calloc((unsigned)length, sizeof(int));
+ 
+   /* Let's not spoil any of the existing good rle codes.
+   Mark any seq of 0's that is longer than 5 as a good_for_rle.
+@@ -718,9 +717,6 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
+ 
+     detect_tree_size = *outsize;
+     AddDynamicTree(ll_lengths, d_lengths, bp, out, outsize);
+-    if (options->verbose) {
+-      fprintf(stderr, "treesize: %d\n", (int)(*outsize - detect_tree_size));
+-    }
+   }
+ 
+   ZopfliLengthsToSymbols(ll_lengths, ZOPFLI_NUM_LL, 15, ll_symbols);
+@@ -737,11 +733,6 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
+     uncompressed_size += lz77->dists[i] == 0 ? 1 : lz77->litlens[i];
+   }
+   compressed_size = *outsize - detect_block_size;
+-  if (options->verbose) {
+-    fprintf(stderr, "compressed block size: %d (%dk) (unc: %d)\n",
+-           (int)compressed_size, (int)(compressed_size / 1024),
+-           (int)(uncompressed_size));
+-  }
+ }
+ 
+ static void AddLZ77BlockAutoType(const ZopfliOptions* options, int final,
+@@ -813,6 +804,8 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
                         unsigned char* bp, unsigned char** out,
                         size_t* outsize) {
    size_t i;
@@ -122,7 +208,7 @@ index c5abda9..0ee42b0 100644
    /* byte coordinates rather than lz77 index */
    size_t* splitpoints_uncompressed = 0;
    size_t npoints = 0;
-@@ -820,6 +822,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -820,6 +813,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
    double totalcost = 0;
    ZopfliLZ77Store lz77;
  
@@ -130,7 +216,7 @@ index c5abda9..0ee42b0 100644
    /* If btype=2 is specified, it tries all block types. If a lesser btype is
    given, then however it forces that one. Neither of the lesser types needs
    block splitting as they have no dynamic huffman trees. */
-@@ -845,7 +848,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -845,7 +839,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
    if (options->blocksplitting) {
      ZopfliBlockSplit(options, in, instart, inend,
                       options->blocksplittingmax,
@@ -139,7 +225,7 @@ index c5abda9..0ee42b0 100644
      splitpoints = (size_t*)malloc(sizeof(*splitpoints) * npoints);
    }
  
-@@ -858,7 +861,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -858,7 +852,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
      ZopfliLZ77Store store;
      ZopfliInitLZ77Store(in, &store);
      ZopfliInitBlockState(options, start, end, 1, &s);
@@ -148,7 +234,7 @@ index c5abda9..0ee42b0 100644
      totalcost += ZopfliCalculateBlockSizeAutoType(&store, 0, store.size);
  
      ZopfliAppendLZ77Store(&store, &lz77);
-@@ -868,6 +871,10 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -868,6 +862,10 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
      ZopfliCleanLZ77Store(&store);
    }
  
@@ -159,10 +245,77 @@ index c5abda9..0ee42b0 100644
    /* Second block splitting attempt */
    if (options->blocksplitting && npoints > 1) {
      size_t* splitpoints2 = 0;
+@@ -922,10 +920,4 @@ void ZopfliDeflate(const ZopfliOptions* options, int btype, int final,
+     i += size;
+   } while (i < insize);
+ #endif
+-  if (options->verbose) {
+-    fprintf(stderr,
+-            "Original Size: %lu, Deflate: %lu, Compression: %f%% Removed\n",
+-            (unsigned long)insize, (unsigned long)(*outsize - offset),
+-            100.0 * (double)(insize - (*outsize - offset)) / (double)insize);
+-  }
+ }
+diff --git a/zopfli/gzip_container.c b/zopfli/gzip_container.c
+index 7615db3..969d8c1 100644
+--- a/zopfli/gzip_container.c
++++ b/zopfli/gzip_container.c
+@@ -114,11 +114,4 @@ void ZopfliGzipCompress(const ZopfliOptions* options,
+   ZOPFLI_APPEND_DATA((insize >> 8) % 256, out, outsize);
+   ZOPFLI_APPEND_DATA((insize >> 16) % 256, out, outsize);
+   ZOPFLI_APPEND_DATA((insize >> 24) % 256, out, outsize);
+-
+-  if (options->verbose) {
+-    fprintf(stderr,
+-            "Original Size: %d, Gzip: %d, Compression: %f%% Removed\n",
+-            (int)insize, (int)*outsize,
+-            100.0 * (double)(insize - *outsize) / (double)insize);
+-  }
+ }
+diff --git a/zopfli/hash.c b/zopfli/hash.c
+index 3025d1e..20d8eac 100644
+--- a/zopfli/hash.c
++++ b/zopfli/hash.c
+@@ -46,30 +46,26 @@ void ZopfliResetHash(size_t window_size, ZopfliHash* h) {
+   size_t i;
+ 
+   h->val = 0;
++#ifdef ZOPFLI_HASH_SAME_HASH
++  h->val2 = 0;
++#endif
+   for (i = 0; i < 65536; i++) {
+     h->head[i] = -1;  /* -1 indicates no head so far. */
++#ifdef ZOPFLI_HASH_SAME_HASH
++    h->head2[i] = -1;
++#endif
+   }
+   for (i = 0; i < window_size; i++) {
+     h->prev[i] = i;  /* If prev[j] == j, then prev[j] is uninitialized. */
+     h->hashval[i] = -1;
+-  }
+-
+ #ifdef ZOPFLI_HASH_SAME
+-  for (i = 0; i < window_size; i++) {
+     h->same[i] = 0;
+-  }
+ #endif
+-
+ #ifdef ZOPFLI_HASH_SAME_HASH
+-  h->val2 = 0;
+-  for (i = 0; i < 65536; i++) {
+-    h->head2[i] = -1;
+-  }
+-  for (i = 0; i < window_size; i++) {
+     h->prev2[i] = i;
+     h->hashval2[i] = -1;
+-  }
+ #endif
++  }
+ }
+ 
+ void ZopfliCleanHash(ZopfliHash* h) {
 diff --git a/zopfli/katajainen.c b/zopfli/katajainen.c
-old mode 100755
-new mode 100644
-index 1459017..391fd3b
+index 1459017..eb13a21 100644
 --- a/zopfli/katajainen.c
 +++ b/zopfli/katajainen.c
 @@ -39,13 +39,6 @@ struct Node {
@@ -276,7 +429,21 @@ index 1459017..391fd3b
  
    /* Array of lists of chains. Each list requires only two lookahead chains at
    a time, so each list is a array of two Node*'s. */
-@@ -240,18 +188,71 @@ int ZopfliLengthLimitedCodeLengths(
+@@ -185,12 +133,9 @@ int ZopfliLengthLimitedCodeLengths(
+   Node* leaves = (Node*)malloc(n * sizeof(*leaves));
+ 
+   /* Initialize all bitlengths at 0. */
+-  for (i = 0; i < n; i++) {
+-    bitlengths[i] = 0;
+-  }
+-
+   /* Count used symbols and place them in the leaves. */
+   for (i = 0; i < n; i++) {
++    bitlengths[i] = 0;
+     if (frequencies[i]) {
+       leaves[numsymbols].weight = frequencies[i];
+       leaves[numsymbols].count = i;  /* Index of symbol this leaf represents. */
+@@ -240,18 +185,71 @@ int ZopfliLengthLimitedCodeLengths(
  
    /* Initialize node memory pool. */
    nodes = (Node*)malloc(maxbits * 2 * numsymbols * sizeof(Node));
@@ -352,8 +519,67 @@ index 1459017..391fd3b
  
    ExtractBitLengths(lists[maxbits - 1][1], leaves, bitlengths);
  
+diff --git a/zopfli/lz77.c b/zopfli/lz77.c
+index 9df899d..e283c3d 100644
+--- a/zopfli/lz77.c
++++ b/zopfli/lz77.c
+@@ -270,21 +270,6 @@ static int GetLengthScore(int length, int distance) {
+   return distance > 1024 ? length - 1 : length;
+ }
+ 
+-void ZopfliVerifyLenDist(const unsigned char* data, size_t datasize, size_t pos,
+-                         unsigned short dist, unsigned short length) {
+-
+-  /* TODO(lode): make this only run in a debug compile, it's for assert only. */
+-  size_t i;
+-
+-  assert(pos + length <= datasize);
+-  for (i = 0; i < length; i++) {
+-    if (data[pos - dist + i] != data[pos + i]) {
+-      assert(data[pos - dist + i] == data[pos + i]);
+-      break;
+-    }
+-  }
+-}
+-
+ /*
+ Finds how long the match of scan and match is. Can be used to find how many
+ bytes starting from scan, and from match, are equal. Returns the last byte
+@@ -594,7 +579,6 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
+         dist = prev_match;
+         lengthscore = prevlengthscore;
+         /* Add to output. */
+-        ZopfliVerifyLenDist(in, inend, i - 1, dist, leng);
+         ZopfliStoreLitLenDist(leng, dist, i - 1, store);
+         for (j = 2; j < leng; j++) {
+           assert(i < inend);
+@@ -615,7 +599,6 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
+ 
+     /* Add to output. */
+     if (lengthscore >= ZOPFLI_MIN_MATCH) {
+-      ZopfliVerifyLenDist(in, inend, i, dist, leng);
+       ZopfliStoreLitLenDist(leng, dist, i, store);
+     } else {
+       leng = 1;
+diff --git a/zopfli/lz77.h b/zopfli/lz77.h
+index dc8597a..8975bb5 100644
+--- a/zopfli/lz77.h
++++ b/zopfli/lz77.h
+@@ -122,12 +122,6 @@ void ZopfliFindLongestMatch(
+     size_t pos, size_t size, size_t limit,
+     unsigned short* sublen, unsigned short* distance, unsigned short* length);
+ 
+-/*
+-Verifies if length and dist are indeed valid, only used for assertion.
+-*/
+-void ZopfliVerifyLenDist(const unsigned char* data, size_t datasize, size_t pos,
+-                         unsigned short dist, unsigned short length);
+-
+ /*
+ Does LZ77 using an algorithm similar to gzip, with lazy matching, rather than
+ with the slow but better "squeeze" implementation.
 diff --git a/zopfli/squeeze.c b/zopfli/squeeze.c
-index a695c18..ede42fc 100644
+index a695c18..9af0481 100644
 --- a/zopfli/squeeze.c
 +++ b/zopfli/squeeze.c
 @@ -29,20 +29,7 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
@@ -538,7 +764,15 @@ index a695c18..ede42fc 100644
        assert(newCost >= 0);
        if (newCost < costs[j + k]) {
          assert(k <= ZOPFLI_MAX_MATCH);
-@@ -394,8 +376,7 @@ static void CalculateStatistics(SymbolStats* stats) {
+@@ -369,7 +351,6 @@ static void FollowPath(ZopfliBlockState* s,
+       ZopfliFindLongestMatch(s, h, in, pos, inend, length, 0,
+                              &dist, &dummy_length);
+       assert(!(dummy_length != length && length > 2 && dummy_length > 2));
+-      ZopfliVerifyLenDist(in, inend, pos, dist, length);
+       ZopfliStoreLitLenDist(length, dist, pos, store);
+       total_length_test += length;
+     } else {
+@@ -394,8 +375,7 @@ static void CalculateStatistics(SymbolStats* stats) {
    ZopfliCalculateEntropy(stats->dists, ZOPFLI_NUM_D, stats->d_symbols);
  }
  
@@ -548,7 +782,7 @@ index a695c18..ede42fc 100644
    size_t i;
    for (i = 0; i < store->size; i++) {
      if (store->dists[i] == 0) {
-@@ -420,8 +401,7 @@ inend: where to stop (not inclusive)
+@@ -420,8 +400,7 @@ inend: where to stop (not inclusive)
  path: pointer to dynamically allocated memory to store the path
  pathsize: pointer to the size of the dynamic path array
  length_array: array of size (inend - instart) used to store lengths
@@ -558,7 +792,7 @@ index a695c18..ede42fc 100644
  store: place to output the LZ77 data
  returns the cost that was, according to the costmodel, needed to get to the end.
      This is not the actual cost.
-@@ -429,10 +409,10 @@ returns the cost that was, according to the costmodel, needed to get to the end.
+@@ -429,10 +408,10 @@ returns the cost that was, according to the costmodel, needed to get to the end.
  static double LZ77OptimalRun(ZopfliBlockState* s,
      const unsigned char* in, size_t instart, size_t inend,
      unsigned short** path, size_t* pathsize,
@@ -571,7 +805,7 @@ index a695c18..ede42fc 100644
                  costcontext, length_array, h, costs);
    free(*path);
    *path = 0;
-@@ -446,7 +426,7 @@ static double LZ77OptimalRun(ZopfliBlockState* s,
+@@ -446,7 +425,7 @@ static double LZ77OptimalRun(ZopfliBlockState* s,
  void ZopfliLZ77Optimal(ZopfliBlockState *s,
                         const unsigned char* in, size_t instart, size_t inend,
                         int numiterations,
@@ -580,7 +814,7 @@ index a695c18..ede42fc 100644
    /* Dist to get to here with smallest cost. */
    size_t blocksize = inend - instart;
    unsigned short* length_array =
-@@ -478,8 +458,13 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
+@@ -478,8 +457,13 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
    the statistics of the previous run. */
  
    /* Initial run. */
@@ -596,7 +830,7 @@ index a695c18..ede42fc 100644
  
    /* Repeat statistics with each time the cost model from the previous stat
    run. */
-@@ -487,7 +472,7 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
+@@ -487,12 +471,9 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
      ZopfliCleanLZ77Store(&currentstore);
      ZopfliInitLZ77Store(in, &currentstore);
      LZ77OptimalRun(s, in, instart, inend, &path, &pathsize,
@@ -604,8 +838,13 @@ index a695c18..ede42fc 100644
 +                   length_array, (void*)&stats,
                     &currentstore, h, costs);
      cost = ZopfliCalculateBlockSize(&currentstore, 0, currentstore.size, 2);
-     if (s->options->verbose_more || (s->options->verbose && cost < bestcost)) {
-@@ -551,7 +536,7 @@ void ZopfliLZ77OptimalFixed(ZopfliBlockState *s,
+-    if (s->options->verbose_more || (s->options->verbose && cost < bestcost)) {
+-      fprintf(stderr, "Iteration %d: %d bit\n", i, (int) cost);
+-    }
+     if (cost < bestcost) {
+       /* Copy to the output store. */
+       ZopfliCopyLZ77Store(&currentstore, store);
+@@ -551,7 +532,7 @@ void ZopfliLZ77OptimalFixed(ZopfliBlockState *s,
    /* Shortest path for fixed tree This one should give the shortest possible
    result for fixed tree, no repeated runs are needed since the tree is known. */
    LZ77OptimalRun(s, in, instart, inend, &path, &pathsize,
@@ -652,3 +891,59 @@ index 48bb775..68db437 100644
  
  /*
  Does the same as ZopfliLZ77Optimal, but optimized for the fixed tree of the
+diff --git a/zopfli/tree.c b/zopfli/tree.c
+index c457511..b71e013 100644
+--- a/zopfli/tree.c
++++ b/zopfli/tree.c
+@@ -29,24 +29,19 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
+ 
+ void ZopfliLengthsToSymbols(const unsigned* lengths, size_t n, unsigned maxbits,
+                             unsigned* symbols) {
+-  size_t* bl_count = (size_t*)malloc(sizeof(size_t) * (maxbits + 1));
++  size_t* bl_count = (size_t*)calloc(maxbits + 1, sizeof(size_t));
+   size_t* next_code = (size_t*)malloc(sizeof(size_t) * (maxbits + 1));
+   unsigned bits, i;
+   unsigned code;
+ 
+-  for (i = 0; i < n; i++) {
+-    symbols[i] = 0;
+-  }
+-
+   /* 1) Count the number of codes for each code length. Let bl_count[N] be the
+   number of codes of length N, N >= 1. */
+-  for (bits = 0; bits <= maxbits; bits++) {
+-    bl_count[bits] = 0;
+-  }
+   for (i = 0; i < n; i++) {
++    symbols[i] = 0;
+     assert(lengths[i] <= maxbits);
+     bl_count[lengths[i]]++;
+   }
++
+   /* 2) Find the numerical value of the smallest code for each code length. */
+   code = 0;
+   bl_count[0] = 0;
+@@ -54,6 +49,7 @@ void ZopfliLengthsToSymbols(const unsigned* lengths, size_t n, unsigned maxbits,
+     code = (code + bl_count[bits-1]) << 1;
+     next_code[bits] = code;
+   }
++
+   /* 3) Assign numerical values to all codes, using consecutive values for all
+   codes of the same length with the base values determined at step 2. */
+   for (i = 0;  i < n; i++) {
+diff --git a/zopfli/zlib_container.c b/zopfli/zlib_container.c
+index 130ffc7..4ccac0d 100644
+--- a/zopfli/zlib_container.c
++++ b/zopfli/zlib_container.c
+@@ -69,11 +69,4 @@ void ZopfliZlibCompress(const ZopfliOptions* options,
+   ZOPFLI_APPEND_DATA((checksum >> 16) % 256, out, outsize);
+   ZOPFLI_APPEND_DATA((checksum >> 8) % 256, out, outsize);
+   ZOPFLI_APPEND_DATA(checksum % 256, out, outsize);
+-
+-  if (options->verbose) {
+-    fprintf(stderr,
+-            "Original Size: %d, Zlib: %d, Compression: %f%% Removed\n",
+-            (int)insize, (int)*outsize,
+-            100.0 * (double)(insize - *outsize) / (double)insize);
+-  }
+ }

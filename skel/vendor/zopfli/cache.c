@@ -28,9 +28,9 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 void ZopfliInitCache(size_t blocksize, ZopfliLongestMatchCache* lmc) {
   size_t i;
   lmc->length = (unsigned short*)malloc(sizeof(unsigned short) * blocksize);
-  lmc->dist = (unsigned short*)malloc(sizeof(unsigned short) * blocksize);
+  lmc->dist = (unsigned short*)calloc(blocksize, sizeof(unsigned short));
   /* Rather large amount of memory. */
-  lmc->sublen = (unsigned char*)malloc(ZOPFLI_CACHE_LENGTH * 3 * blocksize);
+  lmc->sublen = (unsigned char*)calloc(ZOPFLI_CACHE_LENGTH * 3 * blocksize, 1);
   if(lmc->sublen == NULL) {
     fprintf(stderr,
         "Error: Out of memory. Tried allocating %lu bytes of memory.\n",
@@ -41,8 +41,6 @@ void ZopfliInitCache(size_t blocksize, ZopfliLongestMatchCache* lmc) {
   /* length > 0 and dist 0 is invalid combination, which indicates on purpose
   that this cache value is not filled in yet. */
   for (i = 0; i < blocksize; i++) lmc->length[i] = 1;
-  for (i = 0; i < blocksize; i++) lmc->dist[i] = 0;
-  for (i = 0; i < ZOPFLI_CACHE_LENGTH * blocksize * 3; i++) lmc->sublen[i] = 0;
 }
 
 void ZopfliCleanCache(ZopfliLongestMatchCache* lmc) {

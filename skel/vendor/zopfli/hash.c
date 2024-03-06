@@ -46,30 +46,26 @@ void ZopfliResetHash(size_t window_size, ZopfliHash* h) {
   size_t i;
 
   h->val = 0;
+#ifdef ZOPFLI_HASH_SAME_HASH
+  h->val2 = 0;
+#endif
   for (i = 0; i < 65536; i++) {
     h->head[i] = -1;  /* -1 indicates no head so far. */
+#ifdef ZOPFLI_HASH_SAME_HASH
+    h->head2[i] = -1;
+#endif
   }
   for (i = 0; i < window_size; i++) {
     h->prev[i] = i;  /* If prev[j] == j, then prev[j] is uninitialized. */
     h->hashval[i] = -1;
-  }
-
 #ifdef ZOPFLI_HASH_SAME
-  for (i = 0; i < window_size; i++) {
     h->same[i] = 0;
-  }
 #endif
-
 #ifdef ZOPFLI_HASH_SAME_HASH
-  h->val2 = 0;
-  for (i = 0; i < 65536; i++) {
-    h->head2[i] = -1;
-  }
-  for (i = 0; i < window_size; i++) {
     h->prev2[i] = i;
     h->hashval2[i] = -1;
-  }
 #endif
+  }
 }
 
 void ZopfliCleanHash(ZopfliHash* h) {

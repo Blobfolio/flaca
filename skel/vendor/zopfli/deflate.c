@@ -128,7 +128,7 @@ static size_t EncodeTree(const unsigned* ll_lengths,
   int size_only = !out;
   size_t result_size = 0;
 
-  for(i = 0; i < 19; i++) clcounts[i] = 0;
+  for (i = 0; i < 19; i++) clcounts[i] = 0;
 
   /* Trim zeros. */
   while (hlit > 0 && ll_lengths[257 + hlit - 1] == 0) hlit--;
@@ -449,8 +449,7 @@ void OptimizeHuffmanForRle(int length, size_t* counts) {
   }
   /* 2) Let's mark all population counts that already can be encoded
   with an rle code.*/
-  good_for_rle = (int*)malloc((unsigned)length * sizeof(int));
-  for (i = 0; i < length; ++i) good_for_rle[i] = 0;
+  good_for_rle = (int*)calloc((unsigned)length, sizeof(int));
 
   /* Let's not spoil any of the existing good rle codes.
   Mark any seq of 0's that is longer than 5 as a good_for_rle.
@@ -718,9 +717,6 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
 
     detect_tree_size = *outsize;
     AddDynamicTree(ll_lengths, d_lengths, bp, out, outsize);
-    if (options->verbose) {
-      fprintf(stderr, "treesize: %d\n", (int)(*outsize - detect_tree_size));
-    }
   }
 
   ZopfliLengthsToSymbols(ll_lengths, ZOPFLI_NUM_LL, 15, ll_symbols);
@@ -737,11 +733,6 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
     uncompressed_size += lz77->dists[i] == 0 ? 1 : lz77->litlens[i];
   }
   compressed_size = *outsize - detect_block_size;
-  if (options->verbose) {
-    fprintf(stderr, "compressed block size: %d (%dk) (unc: %d)\n",
-           (int)compressed_size, (int)(compressed_size / 1024),
-           (int)(uncompressed_size));
-  }
 }
 
 static void AddLZ77BlockAutoType(const ZopfliOptions* options, int final,
@@ -929,10 +920,4 @@ void ZopfliDeflate(const ZopfliOptions* options, int btype, int final,
     i += size;
   } while (i < insize);
 #endif
-  if (options->verbose) {
-    fprintf(stderr,
-            "Original Size: %lu, Deflate: %lu, Compression: %f%% Removed\n",
-            (unsigned long)insize, (unsigned long)(*outsize - offset),
-            100.0 * (double)(insize - (*outsize - offset)) / (double)insize);
-  }
 }
