@@ -23,10 +23,10 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 #include <math.h>
 #include <stdio.h>
 
+#include "../rust.h"
 #include "blocksplitter.h"
 #include "deflate.h"
 #include "symbols.h"
-#include "tree.h"
 #include "util.h"
 
 void InitStats(SymbolStats* stats) {

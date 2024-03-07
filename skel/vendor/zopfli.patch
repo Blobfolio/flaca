@@ -1,16 +1,17 @@
 diff --git a/zopfli/blocksplitter.c b/zopfli/blocksplitter.c
-index 161783d..62cc425 100644
+index 161783d..33062bb 100644
 --- a/zopfli/blocksplitter.c
 +++ b/zopfli/blocksplitter.c
-@@ -24,7 +24,6 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
+@@ -24,8 +24,6 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
  #include <stdlib.h>
  
  #include "deflate.h"
 -#include "squeeze.h"
- #include "tree.h"
+-#include "tree.h"
  #include "util.h"
  
-@@ -62,7 +61,7 @@ static size_t FindMinimum(FindMinimumFun f, void* context,
+ /*
+@@ -62,7 +60,7 @@ static size_t FindMinimum(FindMinimumFun f, void* context,
      size_t p[NUM];
      double vp[NUM];
      size_t besti;
@@ -19,7 +20,7 @@ index 161783d..62cc425 100644
      double lastbest = ZOPFLI_LARGE_FLOAT;
      size_t pos = start;
  
-@@ -71,6 +70,10 @@ static size_t FindMinimum(FindMinimumFun f, void* context,
+@@ -71,6 +69,10 @@ static size_t FindMinimum(FindMinimumFun f, void* context,
  
        for (i = 0; i < NUM; i++) {
          p[i] = start + (i + 1) * ((end - start) / (NUM + 1));
@@ -30,7 +31,7 @@ index 161783d..62cc425 100644
          vp[i] = f(p[i], context);
        }
        besti = 0;
-@@ -224,9 +227,8 @@ void ZopfliBlockSplitLZ77(const ZopfliOptions* options,
+@@ -224,9 +226,8 @@ void ZopfliBlockSplitLZ77(const ZopfliOptions* options,
  
    if (lz77->size < 10) return;  /* This code fails on tiny files. */
  
@@ -41,7 +42,7 @@ index 161783d..62cc425 100644
  
    lstart = 0;
    lend = lz77->size;
-@@ -265,16 +267,12 @@ void ZopfliBlockSplitLZ77(const ZopfliOptions* options,
+@@ -265,16 +266,12 @@ void ZopfliBlockSplitLZ77(const ZopfliOptions* options,
      }
    }
  
@@ -59,7 +60,7 @@ index 161783d..62cc425 100644
    size_t pos = 0;
    size_t i;
    ZopfliBlockState s;
-@@ -298,19 +296,47 @@ void ZopfliBlockSplit(const ZopfliOptions* options,
+@@ -298,19 +295,47 @@ void ZopfliBlockSplit(const ZopfliOptions* options,
    ZopfliBlockSplitLZ77(options,
                         &store, maxblocks,
                         &lz77splitpoints, &nlz77points);
@@ -155,10 +156,23 @@ index 6b9444f..438a9ed 100644
  
  void ZopfliCleanCache(ZopfliLongestMatchCache* lmc) {
 diff --git a/zopfli/deflate.c b/zopfli/deflate.c
-index c5abda9..5814e8a 100644
+index c5abda9..0bce4bf 100644
 --- a/zopfli/deflate.c
 +++ b/zopfli/deflate.c
-@@ -128,7 +128,7 @@ static size_t EncodeTree(const unsigned* ll_lengths,
+@@ -23,10 +23,11 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
++#include "../rust.h"
+ #include "blocksplitter.h"
+ #include "squeeze.h"
+ #include "symbols.h"
+-#include "tree.h"
++#include "katajainen.h"
+ 
+ /*
+ bp = bitpointer, always in range [0, 7].
+@@ -128,7 +129,7 @@ static size_t EncodeTree(const unsigned* ll_lengths,
    int size_only = !out;
    size_t result_size = 0;
  
@@ -167,7 +181,18 @@ index c5abda9..5814e8a 100644
  
    /* Trim zeros. */
    while (hlit > 0 && ll_lengths[257 + hlit - 1] == 0) hlit--;
-@@ -449,8 +449,7 @@ void OptimizeHuffmanForRle(int length, size_t* counts) {
+@@ -205,8 +206,8 @@ static size_t EncodeTree(const unsigned* ll_lengths,
+     }
+   }
+ 
+-  ZopfliCalculateBitLengths(clcounts, 19, 7, clcl);
+-  if (!size_only) ZopfliLengthsToSymbols(clcl, 19, 7, clsymbols);
++  assert(!ZopfliLengthLimitedCodeLengths(clcounts, 19, 7, clcl));
++  if (!size_only) ZopfliLengthsToSymbols7(clcl, 19, clsymbols);
+ 
+   hclen = 15;
+   /* Trim zeros. */
+@@ -449,8 +450,7 @@ void OptimizeHuffmanForRle(int length, size_t* counts) {
    }
    /* 2) Let's mark all population counts that already can be encoded
    with an rle code.*/
@@ -177,7 +202,29 @@ index c5abda9..5814e8a 100644
  
    /* Let's not spoil any of the existing good rle codes.
    Mark any seq of 0's that is longer than 5 as a good_for_rle.
-@@ -718,9 +717,6 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
+@@ -543,8 +543,8 @@ static double TryOptimizeHuffmanForRle(
+   memcpy(d_counts2, d_counts, sizeof(d_counts2));
+   OptimizeHuffmanForRle(ZOPFLI_NUM_LL, ll_counts2);
+   OptimizeHuffmanForRle(ZOPFLI_NUM_D, d_counts2);
+-  ZopfliCalculateBitLengths(ll_counts2, ZOPFLI_NUM_LL, 15, ll_lengths2);
+-  ZopfliCalculateBitLengths(d_counts2, ZOPFLI_NUM_D, 15, d_lengths2);
++  assert(!ZopfliLengthLimitedCodeLengths(ll_counts2, ZOPFLI_NUM_LL, 15, ll_lengths2));
++  assert(!ZopfliLengthLimitedCodeLengths(d_counts2, ZOPFLI_NUM_D, 15, d_lengths2));
+   PatchDistanceCodesForBuggyDecoders(d_lengths2);
+ 
+   treesize2 = CalculateTreeSize(ll_lengths2, d_lengths2);
+@@ -574,8 +574,8 @@ static double GetDynamicLengths(const ZopfliLZ77Store* lz77,
+ 
+   ZopfliLZ77GetHistogram(lz77, lstart, lend, ll_counts, d_counts);
+   ll_counts[256] = 1;  /* End symbol. */
+-  ZopfliCalculateBitLengths(ll_counts, ZOPFLI_NUM_LL, 15, ll_lengths);
+-  ZopfliCalculateBitLengths(d_counts, ZOPFLI_NUM_D, 15, d_lengths);
++  assert(!ZopfliLengthLimitedCodeLengths(ll_counts, ZOPFLI_NUM_LL, 15, ll_lengths));
++  assert(!ZopfliLengthLimitedCodeLengths(d_counts, ZOPFLI_NUM_D, 15, d_lengths));
+   PatchDistanceCodesForBuggyDecoders(d_lengths);
+   return TryOptimizeHuffmanForRle(
+       lz77, lstart, lend, ll_counts, d_counts, ll_lengths, d_lengths);
+@@ -718,13 +718,10 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
  
      detect_tree_size = *outsize;
      AddDynamicTree(ll_lengths, d_lengths, bp, out, outsize);
@@ -186,8 +233,14 @@ index c5abda9..5814e8a 100644
 -    }
    }
  
-   ZopfliLengthsToSymbols(ll_lengths, ZOPFLI_NUM_LL, 15, ll_symbols);
-@@ -737,11 +733,6 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
+-  ZopfliLengthsToSymbols(ll_lengths, ZOPFLI_NUM_LL, 15, ll_symbols);
+-  ZopfliLengthsToSymbols(d_lengths, ZOPFLI_NUM_D, 15, d_symbols);
++  ZopfliLengthsToSymbols15(ll_lengths, ZOPFLI_NUM_LL, ll_symbols);
++  ZopfliLengthsToSymbols15(d_lengths, ZOPFLI_NUM_D, d_symbols);
+ 
+   detect_block_size = *outsize;
+   AddLZ77Data(lz77, lstart, lend, expected_data_size,
+@@ -737,11 +734,6 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
      uncompressed_size += lz77->dists[i] == 0 ? 1 : lz77->litlens[i];
    }
    compressed_size = *outsize - detect_block_size;
@@ -199,7 +252,7 @@ index c5abda9..5814e8a 100644
  }
  
  static void AddLZ77BlockAutoType(const ZopfliOptions* options, int final,
-@@ -813,6 +804,8 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -813,6 +805,8 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
                         unsigned char* bp, unsigned char** out,
                         size_t* outsize) {
    size_t i;
@@ -208,7 +261,7 @@ index c5abda9..5814e8a 100644
    /* byte coordinates rather than lz77 index */
    size_t* splitpoints_uncompressed = 0;
    size_t npoints = 0;
-@@ -820,6 +813,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -820,6 +814,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
    double totalcost = 0;
    ZopfliLZ77Store lz77;
  
@@ -216,7 +269,7 @@ index c5abda9..5814e8a 100644
    /* If btype=2 is specified, it tries all block types. If a lesser btype is
    given, then however it forces that one. Neither of the lesser types needs
    block splitting as they have no dynamic huffman trees. */
-@@ -845,7 +839,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -845,7 +840,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
    if (options->blocksplitting) {
      ZopfliBlockSplit(options, in, instart, inend,
                       options->blocksplittingmax,
@@ -225,7 +278,7 @@ index c5abda9..5814e8a 100644
      splitpoints = (size_t*)malloc(sizeof(*splitpoints) * npoints);
    }
  
-@@ -858,7 +852,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -858,7 +853,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
      ZopfliLZ77Store store;
      ZopfliInitLZ77Store(in, &store);
      ZopfliInitBlockState(options, start, end, 1, &s);
@@ -234,7 +287,7 @@ index c5abda9..5814e8a 100644
      totalcost += ZopfliCalculateBlockSizeAutoType(&store, 0, store.size);
  
      ZopfliAppendLZ77Store(&store, &lz77);
-@@ -868,6 +862,10 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+@@ -868,6 +863,10 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
      ZopfliCleanLZ77Store(&store);
    }
  
@@ -245,7 +298,7 @@ index c5abda9..5814e8a 100644
    /* Second block splitting attempt */
    if (options->blocksplitting && npoints > 1) {
      size_t* splitpoints2 = 0;
-@@ -922,10 +920,4 @@ void ZopfliDeflate(const ZopfliOptions* options, int btype, int final,
+@@ -922,10 +921,4 @@ void ZopfliDeflate(const ZopfliOptions* options, int btype, int final,
      i += size;
    } while (i < insize);
  #endif
@@ -579,11 +632,18 @@ index dc8597a..8975bb5 100644
  Does LZ77 using an algorithm similar to gzip, with lazy matching, rather than
  with the slow but better "squeeze" implementation.
 diff --git a/zopfli/squeeze.c b/zopfli/squeeze.c
-index a695c18..9af0481 100644
+index a695c18..dc429d0 100644
 --- a/zopfli/squeeze.c
 +++ b/zopfli/squeeze.c
-@@ -29,20 +29,7 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
- #include "tree.h"
+@@ -23,26 +23,13 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
+ #include <math.h>
+ #include <stdio.h>
+ 
++#include "../rust.h"
+ #include "blocksplitter.h"
+ #include "deflate.h"
+ #include "symbols.h"
+-#include "tree.h"
  #include "util.h"
  
 -typedef struct SymbolStats {
@@ -892,45 +952,169 @@ index 48bb775..68db437 100644
  /*
  Does the same as ZopfliLZ77Optimal, but optimized for the fixed tree of the
 diff --git a/zopfli/tree.c b/zopfli/tree.c
-index c457511..b71e013 100644
+deleted file mode 100644
+index c457511..0000000
 --- a/zopfli/tree.c
-+++ b/zopfli/tree.c
-@@ -29,24 +29,19 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
- 
- void ZopfliLengthsToSymbols(const unsigned* lengths, size_t n, unsigned maxbits,
-                             unsigned* symbols) {
++++ /dev/null
+@@ -1,101 +0,0 @@
+-/*
+-Copyright 2011 Google Inc. All Rights Reserved.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-
+-Author: lode.vandevenne@gmail.com (Lode Vandevenne)
+-Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
+-*/
+-
+-#include "tree.h"
+-
+-#include <assert.h>
+-#include <math.h>
+-#include <stdio.h>
+-#include <stdlib.h>
+-
+-#include "katajainen.h"
+-#include "util.h"
+-
+-void ZopfliLengthsToSymbols(const unsigned* lengths, size_t n, unsigned maxbits,
+-                            unsigned* symbols) {
 -  size_t* bl_count = (size_t*)malloc(sizeof(size_t) * (maxbits + 1));
-+  size_t* bl_count = (size_t*)calloc(maxbits + 1, sizeof(size_t));
-   size_t* next_code = (size_t*)malloc(sizeof(size_t) * (maxbits + 1));
-   unsigned bits, i;
-   unsigned code;
- 
+-  size_t* next_code = (size_t*)malloc(sizeof(size_t) * (maxbits + 1));
+-  unsigned bits, i;
+-  unsigned code;
+-
 -  for (i = 0; i < n; i++) {
 -    symbols[i] = 0;
 -  }
 -
-   /* 1) Count the number of codes for each code length. Let bl_count[N] be the
-   number of codes of length N, N >= 1. */
+-  /* 1) Count the number of codes for each code length. Let bl_count[N] be the
+-  number of codes of length N, N >= 1. */
 -  for (bits = 0; bits <= maxbits; bits++) {
 -    bl_count[bits] = 0;
 -  }
-   for (i = 0; i < n; i++) {
-+    symbols[i] = 0;
-     assert(lengths[i] <= maxbits);
-     bl_count[lengths[i]]++;
-   }
-+
-   /* 2) Find the numerical value of the smallest code for each code length. */
-   code = 0;
-   bl_count[0] = 0;
-@@ -54,6 +49,7 @@ void ZopfliLengthsToSymbols(const unsigned* lengths, size_t n, unsigned maxbits,
-     code = (code + bl_count[bits-1]) << 1;
-     next_code[bits] = code;
-   }
-+
-   /* 3) Assign numerical values to all codes, using consecutive values for all
-   codes of the same length with the base values determined at step 2. */
-   for (i = 0;  i < n; i++) {
+-  for (i = 0; i < n; i++) {
+-    assert(lengths[i] <= maxbits);
+-    bl_count[lengths[i]]++;
+-  }
+-  /* 2) Find the numerical value of the smallest code for each code length. */
+-  code = 0;
+-  bl_count[0] = 0;
+-  for (bits = 1; bits <= maxbits; bits++) {
+-    code = (code + bl_count[bits-1]) << 1;
+-    next_code[bits] = code;
+-  }
+-  /* 3) Assign numerical values to all codes, using consecutive values for all
+-  codes of the same length with the base values determined at step 2. */
+-  for (i = 0;  i < n; i++) {
+-    unsigned len = lengths[i];
+-    if (len != 0) {
+-      symbols[i] = next_code[len];
+-      next_code[len]++;
+-    }
+-  }
+-
+-  free(bl_count);
+-  free(next_code);
+-}
+-
+-void ZopfliCalculateEntropy(const size_t* count, size_t n, double* bitlengths) {
+-  static const double kInvLog2 = 1.4426950408889;  /* 1.0 / log(2.0) */
+-  unsigned sum = 0;
+-  unsigned i;
+-  double log2sum;
+-  for (i = 0; i < n; ++i) {
+-    sum += count[i];
+-  }
+-  log2sum = (sum == 0 ? log(n) : log(sum)) * kInvLog2;
+-  for (i = 0; i < n; ++i) {
+-    /* When the count of the symbol is 0, but its cost is requested anyway, it
+-    means the symbol will appear at least once anyway, so give it the cost as if
+-    its count is 1.*/
+-    if (count[i] == 0) bitlengths[i] = log2sum;
+-    else bitlengths[i] = log2sum - log(count[i]) * kInvLog2;
+-    /* Depending on compiler and architecture, the above subtraction of two
+-    floating point numbers may give a negative result very close to zero
+-    instead of zero (e.g. -5.973954e-17 with gcc 4.1.2 on Ubuntu 11.4). Clamp
+-    it to zero. These floating point imprecisions do not affect the cost model
+-    significantly so this is ok. */
+-    if (bitlengths[i] < 0 && bitlengths[i] > -1e-5) bitlengths[i] = 0;
+-    assert(bitlengths[i] >= 0);
+-  }
+-}
+-
+-void ZopfliCalculateBitLengths(const size_t* count, size_t n, int maxbits,
+-                               unsigned* bitlengths) {
+-  int error = ZopfliLengthLimitedCodeLengths(count, n, maxbits, bitlengths);
+-  (void) error;
+-  assert(!error);
+-}
+diff --git a/zopfli/tree.h b/zopfli/tree.h
+deleted file mode 100644
+index 4d6f469..0000000
+--- a/zopfli/tree.h
++++ /dev/null
+@@ -1,51 +0,0 @@
+-/*
+-Copyright 2011 Google Inc. All Rights Reserved.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-
+-Author: lode.vandevenne@gmail.com (Lode Vandevenne)
+-Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
+-*/
+-
+-/*
+-Utilities for creating and using Huffman trees.
+-*/
+-
+-#ifndef ZOPFLI_TREE_H_
+-#define ZOPFLI_TREE_H_
+-
+-#include <string.h>
+-
+-/*
+-Calculates the bitlengths for the Huffman tree, based on the counts of each
+-symbol.
+-*/
+-void ZopfliCalculateBitLengths(const size_t* count, size_t n, int maxbits,
+-                               unsigned *bitlengths);
+-
+-/*
+-Converts a series of Huffman tree bitlengths, to the bit values of the symbols.
+-*/
+-void ZopfliLengthsToSymbols(const unsigned* lengths, size_t n, unsigned maxbits,
+-                            unsigned* symbols);
+-
+-/*
+-Calculates the entropy of each symbol, based on the counts of each symbol. The
+-result is similar to the result of ZopfliCalculateBitLengths, but with the
+-actual theoritical bit lengths according to the entropy. Since the resulting
+-values are fractional, they cannot be used to encode the tree specified by
+-DEFLATE.
+-*/
+-void ZopfliCalculateEntropy(const size_t* count, size_t n, double* bitlengths);
+-
+-#endif  /* ZOPFLI_TREE_H_ */
 diff --git a/zopfli/zlib_container.c b/zopfli/zlib_container.c
 index 130ffc7..4ccac0d 100644
 --- a/zopfli/zlib_container.c

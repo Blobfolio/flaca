@@ -77,7 +77,6 @@ fn build_ffi() {
 			zopfli_src.join("katajainen.c"),
 			zopfli_src.join("lz77.c"),
 			zopfli_src.join("squeeze.c"),
-			zopfli_src.join("tree.c"),
 			zopfli_src.join("util.c"),
 			lodepng_src.join("lodepng.c"),
 			repo.join("custom_png_deflate.c"),
@@ -111,6 +110,7 @@ fn write(path: &Path, data: &[u8]) {
 fn bindings(repo: &Path, lodepng_src: &Path) {
 	let bindings = bindgen::Builder::default()
 		.header(lodepng_src.join("lodepng.h").to_string_lossy())
+		.header(repo.join("rust.h").to_string_lossy())
 		.header(repo.join("custom_png_deflate.h").to_string_lossy())
 		.allowlist_function("custom_png_deflate")
 		.allowlist_function("lodepng_color_mode_copy")

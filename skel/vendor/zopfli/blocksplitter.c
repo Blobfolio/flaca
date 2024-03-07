@@ -24,7 +24,6 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 #include <stdlib.h>
 
 #include "deflate.h"
-#include "tree.h"
 #include "util.h"
 
 /*

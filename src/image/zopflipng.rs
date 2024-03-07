@@ -12,6 +12,7 @@ This no longer links to `libzopflipng` itself, but instead reimplements its
 functionality.
 */
 
+use std::os::raw::c_uint;
 use super::ffi::EncodedImage;
 use super::lodepng::{
 	DecodedImage,
@@ -41,6 +42,61 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
 	// Return it if better and nonzero!
 	if out.size < src.len() { Some(out) }
 	else { None }
+}
+
+
+
+#[no_mangle]
+#[allow(unsafe_code, clippy::cast_precision_loss)]
+/// # Zopfli Claculate Entropy.
+///
+/// This is a rewrite of the original `tree.c` method.
+pub(crate) extern "C" fn ZopfliCalculateEntropy(
+	count: *const usize,
+	n: usize,
+	bitlengths: *mut f64
+) {
+	// Turn the pointers into slices.
+	if count.is_null() || bitlengths.is_null() { return; }
+	let count: &[usize] = unsafe { std::slice::from_raw_parts(count, n) };
+	let bitlengths: &mut [f64] = unsafe { std::slice::from_raw_parts_mut(bitlengths, n) };
+
+	// Sum the counts and log some shit.
+	let sum = count.iter().copied().sum::<usize>();
+	let log2sum =
+		if sum == 0 { (n as f64).log2() }
+		else { (sum as f64).log2() };
+
+	for (&c, b) in count.iter().zip(bitlengths.iter_mut()) {
+		// If the count is zero, give it the cost as if it were one since it
+		// is being requested anyway.
+		if c == 0 { *b = log2sum; }
+		else { *b = (log2sum - (c as f64).log2()).max(0.0); }
+	}
+}
+
+#[no_mangle]
+#[allow(unsafe_code)]
+#[inline]
+/// # Zopfli Lengths to Symbols (`0..=7`).
+pub(crate) extern "C" fn ZopfliLengthsToSymbols7(
+	lengths: *const c_uint,
+	n: usize,
+	symbols: *mut c_uint,
+) {
+	zopfli_lengths_to_symbols::<8>(lengths, n, symbols);
+}
+
+#[no_mangle]
+#[allow(unsafe_code)]
+#[inline]
+/// # Zopfli Lengths to Symbols (`0..=15`).
+pub(crate) extern "C" fn ZopfliLengthsToSymbols15(
+	lengths: *const c_uint,
+	n: usize,
+	symbols: *mut c_uint,
+) {
+	zopfli_lengths_to_symbols::<16>(lengths, n, symbols);
 }
 
 
@@ -96,4 +152,46 @@ fn encode(
 	}
 
 	Some(out)
+}
+
+#[allow(unsafe_code)]
+/// # Zopfli Lengths to Symbols.
+///
+/// This is a rewrite of the method `ZopfliLengthsToSymbols` from `tree.c`.
+fn zopfli_lengths_to_symbols<const MAXBITS: usize>(
+	lengths: *const c_uint,
+	n: usize,
+	symbols: *mut c_uint,
+) {
+	// Convert lengths and symbols into usable slices, and maxbits into usize.
+	if lengths.is_null() || symbols.is_null() { return; }
+	let lengths: &[c_uint] = unsafe { std::slice::from_raw_parts(lengths, n) };
+	let symbols: &mut [c_uint] = unsafe { std::slice::from_raw_parts_mut(symbols, n) };
+
+	// Count up the codes by code length.
+	let mut counts: [c_uint; MAXBITS] = [0; MAXBITS];
+	for l in lengths {
+		let l = *l as usize;
+		if l < MAXBITS { counts[l] += 1; }
+		else { return; }
+	}
+
+	// Find the numerical value of the smallest code for each code length.
+	counts[0] = 0;
+	let mut code = 0;
+	let mut next_code: [c_uint; MAXBITS] = [0; MAXBITS];
+	for i in 1..MAXBITS {
+		code = (code + counts[i - 1]) << 1;
+		next_code[i] = code;
+	}
+
+	// Update the symbols accordingly.
+	for (s, l) in symbols.iter_mut().zip(lengths.iter()) {
+		let l = *l as usize;
+		if l == 0 { *s = 0; }
+		else {
+			*s = next_code[l];
+			next_code[l] += 1;
+		}
+	}
 }
