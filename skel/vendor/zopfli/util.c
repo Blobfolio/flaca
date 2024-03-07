@@ -18,12 +18,7 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 */
 
 #include "util.h"
-
 #include "zopfli.h"
-
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 void ZopfliInitOptions(ZopfliOptions* options) {
   options->verbose = 0;

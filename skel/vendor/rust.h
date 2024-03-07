@@ -7,7 +7,8 @@ the methods into Rust where they can be more easily managed.
 This file contains the extern signatures to allow (more or less) seamless
 interop across the sea of C.
 */
-#include <stdio.h>
+
+#include <stdlib.h> /* for size_t */
 
 /*
 Zopfli Iterations.
