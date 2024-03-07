@@ -23,6 +23,27 @@ use super::lodepng::{
 
 
 
+/// # Fixed Trees (for extern).
+const FIXED_TREE_LL: [c_uint; 288] = [
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9,
+	9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+	9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+	9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+	9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+	9, 9, 9, 9, 9, 9, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+	7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8
+];
+const FIXED_TREE_D: [c_uint; 32] = [5; 32];
+const ZOPFLI_NUM_LL: usize = FIXED_TREE_LL.len();
+const ZOPFLI_NUM_D: usize = FIXED_TREE_D.len();
+
+
+
 /// # Optimize!
 ///
 /// This will attempt to losslessly recompress the source PNG with the
@@ -45,6 +66,21 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
 }
 
 
+
+#[no_mangle]
+#[allow(unsafe_code)]
+/// # Write Fixed Tree.
+///
+/// This is a rewrite of the original `deflate.c` method.
+///
+/// Note: the magic lengths (288 and 32) correspond to `ZOPFLI_NUM_LL` and
+/// `ZOPFLI_NUM_D`, defined in `util.h`.
+pub(crate) const extern "C" fn GetFixedTree(ll_lengths: *mut c_uint, d_lengths: *mut c_uint) {
+	unsafe {
+		std::ptr::copy_nonoverlapping(FIXED_TREE_LL.as_ptr(), ll_lengths, ZOPFLI_NUM_LL);
+		std::ptr::copy_nonoverlapping(FIXED_TREE_D.as_ptr(), d_lengths, ZOPFLI_NUM_D);
+	}
+}
 
 #[no_mangle]
 #[allow(unsafe_code, clippy::cast_precision_loss)]
@@ -90,6 +126,9 @@ pub(crate) extern "C" fn ZopfliCalculateEntropy(
 #[allow(unsafe_code)]
 #[inline]
 /// # Zopfli Lengths to Symbols (`0..=7`).
+///
+/// This extern is a convenience wrapper for calling
+/// `zopfli_lengths_to_symbols` with a constant length of 8.
 pub(crate) extern "C" fn ZopfliLengthsToSymbols7(
 	lengths: *const c_uint,
 	n: usize,
@@ -102,6 +141,9 @@ pub(crate) extern "C" fn ZopfliLengthsToSymbols7(
 #[allow(unsafe_code)]
 #[inline]
 /// # Zopfli Lengths to Symbols (`0..=15`).
+///
+/// This extern is a convenience wrapper for calling
+/// `zopfli_lengths_to_symbols` with a constant length of 16.
 pub(crate) extern "C" fn ZopfliLengthsToSymbols15(
 	lengths: *const c_uint,
 	n: usize,

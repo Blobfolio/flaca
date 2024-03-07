@@ -20,6 +20,13 @@ code base.)
 extern int flaca_zopfli_iterations(size_t);
 
 /*
+Write Fixed Tree.
+
+Initialize the length and distance symbol arrays with fixed tree values.
+*/
+void GetFixedTree(unsigned* ll_lengths, unsigned* d_lengths);
+
+/*
 Code Lengths to Symbols.
 
 Converts a series of Huffman tree bitlengths, to the bit values of the symbols.
