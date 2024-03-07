@@ -26,26 +26,49 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 #include "deflate.h"
 #include "util.h"
 
+typedef struct SplitCostContext {
+  const ZopfliLZ77Store* lz77;
+  size_t start;
+  size_t end;
+} SplitCostContext;
+
 /*
-The "f" for the FindMinimum function below.
-i: the current parameter of f(i)
-context: for your implementation
+Returns estimated cost of a block in bits.  It includes the size to encode the
+tree and the size to encode all literal, length and distance symbols and their
+extra bits.
+
+litlens: lz77 lit/lengths
+dists: ll77 distances
+lstart: start of block
+lend: end of block (not inclusive)
 */
-typedef double FindMinimumFun(size_t i, void* context);
+static double EstimateCost(const ZopfliLZ77Store* lz77,
+                           size_t lstart, size_t lend) {
+  return ZopfliCalculateBlockSizeAutoType(lz77, lstart, lend);
+}
+
+/*
+Gets the cost which is the sum of the cost of the left and the right section
+of the data.
+*/
+static double SplitCost(size_t i, void* context) {
+  SplitCostContext* c = (SplitCostContext*)context;
+  return EstimateCost(c->lz77, c->start, i) + EstimateCost(c->lz77, i, c->end);
+}
 
 /*
 Finds minimum of function f(i) where is is of type size_t, f(i) is of type
 double, i is in range start-end (excluding end).
 Outputs the minimum value in *smallest and returns the index of this value.
 */
-static size_t FindMinimum(FindMinimumFun f, void* context,
+static size_t FindMinimum(void* context,
                           size_t start, size_t end, double* smallest) {
   if (end - start < 1024) {
     double best = ZOPFLI_LARGE_FLOAT;
     size_t result = start;
     size_t i;
     for (i = start; i < end; i++) {
-      double v = f(i, context);
+      double v = SplitCost(i, context);
       if (v < best) {
         best = v;
         result = i;
@@ -73,7 +96,7 @@ static size_t FindMinimum(FindMinimumFun f, void* context,
           vp[i] = best;
           continue;
         }
-        vp[i] = f(p[i], context);
+        vp[i] = SplitCost(p[i], context);
       }
       besti = 0;
       best = vp[0];
@@ -97,38 +120,6 @@ static size_t FindMinimum(FindMinimumFun f, void* context,
   }
 }
 
-/*
-Returns estimated cost of a block in bits.  It includes the size to encode the
-tree and the size to encode all literal, length and distance symbols and their
-extra bits.
-
-litlens: lz77 lit/lengths
-dists: ll77 distances
-lstart: start of block
-lend: end of block (not inclusive)
-*/
-static double EstimateCost(const ZopfliLZ77Store* lz77,
-                           size_t lstart, size_t lend) {
-  return ZopfliCalculateBlockSizeAutoType(lz77, lstart, lend);
-}
-
-typedef struct SplitCostContext {
-  const ZopfliLZ77Store* lz77;
-  size_t start;
-  size_t end;
-} SplitCostContext;
-
-
-/*
-Gets the cost which is the sum of the cost of the left and the right section
-of the data.
-type: FindMinimumFun
-*/
-static double SplitCost(size_t i, void* context) {
-  SplitCostContext* c = (SplitCostContext*)context;
-  return EstimateCost(c->lz77, c->start, i) + EstimateCost(c->lz77, i, c->end);
-}
-
 static void AddSorted(size_t value, size_t** out, size_t* outsize) {
   size_t i;
   ZOPFLI_APPEND_DATA(value, out, outsize);
@@ -142,43 +133,6 @@ static void AddSorted(size_t value, size_t** out, size_t* outsize) {
       break;
     }
   }
-}
-
-/*
-Prints the block split points as decimal and hex values in the terminal.
-*/
-static void PrintBlockSplitPoints(const ZopfliLZ77Store* lz77,
-                                  const size_t* lz77splitpoints,
-                                  size_t nlz77points) {
-  size_t* splitpoints = 0;
-  size_t npoints = 0;
-  size_t i;
-  /* The input is given as lz77 indices, but we want to see the uncompressed
-  index values. */
-  size_t pos = 0;
-  if (nlz77points > 0) {
-    for (i = 0; i < lz77->size; i++) {
-      size_t length = lz77->dists[i] == 0 ? 1 : lz77->litlens[i];
-      if (lz77splitpoints[npoints] == i) {
-        ZOPFLI_APPEND_DATA(pos, &splitpoints, &npoints);
-        if (npoints == nlz77points) break;
-      }
-      pos += length;
-    }
-  }
-  assert(npoints == nlz77points);
-
-  fprintf(stderr, "block split points: ");
-  for (i = 0; i < npoints; i++) {
-    fprintf(stderr, "%d ", (int)splitpoints[i]);
-  }
-  fprintf(stderr, "(hex:");
-  for (i = 0; i < npoints; i++) {
-    fprintf(stderr, " %x", (int)splitpoints[i]);
-  }
-  fprintf(stderr, ")\n");
-
-  free(splitpoints);
 }
 
 /*
@@ -242,7 +196,7 @@ void ZopfliBlockSplitLZ77(const ZopfliOptions* options,
     c.start = lstart;
     c.end = lend;
     assert(lstart < lend);
-    llpos = FindMinimum(SplitCost, &c, lstart + 1, lend, &splitcost);
+    llpos = FindMinimum(&c, lstart + 1, lend, &splitcost);
 
     assert(llpos > lstart);
     assert(llpos < lend);
