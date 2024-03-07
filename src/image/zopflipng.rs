@@ -57,21 +57,32 @@ pub(crate) extern "C" fn ZopfliCalculateEntropy(
 	bitlengths: *mut f64
 ) {
 	// Turn the pointers into slices.
-	if count.is_null() || bitlengths.is_null() { return; }
+	if n == 0 || count.is_null() || bitlengths.is_null() { return; }
 	let count: &[usize] = unsafe { std::slice::from_raw_parts(count, n) };
 	let bitlengths: &mut [f64] = unsafe { std::slice::from_raw_parts_mut(bitlengths, n) };
 
 	// Sum the counts and log some shit.
 	let sum = count.iter().copied().sum::<usize>();
-	let log2sum =
-		if sum == 0 { (n as f64).log2() }
-		else { (sum as f64).log2() };
 
-	for (&c, b) in count.iter().zip(bitlengths.iter_mut()) {
-		// If the count is zero, give it the cost as if it were one since it
-		// is being requested anyway.
-		if c == 0 { *b = log2sum; }
-		else { *b = (log2sum - (c as f64).log2()).max(0.0); }
+	// If there are no counts, every value has the same cost.
+	if sum == 0 {
+		let log2sum = (n as f64).log2();
+		for b in bitlengths { *b = log2sum; }
+	}
+	// Otherwise each gets its own fractional cost.
+	else {
+		let log2sum = (sum as f64).log2();
+
+		for (&c, b) in count.iter().zip(bitlengths.iter_mut()) {
+			// Even zeroes get a cost because they were requested.
+			if c == 0 { *b = log2sum; }
+			else {
+				*b = log2sum - (c as f64).log2();
+				// Floating point math sucks; make sure it doesn't magically
+				// drop below zero.
+				if b.is_sign_negative() { *b = 0.0; }
+			}
+		}
 	}
 }
 
