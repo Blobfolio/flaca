@@ -237,7 +237,7 @@ void ZopfliBlockSplit(const ZopfliOptions* options,
 
   ZopfliInitLZ77Store(in, &store);
   ZopfliInitBlockState(options, instart, inend, 0, &s);
-  ZopfliAllocHash(ZOPFLI_WINDOW_SIZE, h);
+  ZopfliAllocHash(h);
 
   *npoints = 0;
   *splitpoints = 0;

@@ -47,10 +47,10 @@ typedef struct ZopfliHash {
 } ZopfliHash;
 
 /* Allocates ZopfliHash memory. */
-void ZopfliAllocHash(size_t window_size, ZopfliHash* h);
+void ZopfliAllocHash(ZopfliHash* h);
 
 /* Resets all fields of ZopfliHash. */
-void ZopfliResetHash(size_t window_size, ZopfliHash* h);
+void ZopfliResetHash(ZopfliHash* h);
 
 /* Frees ZopfliHash memory. */
 void ZopfliCleanHash(ZopfliHash* h);

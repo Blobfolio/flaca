@@ -217,7 +217,7 @@ static double GetBestLengths(ZopfliBlockState *s,
 
   if (instart == inend) return 0;
 
-  ZopfliResetHash(ZOPFLI_WINDOW_SIZE, h);
+  ZopfliResetHash(h);
   ZopfliWarmupHash(in, windowstart, inend, h);
   for (i = windowstart; i < instart; i++) {
     ZopfliUpdateHash(in, i, inend, h);
@@ -329,7 +329,7 @@ static void FollowPath(ZopfliBlockState* s,
 
   if (instart == inend) return;
 
-  ZopfliResetHash(ZOPFLI_WINDOW_SIZE, h);
+  ZopfliResetHash(h);
   ZopfliWarmupHash(in, windowstart, inend, h);
   for (i = windowstart; i < instart; i++) {
     ZopfliUpdateHash(in, i, inend, h);
@@ -451,7 +451,7 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
   InitRanState(&ran_state);
   InitStats(&stats);
   ZopfliInitLZ77Store(in, &currentstore);
-  ZopfliAllocHash(ZOPFLI_WINDOW_SIZE, h);
+  ZopfliAllocHash(h);
 
   /* Do regular deflate, then loop multiple shortest path runs, each time using
   the statistics of the previous run. */
@@ -524,7 +524,7 @@ void ZopfliLZ77OptimalFixed(ZopfliBlockState *s,
   if (!costs) exit(-1); /* Allocation failed. */
   if (!length_array) exit(-1); /* Allocation failed. */
 
-  ZopfliAllocHash(ZOPFLI_WINDOW_SIZE, h);
+  ZopfliAllocHash(h);
 
   s->blockstart = instart;
   s->blockend = inend;
