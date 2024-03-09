@@ -27,6 +27,15 @@ Initialize the length and distance symbol arrays with fixed tree values.
 void GetFixedTree(unsigned* ll_lengths, unsigned* d_lengths);
 
 /*
+Optimize Huffman RLE Compression.
+
+Changes the population counts in a way that the consequent Huffman tree
+compression, especially its rle-part, will be more likely to compress this data
+more efficiently. length contains the size of the histogram.
+*/
+void OptimizeHuffmanForRle(int length, size_t* counts);
+
+/*
 Code Lengths to Symbols.
 
 Converts a series of Huffman tree bitlengths, to the bit values of the symbols.

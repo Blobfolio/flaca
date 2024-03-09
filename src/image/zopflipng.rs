@@ -12,7 +12,10 @@ This no longer links to `libzopflipng` itself, but instead reimplements its
 functionality.
 */
 
-use std::os::raw::c_uint;
+use std::os::raw::{
+	c_int,
+	c_uint,
+};
 use super::ffi::EncodedImage;
 use super::lodepng::{
 	DecodedImage,
@@ -79,6 +82,69 @@ pub(crate) const extern "C" fn GetFixedTree(ll_lengths: *mut c_uint, d_lengths: 
 	unsafe {
 		std::ptr::copy_nonoverlapping(FIXED_TREE_LL.as_ptr(), ll_lengths, ZOPFLI_NUM_LL);
 		std::ptr::copy_nonoverlapping(FIXED_TREE_D.as_ptr(), d_lengths, ZOPFLI_NUM_D);
+	}
+}
+
+#[no_mangle]
+#[allow(unsafe_code, clippy::integer_division, clippy::cast_sign_loss)]
+/// # Optimize Huffman RLE Compression.
+///
+/// This is a rewrite of the original `deflate.c` method.
+pub(crate) extern "C" fn OptimizeHuffmanForRle(length: c_int, counts: *mut usize) {
+	// Convert counts to a proper slice, and trim off the trailing zeroes.
+	let mut counts: &mut [usize] = unsafe { std::slice::from_raw_parts_mut(counts, length as usize) };
+	while let [ rest @ .., 0 ] = counts { counts = rest; }
+	if counts.is_empty() { return; }
+
+	// Find collapseable ranges, storing them in `adj` to appease Rust's
+	// borrow-checker.
+	let mut adj: Vec<(usize, usize, usize)> = Vec::new();
+	let mut stride = 0;
+	let mut scratch = counts[0];
+	let mut sum = 0;
+	for (i, (&count, good)) in counts.iter().zip(GoodForRle::new(counts)).enumerate() {
+		// Time to reset (and maybe collapse).
+		if good || count.abs_diff(scratch) >= 4 {
+			// Collapse the stride if it is as least four and contained
+			// something non-zero.
+			if sum != 0 && stride >= 4 {
+				let adj_count = ((sum + stride / 2) / stride).max(1);
+				adj.push((i - stride, i, adj_count));
+			}
+
+			// Reset!
+			stride = 0;
+			sum = 0;
+
+			// If we have at least four remaining values (including the
+			// current), take a sort of weighted average of them.
+			if 3 < counts.len() && i < counts.len() - 3 {
+				scratch = (
+					count +
+					counts[i + 1] +
+					counts[i + 2] +
+					counts[i + 3] +
+					2
+				) / 4;
+			}
+			// Otherwise just use the current value.
+			else { scratch = count; }
+		}
+
+		stride += 1;
+		sum += count;
+	}
+
+	// Collapse the trailing stride, if any.
+	if sum != 0 && stride >= 4 {
+		let adj_count = ((sum + stride / 2) / stride).max(1);
+		let len = counts.len();
+		adj.push((len - stride, len, adj_count));
+	}
+
+	// Patch the counts!
+	for (from, to, v) in adj {
+		for count in &mut counts[from..to] { *count = v; }
 	}
 }
 
@@ -150,6 +216,88 @@ pub(crate) extern "C" fn ZopfliLengthsToSymbols15(
 	symbols: *mut c_uint,
 ) {
 	zopfli_lengths_to_symbols::<16>(lengths, n, symbols);
+}
+
+
+
+/// # RLE-Optimized Stretches.
+///
+/// This iterator yields a boolean value for each entry of the source slice,
+/// `true` for distance codes in a sequence of 5+ zeroes or 7+ (identical)
+/// non-zeroes, `false` otherwise.
+///
+/// (Such ranges are already RLE-optimal.)
+struct GoodForRle<'a> {
+	counts: &'a [usize],
+	good: usize,
+	bad: usize,
+}
+
+impl<'a> GoodForRle<'a> {
+	/// # New Instance.
+	const fn new(counts: &'a [usize]) -> Self {
+		Self { counts, good: 0, bad: 0 }
+	}
+}
+
+impl<'a> Iterator for GoodForRle<'a> {
+	type Item = bool;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// Return good or bad values from the buffer.
+		if self.good != 0 {
+			self.good -= 1;
+			return Some(true);
+		}
+		if self.bad != 0 {
+			self.bad -= 1;
+			return Some(false);
+		}
+
+		// If the slice is empty, we're done!
+		if self.counts.is_empty() { return None; }
+
+		// See how many times the next entry is repeated, if at all, shortening
+		// the slice accordingly.
+		let scratch = self.counts[0];
+		let mut stride = 0;
+		while let [count, rest @ ..] = self.counts {
+			// Note the reptition and circle back around.
+			if *count == scratch {
+				stride += 1;
+				self.counts = rest;
+			}
+			// We had an optimal stretch.
+			else if stride >= 5 && (scratch == 0 || stride >= 7) {
+				self.good = stride - 1;
+				return Some(true);
+			}
+			// We had a non-optimal stretch.
+			else {
+				self.bad = stride - 1;
+				return Some(false);
+			}
+		}
+
+		// Finish up by qualifying the dangling stride as optimal or not.
+		if stride >= 5 && (scratch == 0 || stride >= 7) {
+			self.good = stride - 1;
+			Some(true)
+		}
+		else {
+			self.bad = stride - 1;
+			Some(false)
+		}
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.len();
+		(len, Some(len))
+	}
+}
+
+impl<'a> ExactSizeIterator for GoodForRle<'a> {
+	fn len(&self) -> usize { self.good + self.bad + self.counts.len() }
 }
 
 
@@ -245,6 +393,38 @@ fn zopfli_lengths_to_symbols<const MAXBITS: usize>(
 		else {
 			*s = next_code[l];
 			next_code[l] += 1;
+		}
+	}
+}
+
+
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn t_good_for_rle() {
+		const COUNTS1: &[usize] = &[196, 23, 10, 12, 5, 4, 1, 23, 8, 2, 6, 5, 0, 0, 0, 29, 5, 0, 0, 4, 4, 1, 0, 5, 2, 0, 0, 1, 4, 0, 1, 34, 10, 5, 7, 2, 1, 2, 0, 0, 3, 2, 5, 0, 1, 0, 0, 4, 2, 1, 0, 0, 1, 1, 0, 1, 1, 2, 0, 1, 4, 1, 5, 47, 13, 0, 5, 3, 1, 2, 0, 4, 0, 1, 6, 3, 0, 0, 0, 1, 3, 2, 2, 1, 4, 6, 0, 5, 0, 0, 1, 0, 0, 0, 1, 10, 4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, 3, 1, 0, 0, 4, 0, 5, 47, 28, 3, 2, 5, 3, 0, 0, 1, 7, 0, 8, 1, 1, 1, 0, 4, 7, 2, 0, 1, 10, 0, 0, 2, 1, 0, 0, 1, 0, 0, 0, 7, 11, 4, 1, 1, 0, 3, 0, 1, 1, 1, 5, 1, 0, 0, 0, 4, 5, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 0, 0, 2, 13, 27, 4, 1, 4, 1, 1, 0, 2, 2, 0, 0, 0, 3, 0, 0, 3, 8, 0, 0, 1, 0, 0, 0, 2, 1, 0, 0, 0, 1, 1, 1, 4, 24, 1, 4, 4, 2, 2, 0, 5, 6, 1, 1, 1, 1, 1, 0, 0, 42, 6, 3, 3, 3, 6, 0, 6, 30, 9, 10, 8, 33, 9, 44, 284, 1, 15, 21, 0, 55, 0, 19, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 13, 320, 12, 0, 0, 17, 3, 0, 3, 2];
+		const COUNTS2: &[usize] = &[2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 122, 0, 288, 11, 41, 6, 5, 2, 0, 0, 0, 1];
+		const COUNTS3: &[usize] = &[201, 24, 10, 12, 5, 4, 1, 24, 8, 2, 6, 4, 0, 0, 0, 29, 5, 0, 0, 4, 4, 1, 0, 5, 2, 0, 0, 1, 4, 0, 1, 34, 10, 5, 7, 2, 1, 2, 0, 0, 3, 2, 5, 0, 1, 0, 0, 4, 2, 1, 0, 0, 1, 1, 0, 1, 1, 2, 0, 1, 4, 1, 5, 47, 13, 0, 5, 3, 1, 2, 0, 4, 0, 1, 6, 3, 0, 0, 0, 1, 3, 2, 2, 1, 4, 6, 0, 5, 0, 0, 1, 0, 0, 0, 1, 10, 4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, 3, 1, 0, 0, 4, 0, 5, 49, 28, 3, 2, 5, 3, 0, 0, 1, 7, 0, 9, 1, 1, 1, 0, 4, 6, 2, 0, 1, 8, 0, 0, 2, 1, 0, 0, 1, 0, 0, 0, 7, 11, 4, 1, 1, 0, 3, 0, 1, 1, 1, 5, 1, 0, 0, 0, 4, 5, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 0, 0, 2, 13, 27, 4, 1, 4, 1, 1, 0, 2, 2, 0, 0, 0, 3, 0, 0, 3, 8, 0, 0, 1, 0, 0, 0, 2, 1, 0, 0, 0, 1, 1, 1, 4, 24, 1, 4, 4, 2, 2, 0, 5, 6, 1, 1, 1, 1, 1, 0, 0, 44, 6, 3, 3, 3, 6, 0, 6, 30, 9, 10, 8, 33, 9, 46, 281, 1, 20, 3, 10, 59, 0, 4, 12, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 13, 318, 12, 0, 0, 21, 0, 0, 3, 2];
+
+		for c in [COUNTS1, COUNTS2, COUNTS3] {
+			// Make sure our ExactSizeness is working.
+			let good = GoodForRle::new(c);
+			assert_eq!(
+				good.len(),
+				c.len(),
+				"GoodForRle iterator count does not match source.",
+			);
+
+			// And make sure that is the count we actually end up with.
+			let good = good.collect::<Vec<bool>>();
+			assert_eq!(
+				good.len(),
+				c.len(),
+				"Collected GoodForRle iterator count does not match source.",
+			);
 		}
 	}
 }
