@@ -185,9 +185,7 @@ int ZopfliLengthLimitedCodeLengths(
   Node* leaves = (Node*)malloc(n * sizeof(*leaves));
 
   /* Initialize all bitlengths at 0. */
-  for (i = 0; i < n; i++) {
-    bitlengths[i] = 0;
-  }
+  memset(bitlengths, 0, sizeof(unsigned) * n);
 
   /* Count used symbols and place them in the leaves. */
   for (i = 0; i < n; i++) {

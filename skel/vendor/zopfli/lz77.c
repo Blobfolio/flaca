@@ -47,6 +47,28 @@ void ZopfliCleanLZ77Store(ZopfliLZ77Store* store) {
   free(store->d_counts);
 }
 
+void ZopfliReInitLZ77Store(const unsigned char* data, ZopfliLZ77Store* store, size_t size, size_t llsize, size_t dsize) {
+  store->data = data;
+  if (store->size == size) return;
+
+  store->size = size;
+  store->litlens =
+      (unsigned short*)realloc(store->litlens, sizeof(*store->litlens) * size);
+  store->dists = (unsigned short*)realloc(store->dists, sizeof(*store->dists) * size);
+  store->pos = (size_t*)realloc(store->pos, sizeof(*store->pos) * size);
+  store->ll_symbol =
+      (unsigned short*)realloc(store->ll_symbol, sizeof(*store->ll_symbol) * size);
+  store->d_symbol =
+      (unsigned short*)realloc(store->d_symbol, sizeof(*store->d_symbol) * size);
+  store->ll_counts = (size_t*)realloc(store->ll_counts, sizeof(*store->ll_counts) * llsize);
+  store->d_counts = (size_t*)realloc(store->d_counts, sizeof(*store->d_counts) * dsize);
+
+  if (!store->litlens || !store->dists) exit(-1);
+  if (!store->pos) exit(-1);
+  if (!store->ll_symbol || !store->d_symbol) exit(-1);
+  if (!store->ll_counts || !store->d_counts) exit(-1);
+}
+
 static size_t CeilDiv(size_t a, size_t b) {
   return (a + b - 1) / b;
 }
@@ -56,39 +78,16 @@ void ZopfliCopyLZ77Store(
   size_t i;
   size_t llsize = ZOPFLI_NUM_LL * CeilDiv(source->size, ZOPFLI_NUM_LL);
   size_t dsize = ZOPFLI_NUM_D * CeilDiv(source->size, ZOPFLI_NUM_D);
-  ZopfliCleanLZ77Store(dest);
-  ZopfliInitLZ77Store(source->data, dest);
-  dest->litlens =
-      (unsigned short*)malloc(sizeof(*dest->litlens) * source->size);
-  dest->dists = (unsigned short*)malloc(sizeof(*dest->dists) * source->size);
-  dest->pos = (size_t*)malloc(sizeof(*dest->pos) * source->size);
-  dest->ll_symbol =
-      (unsigned short*)malloc(sizeof(*dest->ll_symbol) * source->size);
-  dest->d_symbol =
-      (unsigned short*)malloc(sizeof(*dest->d_symbol) * source->size);
-  dest->ll_counts = (size_t*)malloc(sizeof(*dest->ll_counts) * llsize);
-  dest->d_counts = (size_t*)malloc(sizeof(*dest->d_counts) * dsize);
+  ZopfliReInitLZ77Store(source->data, dest, source->size, llsize, dsize);
 
-  /* Allocation failed. */
-  if (!dest->litlens || !dest->dists) exit(-1);
-  if (!dest->pos) exit(-1);
-  if (!dest->ll_symbol || !dest->d_symbol) exit(-1);
-  if (!dest->ll_counts || !dest->d_counts) exit(-1);
+  memcpy(dest->litlens, source->litlens, sizeof(unsigned short) * source->size);
+  memcpy(dest->dists, source->dists, sizeof(unsigned short) * source->size);
+  memcpy(dest->pos, source->pos, sizeof(size_t) * source->size);
+  memcpy(dest->ll_symbol, source->ll_symbol, sizeof(unsigned short) * source->size);
+  memcpy(dest->d_symbol, source->d_symbol, sizeof(unsigned short) * source->size);
 
-  dest->size = source->size;
-  for (i = 0; i < source->size; i++) {
-    dest->litlens[i] = source->litlens[i];
-    dest->dists[i] = source->dists[i];
-    dest->pos[i] = source->pos[i];
-    dest->ll_symbol[i] = source->ll_symbol[i];
-    dest->d_symbol[i] = source->d_symbol[i];
-  }
-  for (i = 0; i < llsize; i++) {
-    dest->ll_counts[i] = source->ll_counts[i];
-  }
-  for (i = 0; i < dsize; i++) {
-    dest->d_counts[i] = source->d_counts[i];
-  }
+  memcpy(dest->ll_counts, source->ll_counts, sizeof(size_t) * llsize);
+  memcpy(dest->d_counts, source->d_counts, sizeof(size_t) * dsize);
 }
 
 /*

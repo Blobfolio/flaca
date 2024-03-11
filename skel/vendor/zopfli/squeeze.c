@@ -43,22 +43,22 @@ typedef struct SymbolStats {
 
 /* Sets everything to 0. */
 static void InitStats(SymbolStats* stats) {
-  memset(stats->litlens, 0, ZOPFLI_NUM_LL * sizeof(stats->litlens[0]));
-  memset(stats->dists, 0, ZOPFLI_NUM_D * sizeof(stats->dists[0]));
+  memset(stats->litlens, 0, ZOPFLI_NUM_LL * sizeof(size_t));
+  memset(stats->dists, 0, ZOPFLI_NUM_D * sizeof(size_t));
 
-  memset(stats->ll_symbols, 0, ZOPFLI_NUM_LL * sizeof(stats->ll_symbols[0]));
-  memset(stats->d_symbols, 0, ZOPFLI_NUM_D * sizeof(stats->d_symbols[0]));
+  memset(stats->ll_symbols, 0, ZOPFLI_NUM_LL * sizeof(double));
+  memset(stats->d_symbols, 0, ZOPFLI_NUM_D * sizeof(double));
 }
 
 static void CopyStats(SymbolStats* source, SymbolStats* dest) {
   memcpy(dest->litlens, source->litlens,
-         ZOPFLI_NUM_LL * sizeof(dest->litlens[0]));
-  memcpy(dest->dists, source->dists, ZOPFLI_NUM_D * sizeof(dest->dists[0]));
+         ZOPFLI_NUM_LL * sizeof(size_t));
+  memcpy(dest->dists, source->dists, ZOPFLI_NUM_D * sizeof(size_t));
 
   memcpy(dest->ll_symbols, source->ll_symbols,
-         ZOPFLI_NUM_LL * sizeof(dest->ll_symbols[0]));
+         ZOPFLI_NUM_LL * sizeof(double));
   memcpy(dest->d_symbols, source->d_symbols,
-         ZOPFLI_NUM_D * sizeof(dest->d_symbols[0]));
+         ZOPFLI_NUM_D * sizeof(double));
 }
 
 /* Adds the bit lengths. */
@@ -108,8 +108,8 @@ static void RandomizeStatFreqs(RanState* state, SymbolStats* stats) {
 
 static void ClearStatFreqs(SymbolStats* stats) {
   size_t i;
-  for (i = 0; i < ZOPFLI_NUM_LL; i++) stats->litlens[i] = 0;
-  for (i = 0; i < ZOPFLI_NUM_D; i++) stats->dists[i] = 0;
+  memset(stats->litlens, 0, ZOPFLI_NUM_LL * sizeof(size_t));
+  memset(stats->dists, 0, ZOPFLI_NUM_D * sizeof(size_t));
 }
 
 /*

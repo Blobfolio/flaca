@@ -25,9 +25,10 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 
 #define HASH_SHIFT 5
 #define HASH_MASK 32767
+#define HASH_LENGTH 65536
 
 void ZopfliAllocHash(ZopfliHash* h) {
-  h->head = (int*)malloc(sizeof(*h->head) * 65536);
+  h->head = (int*)malloc(sizeof(*h->head) * HASH_LENGTH);
   h->prev = (unsigned short*)malloc(sizeof(*h->prev) * ZOPFLI_WINDOW_SIZE);
   h->hashval = (int*)malloc(sizeof(*h->hashval) * ZOPFLI_WINDOW_SIZE);
 
@@ -36,7 +37,7 @@ void ZopfliAllocHash(ZopfliHash* h) {
 #endif
 
 #ifdef ZOPFLI_HASH_SAME_HASH
-  h->head2 = (int*)malloc(sizeof(*h->head2) * 65536);
+  h->head2 = (int*)malloc(sizeof(*h->head2) * HASH_LENGTH);
   h->prev2 = (unsigned short*)malloc(sizeof(*h->prev2) * ZOPFLI_WINDOW_SIZE);
   h->hashval2 = (int*)malloc(sizeof(*h->hashval2) * ZOPFLI_WINDOW_SIZE);
 #endif
@@ -46,26 +47,23 @@ void ZopfliResetHash(ZopfliHash* h) {
   size_t i;
 
   h->val = 0;
+  for (i = 0; i < HASH_LENGTH; i++) h->head[i] = -1;
+  for (i = 0; i < ZOPFLI_WINDOW_SIZE; i++) h->prev[i] = i;
+
+/* The default for hashval is -1 too. */
+memcpy(h->hashval, h->head, sizeof(int) * ZOPFLI_WINDOW_SIZE);
+#ifdef ZOPFLI_HASH_SAME
+  /* 0 for no length. */
+  memset(h->same, 0, sizeof(unsigned short) * ZOPFLI_WINDOW_SIZE);
+#endif
 #ifdef ZOPFLI_HASH_SAME_HASH
   h->val2 = 0;
+  /* Copy what we already initialized. */
+  memcpy(h->head2, h->head, sizeof(int) * HASH_LENGTH);
+  memcpy(h->hashval2, h->hashval, sizeof(int) * ZOPFLI_WINDOW_SIZE);
+  memcpy(h->prev2, h->prev, sizeof(unsigned short) * ZOPFLI_WINDOW_SIZE);
 #endif
-  for (i = 0; i < 65536; i++) {
-    h->head[i] = -1;  /* -1 indicates no head so far. */
-#ifdef ZOPFLI_HASH_SAME_HASH
-    h->head2[i] = -1;
-#endif
-  }
-  for (i = 0; i < ZOPFLI_WINDOW_SIZE; i++) {
-    h->prev[i] = i;  /* If prev[j] == j, then prev[j] is uninitialized. */
-    h->hashval[i] = -1;
-#ifdef ZOPFLI_HASH_SAME
-    h->same[i] = 0;
-#endif
-#ifdef ZOPFLI_HASH_SAME_HASH
-    h->prev2[i] = i;
-    h->hashval2[i] = -1;
-#endif
-  }
+
 }
 
 void ZopfliCleanHash(ZopfliHash* h) {
