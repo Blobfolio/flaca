@@ -225,7 +225,7 @@ void ZopfliBlockSplitLZ77(const ZopfliOptions* options,
 
 void ZopfliBlockSplit(const ZopfliOptions* options,
                       const unsigned char* in, size_t instart, size_t inend,
-                      size_t maxblocks, size_t** splitpoints, size_t* npoints, SymbolStats** stats) {
+                      size_t maxblocks, size_t** splitpoints, size_t* npoints) {
   size_t pos = 0;
   size_t i;
   ZopfliBlockState s;
@@ -249,47 +249,19 @@ void ZopfliBlockSplit(const ZopfliOptions* options,
   ZopfliBlockSplitLZ77(options,
                        &store, maxblocks,
                        &lz77splitpoints, &nlz77points);
-  (*stats) = (SymbolStats*)realloc(*stats, (nlz77points + 1) * sizeof(SymbolStats));
 
   /* Convert LZ77 positions to positions in the uncompressed input. */
   pos = instart;
   if (nlz77points > 0) {
-  	size_t shift2;
     for (i = 0; i < store.size; i++) {
       size_t length = store.dists[i] == 0 ? 1 : store.litlens[i];
-      if (lz77splitpoints[(*npoints)] == i) {
-        size_t temp = store.size;
-        size_t shift = (*npoints) ? lz77splitpoints[*npoints - 1] : 0;
-        store.size = i - shift;
-        store.dists += shift;
-        store.litlens += shift;
-
-        InitStats(&((*stats)[*npoints]));
-        GetStatistics(&store, &((*stats)[*npoints]));
-        store.size = temp;
-        store.dists -= shift;
-        store.litlens -= shift;
+      if (lz77splitpoints[*npoints] == i) {
         ZOPFLI_APPEND_DATA(pos, splitpoints, npoints);
         if (*npoints == nlz77points) break;
       }
       pos += length;
     }
-    shift2 = lz77splitpoints[*npoints - 1];
-    store.size -= shift2;
-    store.dists += shift2;
-    store.litlens += shift2;
-
-    InitStats(&((*stats)[*npoints]));
-    GetStatistics(&store, &((*stats)[*npoints]));
-    store.size += shift2;
-    store.dists -= shift2;
-    store.litlens -= shift2;
   }
-  else{
-    InitStats(*stats);
-    GetStatistics(&store, *stats);
-  }
-
   assert(*npoints == nlz77points);
 
   free(lz77splitpoints);

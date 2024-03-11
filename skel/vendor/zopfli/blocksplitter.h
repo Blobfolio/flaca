@@ -31,7 +31,6 @@ ones that enhance it.
 #include <stdlib.h>
 
 #include "lz77.h"
-#include "squeeze.h"
 #include "zopfli.h"
 
 
@@ -60,7 +59,7 @@ npoints: pointer to amount of splitpoints, for the dynamic array. The amount of
 */
 void ZopfliBlockSplit(const ZopfliOptions* options,
                       const unsigned char* in, size_t instart, size_t inend,
-                      size_t maxblocks, size_t** splitpoints, size_t* npoints, SymbolStats** stats);
+                      size_t maxblocks, size_t** splitpoints, size_t* npoints);
 
 /*
 Divides the input into equal blocks, does not even take LZ77 lengths into
