@@ -74,7 +74,6 @@ fn build_ffi() {
 			zopfli_src.join("cache.c"),
 			zopfli_src.join("deflate.c"),
 			zopfli_src.join("hash.c"),
-			zopfli_src.join("katajainen.c"),
 			zopfli_src.join("lz77.c"),
 			zopfli_src.join("squeeze.c"),
 			zopfli_src.join("util.c"),

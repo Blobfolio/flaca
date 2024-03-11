@@ -4,7 +4,7 @@ Rust Externs.
 Since Google has effectively abandoned Zopfli — shocker! — we're moving some of
 the methods into Rust where they can be more easily managed.
 
-This file contains the extern signatures to allow (more or less) seamless
+This file contains the signatures to allow (more or less) seamless
 interop across the sea of C.
 */
 
@@ -17,7 +17,7 @@ This returns the desired number of iterations to use during compression. (This
 is used by our custom_png_deflate callback; it is not part of the original
 code base.)
 */
-extern int flaca_zopfli_iterations(size_t);
+int flaca_zopfli_iterations(size_t);
 
 /*
 Write Fixed Tree.
@@ -36,6 +36,25 @@ more efficiently. length contains the size of the histogram.
 void OptimizeHuffmanForRle(int length, size_t* counts);
 
 /*
+Length Limited Code Lengths.
+
+Outputs minimum-redundancy length-limited code bitlengths for symbols with the
+given counts. The bitlengths are limited by maxbits.
+
+The output is tailored for DEFLATE: symbols that never occur, get a bit length
+of 0, and if only a single symbol occurs at least once, its bitlength will be 1,
+and not 0 as would theoretically be needed for a single symbol.
+
+frequencies: The amount of occurrences of each symbol.
+n: The amount of symbols.
+maxbits: Maximum bit length, inclusive.
+bitlengths: Output, the bitlengths for the symbol prefix codes.
+return: 0 for OK, non-0 for error.
+*/
+void ZopfliLengthLimitedCodeLengths(
+    const size_t* frequencies, int n, int maxbits, unsigned* bitlengths);
+
+/*
 Code Lengths to Symbols.
 
 Converts a series of Huffman tree bitlengths, to the bit values of the symbols.
@@ -43,8 +62,8 @@ Converts a series of Huffman tree bitlengths, to the bit values of the symbols.
 The original method was split into two to improve memory allocations on the
 Rust side.
 */
-extern void ZopfliLengthsToSymbols7(const unsigned* lengths, size_t n, unsigned* symbols);
-extern void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbols);
+void ZopfliLengthsToSymbols7(const unsigned* lengths, size_t n, unsigned* symbols);
+void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbols);
 
 /*
 Calculate Symbol Entropy.
@@ -55,4 +74,4 @@ actual theoritical bit lengths according to the entropy. Since the resulting
 values are fractional, they cannot be used to encode the tree specified by
 DEFLATE.
 */
-extern void ZopfliCalculateEntropy(const size_t* count, size_t n, double* bitlengths);
+void ZopfliCalculateEntropy(const size_t* count, size_t n, double* bitlengths);

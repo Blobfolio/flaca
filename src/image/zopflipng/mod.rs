@@ -12,6 +12,8 @@ This no longer links to `libzopflipng` itself, but instead reimplements its
 functionality.
 */
 
+mod kat;
+
 use std::os::raw::{
 	c_int,
 	c_uint,

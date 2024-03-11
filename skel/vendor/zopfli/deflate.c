@@ -27,7 +27,6 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 #include "blocksplitter.h"
 #include "squeeze.h"
 #include "symbols.h"
-#include "katajainen.h"
 
 /*
 bp = bitpointer, always in range [0, 7].
@@ -206,7 +205,7 @@ static size_t EncodeTree(const unsigned* ll_lengths,
     }
   }
 
-  assert(!ZopfliLengthLimitedCodeLengths(clcounts, 19, 7, clcl));
+  ZopfliLengthLimitedCodeLengths(clcounts, 19, 7, clcl);
   if (!size_only) ZopfliLengthsToSymbols7(clcl, 19, clsymbols);
 
   hclen = 15;
@@ -444,8 +443,8 @@ static double TryOptimizeHuffmanForRle(
   memcpy(d_counts2, d_counts, sizeof(d_counts2));
   OptimizeHuffmanForRle(ZOPFLI_NUM_LL, ll_counts2);
   OptimizeHuffmanForRle(ZOPFLI_NUM_D, d_counts2);
-  assert(!ZopfliLengthLimitedCodeLengths(ll_counts2, ZOPFLI_NUM_LL, 15, ll_lengths2));
-  assert(!ZopfliLengthLimitedCodeLengths(d_counts2, ZOPFLI_NUM_D, 15, d_lengths2));
+  ZopfliLengthLimitedCodeLengths(ll_counts2, ZOPFLI_NUM_LL, 15, ll_lengths2);
+  ZopfliLengthLimitedCodeLengths(d_counts2, ZOPFLI_NUM_D, 15, d_lengths2);
   PatchDistanceCodesForBuggyDecoders(d_lengths2);
 
   treesize2 = CalculateTreeSize(ll_lengths2, d_lengths2);
@@ -475,8 +474,8 @@ static double GetDynamicLengths(const ZopfliLZ77Store* lz77,
 
   ZopfliLZ77GetHistogram(lz77, lstart, lend, ll_counts, d_counts);
   ll_counts[256] = 1;  /* End symbol. */
-  assert(!ZopfliLengthLimitedCodeLengths(ll_counts, ZOPFLI_NUM_LL, 15, ll_lengths));
-  assert(!ZopfliLengthLimitedCodeLengths(d_counts, ZOPFLI_NUM_D, 15, d_lengths));
+  ZopfliLengthLimitedCodeLengths(ll_counts, ZOPFLI_NUM_LL, 15, ll_lengths);
+  ZopfliLengthLimitedCodeLengths(d_counts, ZOPFLI_NUM_D, 15, d_lengths);
   PatchDistanceCodesForBuggyDecoders(d_lengths);
   return TryOptimizeHuffmanForRle(
       lz77, lstart, lend, ll_counts, d_counts, ll_lengths, d_lengths);
