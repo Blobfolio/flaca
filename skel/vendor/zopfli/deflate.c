@@ -767,7 +767,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
     size_t npoints2 = 0;
     double totalcost2 = 0;
 
-    ZopfliBlockSplitLZ77(options, &lz77,
+    ZopfliBlockSplitLZ77(&lz77,
                          options->blocksplittingmax, &splitpoints2, &npoints2);
 
     for (i = 0; i <= npoints2; i++) {
