@@ -212,7 +212,7 @@ impl<'a> Pool<'a> {
 	/// Add a new chain to the list, using either a leaf or combination of two
 	/// chains from the previous list.
 	fn boundary_pm(&mut self, lists: &mut [List<'a>]) {
-		let [ rest @ .., current ] = lists else { unreachable!(); };
+		let [rest @ .., current] = lists else { unreachable!(); };
 		let last_count = current.lookahead1.count;
 
 		// We're at the beginning, which is the end since we're iterating in
@@ -262,7 +262,7 @@ impl<'a> Pool<'a> {
 
 	/// # Final Package-Merge Step.
 	fn boundary_pm_final(&mut self, lists: &mut [List<'a>]) {
-		let [ _rest @ .., previous, current ] = lists else { unreachable!(); };
+		let [_rest @ .., previous, current] = lists else { unreachable!(); };
 
 		let last_count = current.lookahead1.count;
 		let weight_sum = previous.weight_sum();

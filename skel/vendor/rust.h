@@ -35,6 +35,23 @@ more efficiently. length contains the size of the histogram.
 */
 void OptimizeHuffmanForRle(int length, size_t* counts);
 
+/* Extracts sublen array from the cache. */
+void ZopfliCacheToSublen(size_t pos, size_t length, unsigned short* sublen);
+
+/*
+Calculate Symbol Entropy.
+
+Calculates the entropy of each symbol, based on the counts of each symbol. The
+result is similar to the result of ZopfliCalculateBitLengths, but with the
+actual theoritical bit lengths according to the entropy. Since the resulting
+values are fractional, they cannot be used to encode the tree specified by
+DEFLATE.
+*/
+void ZopfliCalculateEntropy(const size_t* count, size_t n, double* bitlengths);
+
+/* Initializes the ZopfliLongestMatchCache. */
+void ZopfliInitCache(size_t blocksize);
+
 /*
 Length Limited Code Lengths.
 
@@ -65,13 +82,14 @@ Rust side.
 void ZopfliLengthsToSymbols7(const unsigned* lengths, size_t n, unsigned* symbols);
 void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbols);
 
-/*
-Calculate Symbol Entropy.
+/* Fetch sublength length and distance from cache. */
+unsigned short ZopfliLongestMatchCacheLD(size_t pos, unsigned short* len, unsigned short* dist);
 
-Calculates the entropy of each symbol, based on the counts of each symbol. The
-result is similar to the result of ZopfliCalculateBitLengths, but with the
-actual theoritical bit lengths according to the entropy. Since the resulting
-values are fractional, they cannot be used to encode the tree specified by
-DEFLATE.
-*/
-void ZopfliCalculateEntropy(const size_t* count, size_t n, double* bitlengths);
+/* Set cached length and distance. */
+void ZopfliLongestMatchCacheSetLD(size_t pos, unsigned short len, unsigned short dist);
+
+/* Returns the length up to which could be stored in the cache. */
+unsigned ZopfliMaxCachedSublen(size_t pos);
+
+/* Stores sublen array in the cache. */
+void ZopfliSublenToCache(const unsigned short* sublen, size_t pos, size_t length);

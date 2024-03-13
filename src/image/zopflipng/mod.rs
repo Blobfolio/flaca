@@ -12,6 +12,7 @@ This no longer links to `libzopflipng` itself, but instead reimplements its
 functionality.
 */
 
+mod cache;
 mod kat;
 
 use std::os::raw::{

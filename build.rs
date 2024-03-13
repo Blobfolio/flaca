@@ -71,7 +71,6 @@ fn build_ffi() {
 		.static_flag(true)
 		.files(&[
 			zopfli_src.join("blocksplitter.c"),
-			zopfli_src.join("cache.c"),
 			zopfli_src.join("deflate.c"),
 			zopfli_src.join("hash.c"),
 			zopfli_src.join("lz77.c"),

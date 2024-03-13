@@ -669,7 +669,6 @@ static void AddLZ77BlockAutoType(const ZopfliOptions* options, int final,
     ZopfliInitBlockState(options, instart, inend, 1, &s);
     ZopfliLZ77OptimalFixed(&s, lz77->data, instart, inend, &fixedstore);
     fixedcost = ZopfliCalculateBlockSize(&fixedstore, 0, fixedstore.size, 1);
-    ZopfliCleanBlockState(&s);
   }
 
   if (uncompressedcost < fixedcost && uncompressedcost < dyncost) {
@@ -728,7 +727,6 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
     AddLZ77Block(options, btype, final, &store, 0, store.size, 0,
                  bp, out, outsize);
 
-    ZopfliCleanBlockState(&s);
     ZopfliCleanLZ77Store(&store);
     return;
   }
@@ -756,7 +754,6 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
     ZopfliAppendLZ77Store(&store, &lz77);
     if (i < npoints) splitpoints[i] = lz77.size;
 
-    ZopfliCleanBlockState(&s);
     ZopfliCleanLZ77Store(&store);
   }
 

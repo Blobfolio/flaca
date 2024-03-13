@@ -263,7 +263,6 @@ void ZopfliBlockSplit(const ZopfliOptions* options,
   assert(*npoints == nlz77points);
 
   free(lz77splitpoints);
-  ZopfliCleanBlockState(&s);
   ZopfliCleanLZ77Store(&store);
   ZopfliCleanHash(h);
 }
