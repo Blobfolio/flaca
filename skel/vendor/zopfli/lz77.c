@@ -447,7 +447,6 @@ void ZopfliFindLongestMatch(ZopfliBlockState* s, const ZopfliHash* h,
       if (pos + bestlength >= size
           || *(scan + bestlength) == *(match + bestlength)) {
 
-#ifdef ZOPFLI_HASH_SAME
         unsigned short same0 = h->same[pos & ZOPFLI_WINDOW_MASK];
         if (same0 > 2 && *scan == *match) {
           unsigned short same1 = h->same[(pos - dist) & ZOPFLI_WINDOW_MASK];
@@ -456,7 +455,6 @@ void ZopfliFindLongestMatch(ZopfliBlockState* s, const ZopfliHash* h,
           scan += same;
           match += same;
         }
-#endif
         scan = GetMatch(scan, match, arrayend, arrayend_safe);
         currentlength = scan - &array[pos];  /* The found length. */
       }
@@ -474,8 +472,6 @@ void ZopfliFindLongestMatch(ZopfliBlockState* s, const ZopfliHash* h,
       }
     }
 
-
-#ifdef ZOPFLI_HASH_SAME_HASH
     /* Switch to the other hash once this will be more efficient. */
     if (hhead != h->head2 && bestlength >= h->same[hpos] &&
         h->val2 == h->hashval2[p]) {
@@ -485,7 +481,6 @@ void ZopfliFindLongestMatch(ZopfliBlockState* s, const ZopfliHash* h,
       hhashval = h->hashval2;
       hval = h->val2;
     }
-#endif
 
     pp = p;
     p = hprev[p];
@@ -519,13 +514,11 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
       ? instart - ZOPFLI_WINDOW_SIZE : 0;
   unsigned short dummysublen[259];
 
-#ifdef ZOPFLI_LAZY_MATCHING
   /* Lazy matching. */
   unsigned prev_length = 0;
   unsigned prev_match = 0;
   int prevlengthscore;
   int match_available = 0;
-#endif
 
   if (instart == inend) return;
 
@@ -542,7 +535,6 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
                            &dist, &leng);
     lengthscore = GetLengthScore(leng, dist);
 
-#ifdef ZOPFLI_LAZY_MATCHING
     /* Lazy matching. */
     prevlengthscore = GetLengthScore(prev_length, prev_match);
     if (match_available) {
@@ -577,7 +569,6 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
       continue;
     }
     /* End of lazy matching. */
-#endif
 
     /* Add to output. */
     if (lengthscore >= ZOPFLI_MIN_MATCH) {

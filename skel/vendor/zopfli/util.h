@@ -84,37 +84,6 @@ Good value: e.g. 8192.
 #define ZOPFLI_MAX_CHAIN_HITS 8192
 
 /*
-Enable to remember amount of successive identical bytes in the hash chain for
-finding longest match
-required for ZOPFLI_HASH_SAME_HASH and ZOPFLI_SHORTCUT_LONG_REPETITIONS
-This has no effect on the compression result, and enabling it increases speed.
-*/
-#define ZOPFLI_HASH_SAME
-
-/*
-Switch to a faster hash based on the info from ZOPFLI_HASH_SAME once the
-best length so far is long enough. This is way faster for files with lots of
-identical bytes, on which the compressor is otherwise too slow. Regular files
-are unaffected or maybe a tiny bit slower.
-This has no effect on the compression result, only on speed.
-*/
-#define ZOPFLI_HASH_SAME_HASH
-
-/*
-Enable this, to avoid slowness for files which are a repetition of the same
-character more than a multiple of ZOPFLI_MAX_MATCH times. This should not affect
-the compression result.
-*/
-#define ZOPFLI_SHORTCUT_LONG_REPETITIONS
-
-/*
-Whether to use lazy matching in the greedy LZ77 implementation. This gives a
-better result of ZopfliLZ77Greedy, but the effect this has on the optimal LZ77
-varies from file to file.
-*/
-#define ZOPFLI_LAZY_MATCHING
-
-/*
 Appends value to dynamically allocated memory, doubling its allocation size
 whenever needed.
 

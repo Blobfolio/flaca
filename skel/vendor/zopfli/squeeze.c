@@ -248,7 +248,6 @@ static double GetBestLengths(ZopfliBlockState *s,
     size_t j = i - instart;  /* Index in the costs array and length_array. */
     ZopfliUpdateHash(in, i, inend, h);
 
-#ifdef ZOPFLI_SHORTCUT_LONG_REPETITIONS
     /* If we're in a long repetition of the same character and have more than
     ZOPFLI_MAX_MATCH characters before and after our position. */
     if (h->same[i & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH * 2
@@ -268,7 +267,6 @@ static double GetBestLengths(ZopfliBlockState *s,
         ZopfliUpdateHash(in, i, inend, h);
       }
     }
-#endif
 
     ZopfliFindLongestMatch(s, h, in, i, inend, ZOPFLI_MAX_MATCH, sublen,
                            &dist, &leng);

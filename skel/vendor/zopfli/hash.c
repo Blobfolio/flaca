@@ -32,37 +32,31 @@ void ZopfliAllocHash(ZopfliHash* h) {
   h->prev = (unsigned short*)malloc(sizeof(*h->prev) * ZOPFLI_WINDOW_SIZE);
   h->hashval = (int*)malloc(sizeof(*h->hashval) * ZOPFLI_WINDOW_SIZE);
 
-#ifdef ZOPFLI_HASH_SAME
   h->same = (unsigned short*)malloc(sizeof(*h->same) * ZOPFLI_WINDOW_SIZE);
-#endif
 
-#ifdef ZOPFLI_HASH_SAME_HASH
   h->head2 = (int*)malloc(sizeof(*h->head2) * HASH_LENGTH);
   h->prev2 = (unsigned short*)malloc(sizeof(*h->prev2) * ZOPFLI_WINDOW_SIZE);
   h->hashval2 = (int*)malloc(sizeof(*h->hashval2) * ZOPFLI_WINDOW_SIZE);
-#endif
 }
 
 void ZopfliResetHash(ZopfliHash* h) {
   size_t i;
 
   h->val = 0;
+  h->val2 = 0;
+
+  /* Initializations requiring iteration. */
   for (i = 0; i < HASH_LENGTH; i++) h->head[i] = -1;
   for (i = 0; i < ZOPFLI_WINDOW_SIZE; i++) h->prev[i] = i;
 
-/* The default for hashval is -1 too. */
-memcpy(h->hashval, h->head, sizeof(int) * ZOPFLI_WINDOW_SIZE);
-#ifdef ZOPFLI_HASH_SAME
   /* 0 for no length. */
   memset(h->same, 0, sizeof(unsigned short) * ZOPFLI_WINDOW_SIZE);
-#endif
-#ifdef ZOPFLI_HASH_SAME_HASH
-  h->val2 = 0;
+
   /* Copy what we already initialized. */
   memcpy(h->head2, h->head, sizeof(int) * HASH_LENGTH);
-  memcpy(h->hashval2, h->hashval, sizeof(int) * ZOPFLI_WINDOW_SIZE);
+  memcpy(h->hashval, h->head, sizeof(int) * ZOPFLI_WINDOW_SIZE);
+  memcpy(h->hashval2, h->head, sizeof(int) * ZOPFLI_WINDOW_SIZE);
   memcpy(h->prev2, h->prev, sizeof(unsigned short) * ZOPFLI_WINDOW_SIZE);
-#endif
 
 }
 
@@ -71,15 +65,11 @@ void ZopfliCleanHash(ZopfliHash* h) {
   free(h->prev);
   free(h->hashval);
 
-#ifdef ZOPFLI_HASH_SAME_HASH
   free(h->head2);
   free(h->prev2);
   free(h->hashval2);
-#endif
 
-#ifdef ZOPFLI_HASH_SAME
   free(h->same);
-#endif
 }
 
 /*
@@ -94,9 +84,7 @@ static void UpdateHashValue(ZopfliHash* h, unsigned char c) {
 void ZopfliUpdateHash(const unsigned char* array, size_t pos, size_t end,
                 ZopfliHash* h) {
   unsigned short hpos = pos & ZOPFLI_WINDOW_MASK;
-#ifdef ZOPFLI_HASH_SAME
   size_t amount = 0;
-#endif
 
   UpdateHashValue(h, pos + ZOPFLI_MIN_MATCH <= end ?
       array[pos + ZOPFLI_MIN_MATCH - 1] : 0);
@@ -107,7 +95,6 @@ void ZopfliUpdateHash(const unsigned char* array, size_t pos, size_t end,
   else h->prev[hpos] = hpos;
   h->head[h->val] = hpos;
 
-#ifdef ZOPFLI_HASH_SAME
   /* Update "same". */
   if (h->same[(pos - 1) & ZOPFLI_WINDOW_MASK] > 1) {
     amount = h->same[(pos - 1) & ZOPFLI_WINDOW_MASK] - 1;
@@ -117,9 +104,7 @@ void ZopfliUpdateHash(const unsigned char* array, size_t pos, size_t end,
     amount++;
   }
   h->same[hpos] = amount;
-#endif
 
-#ifdef ZOPFLI_HASH_SAME_HASH
   h->val2 = ((h->same[hpos] - ZOPFLI_MIN_MATCH) & 255) ^ h->val;
   h->hashval2[hpos] = h->val2;
   if (h->head2[h->val2] != -1 && h->hashval2[h->head2[h->val2]] == h->val2) {
@@ -127,7 +112,6 @@ void ZopfliUpdateHash(const unsigned char* array, size_t pos, size_t end,
   }
   else h->prev2[hpos] = hpos;
   h->head2[h->val2] = hpos;
-#endif
 }
 
 void ZopfliWarmupHash(const unsigned char* array, size_t pos, size_t end,
