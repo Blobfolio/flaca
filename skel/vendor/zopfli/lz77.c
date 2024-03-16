@@ -301,47 +301,6 @@ static const unsigned char* GetMatch(const unsigned char* scan,
 }
 
 /*
-Gets distance, length and sublen values from the cache if possible.
-Returns 1 if it got the values from the cache, 0 if not.
-Updates the limit value to a smaller one if possible with more limited
-information from the cache.
-*/
-static int TryGetFromLongestMatchCache(ZopfliBlockState* s,
-    size_t pos, size_t* limit,
-    unsigned short* sublen, unsigned short* distance, unsigned short* length) {
-  if (s->lmc) {
-    size_t lmcpos = pos - s->blockstart;
-    unsigned short cache_len, cache_dist;
-    ZopfliLongestMatchCacheLD(lmcpos, &cache_len, &cache_dist);
-    if (cache_len == 0 || cache_dist != 0) {
-      if (*limit == ZOPFLI_MAX_MATCH || cache_len <= *limit ||
-      (sublen && ZopfliMaxCachedSublen(lmcpos) >= *limit)) {
-        if (!sublen || cache_len
-          <= ZopfliMaxCachedSublen(lmcpos)) {
-        *length = cache_len;
-        if (*length > *limit) *length = *limit;
-        if (sublen) {
-          ZopfliCacheToSublen(lmcpos, *length, sublen);
-          *distance = sublen[*length];
-          if (*limit == ZOPFLI_MAX_MATCH && *length >= ZOPFLI_MIN_MATCH) {
-            assert(sublen[*length] == cache_dist);
-          }
-        } else {
-          *distance = cache_dist;
-        }
-        return 1;
-      }
-      /* Can't use much of the cache, since the "sublens" need to be calculated,
-         but at  least we already know when to stop. */
-      *limit = cache_len;
-      }
-    }
-  }
-
-  return 0;
-}
-
-/*
 Stores the found sublen, distance and length in the longest match cache, if
 possible.
 */
@@ -394,9 +353,12 @@ void ZopfliFindLongestMatch(ZopfliBlockState* s, const ZopfliHash* h,
   int* hhashval = h->hashval;
   int hval = h->val;
 
-  if (TryGetFromLongestMatchCache(s, pos, &limit, sublen, distance, length)) {
-    assert(pos + *length <= size);
-    return;
+  if (s->lmc) {
+    size_t lmcpos = pos - s->blockstart;
+    if (TryGetFromLongestMatchCache(lmcpos, &limit, sublen, distance, length)) {
+      assert(pos + *length <= size);
+      return;
+    }
   }
 
   assert(limit <= ZOPFLI_MAX_MATCH);

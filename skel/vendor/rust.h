@@ -36,8 +36,16 @@ more efficiently. length contains the size of the histogram.
 */
 void OptimizeHuffmanForRle(int length, size_t* counts);
 
-/* Extracts sublen array from the cache. */
-void ZopfliCacheToSublen(size_t pos, size_t length, unsigned short* sublen);
+/*
+Maybe Fetch Length/Distance/Sublength from Cache.
+
+Gets distance, length and sublen values from the cache if possible.
+Returns 1 if it got the values from the cache, 0 if not.
+Updates the limit value to a smaller one if possible with more limited
+information from the cache.
+*/
+int TryGetFromLongestMatchCache(size_t lmcpos, size_t* limit,
+    unsigned short* sublen, unsigned short* distance, unsigned short* length);
 
 /*
 Calculate Symbol Entropy.
@@ -88,9 +96,6 @@ unsigned short ZopfliLongestMatchCacheLD(size_t pos, unsigned short* len, unsign
 
 /* Set cached length and distance. */
 void ZopfliLongestMatchCacheSetLD(size_t pos, unsigned short len, unsigned short dist);
-
-/* Returns the length up to which could be stored in the cache. */
-unsigned ZopfliMaxCachedSublen(size_t pos);
 
 /* Stores sublen array in the cache. */
 void ZopfliSublenToCache(const unsigned short* sublen, size_t pos, size_t length);

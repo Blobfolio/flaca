@@ -5,8 +5,8 @@
 use std::{
 	cell::RefCell,
 	os::raw::{
+		c_int,
 		c_ushort,
-		c_uint,
 	},
 };
 
@@ -41,39 +41,28 @@ const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 
 
 #[no_mangle]
-#[allow(unsafe_code)]
 #[inline]
-/// # Fetch Cached Sublength.
+#[allow(unsafe_code, clippy::cast_possible_truncation)]
+/// # Maybe Find From Cache.
 ///
-/// This is a rewrite of the original `cache.c` method.
-pub(crate) extern "C" fn ZopfliCacheToSublen(
+/// This is a rewrite of the original `lz77.c` method.
+pub(crate) extern "C" fn TryGetFromLongestMatchCache(
 	pos: usize,
-	length: usize,
-	sublen: *mut ::std::os::raw::c_ushort,
-) {
-	// Short circuit.
-	if length < ZOPFLI_MIN_MATCH { return; }
-
+	limit: *mut usize,
+	sublen: *mut c_ushort,
+	distance: *mut c_ushort,
+	length: *mut c_ushort,
+) -> c_int {
 	CACHE.with_borrow(|c| {
-		// Convert the raw pointer to a slice to make it easier to work with.
-		let sublen: &mut [c_ushort] = unsafe {
-			std::slice::from_raw_parts_mut(sublen, SUBLEN_LEN)
-		};
-		let slice = c.sublen_array(pos);
-		let maxlength = max_sublen(slice) as usize;
-		let mut prevlength = 0;
-
-		for chunk in slice.chunks_exact(3) {
-			let length = usize::from(chunk[0]) + ZOPFLI_MIN_MATCH;
-			if prevlength <= length {
-				let dist = u16::from_le_bytes([chunk[1], chunk[2]]);
-				// Safety: these positions existed before.
-				unsafe { sublen.get_unchecked_mut(prevlength..=length).fill(dist); }
-			}
-			if length == maxlength { return; }
-			prevlength = length + 1;
-		}
-	});
+		let res = c.find(
+			pos,
+			unsafe { &mut *limit },
+			sublen,
+			unsafe { &mut *distance },
+			unsafe { &mut *length }
+		);
+		i32::from(res)
+	})
 }
 
 #[no_mangle]
@@ -99,10 +88,10 @@ pub(crate) extern "C" fn ZopfliLongestMatchCacheLD(
 	dist: *mut c_ushort,
 ) {
 	CACHE.with_borrow(|c| {
-		let [l1, l2, d1, d2] = c.ld[pos].to_le_bytes();
+		let (l, d) = c.ld(pos);
 		unsafe {
-			*len = u16::from_le_bytes([l1, l2]);
-			*dist = u16::from_le_bytes([d1, d2]);
+			*len = l;
+			*dist = d;
 		}
 	});
 }
@@ -122,18 +111,7 @@ pub(crate) extern "C" fn ZopfliLongestMatchCacheSetLD(
 }
 
 #[no_mangle]
-#[allow(unsafe_code)]
-#[inline]
-/// # Max Cached Sublength.
-///
-/// This is a rewrite of the original `cache.c` method.
-pub(crate) extern "C" fn ZopfliMaxCachedSublen(pos: usize) -> c_uint {
-	CACHE.with_borrow(|c| max_sublen(c.sublen_array(pos)))
-}
-
-#[no_mangle]
 #[allow(unsafe_code, clippy::cast_possible_truncation)]
-#[inline]
 /// # Add Sublength to Cache.
 ///
 /// This is a rewrite of the original `cache.c` method.
@@ -238,6 +216,86 @@ impl MatchCache {
 		}
 	}
 
+	#[inline]
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	/// # Find Match.
+	///
+	/// Find the sublength, distance, and length from cache, if possible.
+	///
+	/// Values are written directly to the passed arguments. A bool is returned
+	/// to indicate whether or not the find was successful.
+	///
+	/// Note: All the mismatched integer types are Zopfli's fault. Haha.
+	fn find(
+		&self,
+		pos: usize,
+		limit: &mut usize,
+		sublen: *mut c_ushort,
+		distance: &mut u16,
+		length: &mut u16,
+	) -> bool {
+		// If we have no distance, we have no cache.
+		let (cache_len, cache_dist) = self.ld(pos);
+		if cache_len != 0 && cache_dist == 0 { return false; }
+
+		// Proceed if our cached length or max sublength are under the limit.
+		if
+			*limit == ZOPFLI_MAX_MATCH ||
+			usize::from(cache_len) <= *limit ||
+			(
+				! sublen.is_null() &&
+				max_sublen(self.sublen_array(pos)) as usize >= *limit
+			)
+		{
+			// Update length and distance if the sublength pointer is null or
+			// the cached sublength is bigger than the cached length.
+			if sublen.is_null() || u32::from(cache_len) <= max_sublen(self.sublen_array(pos)) {
+				// Cap the length.
+				*length = cache_len;
+				if usize::from(*length) > *limit {
+					*length = *limit as u16;
+				}
+
+				// Use the cached distance directly.
+				if sublen.is_null() {
+					*distance = cache_dist;
+				}
+				else {
+					// Convert the raw pointer to a slice.
+					let sublen: &mut [c_ushort] = unsafe {
+						std::slice::from_raw_parts_mut(sublen, SUBLEN_LEN)
+					};
+
+					// Pull the sublength from cache and pull the distance from
+					// that.
+					self.write_sublen(pos, usize::from(*length), sublen);
+					*distance = sublen[usize::from(*length)];
+
+					// Sanity check: make sure the sublength distance at length
+					// matches the redundantly-cached distance.
+					if *limit == ZOPFLI_MAX_MATCH && usize::from(*length) >= ZOPFLI_MIN_MATCH {
+						assert_eq!(sublen[usize::from(*length)], cache_dist);
+					}
+				}
+
+				// We did stuff!
+				return true;
+			}
+
+			// Replace the limit with our sad cached length.
+			*limit = usize::from(cache_len);
+		}
+
+		// Nothing happened.
+		false
+	}
+
+	/// # Get Length and Distance.
+	fn ld(&self, pos: usize) -> (u16, u16) {
+		let [l1, l2, d1, d2] = self.ld[pos].to_le_bytes();
+		(u16::from_le_bytes([l1, l2]), u16::from_le_bytes([d1, d2]))
+	}
+
 	#[allow(unsafe_code)]
 	/// # Sublength Array.
 	///
@@ -246,6 +304,28 @@ impl MatchCache {
 	fn sublen_array(&self, pos: usize) -> &[u8; SUBLEN_CACHED_LEN] {
 		let start = SUBLEN_CACHED_LEN * pos;
 		unsafe { &* (self.sublen.get_unchecked(start..start + SUBLEN_CACHED_LEN).as_ptr().cast()) }
+	}
+
+	#[allow(unsafe_code)]
+	/// # Write Sublength.
+	fn write_sublen(&self, pos: usize, length: usize, sublen: &mut [c_ushort]) {
+		// Short circuit.
+		if length < ZOPFLI_MIN_MATCH { return; }
+
+		let slice = self.sublen_array(pos);
+		let maxlength = max_sublen(slice) as usize;
+		let mut prevlength = 0;
+
+		for chunk in slice.chunks_exact(3) {
+			let length = usize::from(chunk[0]) + ZOPFLI_MIN_MATCH;
+			if prevlength <= length {
+				let dist = u16::from_le_bytes([chunk[1], chunk[2]]);
+				// Safety: these positions existed before.
+				unsafe { sublen.get_unchecked_mut(prevlength..=length).fill(dist); }
+			}
+			if length == maxlength { return; }
+			prevlength = length + 1;
+		}
 	}
 }
 
