@@ -37,6 +37,15 @@ more efficiently. length contains the size of the histogram.
 void OptimizeHuffmanForRle(int length, size_t* counts);
 
 /*
+Update Longest Match Cache.
+
+Stores the found sublen, distance and length in the longest match cache, if
+possible.
+*/
+void StoreInLongestMatchCache(size_t lmcpos, const unsigned short* sublen,
+    unsigned short distance, unsigned short length);
+
+/*
 Maybe Fetch Length/Distance/Sublength from Cache.
 
 Gets distance, length and sublen values from the cache if possible.
@@ -90,12 +99,3 @@ Rust side.
 */
 void ZopfliLengthsToSymbols7(const unsigned* lengths, size_t n, unsigned* symbols);
 void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbols);
-
-/* Fetch sublength length and distance from cache. */
-unsigned short ZopfliLongestMatchCacheLD(size_t pos, unsigned short* len, unsigned short* dist);
-
-/* Set cached length and distance. */
-void ZopfliLongestMatchCacheSetLD(size_t pos, unsigned short len, unsigned short dist);
-
-/* Stores sublen array in the cache. */
-void ZopfliSublenToCache(const unsigned short* sublen, size_t pos, size_t length);

@@ -300,37 +300,6 @@ static const unsigned char* GetMatch(const unsigned char* scan,
   return scan;
 }
 
-/*
-Stores the found sublen, distance and length in the longest match cache, if
-possible.
-*/
-static void StoreInLongestMatchCache(ZopfliBlockState* s,
-    size_t pos, size_t limit,
-    const unsigned short* sublen,
-    unsigned short distance, unsigned short length) {
-  /* The LMC cache starts at the beginning of the block rather than the
-     beginning of the whole array. */
-  size_t lmcpos = pos - s->blockstart;
-
-  /* Length > 0 and dist 0 is invalid combination, which indicates on purpose
-     that this cache value is not filled in yet. */
-  if (s->lmc && limit == ZOPFLI_MAX_MATCH && sublen) {
-    unsigned short cache_len, cache_dist;
-    ZopfliLongestMatchCacheLD(lmcpos, &cache_len, &cache_dist);
-    if (! (cache_len ==0 || cache_dist != 0)) {
-      assert(cache_len == 1 && cache_dist == 0);
-      if (length < ZOPFLI_MIN_MATCH) {
-        ZopfliLongestMatchCacheSetLD(lmcpos, 0, 0);
-      } else {
-        ZopfliLongestMatchCacheSetLD(lmcpos, length, distance);
-      }
-      ZopfliLongestMatchCacheLD(lmcpos, &cache_len, &cache_dist);
-      assert(cache_len != 1 || cache_dist != 0);
-      ZopfliSublenToCache(sublen, lmcpos, length);
-    }
-  }
-}
-
 void ZopfliFindLongestMatch(ZopfliBlockState* s, const ZopfliHash* h,
     const unsigned char* array,
     size_t pos, size_t size, size_t limit,
@@ -453,7 +422,10 @@ void ZopfliFindLongestMatch(ZopfliBlockState* s, const ZopfliHash* h,
 #endif
   }
 
-  StoreInLongestMatchCache(s, pos, limit, sublen, bestdist, bestlength);
+  if (s->lmc && limit == ZOPFLI_MAX_MATCH && sublen) {
+    size_t lmcpos = pos - s->blockstart;
+    StoreInLongestMatchCache(lmcpos, sublen, bestdist, bestlength);
+  }
 
   assert(bestlength <= limit);
 

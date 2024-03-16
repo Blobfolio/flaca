@@ -43,92 +43,45 @@ const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 #[no_mangle]
 #[inline]
 #[allow(unsafe_code, clippy::cast_possible_truncation)]
-/// # Maybe Find From Cache.
+/// # Save Length, Distance, and/or Sublength to Cache.
 ///
 /// This is a rewrite of the original `lz77.c` method.
-pub(crate) extern "C" fn TryGetFromLongestMatchCache(
+pub(crate) extern "C" fn StoreInLongestMatchCache(
 	pos: usize,
-	limit: *mut usize,
-	sublen: *mut c_ushort,
-	distance: *mut c_ushort,
-	length: *mut c_ushort,
-) -> c_int {
-	CACHE.with_borrow(|c| {
-		let res = c.find(
-			pos,
-			unsafe { &mut *limit },
-			sublen,
-			unsafe { &mut *distance },
-			unsafe { &mut *length }
-		);
-		i32::from(res)
-	})
-}
-
-#[no_mangle]
-#[allow(unsafe_code)]
-#[inline]
-/// # Initialize Longest Match Cache.
-///
-/// This is a rewrite of the original `cache.c` method.
-pub(crate) extern "C" fn ZopfliInitCache(blocksize: usize) {
-	CACHE.with_borrow_mut(|c| { c.init(blocksize); });
-}
-
-#[no_mangle]
-#[allow(unsafe_code)]
-#[inline]
-/// # Length and Distance of Cached Sublength.
-///
-/// Because length and distance are always accessed together, they're stored
-/// together to reduce boundary-checking overhead.
-pub(crate) extern "C" fn ZopfliLongestMatchCacheLD(
-	pos: usize,
-	len: *mut c_ushort,
-	dist: *mut c_ushort,
-) {
-	CACHE.with_borrow(|c| {
-		let (l, d) = c.ld(pos);
-		unsafe {
-			*len = l;
-			*dist = d;
-		}
-	});
-}
-
-#[no_mangle]
-#[allow(unsafe_code)]
-#[inline]
-/// # Set Length and Distance of Cached Sublength.
-pub(crate) extern "C" fn ZopfliLongestMatchCacheSetLD(
-	pos: usize,
-	len: c_ushort,
-	dist: c_ushort,
-) {
-	let [l1, l2] = len.to_le_bytes();
-	let [d1, d2] = dist.to_le_bytes();
-	CACHE.with_borrow_mut(|c| { c.ld[pos] = u32::from_le_bytes([l1, l2, d1, d2]); });
-}
-
-#[no_mangle]
-#[allow(unsafe_code, clippy::cast_possible_truncation)]
-/// # Add Sublength to Cache.
-///
-/// This is a rewrite of the original `cache.c` method.
-pub(crate) extern "C" fn ZopfliSublenToCache(
 	sublen: *const c_ushort,
-	pos: usize,
-	length: usize,
+	distance: c_ushort,
+	length: c_ushort,
 ) {
-	// Short circuit.
-	let Some(length) = length.checked_sub(ZOPFLI_MIN_MATCH) else { return; };
-
 	CACHE.with_borrow_mut(|c| {
-		// Note: we only need part of the sublength data.
+		let (cache_len, cache_dist) = c.ld(pos);
+		if cache_len == 0 || cache_dist != 0 { return; }
+		debug_assert_eq!(
+			(cache_len, cache_dist),
+			(1, 0),
+			"Length and/or distance are already cached!"
+		);
+
+		// The sublength isn't cacheable, but that fact is itself worth
+		// caching!
+		if usize::from(length) < ZOPFLI_MIN_MATCH {
+			c.set_ld(pos, 0, 0);
+			return;
+		}
+
+		// Save the length/distance bit.
+		debug_assert_ne!(
+			distance,
+			0,
+			"Distance cannot be zero when length > ZOPFLI_MIN_MATCH!"
+		);
+		c.set_ld(pos, length, distance);
+
+		// Convert (the relevant) part of the sublength to a slice to make
+		// it easier to work with.
+		let Some(length) = usize::from(length).checked_sub(ZOPFLI_MIN_MATCH) else { unreachable!() };
 		let sublen: &[c_ushort] = unsafe {
 			std::slice::from_raw_parts(sublen.add(ZOPFLI_MIN_MATCH), length + 1)
 		};
-		// Safety: the boundaries have already been checked.
 		let start = unsafe { c.sublen.as_mut_ptr().add(SUBLEN_CACHED_LEN * pos) };
 		let mut ptr = start;
 		let mut written = 0;
@@ -170,6 +123,41 @@ pub(crate) extern "C" fn ZopfliSublenToCache(
 			}
 		}
 	});
+}
+
+#[no_mangle]
+#[inline]
+#[allow(unsafe_code, clippy::cast_possible_truncation)]
+/// # Maybe Find From Cache.
+///
+/// This is a rewrite of the original `lz77.c` method.
+pub(crate) extern "C" fn TryGetFromLongestMatchCache(
+	pos: usize,
+	limit: *mut usize,
+	sublen: *mut c_ushort,
+	distance: *mut c_ushort,
+	length: *mut c_ushort,
+) -> c_int {
+	CACHE.with_borrow(|c| {
+		let res = c.find(
+			pos,
+			unsafe { &mut *limit },
+			sublen,
+			unsafe { &mut *distance },
+			unsafe { &mut *length }
+		);
+		i32::from(res)
+	})
+}
+
+#[no_mangle]
+#[allow(unsafe_code)]
+#[inline]
+/// # Initialize Longest Match Cache.
+///
+/// This is a rewrite of the original `cache.c` method.
+pub(crate) extern "C" fn ZopfliInitCache(blocksize: usize) {
+	CACHE.with_borrow_mut(|c| { c.init(blocksize); });
 }
 
 
@@ -294,6 +282,13 @@ impl MatchCache {
 	fn ld(&self, pos: usize) -> (u16, u16) {
 		let [l1, l2, d1, d2] = self.ld[pos].to_le_bytes();
 		(u16::from_le_bytes([l1, l2]), u16::from_le_bytes([d1, d2]))
+	}
+
+	/// # Set Length and Distance.
+	fn set_ld(&mut self, pos: usize, len: c_ushort, dist: c_ushort) {
+		let [l1, l2] = len.to_le_bytes();
+		let [d1, d2] = dist.to_le_bytes();
+		self.ld[pos] = u32::from_le_bytes([l1, l2, d1, d2]);
 	}
 
 	#[allow(unsafe_code)]
