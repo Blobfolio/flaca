@@ -84,6 +84,12 @@ Good value: e.g. 8192.
 #define ZOPFLI_MAX_CHAIN_HITS 8192
 
 /*
+Maximum amount of blocks to split into (0 for unlimited, but this can give
+extreme results that hurt compression on some files). Default value: 15.
+*/
+#define BLOCKSPLITTING_MAX 15
+
+/*
 Appends value to dynamically allocated memory, doubling its allocation size
 whenever needed.
 

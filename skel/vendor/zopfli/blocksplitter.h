@@ -31,7 +31,6 @@ ones that enhance it.
 #include <stdlib.h>
 
 #include "lz77.h"
-#include "zopfli.h"
 
 
 /*
@@ -39,14 +38,13 @@ Does blocksplitting on LZ77 data.
 The output splitpoints are indices in the LZ77 data.
 maxblocks: set a limit to the amount of blocks. Set to 0 to mean no limit.
 */
-void ZopfliBlockSplitLZ77(const ZopfliLZ77Store* lz77, size_t maxblocks,
+void ZopfliBlockSplitLZ77(const ZopfliLZ77Store* lz77,
                           size_t** splitpoints, size_t* npoints);
 
 /*
 Does blocksplitting on uncompressed data.
 The output splitpoints are indices in the uncompressed bytes.
 
-options: general program options.
 in: uncompressed input data
 instart: where to start splitting
 inend: where to end splitting (not inclusive)
@@ -56,9 +54,8 @@ splitpoints: dynamic array to put the resulting split point coordinates into.
 npoints: pointer to amount of splitpoints, for the dynamic array. The amount of
   blocks is the amount of splitpoitns + 1.
 */
-void ZopfliBlockSplit(const ZopfliOptions* options,
-                      const unsigned char* in, size_t instart, size_t inend,
-                      size_t maxblocks, size_t** splitpoints, size_t* npoints);
+void ZopfliBlockSplit(const unsigned char* in, size_t instart, size_t inend,
+                      size_t** splitpoints, size_t* npoints);
 
 /*
 Divides the input into equal blocks, does not even take LZ77 lengths into

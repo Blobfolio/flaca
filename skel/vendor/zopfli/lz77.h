@@ -29,7 +29,6 @@ compression.
 
 #include "../rust.h"
 #include "hash.h"
-#include "zopfli.h"
 
 /*
 Stores lit/length and dist pairs for LZ77.
@@ -84,8 +83,6 @@ This is currently a bit under-used (with mainly only the longest match cache),
 but is kept for easy future expansion.
 */
 typedef struct ZopfliBlockState {
-  const ZopfliOptions* options;
-
   /* Cache for length/distance pairs found so far. */
   unsigned char lmc;
 
@@ -94,8 +91,7 @@ typedef struct ZopfliBlockState {
   size_t blockend;
 } ZopfliBlockState;
 
-void ZopfliInitBlockState(const ZopfliOptions* options,
-                          size_t blockstart, size_t blockend, int add_lmc,
+void ZopfliInitBlockState(size_t blockstart, size_t blockend, int add_lmc,
                           ZopfliBlockState* s);
 
 /*

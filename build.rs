@@ -75,7 +75,6 @@ fn build_ffi() {
 			zopfli_src.join("hash.c"),
 			zopfli_src.join("lz77.c"),
 			zopfli_src.join("squeeze.c"),
-			zopfli_src.join("util.c"),
 			lodepng_src.join("lodepng.c"),
 			repo.join("custom_png_deflate.c"),
 		])

@@ -168,7 +168,7 @@ static int FindLargestSplittableBlock(
   return found;
 }
 
-void ZopfliBlockSplitLZ77(const ZopfliLZ77Store* lz77, size_t maxblocks,
+void ZopfliBlockSplitLZ77(const ZopfliLZ77Store* lz77,
                           size_t** splitpoints, size_t* npoints) {
   size_t lstart, lend;
   size_t i;
@@ -187,7 +187,7 @@ void ZopfliBlockSplitLZ77(const ZopfliLZ77Store* lz77, size_t maxblocks,
   for (;;) {
     SplitCostContext c;
 
-    if (maxblocks > 0 && numblocks >= maxblocks) {
+    if (BLOCKSPLITTING_MAX > 0 && numblocks >= BLOCKSPLITTING_MAX) {
       break;
     }
 
@@ -222,9 +222,8 @@ void ZopfliBlockSplitLZ77(const ZopfliLZ77Store* lz77, size_t maxblocks,
   free(done);
 }
 
-void ZopfliBlockSplit(const ZopfliOptions* options,
-                      const unsigned char* in, size_t instart, size_t inend,
-                      size_t maxblocks, size_t** splitpoints, size_t* npoints) {
+void ZopfliBlockSplit(const unsigned char* in, size_t instart, size_t inend,
+                      size_t** splitpoints, size_t* npoints) {
   size_t pos = 0;
   size_t i;
   ZopfliBlockState s;
@@ -235,7 +234,7 @@ void ZopfliBlockSplit(const ZopfliOptions* options,
   ZopfliHash* h = &hash;
 
   ZopfliInitLZ77Store(in, &store);
-  ZopfliInitBlockState(options, instart, inend, 0, &s);
+  ZopfliInitBlockState(instart, inend, 0, &s);
   ZopfliAllocHash(h);
 
   *npoints = 0;
@@ -245,8 +244,7 @@ void ZopfliBlockSplit(const ZopfliOptions* options,
   results in better blocks. */
   ZopfliLZ77Greedy(&s, in, instart, inend, &store, h);
 
-  ZopfliBlockSplitLZ77(&store, maxblocks,
-                       &lz77splitpoints, &nlz77points);
+  ZopfliBlockSplitLZ77(&store, &lz77splitpoints, &nlz77points);
 
   /* Convert LZ77 positions to positions in the uncompressed input. */
   pos = instart;

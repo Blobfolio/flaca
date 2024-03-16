@@ -27,6 +27,7 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 #include "blocksplitter.h"
 #include "squeeze.h"
 #include "symbols.h"
+#include "util.h"
 
 /*
 bp = bitpointer, always in range [0, 7].
@@ -522,13 +523,12 @@ double ZopfliCalculateBlockSizeAutoType(const ZopfliLZ77Store* lz77,
 
 /* Since an uncompressed block can be max 65535 in size, it actually adds
 multible blocks if needed. */
-static void AddNonCompressedBlock(const ZopfliOptions* options, int final,
+static void AddNonCompressedBlock(int final,
                                   const unsigned char* in, size_t instart,
                                   size_t inend,
                                   unsigned char* bp,
                                   unsigned char** out, size_t* outsize) {
   size_t pos = instart;
-  (void)options;
   for (;;) {
     size_t i;
     unsigned short blocksize = 65535;
@@ -564,7 +564,6 @@ static void AddNonCompressedBlock(const ZopfliOptions* options, int final,
 
 /*
 Adds a deflate block with the given LZ77 data to the output.
-options: global program options
 btype: the block type, must be 1 or 2
 final: whether to set the "final" bit on this block, must be the last block
 litlens: literal/length array of the LZ77 data, in the same format as in
@@ -579,7 +578,7 @@ bp: output bit pointer
 out: dynamic output array to append to
 outsize: dynamic output array size
 */
-static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
+static void AddLZ77Block(int btype, int final,
                          const ZopfliLZ77Store* lz77,
                          size_t lstart, size_t lend,
                          size_t expected_data_size,
@@ -597,8 +596,7 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
     size_t length = ZopfliLZ77GetByteRange(lz77, lstart, lend);
     size_t pos = lstart == lend ? 0 : lz77->pos[lstart];
     size_t end = pos + length;
-    AddNonCompressedBlock(options, final,
-                          lz77->data, pos, end, bp, out, outsize);
+    AddNonCompressedBlock(final, lz77->data, pos, end, bp, out, outsize);
     return;
   }
 
@@ -636,7 +634,7 @@ static void AddLZ77Block(const ZopfliOptions* options, int btype, int final,
   compressed_size = *outsize - detect_block_size;
 }
 
-static void AddLZ77BlockAutoType(const ZopfliOptions* options, int final,
+static void AddLZ77BlockAutoType(int final,
                                  const ZopfliLZ77Store* lz77,
                                  size_t lstart, size_t lend,
                                  size_t expected_data_size,
@@ -666,24 +664,24 @@ static void AddLZ77BlockAutoType(const ZopfliOptions* options, int final,
     size_t inend = instart + ZopfliLZ77GetByteRange(lz77, lstart, lend);
 
     ZopfliBlockState s;
-    ZopfliInitBlockState(options, instart, inend, 1, &s);
+    ZopfliInitBlockState(instart, inend, 1, &s);
     ZopfliLZ77OptimalFixed(&s, lz77->data, instart, inend, &fixedstore);
     fixedcost = ZopfliCalculateBlockSize(&fixedstore, 0, fixedstore.size, 1);
   }
 
   if (uncompressedcost < fixedcost && uncompressedcost < dyncost) {
-    AddLZ77Block(options, 0, final, lz77, lstart, lend,
+    AddLZ77Block(0, final, lz77, lstart, lend,
                  expected_data_size, bp, out, outsize);
   } else if (fixedcost < dyncost) {
     if (expensivefixed) {
-      AddLZ77Block(options, 1, final, &fixedstore, 0, fixedstore.size,
+      AddLZ77Block(1, final, &fixedstore, 0, fixedstore.size,
                    expected_data_size, bp, out, outsize);
     } else {
-      AddLZ77Block(options, 1, final, lz77, lstart, lend,
+      AddLZ77Block(1, final, lz77, lstart, lend,
                    expected_data_size, bp, out, outsize);
     }
   } else {
-    AddLZ77Block(options, 2, final, lz77, lstart, lend,
+    AddLZ77Block(2, final, lz77, lstart, lend,
                  expected_data_size, bp, out, outsize);
   }
 
@@ -699,7 +697,7 @@ previous bytes are used as the initial dictionary for LZ77.
 This function will usually output multiple deflate blocks. If final is 1, then
 the final bit will be set on the last block.
 */
-void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
+void ZopfliDeflatePart(int numiterations, int btype, int final,
                        const unsigned char* in, size_t instart, size_t inend,
                        unsigned char* bp, unsigned char** out,
                        size_t* outsize) {
@@ -715,16 +713,16 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
   given, then however it forces that one. Neither of the lesser types needs
   block splitting as they have no dynamic huffman trees. */
   if (btype == 0) {
-    AddNonCompressedBlock(options, final, in, instart, inend, bp, out, outsize);
+    AddNonCompressedBlock(final, in, instart, inend, bp, out, outsize);
     return;
   } else if (btype == 1) {
     ZopfliLZ77Store store;
     ZopfliBlockState s;
     ZopfliInitLZ77Store(in, &store);
-    ZopfliInitBlockState(options, instart, inend, 1, &s);
+    ZopfliInitBlockState(instart, inend, 1, &s);
 
     ZopfliLZ77OptimalFixed(&s, in, instart, inend, &store);
-    AddLZ77Block(options, btype, final, &store, 0, store.size, 0,
+    AddLZ77Block(btype, final, &store, 0, store.size, 0,
                  bp, out, outsize);
 
     ZopfliCleanLZ77Store(&store);
@@ -732,12 +730,9 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
   }
 
 
-  if (options->blocksplitting) {
-    ZopfliBlockSplit(options, in, instart, inend,
-                     options->blocksplittingmax,
-                     &splitpoints_uncompressed, &npoints);
-    splitpoints = (size_t*)malloc(sizeof(*splitpoints) * npoints);
-  }
+  ZopfliBlockSplit(in, instart, inend,
+                   &splitpoints_uncompressed, &npoints);
+  splitpoints = (size_t*)malloc(sizeof(*splitpoints) * npoints);
 
   ZopfliInitLZ77Store(in, &lz77);
 
@@ -747,8 +742,8 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
     ZopfliBlockState s;
     ZopfliLZ77Store store;
     ZopfliInitLZ77Store(in, &store);
-    ZopfliInitBlockState(options, start, end, 1, &s);
-    ZopfliLZ77Optimal(&s, in, start, end, options->numiterations, &store);
+    ZopfliInitBlockState(start, end, 1, &s);
+    ZopfliLZ77Optimal(&s, in, start, end, numiterations, &store);
     totalcost += ZopfliCalculateBlockSizeAutoType(&store, 0, store.size);
 
     ZopfliAppendLZ77Store(&store, &lz77);
@@ -758,13 +753,12 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
   }
 
   /* Second block splitting attempt */
-  if (options->blocksplitting && npoints > 1) {
+  if (npoints > 1) {
     size_t* splitpoints2 = 0;
     size_t npoints2 = 0;
     double totalcost2 = 0;
 
-    ZopfliBlockSplitLZ77(&lz77,
-                         options->blocksplittingmax, &splitpoints2, &npoints2);
+    ZopfliBlockSplitLZ77(&lz77, &splitpoints2, &npoints2);
 
     for (i = 0; i <= npoints2; i++) {
       size_t start = i == 0 ? 0 : splitpoints2[i - 1];
@@ -784,7 +778,7 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
   for (i = 0; i <= npoints; i++) {
     size_t start = i == 0 ? 0 : splitpoints[i - 1];
     size_t end = i == npoints ? lz77.size : splitpoints[i];
-    AddLZ77BlockAutoType(options, i == npoints && final,
+    AddLZ77BlockAutoType(i == npoints && final,
                          &lz77, start, end, 0,
                          bp, out, outsize);
   }
@@ -794,19 +788,19 @@ void ZopfliDeflatePart(const ZopfliOptions* options, int btype, int final,
   free(splitpoints_uncompressed);
 }
 
-void ZopfliDeflate(const ZopfliOptions* options, int btype, int final,
+void ZopfliDeflate(int numiterations, int btype, int final,
                    const unsigned char* in, size_t insize,
                    unsigned char* bp, unsigned char** out, size_t* outsize) {
  size_t offset = *outsize;
 #if ZOPFLI_MASTER_BLOCK_SIZE == 0
-  ZopfliDeflatePart(options, btype, final, in, 0, insize, bp, out, outsize);
+  ZopfliDeflatePart(numiterations, btype, final, in, 0, insize, bp, out, outsize);
 #else
   size_t i = 0;
   do {
     int masterfinal = (i + ZOPFLI_MASTER_BLOCK_SIZE >= insize);
     int final2 = final && masterfinal;
     size_t size = masterfinal ? insize - i : ZOPFLI_MASTER_BLOCK_SIZE;
-    ZopfliDeflatePart(options, btype, final2,
+    ZopfliDeflatePart(numiterations, btype, final2,
                       in, i, i + size, bp, out, outsize);
     i += size;
   } while (i < insize);

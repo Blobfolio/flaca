@@ -215,10 +215,8 @@ void ZopfliLZ77GetHistogram(const ZopfliLZ77Store* lz77,
   }
 }
 
-void ZopfliInitBlockState(const ZopfliOptions* options,
-                          size_t blockstart, size_t blockend, int add_lmc,
+void ZopfliInitBlockState(size_t blockstart, size_t blockend, int add_lmc,
                           ZopfliBlockState* s) {
-  s->options = options;
   s->blockstart = blockstart;
   s->blockend = blockend;
   if (add_lmc) {
