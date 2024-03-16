@@ -126,6 +126,12 @@ bindgen = "0.69.*"
 cc = "1.0.*"
 dowser = "0.9.*"
 
+[features]
+default = []
+
+# Pass -flto flag when building lodepng/zopfli.
+clto = []
+
 [profile.release]
 lto = true
 codegen-units = 1

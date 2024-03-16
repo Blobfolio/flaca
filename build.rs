@@ -17,6 +17,7 @@ use std::{
 /// # Build.
 pub fn main() {
 	println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
+	println!("cargo:rerun-if-env-changed=TARGET_CPU");
 	println!("cargo:rerun-if-changed=./skel/vendor/");
 
 	build_exts();
@@ -58,14 +59,23 @@ fn build_ffi() {
 	let lodepng_src = repo.join("lodepng");
 
 	// Build Zopfli first.
-	cc::Build::new()
-		.includes(&[repo, &lodepng_src, &zopfli_src])
+	let mut c = cc::Build::new();
+	c.includes(&[repo, &lodepng_src, &zopfli_src])
 		.cpp(false)
 		.flag_if_supported("-W")
 		.flag_if_supported("-ansi")
-		.flag_if_supported("-pedantic")
-		.flag_if_supported("-lm")
-		.flag_if_supported("-Wno-unused-function")
+		.flag_if_supported("-pedantic");
+
+	if let Ok(target_cpu) = std::env::var("TARGET_CPU") {
+		c.flag_if_supported(&format!("-march={target_cpu}"));
+	}
+
+	c.flag_if_supported("-Wlm");
+
+	#[cfg(feature = "clto")]
+	c.flag_if_supported("-flto");
+
+	c.flag_if_supported("-Wno-unused-function")
 		.flag_if_supported("-Wno-unused")
 		.pic(true)
 		.static_flag(true)
