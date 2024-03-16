@@ -9,15 +9,16 @@ interop across the sea of C.
 */
 
 #include <stdlib.h> /* for size_t */
+#include "lodepng/lodepng.h"
 
 /*
-Zopfli Iterations.
+Custom Deflate Callback.
 
-This returns the desired number of iterations to use during compression. (This
-is used by our custom_png_deflate callback; it is not part of the original
-code base.)
+This tells LodePNG to use Zopfli.
 */
-int flaca_zopfli_iterations(size_t);
+unsigned flaca_png_deflate(unsigned char** out, size_t* outsize,
+                          const unsigned char* in, size_t insize,
+                          const LodePNGCompressSettings* settings);
 
 /*
 Write Fixed Tree.

@@ -216,21 +216,6 @@ fn _main() -> Result<(), FlacaError> {
 	else { Ok(()) }
 }
 
-#[no_mangle]
-#[allow(unsafe_code)]
-/// # Share Zopfli Iterations w/ C.
-///
-/// This will return the user-specified value (if any), otherwise 60 for small
-/// images and 20 for large ones (same as zopflipng does).
-///
-/// (This is used by the C `custom_png_deflate()` method.)
-pub(crate) extern "C" fn flaca_zopfli_iterations(size: usize) -> i32 {
-	let num = *ZOPFLI_ITERATIONS.get_or_init(|| 0);
-	if num > 0 { num }
-	else if size < 200_000 { 60 }
-	else { 20 }
-}
-
 #[cold]
 /// # Print Help.
 fn helper() {

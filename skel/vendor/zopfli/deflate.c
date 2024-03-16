@@ -411,13 +411,6 @@ static size_t CalculateBlockSymbolSize(const unsigned* ll_lengths,
   }
 }
 
-static size_t AbsDiff(size_t x, size_t y) {
-  if (x > y)
-    return x - y;
-  else
-    return y - x;
-}
-
 /*
 Tries out OptimizeHuffmanForRle for this block, if the result is smaller,
 uses it, otherwise keeps the original. Returns size of encoded tree and data in
@@ -588,10 +581,7 @@ static void AddLZ77Block(int btype, int final,
   unsigned d_lengths[ZOPFLI_NUM_D];
   unsigned ll_symbols[ZOPFLI_NUM_LL];
   unsigned d_symbols[ZOPFLI_NUM_D];
-  size_t detect_block_size = *outsize;
-  size_t compressed_size;
-  size_t uncompressed_size = 0;
-  size_t i;
+
   if (btype == 0) {
     size_t length = ZopfliLZ77GetByteRange(lz77, lstart, lend);
     size_t pos = lstart == lend ? 0 : lz77->pos[lstart];
@@ -609,29 +599,19 @@ static void AddLZ77Block(int btype, int final,
     GetFixedTree(ll_lengths, d_lengths);
   } else {
     /* Dynamic block. */
-    unsigned detect_tree_size;
     assert(btype == 2);
-
     GetDynamicLengths(lz77, lstart, lend, ll_lengths, d_lengths);
-
-    detect_tree_size = *outsize;
     AddDynamicTree(ll_lengths, d_lengths, bp, out, outsize);
   }
 
   ZopfliLengthsToSymbols15(ll_lengths, ZOPFLI_NUM_LL, ll_symbols);
   ZopfliLengthsToSymbols15(d_lengths, ZOPFLI_NUM_D, d_symbols);
 
-  detect_block_size = *outsize;
   AddLZ77Data(lz77, lstart, lend, expected_data_size,
               ll_symbols, ll_lengths, d_symbols, d_lengths,
               bp, out, outsize);
   /* End symbol. */
   AddHuffmanBits(ll_symbols[256], ll_lengths[256], bp, out, outsize);
-
-  for (i = lstart; i < lend; i++) {
-    uncompressed_size += lz77->dists[i] == 0 ? 1 : lz77->litlens[i];
-  }
-  compressed_size = *outsize - detect_block_size;
 }
 
 static void AddLZ77BlockAutoType(int final,
@@ -697,7 +677,7 @@ previous bytes are used as the initial dictionary for LZ77.
 This function will usually output multiple deflate blocks. If final is 1, then
 the final bit will be set on the last block.
 */
-void ZopfliDeflatePart(int numiterations, int btype, int final,
+void ZopfliDeflatePart(int numiterations, int final,
                        const unsigned char* in, size_t instart, size_t inend,
                        unsigned char* bp, unsigned char** out,
                        size_t* outsize) {
@@ -708,27 +688,6 @@ void ZopfliDeflatePart(int numiterations, int btype, int final,
   size_t* splitpoints = 0;
   double totalcost = 0;
   ZopfliLZ77Store lz77;
-
-  /* If btype=2 is specified, it tries all block types. If a lesser btype is
-  given, then however it forces that one. Neither of the lesser types needs
-  block splitting as they have no dynamic huffman trees. */
-  if (btype == 0) {
-    AddNonCompressedBlock(final, in, instart, inend, bp, out, outsize);
-    return;
-  } else if (btype == 1) {
-    ZopfliLZ77Store store;
-    ZopfliBlockState s;
-    ZopfliInitLZ77Store(in, &store);
-    ZopfliInitBlockState(instart, inend, 1, &s);
-
-    ZopfliLZ77OptimalFixed(&s, in, instart, inend, &store);
-    AddLZ77Block(btype, final, &store, 0, store.size, 0,
-                 bp, out, outsize);
-
-    ZopfliCleanLZ77Store(&store);
-    return;
-  }
-
 
   ZopfliBlockSplit(in, instart, inend,
                    &splitpoints_uncompressed, &npoints);
@@ -788,21 +747,15 @@ void ZopfliDeflatePart(int numiterations, int btype, int final,
   free(splitpoints_uncompressed);
 }
 
-void ZopfliDeflate(int numiterations, int btype, int final,
+void ZopfliDeflate(int numiterations,
                    const unsigned char* in, size_t insize,
                    unsigned char* bp, unsigned char** out, size_t* outsize) {
- size_t offset = *outsize;
-#if ZOPFLI_MASTER_BLOCK_SIZE == 0
-  ZopfliDeflatePart(numiterations, btype, final, in, 0, insize, bp, out, outsize);
-#else
   size_t i = 0;
   do {
     int masterfinal = (i + ZOPFLI_MASTER_BLOCK_SIZE >= insize);
-    int final2 = final && masterfinal;
     size_t size = masterfinal ? insize - i : ZOPFLI_MASTER_BLOCK_SIZE;
-    ZopfliDeflatePart(numiterations, btype, final2,
+    ZopfliDeflatePart(numiterations, masterfinal,
                       in, i, i + size, bp, out, outsize);
     i += size;
   } while (i < insize);
-#endif
 }

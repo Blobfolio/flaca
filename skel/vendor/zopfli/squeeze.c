@@ -107,7 +107,6 @@ static void RandomizeStatFreqs(RanState* state, SymbolStats* stats) {
 }
 
 static void ClearStatFreqs(SymbolStats* stats) {
-  size_t i;
   memset(stats->litlens, 0, ZOPFLI_NUM_LL * sizeof(size_t));
   memset(stats->dists, 0, ZOPFLI_NUM_D * sizeof(size_t));
 }

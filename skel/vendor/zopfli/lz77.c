@@ -75,7 +75,6 @@ static size_t CeilDiv(size_t a, size_t b) {
 
 void ZopfliCopyLZ77Store(
     const ZopfliLZ77Store* source, ZopfliLZ77Store* dest) {
-  size_t i;
   size_t llsize = ZOPFLI_NUM_LL * CeilDiv(source->size, ZOPFLI_NUM_LL);
   size_t dsize = ZOPFLI_NUM_D * CeilDiv(source->size, ZOPFLI_NUM_D);
   ZopfliReInitLZ77Store(source->data, dest, source->size, llsize, dsize);

@@ -76,13 +76,12 @@ fn build_ffi() {
 			zopfli_src.join("lz77.c"),
 			zopfli_src.join("squeeze.c"),
 			lodepng_src.join("lodepng.c"),
-			repo.join("custom_png_deflate.c"),
 		])
 		.define("LODEPNG_NO_COMPILE_DISK", None)
 		.define("LODEPNG_NO_COMPILE_CPP", None)
 		.compile("zopflipng");
 
-	bindings(repo, &lodepng_src);
+	bindings(repo, &lodepng_src, &zopfli_src);
 }
 
 /// # Output Path.
@@ -104,12 +103,11 @@ fn write(path: &Path, data: &[u8]) {
 ///
 /// These have been manually transcribed into the Rust sources, but this
 /// commented-out code can be re-enabled if they ever need to be updated.
-fn bindings(repo: &Path, lodepng_src: &Path) {
+fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 	let bindings = bindgen::Builder::default()
 		.header(lodepng_src.join("lodepng.h").to_string_lossy())
+		.header(zopfli_src.join("deflate.h").to_string_lossy())
 		.header(repo.join("rust.h").to_string_lossy())
-		.header(repo.join("custom_png_deflate.h").to_string_lossy())
-		.allowlist_function("custom_png_deflate")
 		.allowlist_function("lodepng_color_mode_copy")
 		.allowlist_function("lodepng_color_stats_init")
 		.allowlist_function("lodepng_compute_color_stats")
@@ -122,6 +120,7 @@ fn bindings(repo: &Path, lodepng_src: &Path) {
 		.allowlist_type("LodePNGState")
 		.rustified_enum("LodePNGColorType")
 		.rustified_enum("LodePNGFilterStrategy")
+		.allowlist_function("ZopfliDeflate")
 		.derive_debug(true)
 		.merge_extern_blocks(true)
 		.no_copy("LodePNGState")
