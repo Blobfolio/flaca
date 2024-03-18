@@ -9,6 +9,7 @@ use std::{
 		RefCell,
 	},
 	cmp::Ordering,
+	mem::MaybeUninit,
 	os::raw::{
 		c_int,
 		c_uint,
@@ -61,33 +62,46 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	let mut maxbits = maxbits as usize; // This is always 7 or 15.
 	let frequencies = unsafe { std::slice::from_raw_parts(frequencies, n as usize) };
 
-	// Convert (used) frequencies to leaves.
-	let mut leaves = frequencies.iter()
-		.enumerate()
-		.filter_map(|(i, &frequency)|
-			if frequency == 0 { None }
-			else {
-				Some(Leaf {
-					frequency,
-					bitlength: unsafe { bitlengths.add(i) },
-				})
-			}
-		)
-		.collect::<Vec<Leaf>>();
+	// Convert (used) frequencies to leaves. There will never be more than
+	// ZOPFLI_NUM_LL of them, but often there will be less, so we'll leverage
+	// MaybeUninit to save unnecessary writes.
+	let mut leaves: [MaybeUninit<Leaf>; ZOPFLI_NUM_LL] = unsafe {
+		MaybeUninit::uninit().assume_init()
+	};
+	assert!(frequencies.len() <= leaves.len());
+	let mut len_leaves = 0;
+	for (i, &frequency) in frequencies.iter().enumerate() {
+		if frequency != 0 {
+			leaves[len_leaves].write(Leaf {
+				frequency,
+				bitlength: unsafe { bitlengths.add(i) },
+			});
+			len_leaves += 1;
+		}
+	}
 
-	let len_leaves = leaves.len();
+	// Nothing to do!
+	if len_leaves == 0 { return; }
+
+	// This shouldn't ever trigger, but it's nice to double-check.
 	assert!((1 << maxbits) >= len_leaves, "Insufficient maxbits for symbols.");
 
-	// Sortcut: we can simply give the matches weights of one.
+	// The leaves we can actually use:
+	let real_leaves: &mut [Leaf] = unsafe {
+		&mut *(std::ptr::addr_of_mut!(leaves[..len_leaves]) as *mut [Leaf])
+	};
+
+	// Sortcut: weighting only applies when there are more than two leaves;
+	// otherwise we can just record their values as one and call it a day.
 	if len_leaves <= 2 {
-		for leaf in leaves {
-			unsafe { std::ptr::write(leaf.bitlength, 1); }
+		for leaf in real_leaves {
+			unsafe { leaf.bitlength.write(1); }
 		}
 		return;
 	}
 
 	// Sort the leaves.
-	leaves.sort();
+	real_leaves.sort();
 
 	// Shrink maxbits if we have fewer leaves. Note that "maxbits" is an
 	// inclusive value.
@@ -96,18 +110,18 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	// Set up the pool!
 	BUMP.with_borrow_mut(|nodes| {
 		let lookahead0 = nodes.alloc(Node {
-			weight: leaves[0].frequency,
+			weight: real_leaves[0].frequency,
 			count: 1,
 			tail: Cell::new(None),
 		});
 		let lookahead1 = nodes.alloc(Node {
-			weight: leaves[1].frequency,
+			weight: real_leaves[1].frequency,
 			count: 2,
 			tail: Cell::new(None),
 		});
 		let mut pool = Pool {
 			nodes,
-			leaves: leaves.as_mut_slice(),
+			leaves: real_leaves,
 		};
 
 		// We won't have more than 15 lists, but we might have fewer.
@@ -288,7 +302,7 @@ impl<'a> Pool<'a> {
 		while let Some(tail) = node.tail.get() {
 			if val > tail.count {
 				for leaf in &mut self.leaves[tail.count..val] {
-					unsafe { std::ptr::write(leaf.bitlength, value); }
+					unsafe { leaf.bitlength.write(value); }
 				}
 				val = tail.count;
 			}
@@ -296,7 +310,7 @@ impl<'a> Pool<'a> {
 			node = tail;
 		}
 		for leaf in &mut self.leaves[..val] {
-			unsafe { std::ptr::write(leaf.bitlength, value); }
+			unsafe { leaf.bitlength.write(value); }
 		}
 	}
 }

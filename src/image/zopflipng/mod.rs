@@ -94,14 +94,13 @@ pub(crate) const extern "C" fn GetFixedTree(ll_lengths: *mut c_uint, d_lengths: 
 ///
 /// This is a rewrite of the original `deflate.c` method.
 pub(crate) extern "C" fn OptimizeHuffmanForRle(length: c_int, counts: *mut usize) {
-	// Convert counts to a proper slice, and trim off the trailing zeroes.
+	// Convert counts to a proper slice with trailing zeroes trimmed.
+	let ptr = counts;
 	let mut counts: &mut [usize] = unsafe { std::slice::from_raw_parts_mut(counts, length as usize) };
 	while let [ rest @ .., 0 ] = counts { counts = rest; }
 	if counts.is_empty() { return; }
 
-	// Find collapseable ranges, storing them in `adj` to appease Rust's
-	// borrow-checker.
-	let mut adj: Vec<(usize, usize, usize)> = Vec::new();
+	// Find collapseable ranges!
 	let mut stride = 0;
 	let mut scratch = counts[0];
 	let mut sum = 0;
@@ -111,8 +110,13 @@ pub(crate) extern "C" fn OptimizeHuffmanForRle(length: c_int, counts: *mut usize
 			// Collapse the stride if it is as least four and contained
 			// something non-zero.
 			if sum != 0 && stride >= 4 {
-				let adj_count = ((sum + stride / 2) / stride).max(1);
-				adj.push((i - stride, i, adj_count));
+				let v = ((sum + stride / 2) / stride).max(1);
+				// Safety: this is a very un-Rust thing to do, but we're only
+				// modifying values after-the-fact; the current and future
+				// data remains as it was.
+				unsafe {
+					for j in i - stride..i { ptr.add(j).write(v); }
+				}
 			}
 
 			// Reset!
@@ -140,14 +144,9 @@ pub(crate) extern "C" fn OptimizeHuffmanForRle(length: c_int, counts: *mut usize
 
 	// Collapse the trailing stride, if any.
 	if sum != 0 && stride >= 4 {
-		let adj_count = ((sum + stride / 2) / stride).max(1);
+		let v = ((sum + stride / 2) / stride).max(1);
 		let len = counts.len();
-		adj.push((len - stride, len, adj_count));
-	}
-
-	// Patch the counts!
-	for (from, to, v) in adj {
-		for count in &mut counts[from..to] { *count = v; }
+		counts[len - stride..].fill(v);
 	}
 }
 
@@ -162,9 +161,8 @@ pub(crate) extern "C" fn ZopfliCalculateEntropy(
 	bitlengths: *mut f64
 ) {
 	// Turn the pointers into slices.
-	if n == 0 || count.is_null() || bitlengths.is_null() { return; }
+	if n == 0 { return; }
 	let count: &[usize] = unsafe { std::slice::from_raw_parts(count, n) };
-	let bitlengths: &mut [f64] = unsafe { std::slice::from_raw_parts_mut(bitlengths, n) };
 
 	// Sum the counts and log some shit.
 	let sum = count.iter().copied().sum::<usize>();
@@ -172,20 +170,25 @@ pub(crate) extern "C" fn ZopfliCalculateEntropy(
 	// If there are no counts, every value has the same cost.
 	if sum == 0 {
 		let log2sum = (n as f64).log2();
-		for b in bitlengths { *b = log2sum; }
+		unsafe {
+			for i in 0..n { bitlengths.add(i).write(log2sum); }
+		}
 	}
 	// Otherwise each gets its own fractional cost.
 	else {
 		let log2sum = (sum as f64).log2();
 
-		for (&c, b) in count.iter().zip(bitlengths.iter_mut()) {
+		for (i, &c) in count.iter().enumerate() {
 			// Even zeroes get a cost because they were requested.
-			if c == 0 { *b = log2sum; }
+			if c == 0 {
+				unsafe { bitlengths.add(i).write(log2sum); }
+			}
 			else {
-				*b = log2sum - (c as f64).log2();
 				// Floating point math sucks; make sure it doesn't magically
 				// drop below zero.
-				if b.is_sign_negative() { *b = 0.0; }
+				let mut v = log2sum - (c as f64).log2();
+				if v.is_sign_negative() { v = 0.0; }
+				unsafe { bitlengths.add(i).write(v); }
 			}
 		}
 	}
@@ -368,7 +371,7 @@ fn zopfli_lengths_to_symbols<const MAXBITS: usize>(
 	symbols: *mut c_uint,
 ) {
 	// Convert lengths and symbols into usable slices, and maxbits into usize.
-	if lengths.is_null() || symbols.is_null() { return; }
+	if n == 0 { return; }
 	let lengths: &[c_uint] = unsafe { std::slice::from_raw_parts(lengths, n) };
 	let symbols: &mut [c_uint] = unsafe { std::slice::from_raw_parts_mut(symbols, n) };
 

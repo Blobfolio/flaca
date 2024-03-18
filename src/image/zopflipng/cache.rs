@@ -90,7 +90,7 @@ pub(crate) extern "C" fn StoreInLongestMatchCache(
 		for (i, pair) in sublen.windows(2).enumerate() {
 			if pair[0] != pair[1] {
 				unsafe {
-					std::ptr::write(ptr, i as u8);
+					ptr.write(i as u8);
 					std::ptr::copy_nonoverlapping(
 						pair[0].to_le_bytes().as_ptr(),
 						ptr.add(1),
@@ -107,7 +107,7 @@ pub(crate) extern "C" fn StoreInLongestMatchCache(
 
 		// Write the final length/distance.
 		unsafe {
-			std::ptr::write(ptr, length as u8);
+			ptr.write(length as u8);
 			std::ptr::copy_nonoverlapping(
 				sublen.get_unchecked(sublen.len() - 1).to_le_bytes().as_ptr(),
 				ptr.add(1),
@@ -118,8 +118,8 @@ pub(crate) extern "C" fn StoreInLongestMatchCache(
 
 			// If we didn't fill the cache, redundantly write the last length
 			// into the last chunk to make our future lives easier.
-			if written <= ZOPFLI_CACHE_LENGTH {
-				std::ptr::write(start.add(SUBLEN_CACHED_LEN - 3), length as u8);
+			if written < ZOPFLI_CACHE_LENGTH {
+				start.add(SUBLEN_CACHED_LEN - 3).write(length as u8);
 			}
 		}
 	});
@@ -262,7 +262,7 @@ impl MatchCache {
 					// Sanity check: make sure the sublength distance at length
 					// matches the redundantly-cached distance.
 					if *limit == ZOPFLI_MAX_MATCH && usize::from(*length) >= ZOPFLI_MIN_MATCH {
-						assert_eq!(sublen[usize::from(*length)], cache_dist);
+						assert_eq!(*distance, cache_dist);
 					}
 				}
 
