@@ -42,7 +42,7 @@ const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 
 #[no_mangle]
 #[inline]
-#[allow(unsafe_code, clippy::cast_possible_truncation)]
+#[allow(unsafe_code)]
 /// # Save Length, Distance, and/or Sublength to Cache.
 ///
 /// This is a rewrite of the original `lz77.c` method.
@@ -52,82 +52,12 @@ pub(crate) extern "C" fn StoreInLongestMatchCache(
 	distance: c_ushort,
 	length: c_ushort,
 ) {
-	CACHE.with_borrow_mut(|c| {
-		let (cache_len, cache_dist) = c.ld(pos);
-		if cache_len == 0 || cache_dist != 0 { return; }
-		debug_assert_eq!(
-			(cache_len, cache_dist),
-			(1, 0),
-			"Length and/or distance are already cached!"
-		);
-
-		// The sublength isn't cacheable, but that fact is itself worth
-		// caching!
-		if usize::from(length) < ZOPFLI_MIN_MATCH {
-			c.set_ld(pos, 0, 0);
-			return;
-		}
-
-		// Save the length/distance bit.
-		debug_assert_ne!(
-			distance,
-			0,
-			"Distance cannot be zero when length > ZOPFLI_MIN_MATCH!"
-		);
-		c.set_ld(pos, length, distance);
-
-		// Convert (the relevant) part of the sublength to a slice to make
-		// it easier to work with.
-		let Some(length) = usize::from(length).checked_sub(ZOPFLI_MIN_MATCH) else { unreachable!() };
-		let sublen: &[c_ushort] = unsafe {
-			std::slice::from_raw_parts(sublen.add(ZOPFLI_MIN_MATCH), length + 1)
-		};
-		let start = unsafe { c.sublen.as_mut_ptr().add(SUBLEN_CACHED_LEN * pos) };
-		let mut ptr = start;
-		let mut written = 0;
-
-		// Write all mismatched pairs.
-		for (i, pair) in sublen.windows(2).enumerate() {
-			if pair[0] != pair[1] {
-				unsafe {
-					ptr.write(i as u8);
-					std::ptr::copy_nonoverlapping(
-						pair[0].to_le_bytes().as_ptr(),
-						ptr.add(1),
-						2,
-					);
-
-					written += 1;
-					if written == ZOPFLI_CACHE_LENGTH { return; }
-
-					ptr = ptr.add(3);
-				}
-			}
-		}
-
-		// Write the final length/distance.
-		unsafe {
-			ptr.write(length as u8);
-			std::ptr::copy_nonoverlapping(
-				sublen.get_unchecked(sublen.len() - 1).to_le_bytes().as_ptr(),
-				ptr.add(1),
-				2,
-			);
-
-			written += 1;
-
-			// If we didn't fill the cache, redundantly write the last length
-			// into the last chunk to make our future lives easier.
-			if written < ZOPFLI_CACHE_LENGTH {
-				start.add(SUBLEN_CACHED_LEN - 3).write(length as u8);
-			}
-		}
-	});
+	CACHE.with_borrow_mut(|c| c.set_sublen(pos, sublen, distance, length));
 }
 
 #[no_mangle]
 #[inline]
-#[allow(unsafe_code, clippy::cast_possible_truncation)]
+#[allow(unsafe_code)]
 /// # Maybe Find From Cache.
 ///
 /// This is a rewrite of the original `lz77.c` method.
@@ -138,16 +68,13 @@ pub(crate) extern "C" fn TryGetFromLongestMatchCache(
 	distance: *mut c_ushort,
 	length: *mut c_ushort,
 ) -> c_int {
-	CACHE.with_borrow(|c| {
-		let res = c.find(
-			pos,
-			unsafe { &mut *limit },
-			sublen,
-			unsafe { &mut *distance },
-			unsafe { &mut *length }
-		);
-		i32::from(res)
-	})
+	CACHE.with_borrow(|c| i32::from(c.find(
+		pos,
+		unsafe { &mut *limit },
+		sublen,
+		unsafe { &mut *distance },
+		unsafe { &mut *length }
+	)))
 }
 
 #[no_mangle]
@@ -289,6 +216,86 @@ impl MatchCache {
 		let [l1, l2] = len.to_le_bytes();
 		let [d1, d2] = dist.to_le_bytes();
 		self.ld[pos] = u32::from_le_bytes([l1, l2, d1, d2]);
+	}
+
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	/// # Set Sublength.
+	fn set_sublen(
+		&mut self,
+		pos: usize,
+		sublen: *const c_ushort,
+		distance: c_ushort,
+		length: c_ushort,
+	) {
+		let (cache_len, cache_dist) = self.ld(pos);
+		if cache_len == 0 || cache_dist != 0 { return; }
+		debug_assert_eq!(
+			(cache_len, cache_dist),
+			(1, 0),
+			"Length and/or distance are already cached!"
+		);
+
+		// The sublength isn't cacheable, but that fact is itself worth
+		// caching!
+		if usize::from(length) < ZOPFLI_MIN_MATCH {
+			self.set_ld(pos, 0, 0);
+			return;
+		}
+
+		// Save the length/distance bit.
+		debug_assert_ne!(
+			distance,
+			0,
+			"Distance cannot be zero when length > ZOPFLI_MIN_MATCH!"
+		);
+		self.set_ld(pos, length, distance);
+
+		// Convert (the relevant) part of the sublength to a slice to make
+		// it easier to work with.
+		let Some(length) = usize::from(length).checked_sub(ZOPFLI_MIN_MATCH) else { unreachable!() };
+		let sublen: &[c_ushort] = unsafe {
+			std::slice::from_raw_parts(sublen.add(ZOPFLI_MIN_MATCH), length + 1)
+		};
+		let start = unsafe { self.sublen.as_mut_ptr().add(SUBLEN_CACHED_LEN * pos) };
+		let mut ptr = start;
+		let mut written = 0;
+
+		// Write all mismatched pairs.
+		for (i, pair) in sublen.windows(2).enumerate() {
+			if pair[0] != pair[1] {
+				unsafe {
+					ptr.write(i as u8);
+					std::ptr::copy_nonoverlapping(
+						pair[0].to_le_bytes().as_ptr(),
+						ptr.add(1),
+						2,
+					);
+
+					written += 1;
+					if written == ZOPFLI_CACHE_LENGTH { return; }
+
+					ptr = ptr.add(3);
+				}
+			}
+		}
+
+		// Write the final length/distance.
+		unsafe {
+			ptr.write(length as u8);
+			std::ptr::copy_nonoverlapping(
+				sublen.get_unchecked(sublen.len() - 1).to_le_bytes().as_ptr(),
+				ptr.add(1),
+				2,
+			);
+
+			written += 1;
+
+			// If we didn't fill the cache, redundantly write the last length
+			// into the last chunk to make our future lives easier.
+			if written < ZOPFLI_CACHE_LENGTH {
+				start.add(SUBLEN_CACHED_LEN - 3).write(length as u8);
+			}
+		}
 	}
 
 	#[allow(unsafe_code)]
