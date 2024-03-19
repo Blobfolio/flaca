@@ -19,11 +19,6 @@ use super::ZOPFLI_NUM_LL;
 
 
 
-/// # A Bunch of Zeroes.
-///
-/// This is used to reset the `bitlengths` buffer en masse.
-const C_UINT_ZEROES: [c_uint; ZOPFLI_NUM_LL] = [0; ZOPFLI_NUM_LL];
-
 thread_local!(
 	/// # Shared Arena.
 	///
@@ -53,14 +48,8 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	maxbits: c_int,
 	bitlengths: *mut c_uint,
 ) {
-	// Zero out the previous bitlengths real quick.
-	unsafe {
-		std::ptr::copy_nonoverlapping(C_UINT_ZEROES.as_ptr(), bitlengths, n as usize);
-	}
-
-	// Convert a few variables into more useful formats.
-	let mut maxbits = maxbits as usize; // This is always 7 or 15.
-	let frequencies = unsafe { std::slice::from_raw_parts(frequencies, n as usize) };
+	// This will always be 7 or 15.
+	let mut maxbits = maxbits as usize;
 
 	// Convert (used) frequencies to leaves. There will never be more than
 	// ZOPFLI_NUM_LL of them, but often there will be less, so we'll leverage
@@ -68,15 +57,18 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	let mut leaves: [MaybeUninit<Leaf>; ZOPFLI_NUM_LL] = unsafe {
 		MaybeUninit::uninit().assume_init()
 	};
-	assert!(frequencies.len() <= leaves.len());
 	let mut len_leaves = 0;
-	for (i, &frequency) in frequencies.iter().enumerate() {
-		if frequency != 0 {
-			leaves[len_leaves].write(Leaf {
-				frequency,
-				bitlength: unsafe { bitlengths.add(i) },
-			});
-			len_leaves += 1;
+	for i in 0..n as usize {
+		unsafe {
+			// Zero out the bitlength regardless.
+			let bitlength = bitlengths.add(i);
+			bitlength.write(0);
+
+			let frequency = *frequencies.add(i);
+			if frequency != 0 {
+				leaves[len_leaves].write(Leaf { frequency, bitlength });
+				len_leaves += 1;
+			}
 		}
 	}
 
@@ -87,21 +79,21 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	assert!((1 << maxbits) >= len_leaves, "Insufficient maxbits for symbols.");
 
 	// The leaves we can actually use:
-	let real_leaves: &mut [Leaf] = unsafe {
+	let final_leaves: &mut [Leaf] = unsafe {
 		&mut *(std::ptr::addr_of_mut!(leaves[..len_leaves]) as *mut [Leaf])
 	};
 
 	// Sortcut: weighting only applies when there are more than two leaves;
 	// otherwise we can just record their values as one and call it a day.
 	if len_leaves <= 2 {
-		for leaf in real_leaves {
+		for leaf in final_leaves {
 			unsafe { leaf.bitlength.write(1); }
 		}
 		return;
 	}
 
 	// Sort the leaves.
-	real_leaves.sort();
+	final_leaves.sort();
 
 	// Shrink maxbits if we have fewer leaves. Note that "maxbits" is an
 	// inclusive value.
@@ -110,35 +102,35 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	// Set up the pool!
 	BUMP.with_borrow_mut(|nodes| {
 		let lookahead0 = nodes.alloc(Node {
-			weight: real_leaves[0].frequency,
+			weight: final_leaves[0].frequency,
 			count: 1,
 			tail: Cell::new(None),
 		});
 		let lookahead1 = nodes.alloc(Node {
-			weight: real_leaves[1].frequency,
+			weight: final_leaves[1].frequency,
 			count: 2,
 			tail: Cell::new(None),
 		});
 		let mut pool = Pool {
 			nodes,
-			leaves: real_leaves,
+			leaves: final_leaves,
 		};
 
 		// We won't have more than 15 lists, but we might have fewer.
 		let mut lists = [List { lookahead0, lookahead1 }; 15];
-		let final_list = &mut lists[..maxbits];
+		let final_lists = &mut lists[..maxbits];
 
 		// In the last list, (2 * len_leaves - 2) active chains need to be
 		// created. We have two already from initialization; each boundary_pm run
 		// will give us another.
 		let num_boundary_pm_runs = 2 * len_leaves - 4;
-		for _ in 0..num_boundary_pm_runs - 1 { pool.boundary_pm(final_list); }
+		for _ in 0..num_boundary_pm_runs - 1 { pool.boundary_pm(final_lists); }
 
 		// Final touchups!
-		pool.boundary_pm_final(final_list);
+		pool.boundary_pm_final(final_lists);
 
 		// Write the results!
-		pool.write_bit_lengths(final_list[maxbits - 1].lookahead1);
+		pool.write_bit_lengths(final_lists[maxbits - 1].lookahead1);
 
 		// Please be kind, rewind!
 		nodes.reset();
