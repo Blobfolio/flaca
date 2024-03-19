@@ -153,18 +153,21 @@ impl MatchCache {
 		let (cache_len, cache_dist) = self.ld(pos);
 		if cache_len != 0 && cache_dist == 0 { return false; }
 
+		// Find the max sublength once, if ever.
+		let sublen_null = sublen.is_null();
+		let maxlength =
+			if sublen_null { 0 }
+			else { max_sublen(self.sublen_array(pos)) };
+
 		// Proceed if our cached length or max sublength are under the limit.
 		if
 			*limit == ZOPFLI_MAX_MATCH ||
 			usize::from(cache_len) <= *limit ||
-			(
-				! sublen.is_null() &&
-				max_sublen(self.sublen_array(pos)) as usize >= *limit
-			)
+			(! sublen_null && maxlength as usize >= *limit)
 		{
 			// Update length and distance if the sublength pointer is null or
 			// the cached sublength is bigger than the cached length.
-			if sublen.is_null() || u32::from(cache_len) <= max_sublen(self.sublen_array(pos)) {
+			if sublen_null || u32::from(cache_len) <= maxlength {
 				// Cap the length.
 				*length = cache_len;
 				if usize::from(*length) > *limit {
@@ -172,7 +175,7 @@ impl MatchCache {
 				}
 
 				// Use the cached distance directly.
-				if sublen.is_null() {
+				if sublen_null {
 					*distance = cache_dist;
 				}
 				else {
