@@ -101,6 +101,7 @@ pub(crate) extern "C" fn OptimizeHuffmanForRle(length: usize, counts: *mut usize
 	let mut stride = 0;
 	let mut scratch = counts[0];
 	let mut sum = 0;
+	let four = counts.len().saturating_sub(3);
 	for (i, (&count, good)) in counts.iter().zip(GoodForRle::new(counts)).enumerate() {
 		// Time to reset (and maybe collapse).
 		if good || count.abs_diff(scratch) >= 4 {
@@ -122,12 +123,12 @@ pub(crate) extern "C" fn OptimizeHuffmanForRle(length: usize, counts: *mut usize
 
 			// If we have at least four remaining values (including the
 			// current), take a sort of weighted average of them.
-			if 3 < counts.len() && i < counts.len() - 3 {
+			if i < four {
 				scratch = (
-					count +
-					counts[i + 1] +
+					unsafe { *counts.get_unchecked(i + 3) } +
 					counts[i + 2] +
-					counts[i + 3] +
+					counts[i + 1] +
+					count +
 					2
 				) / 4;
 			}
