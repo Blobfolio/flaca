@@ -59,7 +59,6 @@ impl ImageKind {
 	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
 		12 < src.len() &&
 		src[..3] == [0xFF, 0xD8, 0xFF] &&
-		src[src.len() - 2..] == [0xFF, 0xD9] &&
 		(
 			src[3] == 0xDB ||
 			src[3] == 0xEE ||
