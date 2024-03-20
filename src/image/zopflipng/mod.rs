@@ -148,6 +148,34 @@ pub(crate) extern "C" fn OptimizeHuffmanForRle(length: usize, counts: *mut usize
 }
 
 #[no_mangle]
+#[allow(unsafe_code)]
+/// # Patch Buggy Distance Codes.
+///
+/// Ensure there are at least two distance codes to avoid issues with buggy
+/// decoders.
+///
+/// Note: `d_lengths` has a fixed length of 32.
+pub(crate) extern "C" fn PatchDistanceCodesForBuggyDecoders(d_lengths: *mut c_uint) {
+	let mut one: Option<usize> = None;
+	for i in 0..30 {
+		if 0 != unsafe { *d_lengths.add(i) } {
+			// We have (at least) two non-zero entries; no patching needed!
+			if one.is_some() { return; }
+			one.replace(i);
+		}
+	}
+
+	match one {
+		// The first entry had a code, so patch the second to give us two.
+		Some(0) => unsafe { d_lengths.add(1).write(1); },
+		// Patch the first entry to give us two.
+		Some(_) => unsafe { d_lengths.write(1); },
+		// There were no codes, so let's just patch the first two.
+		None => unsafe { d_lengths.write_bytes(1, 2); },
+	}
+}
+
+#[no_mangle]
 #[allow(unsafe_code, clippy::cast_precision_loss)]
 /// # Zopfli Claculate Entropy.
 ///

@@ -37,6 +37,22 @@ more efficiently. length contains the size of the histogram.
 void OptimizeHuffmanForRle(size_t length, size_t* counts);
 
 /*
+Patch Buggy Distance Codes.
+
+Ensures there are at least 2 distance codes to support buggy decoders.
+Zlib 1.2.1 and below have a bug where it fails if there isn't at least 1
+distance code (with length > 0), even though it's valid according to the
+deflate spec to have 0 distance codes. On top of that, some mobile phones
+require at least two distance codes. To support these decoders too (but
+potentially at the cost of a few bytes), add dummy code lengths of 1.
+References to this bug can be found in the changelog of
+Zlib 1.2.2 and here: http://www.jonof.id.au/forum/index.php?topic=515.0.
+
+d_lengths: the 32 lengths of the distance codes.
+*/
+void PatchDistanceCodesForBuggyDecoders(unsigned* d_lengths);
+
+/*
 Update Longest Match Cache.
 
 Stores the found sublen, distance and length in the longest match cache, if
