@@ -343,8 +343,8 @@ static size_t CalculateBlockSymbolSizeSmall(const unsigned* ll_lengths,
                                             size_t lstart, size_t lend) {
   size_t result = 0;
   size_t i;
+  assert(lstart >= lend || lend <= lz77->size); /* Make sure i remains less than lz77->size throughout. */
   for (i = lstart; i < lend; i++) {
-    assert(i < lz77->size);
     assert(lz77->litlens[i] < 259);
     if (lz77->dists[i] == 0) {
       result += ll_lengths[lz77->litlens[i]];

@@ -15,10 +15,7 @@ functionality.
 mod cache;
 mod kat;
 
-use std::os::raw::{
-	c_int,
-	c_uint,
-};
+use std::os::raw::c_uint;
 use super::ffi::EncodedImage;
 use super::lodepng::{
 	DecodedImage,
@@ -93,10 +90,10 @@ pub(crate) const extern "C" fn GetFixedTree(ll_lengths: *mut c_uint, d_lengths: 
 /// # Optimize Huffman RLE Compression.
 ///
 /// This is a rewrite of the original `deflate.c` method.
-pub(crate) extern "C" fn OptimizeHuffmanForRle(length: c_int, counts: *mut usize) {
+pub(crate) extern "C" fn OptimizeHuffmanForRle(length: usize, counts: *mut usize) {
 	// Convert counts to a proper slice with trailing zeroes trimmed.
 	let ptr = counts;
-	let mut counts: &mut [usize] = unsafe { std::slice::from_raw_parts_mut(counts, length as usize) };
+	let mut counts: &mut [usize] = unsafe { std::slice::from_raw_parts_mut(counts, length) };
 	while let [ rest @ .., 0 ] = counts { counts = rest; }
 	if counts.is_empty() { return; }
 

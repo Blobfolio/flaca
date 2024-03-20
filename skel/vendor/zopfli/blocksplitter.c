@@ -51,8 +51,7 @@ static double EstimateCost(const ZopfliLZ77Store* lz77,
 Gets the cost which is the sum of the cost of the left and the right section
 of the data.
 */
-static double SplitCost(size_t i, void* context) {
-  SplitCostContext* c = (SplitCostContext*)context;
+static double SplitCost(size_t i, SplitCostContext* c) {
   return EstimateCost(c->lz77, c->start, i) + EstimateCost(c->lz77, i, c->end);
 }
 
@@ -61,7 +60,7 @@ Finds minimum of function f(i) where is is of type size_t, f(i) is of type
 double, i is in range start-end (excluding end).
 Outputs the minimum value in *smallest and returns the index of this value.
 */
-static size_t FindMinimum(void* context,
+static size_t FindMinimum(SplitCostContext* context,
                           size_t start, size_t end, double* smallest) {
   if (end - start < 1024) {
     double best = ZOPFLI_LARGE_FLOAT;
@@ -193,11 +192,9 @@ void ZopfliBlockSplitLZ77(const ZopfliLZ77Store* lz77,
     c.lz77 = lz77;
     c.start = lstart;
     c.end = lend;
-    assert(lstart < lend);
     llpos = FindMinimum(&c, lstart + 1, lend, &splitcost);
 
-    assert(llpos > lstart);
-    assert(llpos < lend);
+    assert(lstart < llpos && llpos < lend); /* Implicitly asserts lstart < lend too */
 
     origcost = EstimateCost(lz77, lstart, lend);
 

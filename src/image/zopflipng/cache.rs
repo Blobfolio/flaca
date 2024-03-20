@@ -163,11 +163,11 @@ impl MatchCache {
 		if
 			*limit == ZOPFLI_MAX_MATCH ||
 			usize::from(cache_len) <= *limit ||
-			(! sublen_null && maxlength as usize >= *limit)
+			(! sublen_null && maxlength >= *limit)
 		{
 			// Update length and distance if the sublength pointer is null or
 			// the cached sublength is bigger than the cached length.
-			if sublen_null || u32::from(cache_len) <= maxlength {
+			if sublen_null || usize::from(cache_len) <= maxlength {
 				// Cap the length.
 				*length = cache_len;
 				if usize::from(*length) > *limit {
@@ -318,7 +318,7 @@ impl MatchCache {
 		if length < ZOPFLI_MIN_MATCH { return; }
 
 		let slice = self.sublen_array(pos);
-		let maxlength = max_sublen(slice) as usize;
+		let maxlength = max_sublen(slice);
 		let mut prevlength = 0;
 
 		for chunk in slice.chunks_exact(3) {
@@ -339,7 +339,7 @@ impl MatchCache {
 /// # Max Sublength.
 ///
 /// Return the maximum sublength length for a given chunk.
-const fn max_sublen(slice: &[u8; SUBLEN_CACHED_LEN]) -> u32 {
+const fn max_sublen(slice: &[u8; SUBLEN_CACHED_LEN]) -> usize {
 	if slice[1] == 0 && slice[2] == 0 { 0 }
-	else { slice[SUBLEN_CACHED_LEN - 3] as u32 + 3 }
+	else { slice[SUBLEN_CACHED_LEN - 3] as usize + 3 }
 }

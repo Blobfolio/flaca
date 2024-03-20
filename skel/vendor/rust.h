@@ -34,7 +34,7 @@ Changes the population counts in a way that the consequent Huffman tree
 compression, especially its rle-part, will be more likely to compress this data
 more efficiently. length contains the size of the histogram.
 */
-void OptimizeHuffmanForRle(int length, size_t* counts);
+void OptimizeHuffmanForRle(size_t length, size_t* counts);
 
 /*
 Update Longest Match Cache.
@@ -87,7 +87,7 @@ bitlengths: Output, the bitlengths for the symbol prefix codes.
 return: 0 for OK, non-0 for error.
 */
 void ZopfliLengthLimitedCodeLengths(
-    const size_t* frequencies, int n, int maxbits, unsigned* bitlengths);
+    const size_t* frequencies, size_t n, size_t maxbits, unsigned* bitlengths);
 
 /*
 Code Lengths to Symbols.

@@ -10,10 +10,7 @@ use std::{
 	},
 	cmp::Ordering,
 	mem::MaybeUninit,
-	os::raw::{
-		c_int,
-		c_uint,
-	},
+	os::raw::c_uint,
 };
 use super::ZOPFLI_NUM_LL;
 
@@ -44,13 +41,10 @@ thread_local!(
 /// This will panic on error, matching the original C behavior.
 pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	frequencies: *const usize,
-	n: c_int,
-	maxbits: c_int,
+	n: usize,
+	mut maxbits: usize,
 	bitlengths: *mut c_uint,
 ) {
-	// This will always be 7 or 15.
-	let mut maxbits = maxbits as usize;
-
 	// Convert (used) frequencies to leaves. There will never be more than
 	// ZOPFLI_NUM_LL of them, but often there will be less, so we'll leverage
 	// MaybeUninit to save unnecessary writes.
@@ -58,7 +52,7 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 		MaybeUninit::uninit().assume_init()
 	};
 	let mut len_leaves = 0;
-	for i in 0..n as usize {
+	for i in 0..n {
 		unsafe {
 			// Zero out the bitlength regardless.
 			let bitlength = bitlengths.add(i);
@@ -75,7 +69,9 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	// Nothing to do!
 	if len_leaves == 0 { return; }
 
-	// This shouldn't ever trigger, but it's nice to double-check.
+	// This method is either called with 15 maxbits and 32 or 288 potential
+	// leaves, or 7 maxbits and 19 potential leaves; in either case, the max
+	// leaves are well within range.
 	assert!((1 << maxbits) >= len_leaves, "Insufficient maxbits for symbols.");
 
 	// The leaves we can actually use:

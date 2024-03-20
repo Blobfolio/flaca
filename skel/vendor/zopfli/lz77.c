@@ -485,8 +485,8 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
         lengthscore = prevlengthscore;
         /* Add to output. */
         ZopfliStoreLitLenDist(leng, dist, i - 1, store);
+        assert(leng <= 2 || i + leng - 2 <= inend); /* Don't overflow i. */
         for (j = 2; j < leng; j++) {
-          assert(i < inend);
           i++;
           ZopfliUpdateHash(in, i, inend, h);
         }
@@ -508,8 +508,8 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
       leng = 1;
       ZopfliStoreLitLenDist(in[i], 0, i, store);
     }
+    assert(leng <= 1 || i + leng - 1 <= inend); /* Don't overflow i. */
     for (j = 1; j < leng; j++) {
-      assert(i < inend);
       i++;
       ZopfliUpdateHash(in, i, inend, h);
     }
