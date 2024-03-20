@@ -51,8 +51,9 @@ pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions) -> Opti
 		// panicked.
 		if ! ImageKind::is_jpeg(&raw) { return None; }
 	}
-	// Bad image.
-	else { return None; }
+	// Bad image. (Note: zero will never be returned as a legitimate size;
+	// we're hijacking it to communicate badness.)
+	else { return Some((0, 0)); }
 
 	// Save it if better.
 	let after = raw.len() as u64;

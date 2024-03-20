@@ -80,6 +80,7 @@ use std::sync::{
 			SeqCst,
 		},
 	},
+	Mutex,
 	OnceLock,
 };
 
@@ -162,6 +163,7 @@ fn _main() -> Result<(), FlacaError> {
 		let progress = Progless::try_from(total)?.with_reticulating_splines("Flaca");
 
 		// Keep track of the before and after file sizes as we go.
+		let invalid = Arc::new(Mutex::new(Vec::new()));
 		let skipped: AtomicU64 = AtomicU64::new(0);
 		let before: AtomicU64 = AtomicU64::new(0);
 		let after: AtomicU64 = AtomicU64::new(0);
@@ -173,11 +175,23 @@ fn _main() -> Result<(), FlacaError> {
 				let tmp = x.to_string_lossy();
 				progress.add(&tmp);
 
-				if let Some((b, a)) = image::encode(x, kinds, &oxi) {
-					before.fetch_add(b, Relaxed);
-					after.fetch_add(a, Relaxed);
+				match image::encode(x, kinds, &oxi) {
+					// Not a JPEG or PNG. (Empty files are returned as None.)
+					Some((0, 0)) => {
+						if let Ok(mut ptr) = invalid.lock() {
+							ptr.push(tmp.clone());
+						}
+						skipped.fetch_add(1, Relaxed);
+					},
+					// The image was processed and maybe updated.
+					Some((b, a)) => {
+						before.fetch_add(b, Relaxed);
+						after.fetch_add(a, Relaxed);
+					},
+					// The image was skipped for any reason other than it
+					// having non-JPEG/PNG content.
+					None => { skipped.fetch_add(1, Relaxed); },
 				}
-				else { skipped.fetch_add(1, Relaxed); }
 
 				progress.remove(&tmp);
 			}
@@ -201,7 +215,20 @@ fn _main() -> Result<(), FlacaError> {
 				before.into_inner(),
 				after.into_inner(),
 			)))
-			.print();
+			.eprint();
+
+		// If there were errors, print 'em.
+		if let Some(invalid) = Arc::try_unwrap(invalid).ok().and_then(|m| m.into_inner().ok()) {
+			if ! invalid.is_empty() {
+				Msg::warning(format!(
+					"{} could not be decoded:",
+					invalid.len().nice_inflect("image", "images"),
+				)).eprint();
+				for v in invalid {
+					eprintln!("    \x1b[2m{v}\x1b[0m");
+				}
+			}
+		}
 	}
 	// Silent run-through.
 	else {
