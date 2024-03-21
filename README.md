@@ -38,7 +38,7 @@ git clone https://github.com/Blobfolio/flaca.git
 # Go to it.
 cd flaca
 
-# Build as usual. Specify additional flags as desired.
+# Build as usual.
 cargo build \
     --bin flaca \
     --release
@@ -46,9 +46,51 @@ cargo build \
 
 (This should work under other 64-bit Unix environments too, like MacOS.)
 
-In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`, `make`, `nasm`, a C++ compiler, and the dev libraries for `libjpeg` and `libpng`.
+In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`/`clang`, `make`, `nasm`, and the dev libraries for `libjpeg` and `libpng`.
 
-The above list may not be exhaustive, though. If you find you need anything else, please open a ticket so this list can be updated!
+
+
+## Build Optimizations
+
+Like many CPU-intensive tasks, image compression benefits greatly from architecture-specific tunings.
+
+You can use the `RUSTFLAGS` and `TARGET_CPU` environmental variables to pass the desired "march" setting to the compiler when building Flaca:
+
+```bash
+# To target an x86-64-v3 baseline, for example:
+export RUSTFLAGS="-Ctarget-cpu=x86-64-v3"
+export TARGET_CPU="x86-64-v3"
+cargo build \
+    --bin flaca \
+    --release
+```
+
+Flaca's runtime performance can be further improved by enabling cross-language Link-Time-Optimizations. (By default, Rust will only link the rust portions of the codebase.)
+
+This can be accomplished by enabling the `clto` crate feature and building/linking with `clang` rather than `gcc`:
+
+```bash
+export RUSTFLAGS="-Clinker=clang -Clink-arg=-fuse-ld=lld"
+export CC = "clang"
+export CXX = "clang++"
+cargo build \
+    --bin flaca \
+    --features clto \
+    --release
+```
+
+Of course for best results, you should do both!
+
+```bash
+export RUSTFLAGS="-Ctarget-cpu=x86-64-v3 -Clinker=clang -Clink-arg=-fuse-ld=lld"
+export TARGET_CPU="x86-64-v3"
+export CC = "clang"
+export CXX = "clang++"
+cargo build \
+    --bin flaca \
+    --features clto \
+    --release
+```
 
 
 
