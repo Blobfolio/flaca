@@ -8,6 +8,9 @@ This file contains the signatures to allow (more or less) seamless
 interop across the sea of C.
 */
 
+#ifndef ZOPFLI_RUST_H_
+#define ZOPFLI_RUST_H_
+
 #include <stdlib.h> /* for size_t */
 #include "lodepng/lodepng.h"
 
@@ -115,3 +118,5 @@ Rust side.
 */
 void ZopfliLengthsToSymbols7(const unsigned* lengths, size_t n, unsigned* symbols);
 void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbols);
+
+#endif
