@@ -26,7 +26,7 @@ doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
-export RUSTFLAGS := "-C target-cpu=x86-64-v3 -C linker=clang -C link-arg=-fuse-ld=lld"
+export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Clinker=clang -Clink-arg=-fuse-ld=lld"
 export CC := "clang"
 export CXX := "clang++"
 export TARGET_CPU := "x86-64-v3"
