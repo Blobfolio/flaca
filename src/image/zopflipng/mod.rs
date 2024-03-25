@@ -159,10 +159,9 @@ pub(crate) extern "C" fn OptimizeHuffmanForRle(length: usize, counts: *mut usize
 pub(crate) extern "C" fn PatchDistanceCodesForBuggyDecoders(d_lengths: *mut c_uint) {
 	let mut one: Option<usize> = None;
 	for i in 0..30 {
-		if 0 != unsafe { *d_lengths.add(i) } {
-			// We have (at least) two non-zero entries; no patching needed!
-			if one.is_some() { return; }
-			one.replace(i);
+		// We have (at least) two non-zero entries; no patching needed!
+		if 0 != unsafe { *d_lengths.add(i) } && one.replace(i).is_some() {
+			return;
 		}
 	}
 
