@@ -32,28 +32,33 @@ pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions) -> Opti
 
 	// Do PNG stuff?
 	if ImageKind::is_png(&raw) {
-		if ImageKind::None == kinds & ImageKind::Png { return None; }
+		if ImageKind::None == kinds & ImageKind::Png { return Some((0, 0)); }
 		encode_oxipng(&mut raw, oxi);
 		encode_zopflipng(&mut raw);
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
-		if ImageKind::None == kinds & ImageKind::Jpeg { return None; }
+		if ImageKind::None == kinds & ImageKind::Jpeg { return Some((0, 0)); }
 
 		// Mozjpeg usually panics on error, so we have to do a weird little
 		// dance to keep it from killing the whole thread.
-		raw = std::panic::catch_unwind(move || {
+		if let Ok(r) = std::panic::catch_unwind(move || {
 			encode_mozjpeg(&mut raw);
 			raw
-		}).ok()?;
+		}) {
+			// Copy the data back.
+			raw = r;
 
-		// Double-check the image type again, just in case the copy itself
-		// panicked.
-		if ! ImageKind::is_jpeg(&raw) { return None; }
+			// But make sure the copied data didn't get corrupted along the
+			// way…
+			if ! ImageKind::is_jpeg(&raw) { return Some((before, before)); }
+		}
+		// Abort without changing anything.
+		else { return Some((before, before)); }
+
 	}
-	// Bad image. (Note: zero will never be returned as a legitimate size;
-	// we're hijacking it to communicate badness.)
-	else { return Some((0, 0)); }
+	// Something else entirely?
+	else { return None; }
 
 	// Save it if better.
 	let after = raw.len() as u64;

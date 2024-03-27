@@ -80,7 +80,6 @@ use std::sync::{
 			SeqCst,
 		},
 	},
-	Mutex,
 	OnceLock,
 };
 
@@ -163,7 +162,6 @@ fn _main() -> Result<(), FlacaError> {
 		let progress = Progless::try_from(total)?.with_reticulating_splines("Flaca");
 
 		// Keep track of the before and after file sizes as we go.
-		let invalid = Arc::new(Mutex::new(Vec::new()));
 		let skipped: AtomicU64 = AtomicU64::new(0);
 		let before: AtomicU64 = AtomicU64::new(0);
 		let after: AtomicU64 = AtomicU64::new(0);
@@ -176,11 +174,8 @@ fn _main() -> Result<(), FlacaError> {
 				progress.add(&tmp);
 
 				match image::encode(x, kinds, &oxi) {
-					// Not a JPEG or PNG. (Empty files are returned as None.)
+					// The image was intentionally skipped.
 					Some((0, 0)) => {
-						if let Ok(mut ptr) = invalid.lock() {
-							ptr.push(tmp.clone());
-						}
 						skipped.fetch_add(1, Relaxed);
 					},
 					// The image was processed and maybe updated.
@@ -188,9 +183,13 @@ fn _main() -> Result<(), FlacaError> {
 						before.fetch_add(b, Relaxed);
 						after.fetch_add(a, Relaxed);
 					},
-					// The image was skipped for any reason other than it
-					// having non-JPEG/PNG content.
-					None => { skipped.fetch_add(1, Relaxed); },
+					// The image could not be read or decoded.
+					None => {
+						progress.push_msg(Msg::custom("Skipped", 11, &format!(
+							"{tmp} \x1b[2m(Unrecognized format.)\x1b[0m"
+						)), true);
+						skipped.fetch_add(1, Relaxed);
+					},
 				}
 
 				progress.remove(&tmp);
@@ -204,6 +203,7 @@ fn _main() -> Result<(), FlacaError> {
 			progress.summary(MsgKind::Crunched, "image", "images")
 		}
 		else {
+			// And summarize what we did do.
 			Msg::crunched(format!(
 				"{}\x1b[2m/\x1b[0m{} in {}.",
 				NiceU64::from(total - skipped),
@@ -216,19 +216,6 @@ fn _main() -> Result<(), FlacaError> {
 				after.into_inner(),
 			)))
 			.eprint();
-
-		// If there were errors, print 'em.
-		if let Some(invalid) = Arc::try_unwrap(invalid).ok().and_then(|m| m.into_inner().ok()) {
-			if ! invalid.is_empty() {
-				Msg::warning(format!(
-					"{} could not be decoded:",
-					invalid.len().nice_inflect("image", "images"),
-				)).eprint();
-				for v in invalid {
-					eprintln!("    \x1b[2m{v}\x1b[0m");
-				}
-			}
-		}
 	}
 	// Silent run-through.
 	else {
