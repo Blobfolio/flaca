@@ -71,8 +71,7 @@ pub(crate) extern "C" fn ZopfliFindLongestMatch(
 		sublen,
 		unsafe { &mut *distance },
 		unsafe { &mut *length },
-		cache == 1,
-		blockstart,
+		if cache == 1 { Some(blockstart) } else { None },
 	));
 }
 
@@ -268,19 +267,20 @@ impl ZopfliHash {
 		sublen: &mut [u16],
 		distance: &mut u16,
 		length: &mut u16,
-		cache: bool,
-		blockstart: usize,
+		cache: Option<usize>,
 	) {
 		// Check the longest match cache first!
-		if cache && CACHE.with_borrow(|c| c.find(
-			pos - blockstart,
-			&mut limit,
-			sublen,
-			distance,
-			length,
-		)) {
-			assert!(pos + usize::from(*length) <= size);
-			return;
+		if let Some(blockstart) = cache {
+			if CACHE.with_borrow(|c| c.find(
+				pos - blockstart,
+				&mut limit,
+				sublen,
+				distance,
+				length,
+			)) {
+				assert!(pos + usize::from(*length) <= size);
+				return;
+			}
 		}
 
 		// These are both hard-coded or asserted by the caller.
@@ -303,10 +303,12 @@ impl ZopfliHash {
 		let (bestdist, bestlength) = self.find_loop(arr, pos, size, limit, sublen);
 
 		// Cache the results for next time, maybe.
-		if cache && limit == ZOPFLI_MAX_MATCH && ! sublen.is_empty() {
-			CACHE.with_borrow_mut(|c|
-				c.set_sublen(pos - blockstart, sublen, bestdist, bestlength)
-			);
+		if let Some(blockstart) = cache {
+			if limit == ZOPFLI_MAX_MATCH && ! sublen.is_empty() {
+				CACHE.with_borrow_mut(|c|
+					c.set_sublen(pos - blockstart, sublen, bestdist, bestlength)
+				);
+			}
 		}
 
 		// Update the values.

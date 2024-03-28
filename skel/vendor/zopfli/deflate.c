@@ -616,9 +616,7 @@ static void AddLZ77BlockAutoType(int final,
     size_t instart = lz77->pos[lstart];
     size_t inend = instart + ZopfliLZ77GetByteRange(lz77, lstart, lend);
 
-    ZopfliBlockState s;
-    ZopfliInitBlockState(instart, inend, 1, &s);
-    ZopfliLZ77OptimalFixed(&s, lz77->data, instart, inend, &fixedstore);
+    ZopfliLZ77OptimalFixed(lz77->data, instart, inend, &fixedstore);
     fixedcost = ZopfliCalculateBlockSize(&fixedstore, 0, fixedstore.size, 1);
   }
 
@@ -671,11 +669,9 @@ void ZopfliDeflatePart(int numiterations, int final,
   for (i = 0; i <= npoints; i++) {
     size_t start = i == 0 ? instart : splitpoints_uncompressed[i - 1];
     size_t end = i == npoints ? inend : splitpoints_uncompressed[i];
-    ZopfliBlockState s;
     ZopfliLZ77Store store;
     ZopfliInitLZ77Store(in, &store);
-    ZopfliInitBlockState(start, end, 1, &s);
-    ZopfliLZ77Optimal(&s, in, start, end, numiterations, &store);
+    ZopfliLZ77Optimal(in, start, end, numiterations, &store);
     totalcost += ZopfliCalculateBlockSizeAutoType(&store, 0, store.size);
 
     ZopfliAppendLZ77Store(&store, &lz77);

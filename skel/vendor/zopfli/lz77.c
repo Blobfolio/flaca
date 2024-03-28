@@ -214,16 +214,6 @@ void ZopfliLZ77GetHistogram(const ZopfliLZ77Store* lz77,
   }
 }
 
-void ZopfliInitBlockState(size_t blockstart, size_t blockend, unsigned char lmc,
-                          ZopfliBlockState* s) {
-  s->blockstart = blockstart;
-  s->blockend = blockend;
-  s->lmc = lmc;
-  if (lmc) {
-    ZopfliInitCache(blockend - blockstart);
-  }
-}
-
 /*
 Gets a score of the length given the distance. Typically, the score of the
 length is the length itself, but if the distance is very long, decrease the
@@ -298,7 +288,7 @@ static const unsigned char* GetMatch(const unsigned char* scan,
   return scan;
 }
 
-void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
+void ZopfliLZ77Greedy(size_t cache, const unsigned char* in,
                       size_t instart, size_t inend,
                       ZopfliLZ77Store* store) {
   size_t i = 0, j;
@@ -323,7 +313,7 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
     ZopfliUpdateHash(in, i, inend);
 
     ZopfliFindLongestMatch(in, i, inend, ZOPFLI_MAX_MATCH, dummysublen,
-                           &dist, &leng, s->lmc, s->blockstart);
+                           &dist, &leng, (unsigned char) cache, instart);
     lengthscore = GetLengthScore(leng, dist);
 
     /* Lazy matching. */

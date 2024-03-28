@@ -203,7 +203,6 @@ static size_t zopfli_min(size_t a, size_t b) {
 /*
 Performs the forward pass for "squeeze". Gets the most optimal length to reach
 every byte from a previous byte, using cost calculations.
-s: the ZopfliBlockState
 in: the input data array
 instart: where to start
 inend: where to stop (not inclusive)
@@ -213,8 +212,7 @@ length_array: output array of size (inend - instart) which will receive the best
     length to reach this byte from a previous byte.
 returns the cost that was, according to the costmodel, needed to get to the end.
 */
-static double GetBestLengths(ZopfliBlockState *s,
-                             const unsigned char* in,
+static double GetBestLengths(const unsigned char* in,
                              size_t instart, size_t inend,
                              CostModelFun* costmodel, void* costcontext,
                              unsigned short* length_array, float* costs) {
@@ -261,7 +259,7 @@ static double GetBestLengths(ZopfliBlockState *s,
     }
 
     ZopfliFindLongestMatch(in, i, inend, ZOPFLI_MAX_MATCH, sublen,
-                           &dist, &leng, s->lmc, s->blockstart);
+                           &dist, &leng, 1, instart);
 
     /* Literal. */
     if (i + 1 <= inend) {
@@ -325,8 +323,7 @@ static void TraceBackwards(size_t size, const unsigned short* length_array,
   }
 }
 
-static void FollowPath(ZopfliBlockState* s,
-                       const unsigned char* in, size_t instart, size_t inend,
+static void FollowPath(const unsigned char* in, size_t instart, size_t inend,
                        unsigned short* path, size_t pathsize,
                        ZopfliLZ77Store* store) {
   size_t i, j, pos = 0;
@@ -351,7 +348,7 @@ static void FollowPath(ZopfliBlockState* s,
       /* Get the distance by recalculating longest match. The found length
       should match the length from the path. */
       ZopfliFindLongestMatch(in, pos, inend, length, 0,
-                             &dist, &dummy_length, s->lmc, s->blockstart);
+                             &dist, &dummy_length, 1, instart);
       assert(!(dummy_length != length && length > 2 && dummy_length > 2));
       ZopfliStoreLitLenDist(length, dist, pos, store);
     } else {
@@ -393,7 +390,6 @@ static void GetStatistics(const ZopfliLZ77Store* store, SymbolStats* stats) {
 /*
 Does a single run for ZopfliLZ77Optimal. For good compression, repeated runs
 with updated statistics should be performed.
-s: the block state
 in: the input data array
 instart: where to start
 inend: where to stop (not inclusive)
@@ -406,24 +402,22 @@ store: place to output the LZ77 data
 returns the cost that was, according to the costmodel, needed to get to the end.
     This is not the actual cost.
 */
-static double LZ77OptimalRun(ZopfliBlockState* s,
-    const unsigned char* in, size_t instart, size_t inend,
+static double LZ77OptimalRun(const unsigned char* in, size_t instart, size_t inend,
     unsigned short** path, size_t* pathsize,
     unsigned short* length_array, CostModelFun* costmodel,
     void* costcontext, ZopfliLZ77Store* store, float* costs) {
-  double cost = GetBestLengths(s, in, instart, inend, costmodel,
+  double cost = GetBestLengths(in, instart, inend, costmodel,
                 costcontext, length_array, costs);
   free(*path);
   *path = 0;
   *pathsize = 0;
   TraceBackwards(inend - instart, length_array, path, pathsize);
-  FollowPath(s, in, instart, inend, *path, *pathsize, store);
+  FollowPath(in, instart, inend, *path, *pathsize, store);
   assert(cost < ZOPFLI_LARGE_FLOAT);
   return cost;
 }
 
-void ZopfliLZ77Optimal(ZopfliBlockState *s,
-                       const unsigned char* in, size_t instart, size_t inend,
+void ZopfliLZ77Optimal(const unsigned char* in, size_t instart, size_t inend,
                        int numiterations,
                        ZopfliLZ77Store* store) {
   /* Dist to get to here with smallest cost. */
@@ -449,12 +443,13 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
   InitRanState(&ran_state);
   InitStats(&stats);
   ZopfliInitLZ77Store(in, &currentstore);
+  ZopfliInitCache(blocksize);
 
   /* Do regular deflate, then loop multiple shortest path runs, each time using
   the statistics of the previous run. */
 
   /* Initial run. */
-  ZopfliLZ77Greedy(s, in, instart, inend, &currentstore);
+  ZopfliLZ77Greedy(1, in, instart, inend, &currentstore);
   GetStatistics(&currentstore, &stats);
 
   /* Repeat statistics with each time the cost model from the previous stat
@@ -462,7 +457,7 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
   for (i = 0; i < numiterations; i++) {
     ZopfliCleanLZ77Store(&currentstore);
     ZopfliInitLZ77Store(in, &currentstore);
-    LZ77OptimalRun(s, in, instart, inend, &path, &pathsize,
+    LZ77OptimalRun(in, instart, inend, &path, &pathsize,
                    length_array, GetCostStat, (void*)&stats,
                    &currentstore, costs);
     cost = ZopfliCalculateBlockSize(&currentstore, 0, currentstore.size, 2);
@@ -497,8 +492,7 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
   ZopfliCleanLZ77Store(&currentstore);
 }
 
-void ZopfliLZ77OptimalFixed(ZopfliBlockState *s,
-                            const unsigned char* in,
+void ZopfliLZ77OptimalFixed(const unsigned char* in,
                             size_t instart, size_t inend,
                             ZopfliLZ77Store* store)
 {
@@ -515,7 +509,8 @@ void ZopfliLZ77OptimalFixed(ZopfliBlockState *s,
 
   /* Shortest path for fixed tree This one should give the shortest possible
   result for fixed tree, no repeated runs are needed since the tree is known. */
-  LZ77OptimalRun(s, in, instart, inend, &path, &pathsize,
+  ZopfliInitCache(blocksize);
+  LZ77OptimalRun(in, instart, inend, &path, &pathsize,
                  length_array, GetCostFixed, 0, store, costs);
 
   free(length_array);

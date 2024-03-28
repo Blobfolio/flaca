@@ -77,30 +77,14 @@ void ZopfliLZ77GetHistogram(const ZopfliLZ77Store* lz77,
                             size_t* ll_counts, size_t* d_counts);
 
 /*
-Some state information for compressing a block.
-This is currently a bit under-used (with mainly only the longest match cache),
-but is kept for easy future expansion.
-*/
-typedef struct ZopfliBlockState {
-  /* Cache for length/distance pairs found so far. */
-  unsigned char lmc;
 
-  /* The start (inclusive) and end (not inclusive) of the current block. */
-  size_t blockstart;
-  size_t blockend;
-} ZopfliBlockState;
-
-void ZopfliInitBlockState(size_t blockstart, size_t blockend, unsigned char lmc,
-                          ZopfliBlockState* s);
-
-/*
 Does LZ77 using an algorithm similar to gzip, with lazy matching, rather than
 with the slow but better "squeeze" implementation.
 The result is placed in the ZopfliLZ77Store.
 If instart is larger than 0, it uses values before instart as starting
 dictionary.
 */
-void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
+void ZopfliLZ77Greedy(size_t cache, const unsigned char* in,
                       size_t instart, size_t inend,
                       ZopfliLZ77Store* store);
 
