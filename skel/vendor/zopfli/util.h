@@ -28,6 +28,8 @@ basic deflate specification values and generic program options.
 #include <string.h>
 #include <stdlib.h>
 
+#define ZOPFLI_HEAD_SIZE 65536
+
 /* Minimum and maximum length that can be encoded in deflate. */
 #define ZOPFLI_MAX_MATCH 258
 #define ZOPFLI_MIN_MATCH 3

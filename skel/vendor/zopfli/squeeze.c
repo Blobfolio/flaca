@@ -217,8 +217,7 @@ static double GetBestLengths(ZopfliBlockState *s,
                              const unsigned char* in,
                              size_t instart, size_t inend,
                              CostModelFun* costmodel, void* costcontext,
-                             unsigned short* length_array,
-                             ZopfliHash* h, float* costs) {
+                             unsigned short* length_array, float* costs) {
   /* Best cost to get here so far. */
   size_t blocksize = inend - instart;
   size_t i = 0, k, kend;
@@ -233,11 +232,7 @@ static double GetBestLengths(ZopfliBlockState *s,
 
   if (instart == inend) return 0;
 
-  ZopfliResetHash(h);
-  ZopfliWarmupHash(in, windowstart, inend, h);
-  for (i = windowstart; i < instart; i++) {
-    ZopfliUpdateHash(in, i, inend, h);
-  }
+  ZopfliResetHash(in, inend, windowstart, instart);
 
   for (i = 1; i < blocksize + 1; i++) costs[i] = ZOPFLI_LARGE_FLOAT;
   costs[0] = 0;  /* Because it's the start. */
@@ -245,15 +240,13 @@ static double GetBestLengths(ZopfliBlockState *s,
 
   for (i = instart; i < inend; i++) {
     size_t j = i - instart;  /* Index in the costs array and length_array. */
-    ZopfliUpdateHash(in, i, inend, h);
+    ZopfliUpdateHash(in, i, inend);
 
     /* If we're in a long repetition of the same character and have more than
     ZOPFLI_MAX_MATCH characters before and after our position. */
-    if (h->same[i & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH * 2
-        && i > instart + ZOPFLI_MAX_MATCH + 1
+    if (i > instart + ZOPFLI_MAX_MATCH + 1
         && i + ZOPFLI_MAX_MATCH * 2 + 1 < inend
-        && h->same[(i - ZOPFLI_MAX_MATCH) & ZOPFLI_WINDOW_MASK]
-            > ZOPFLI_MAX_MATCH) {
+        && ZopfliLongRepetition(i)) {
       double symbolcost = costmodel(ZOPFLI_MAX_MATCH, 1, costcontext);
       /* Set the length to reach each one to ZOPFLI_MAX_MATCH, and the cost to
       the cost corresponding to that length. Doing this, we skip
@@ -263,12 +256,12 @@ static double GetBestLengths(ZopfliBlockState *s,
         length_array[j + ZOPFLI_MAX_MATCH] = ZOPFLI_MAX_MATCH;
         i++;
         j++;
-        ZopfliUpdateHash(in, i, inend, h);
+        ZopfliUpdateHash(in, i, inend);
       }
     }
 
-    ZopfliFindLongestMatch(s, h, in, i, inend, ZOPFLI_MAX_MATCH, sublen,
-                           &dist, &leng);
+    ZopfliFindLongestMatch(in, i, inend, ZOPFLI_MAX_MATCH, sublen,
+                           &dist, &leng, s->lmc, s->blockstart);
 
     /* Literal. */
     if (i + 1 <= inend) {
@@ -335,20 +328,14 @@ static void TraceBackwards(size_t size, const unsigned short* length_array,
 static void FollowPath(ZopfliBlockState* s,
                        const unsigned char* in, size_t instart, size_t inend,
                        unsigned short* path, size_t pathsize,
-                       ZopfliLZ77Store* store, ZopfliHash *h) {
+                       ZopfliLZ77Store* store) {
   size_t i, j, pos = 0;
   size_t windowstart = instart > ZOPFLI_WINDOW_SIZE
       ? instart - ZOPFLI_WINDOW_SIZE : 0;
 
-  size_t total_length_test = 0;
-
   if (instart == inend) return;
 
-  ZopfliResetHash(h);
-  ZopfliWarmupHash(in, windowstart, inend, h);
-  for (i = windowstart; i < instart; i++) {
-    ZopfliUpdateHash(in, i, inend, h);
-  }
+  ZopfliResetHash(in, inend, windowstart, instart);
 
   pos = instart;
   for (i = 0; i < pathsize; i++) {
@@ -357,27 +344,24 @@ static void FollowPath(ZopfliBlockState* s,
     unsigned short dist;
     assert(pos < inend);
 
-    ZopfliUpdateHash(in, pos, inend, h);
+    ZopfliUpdateHash(in, pos, inend);
 
     /* Add to output. */
     if (length >= ZOPFLI_MIN_MATCH) {
       /* Get the distance by recalculating longest match. The found length
       should match the length from the path. */
-      ZopfliFindLongestMatch(s, h, in, pos, inend, length, 0,
-                             &dist, &dummy_length);
+      ZopfliFindLongestMatch(in, pos, inend, length, 0,
+                             &dist, &dummy_length, s->lmc, s->blockstart);
       assert(!(dummy_length != length && length > 2 && dummy_length > 2));
       ZopfliStoreLitLenDist(length, dist, pos, store);
-      total_length_test += length;
     } else {
       length = 1;
       ZopfliStoreLitLenDist(in[pos], 0, pos, store);
-      total_length_test++;
     }
-
 
     assert(pos + length <= inend);
     for (j = 1; j < length; j++) {
-      ZopfliUpdateHash(in, pos + j, inend, h);
+      ZopfliUpdateHash(in, pos + j, inend);
     }
 
     pos += length;
@@ -426,15 +410,14 @@ static double LZ77OptimalRun(ZopfliBlockState* s,
     const unsigned char* in, size_t instart, size_t inend,
     unsigned short** path, size_t* pathsize,
     unsigned short* length_array, CostModelFun* costmodel,
-    void* costcontext, ZopfliLZ77Store* store,
-    ZopfliHash* h, float* costs) {
+    void* costcontext, ZopfliLZ77Store* store, float* costs) {
   double cost = GetBestLengths(s, in, instart, inend, costmodel,
-                costcontext, length_array, h, costs);
+                costcontext, length_array, costs);
   free(*path);
   *path = 0;
   *pathsize = 0;
   TraceBackwards(inend - instart, length_array, path, pathsize);
-  FollowPath(s, in, instart, inend, *path, *pathsize, store, h);
+  FollowPath(s, in, instart, inend, *path, *pathsize, store);
   assert(cost < ZOPFLI_LARGE_FLOAT);
   return cost;
 }
@@ -450,8 +433,6 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
   unsigned short* path = 0;
   size_t pathsize = 0;
   ZopfliLZ77Store currentstore;
-  ZopfliHash hash;
-  ZopfliHash* h = &hash;
   SymbolStats stats, beststats, laststats;
   int i;
   float* costs = (float*)malloc(sizeof(float) * (blocksize + 1));
@@ -468,13 +449,12 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
   InitRanState(&ran_state);
   InitStats(&stats);
   ZopfliInitLZ77Store(in, &currentstore);
-  ZopfliAllocHash(h);
 
   /* Do regular deflate, then loop multiple shortest path runs, each time using
   the statistics of the previous run. */
 
   /* Initial run. */
-  ZopfliLZ77Greedy(s, in, instart, inend, &currentstore, h);
+  ZopfliLZ77Greedy(s, in, instart, inend, &currentstore);
   GetStatistics(&currentstore, &stats);
 
   /* Repeat statistics with each time the cost model from the previous stat
@@ -484,7 +464,7 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
     ZopfliInitLZ77Store(in, &currentstore);
     LZ77OptimalRun(s, in, instart, inend, &path, &pathsize,
                    length_array, GetCostStat, (void*)&stats,
-                   &currentstore, h, costs);
+                   &currentstore, costs);
     cost = ZopfliCalculateBlockSize(&currentstore, 0, currentstore.size, 2);
     if (cost < bestcost) {
       /* Copy to the output store. */
@@ -515,7 +495,6 @@ void ZopfliLZ77Optimal(ZopfliBlockState *s,
   free(path);
   free(costs);
   ZopfliCleanLZ77Store(&currentstore);
-  ZopfliCleanHash(h);
 }
 
 void ZopfliLZ77OptimalFixed(ZopfliBlockState *s,
@@ -529,25 +508,17 @@ void ZopfliLZ77OptimalFixed(ZopfliBlockState *s,
       (unsigned short*)malloc(sizeof(unsigned short) * (blocksize + 1));
   unsigned short* path = 0;
   size_t pathsize = 0;
-  ZopfliHash hash;
-  ZopfliHash* h = &hash;
   float* costs = (float*)malloc(sizeof(float) * (blocksize + 1));
 
   if (!costs) exit(-1); /* Allocation failed. */
   if (!length_array) exit(-1); /* Allocation failed. */
 
-  ZopfliAllocHash(h);
-
-  s->blockstart = instart;
-  s->blockend = inend;
-
   /* Shortest path for fixed tree This one should give the shortest possible
   result for fixed tree, no repeated runs are needed since the tree is known. */
   LZ77OptimalRun(s, in, instart, inend, &path, &pathsize,
-                 length_array, GetCostFixed, 0, store, h, costs);
+                 length_array, GetCostFixed, 0, store, costs);
 
   free(length_array);
   free(path);
   free(costs);
-  ZopfliCleanHash(h);
 }

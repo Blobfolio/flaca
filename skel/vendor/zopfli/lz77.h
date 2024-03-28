@@ -28,7 +28,6 @@ compression.
 #include <stdlib.h>
 
 #include "../rust.h"
-#include "hash.h"
 
 /*
 Stores lit/length and dist pairs for LZ77.
@@ -91,29 +90,8 @@ typedef struct ZopfliBlockState {
   size_t blockend;
 } ZopfliBlockState;
 
-void ZopfliInitBlockState(size_t blockstart, size_t blockend, int add_lmc,
+void ZopfliInitBlockState(size_t blockstart, size_t blockend, unsigned char lmc,
                           ZopfliBlockState* s);
-
-/*
-Finds the longest match (length and corresponding distance) for LZ77
-compression.
-Even when not using "sublen", it can be more efficient to provide an array,
-because only then the caching is used.
-array: the data
-pos: position in the data to find the match for
-size: size of the data
-limit: limit length to maximum this value (default should be 258). This allows
-    finding a shorter dist for that length (= less extra bits). Must be
-    in the range [ZOPFLI_MIN_MATCH, ZOPFLI_MAX_MATCH].
-sublen: output array of 259 elements, or null. Has, for each length, the
-    smallest distance required to reach this length. Only 256 of its 259 values
-    are used, the first 3 are ignored (the shortest length is 3. It is purely
-    for convenience that the array is made 3 longer).
-*/
-void ZopfliFindLongestMatch(
-    ZopfliBlockState *s, const ZopfliHash* h, const unsigned char* array,
-    size_t pos, size_t size, size_t limit,
-    unsigned short* sublen, unsigned short* distance, unsigned short* length);
 
 /*
 Does LZ77 using an algorithm similar to gzip, with lazy matching, rather than
@@ -124,6 +102,6 @@ dictionary.
 */
 void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
                       size_t instart, size_t inend,
-                      ZopfliLZ77Store* store, ZopfliHash* h);
+                      ZopfliLZ77Store* store);
 
 #endif  /* ZOPFLI_LZ77_H_ */

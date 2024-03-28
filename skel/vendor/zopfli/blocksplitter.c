@@ -226,19 +226,16 @@ void ZopfliBlockSplit(const unsigned char* in, size_t instart, size_t inend,
   size_t* lz77splitpoints = 0;
   size_t nlz77points = 0;
   ZopfliLZ77Store store;
-  ZopfliHash hash;
-  ZopfliHash* h = &hash;
 
   ZopfliInitLZ77Store(in, &store);
   ZopfliInitBlockState(instart, inend, 0, &s);
-  ZopfliAllocHash(h);
 
   *npoints = 0;
   *splitpoints = 0;
 
   /* Unintuitively, Using a simple LZ77 method here instead of ZopfliLZ77Optimal
   results in better blocks. */
-  ZopfliLZ77Greedy(&s, in, instart, inend, &store, h);
+  ZopfliLZ77Greedy(&s, in, instart, inend, &store);
 
   ZopfliBlockSplitLZ77(&store, &lz77splitpoints, &nlz77points);
 
@@ -258,7 +255,6 @@ void ZopfliBlockSplit(const unsigned char* in, size_t instart, size_t inend,
 
   free(lz77splitpoints);
   ZopfliCleanLZ77Store(&store);
-  ZopfliCleanHash(h);
 }
 
 void ZopfliBlockSplitSimple(const unsigned char* in,

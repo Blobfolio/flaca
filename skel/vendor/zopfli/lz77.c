@@ -214,15 +214,13 @@ void ZopfliLZ77GetHistogram(const ZopfliLZ77Store* lz77,
   }
 }
 
-void ZopfliInitBlockState(size_t blockstart, size_t blockend, int add_lmc,
+void ZopfliInitBlockState(size_t blockstart, size_t blockend, unsigned char lmc,
                           ZopfliBlockState* s) {
   s->blockstart = blockstart;
   s->blockend = blockend;
-  if (add_lmc) {
-    s->lmc = 1;
+  s->lmc = lmc;
+  if (lmc) {
     ZopfliInitCache(blockend - blockstart);
-  } else {
-    s->lmc = 0;
   }
 }
 
@@ -300,143 +298,9 @@ static const unsigned char* GetMatch(const unsigned char* scan,
   return scan;
 }
 
-void ZopfliFindLongestMatch(ZopfliBlockState* s, const ZopfliHash* h,
-    const unsigned char* array,
-    size_t pos, size_t size, size_t limit,
-    unsigned short* sublen, unsigned short* distance, unsigned short* length) {
-  unsigned short hpos = pos & ZOPFLI_WINDOW_MASK, p, pp;
-  unsigned short bestdist = 0;
-  unsigned short bestlength = 1;
-  const unsigned char* scan;
-  const unsigned char* match;
-  const unsigned char* arrayend;
-  const unsigned char* arrayend_safe;
-#if ZOPFLI_MAX_CHAIN_HITS < ZOPFLI_WINDOW_SIZE
-  int chain_counter = ZOPFLI_MAX_CHAIN_HITS;  /* For quitting early. */
-#endif
-
-  unsigned dist = 0;  /* Not unsigned short on purpose. */
-
-  int* hhead = h->head;
-  unsigned short* hprev = h->prev;
-  int* hhashval = h->hashval;
-  int hval = h->val;
-
-  if (s->lmc) {
-    size_t lmcpos = pos - s->blockstart;
-    if (TryGetFromLongestMatchCache(lmcpos, &limit, sublen, distance, length)) {
-      assert(pos + *length <= size);
-      return;
-    }
-  }
-
-  assert(limit <= ZOPFLI_MAX_MATCH);
-  assert(limit >= ZOPFLI_MIN_MATCH);
-  assert(pos < size);
-
-  if (size - pos < ZOPFLI_MIN_MATCH) {
-    /* The rest of the code assumes there are at least ZOPFLI_MIN_MATCH bytes to
-       try. */
-    *length = 0;
-    *distance = 0;
-    return;
-  }
-
-  if (pos + limit > size) {
-    limit = size - pos;
-  }
-  arrayend = &array[pos] + limit;
-  arrayend_safe = arrayend - 8;
-
-  assert(hval < 65536);
-
-  pp = hhead[hval];  /* During the whole loop, p == hprev[pp]. */
-  p = hprev[pp];
-
-  assert(pp == hpos);
-
-  dist = p < pp ? pp - p : ((ZOPFLI_WINDOW_SIZE - p) + pp);
-
-  /* Go through all distances. */
-  while (dist < ZOPFLI_WINDOW_SIZE) {
-    unsigned short currentlength = 0;
-
-    assert(p < ZOPFLI_WINDOW_SIZE);
-    assert(p == hprev[pp]);
-    assert(hhashval[p] == hval);
-
-    if (dist > 0) {
-      assert(pos < size);
-      assert(dist <= pos);
-      scan = &array[pos];
-      match = &array[pos - dist];
-
-      /* Testing the byte at position bestlength first, goes slightly faster. */
-      if (pos + bestlength >= size
-          || *(scan + bestlength) == *(match + bestlength)) {
-
-        unsigned short same0 = h->same[pos & ZOPFLI_WINDOW_MASK];
-        if (same0 > 2 && *scan == *match) {
-          unsigned short same1 = h->same[(pos - dist) & ZOPFLI_WINDOW_MASK];
-          unsigned short same = same0 < same1 ? same0 : same1;
-          if (same > limit) same = limit;
-          scan += same;
-          match += same;
-        }
-        scan = GetMatch(scan, match, arrayend, arrayend_safe);
-        currentlength = scan - &array[pos];  /* The found length. */
-      }
-
-      if (currentlength > bestlength) {
-        if (sublen) {
-          unsigned short j;
-          for (j = bestlength + 1; j <= currentlength; j++) {
-            sublen[j] = dist;
-          }
-        }
-        bestdist = dist;
-        bestlength = currentlength;
-        if (currentlength >= limit) break;
-      }
-    }
-
-    /* Switch to the other hash once this will be more efficient. */
-    if (hhead != h->head2 && bestlength >= h->same[hpos] &&
-        h->val2 == h->hashval2[p]) {
-      /* Now use the hash that encodes the length and first byte. */
-      hhead = h->head2;
-      hprev = h->prev2;
-      hhashval = h->hashval2;
-      hval = h->val2;
-    }
-
-    pp = p;
-    p = hprev[p];
-    if (p == pp) break;  /* Uninited prev value. */
-
-    dist += p < pp ? pp - p : ((ZOPFLI_WINDOW_SIZE - p) + pp);
-
-#if ZOPFLI_MAX_CHAIN_HITS < ZOPFLI_WINDOW_SIZE
-    chain_counter--;
-    if (chain_counter <= 0) break;
-#endif
-  }
-
-  if (s->lmc && limit == ZOPFLI_MAX_MATCH && sublen) {
-    size_t lmcpos = pos - s->blockstart;
-    StoreInLongestMatchCache(lmcpos, sublen, bestdist, bestlength);
-  }
-
-  assert(bestlength <= limit);
-
-  *distance = bestdist;
-  *length = bestlength;
-  assert(pos + *length <= size);
-}
-
 void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
                       size_t instart, size_t inend,
-                      ZopfliLZ77Store* store, ZopfliHash* h) {
+                      ZopfliLZ77Store* store) {
   size_t i = 0, j;
   unsigned short leng;
   unsigned short dist;
@@ -453,17 +317,13 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
 
   if (instart == inend) return;
 
-  ZopfliResetHash(h);
-  ZopfliWarmupHash(in, windowstart, inend, h);
-  for (i = windowstart; i < instart; i++) {
-    ZopfliUpdateHash(in, i, inend, h);
-  }
+  ZopfliResetHash(in, inend, windowstart, instart);
 
   for (i = instart; i < inend; i++) {
-    ZopfliUpdateHash(in, i, inend, h);
+    ZopfliUpdateHash(in, i, inend);
 
-    ZopfliFindLongestMatch(s, h, in, i, inend, ZOPFLI_MAX_MATCH, dummysublen,
-                           &dist, &leng);
+    ZopfliFindLongestMatch(in, i, inend, ZOPFLI_MAX_MATCH, dummysublen,
+                           &dist, &leng, s->lmc, s->blockstart);
     lengthscore = GetLengthScore(leng, dist);
 
     /* Lazy matching. */
@@ -488,7 +348,7 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
         assert(leng <= 2 || i + leng - 2 <= inend); /* Don't overflow i. */
         for (j = 2; j < leng; j++) {
           i++;
-          ZopfliUpdateHash(in, i, inend, h);
+          ZopfliUpdateHash(in, i, inend);
         }
         continue;
       }
@@ -511,7 +371,7 @@ void ZopfliLZ77Greedy(ZopfliBlockState* s, const unsigned char* in,
     assert(leng <= 1 || i + leng - 1 <= inend); /* Don't overflow i. */
     for (j = 1; j < leng; j++) {
       i++;
-      ZopfliUpdateHash(in, i, inend, h);
+      ZopfliUpdateHash(in, i, inend);
     }
   }
 }

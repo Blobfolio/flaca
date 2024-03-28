@@ -76,13 +76,11 @@ fn build_ffi() {
 	c.flag_if_supported("-flto");
 
 	c.flag_if_supported("-Wno-unused-function")
-		.flag_if_supported("-Wno-unused")
 		.pic(true)
 		.static_flag(true)
 		.files(&[
 			zopfli_src.join("blocksplitter.c"),
 			zopfli_src.join("deflate.c"),
-			zopfli_src.join("hash.c"),
 			zopfli_src.join("lz77.c"),
 			zopfli_src.join("squeeze.c"),
 			lodepng_src.join("lodepng.c"),
@@ -125,12 +123,12 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 		.allowlist_function("lodepng_encode")
 		.allowlist_function("lodepng_state_cleanup")
 		.allowlist_function("lodepng_state_init")
+		.allowlist_function("ZopfliDeflate")
 		.allowlist_type("LodePNGColorStats")
 		.allowlist_type("LodePNGCompressSettings")
 		.allowlist_type("LodePNGState")
 		.rustified_enum("LodePNGColorType")
 		.rustified_enum("LodePNGFilterStrategy")
-		.allowlist_function("ZopfliDeflate")
 		.derive_debug(true)
 		.merge_extern_blocks(true)
 		.no_copy("LodePNGState")

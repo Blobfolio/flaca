@@ -13,8 +13,10 @@ functionality.
 */
 
 mod cache;
+mod hash;
 mod kat;
 
+use cache::CACHE;
 use std::os::raw::c_uint;
 use super::ffi::EncodedImage;
 use super::lodepng::{
@@ -44,6 +46,14 @@ const FIXED_TREE_LL: [c_uint; 288] = [
 const FIXED_TREE_D: [c_uint; 32] = [5; 32];
 const ZOPFLI_NUM_LL: usize = FIXED_TREE_LL.len();
 const ZOPFLI_NUM_D: usize = FIXED_TREE_D.len();
+
+const ZOPFLI_MAX_MATCH: usize = 258;
+const ZOPFLI_MIN_MATCH: usize = 3;
+
+/// # Length of Sublength Array.
+///
+/// This is hardcoded in `squeeze.c`.
+const SUBLEN_LEN: usize = ZOPFLI_MAX_MATCH + 1;
 
 
 

@@ -13,6 +13,7 @@ interop across the sea of C.
 
 #include <stdlib.h> /* for size_t */
 #include "lodepng/lodepng.h"
+#include "zopfli/util.h"
 
 /*
 Custom Deflate Callback.
@@ -56,26 +57,6 @@ d_lengths: the 32 lengths of the distance codes.
 void PatchDistanceCodesForBuggyDecoders(unsigned* d_lengths);
 
 /*
-Update Longest Match Cache.
-
-Stores the found sublen, distance and length in the longest match cache, if
-possible.
-*/
-void StoreInLongestMatchCache(size_t lmcpos, const unsigned short* sublen,
-    unsigned short distance, unsigned short length);
-
-/*
-Maybe Fetch Length/Distance/Sublength from Cache.
-
-Gets distance, length and sublen values from the cache if possible.
-Returns 1 if it got the values from the cache, 0 if not.
-Updates the limit value to a smaller one if possible with more limited
-information from the cache.
-*/
-int TryGetFromLongestMatchCache(size_t lmcpos, size_t* limit,
-    unsigned short* sublen, unsigned short* distance, unsigned short* length);
-
-/*
 Calculate Symbol Entropy.
 
 Calculates the entropy of each symbol, based on the counts of each symbol. The
@@ -86,7 +67,17 @@ DEFLATE.
 */
 void ZopfliCalculateEntropy(const size_t* count, size_t n, double* bitlengths);
 
-/* Initializes the ZopfliLongestMatchCache. */
+/*
+Find Longest Match.
+
+Update the length, distance, and sublength array with the longest match values.
+*/
+void ZopfliFindLongestMatch(const unsigned char* array,
+    size_t pos, size_t size, size_t limit,
+    unsigned short* sublen, unsigned short* distance, unsigned short* length,
+    unsigned char cache, size_t blockstart);
+
+/* Initializes the Longest Match Cache. */
 void ZopfliInitCache(size_t blocksize);
 
 /*
@@ -118,5 +109,26 @@ Rust side.
 */
 void ZopfliLengthsToSymbols7(const unsigned* lengths, size_t n, unsigned* symbols);
 void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbols);
+
+/*
+Is Long Repetition?
+
+Check the ZopfliHash sameness index to see if this position repeats a lot.
+*/
+unsigned char ZopfliLongRepetition(size_t pos);
+
+/*
+Reset Longest Match Hashes.
+*/
+void ZopfliResetHash(const unsigned char* array, size_t length,
+	                 size_t windowstart, size_t instart);
+
+/*
+Update Longest Match Hashes.
+
+Updates the hash values based on the current position in the array. All calls
+to this must be made for consecutive bytes.
+*/
+void ZopfliUpdateHash(const unsigned char* array, size_t pos, size_t length);
 
 #endif
