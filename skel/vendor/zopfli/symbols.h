@@ -60,11 +60,17 @@ static int ZopfliGetDistExtraBits(int dist) {
 /* Gets value of the extra bits for the given dist, cfr. the DEFLATE spec. */
 static int ZopfliGetDistExtraBitsValue(int dist) {
 #ifdef ZOPFLI_HAS_BUILTIN_CLZ
+  static const int mask1[16] = {
+    0, 0, 5, 9, 17, 33, 65, 129, 257, 513, 1025, 2049, 4097, 8193, 16385, 32769
+  };
+  static const int mask2[16] = {
+	0, 0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023, 2047, 4095, 8191, 16383
+  };
   if (dist < 5) {
     return 0;
   } else {
     int l = 31 ^ __builtin_clz(dist - 1); /* log2(dist - 1) */
-    return (dist - (1 + (1 << l))) & ((1 << (l - 1)) - 1);
+    return (dist - mask1[l]) & mask2[l];
   }
 #else
   if (dist < 5) return 0;
