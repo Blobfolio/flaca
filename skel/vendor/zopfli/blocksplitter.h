@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -38,8 +38,8 @@ Does blocksplitting on LZ77 data.
 The output splitpoints are indices in the LZ77 data.
 maxblocks: set a limit to the amount of blocks. Set to 0 to mean no limit.
 */
-void ZopfliBlockSplitLZ77(const ZopfliLZ77Store* lz77,
-                          size_t** splitpoints, size_t* npoints);
+void ZopfliBlockSplitLZ77(
+	const ZopfliLZ77Store* lz77, size_t** splitpoints, size_t* npoints);
 
 /*
 Does blocksplitting on uncompressed data.
@@ -50,20 +50,20 @@ instart: where to start splitting
 inend: where to end splitting (not inclusive)
 maxblocks: maximum amount of blocks to split into, or 0 for no limit
 splitpoints: dynamic array to put the resulting split point coordinates into.
-  The coordinates are indices in the input array.
+	The coordinates are indices in the input array.
 npoints: pointer to amount of splitpoints, for the dynamic array. The amount of
-  blocks is the amount of splitpoitns + 1.
+	blocks is the amount of splitpoitns + 1.
 */
-void ZopfliBlockSplit(const unsigned char* in, size_t instart, size_t inend,
-                      size_t** splitpoints, size_t* npoints);
+void ZopfliBlockSplit(
+	const unsigned char* in, size_t instart, size_t inend,
+	size_t** splitpoints, size_t* npoints);
 
 /*
 Divides the input into equal blocks, does not even take LZ77 lengths into
 account.
 */
-void ZopfliBlockSplitSimple(const unsigned char* in,
-                            size_t instart, size_t inend,
-                            size_t blocksize,
-                            size_t** splitpoints, size_t* npoints);
+void ZopfliBlockSplitSimple(
+	const unsigned char* in, size_t instart, size_t inend,
+	size_t blocksize, size_t** splitpoints, size_t* npoints);
 
 #endif  /* ZOPFLI_BLOCKSPLITTER_H_ */

@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -38,9 +38,9 @@ Calculates lit/len and dist pairs for given data.
 If instart is larger than 0, it uses values before instart as starting
 dictionary.
 */
-void ZopfliLZ77Optimal(const unsigned char* in, size_t instart, size_t inend,
-                       int numiterations,
-                       ZopfliLZ77Store* store);
+void ZopfliLZ77Optimal(
+	const unsigned char* in, size_t instart, size_t inend,
+	int numiterations, ZopfliLZ77Store* store);
 
 /*
 Does the same as ZopfliLZ77Optimal, but optimized for the fixed tree of the
@@ -52,8 +52,7 @@ using with a fixed tree.
 If instart is larger than 0, it uses values before instart as starting
 dictionary.
 */
-void ZopfliLZ77OptimalFixed(const unsigned char* in,
-                            size_t instart, size_t inend,
-                            ZopfliLZ77Store* store);
+void ZopfliLZ77OptimalFixed(
+	const unsigned char* in, size_t instart, size_t inend, ZopfliLZ77Store* store);
 
 #endif  /* ZOPFLI_SQUEEZE_H_ */

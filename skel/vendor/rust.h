@@ -20,9 +20,10 @@ Custom Deflate Callback.
 
 This tells LodePNG to use Zopfli.
 */
-unsigned flaca_png_deflate(unsigned char** out, size_t* outsize,
-                          const unsigned char* in, size_t insize,
-                          const LodePNGCompressSettings* settings);
+unsigned flaca_png_deflate(
+	unsigned char** out, size_t* outsize,
+	const unsigned char* in, size_t insize,
+	const LodePNGCompressSettings* settings);
 
 /*
 Write Fixed Tree.
@@ -72,10 +73,10 @@ Find Longest Match.
 
 Update the length, distance, and sublength array with the longest match values.
 */
-void ZopfliFindLongestMatch(const unsigned char* array,
-    size_t pos, size_t size, size_t limit,
-    unsigned short* sublen, unsigned short* distance, unsigned short* length,
-    unsigned char cache, size_t blockstart);
+void ZopfliFindLongestMatch(
+	const unsigned char* array, size_t pos, size_t size, size_t limit,
+	unsigned short* sublen, unsigned short* distance, unsigned short* length,
+	unsigned char cache, size_t blockstart);
 
 /* Initializes the Longest Match Cache. */
 void ZopfliInitCache(size_t blocksize);
@@ -97,7 +98,7 @@ bitlengths: Output, the bitlengths for the symbol prefix codes.
 return: 0 for OK, non-0 for error.
 */
 void ZopfliLengthLimitedCodeLengths(
-    const size_t* frequencies, size_t n, size_t maxbits, unsigned* bitlengths);
+	const size_t* frequencies, size_t n, size_t maxbits, unsigned* bitlengths);
 
 /*
 Code Lengths to Symbols.
@@ -120,8 +121,9 @@ unsigned char ZopfliLongRepetition(size_t pos);
 /*
 Reset Longest Match Hashes.
 */
-void ZopfliResetHash(const unsigned char* array, size_t length,
-	                 size_t windowstart, size_t instart);
+void ZopfliResetHash(
+	const unsigned char* array, size_t length,
+	size_t windowstart, size_t instart);
 
 /*
 Update Longest Match Hashes.

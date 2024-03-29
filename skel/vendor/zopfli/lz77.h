@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -40,52 +40,53 @@ ZopfliCleanLZ77Store to destroy it, and ZopfliStoreLitLenDist to append values.
 
 */
 typedef struct ZopfliLZ77Store {
-  unsigned short* litlens;  /* Lit or len. */
-  unsigned short* dists;  /* If 0: indicates literal in corresponding litlens,
-      if > 0: length in corresponding litlens, this is the distance. */
-  size_t size;
+	unsigned short* litlens;  /* Lit or len. */
+	unsigned short* dists;  /* If 0: indicates literal in corresponding litlens,
+			if > 0: length in corresponding litlens, this is the distance. */
+	size_t size;
 
-  const unsigned char* data;  /* original data */
-  size_t* pos;  /* position in data where this LZ77 command begins */
+	const unsigned char* data;  /* original data */
+	size_t* pos;  /* position in data where this LZ77 command begins */
 
-  unsigned short* ll_symbol;
-  unsigned short* d_symbol;
+	unsigned short* ll_symbol;
+	unsigned short* d_symbol;
 
-  /* Cumulative histograms wrapping around per chunk. Each chunk has the amount
-  of distinct symbols as length, so using 1 value per LZ77 symbol, we have a
-  precise histogram at every N symbols, and the rest can be calculated by
-  looping through the actual symbols of this chunk. */
-  size_t* ll_counts;
-  size_t* d_counts;
+	/* Cumulative histograms wrapping around per chunk. Each chunk has the amount
+	of distinct symbols as length, so using 1 value per LZ77 symbol, we have a
+	precise histogram at every N symbols, and the rest can be calculated by
+	looping through the actual symbols of this chunk. */
+	size_t* ll_counts;
+	size_t* d_counts;
 } ZopfliLZ77Store;
 
 void ZopfliInitLZ77Store(const unsigned char* data, ZopfliLZ77Store* store);
 void ZopfliCleanLZ77Store(ZopfliLZ77Store* store);
 void ZopfliCopyLZ77Store(const ZopfliLZ77Store* source, ZopfliLZ77Store* dest);
-void ZopfliStoreLitLenDist(unsigned short length, unsigned short dist,
-                           size_t pos, ZopfliLZ77Store* store);
-void ZopfliAppendLZ77Store(const ZopfliLZ77Store* store,
-                           ZopfliLZ77Store* target);
+void ZopfliStoreLitLenDist(
+	unsigned short length, unsigned short dist, size_t pos, ZopfliLZ77Store* store);
+void ZopfliAppendLZ77Store(
+	const ZopfliLZ77Store* store, ZopfliLZ77Store* target);
+
 /* Gets the amount of raw bytes that this range of LZ77 symbols spans. */
-size_t ZopfliLZ77GetByteRange(const ZopfliLZ77Store* lz77,
-                              size_t lstart, size_t lend);
+size_t ZopfliLZ77GetByteRange(
+	const ZopfliLZ77Store* lz77, size_t lstart, size_t lend);
+
 /* Gets the histogram of lit/len and dist symbols in the given range, using the
 cumulative histograms, so faster than adding one by one for large range. Does
 not add the one end symbol of value 256. */
-void ZopfliLZ77GetHistogram(const ZopfliLZ77Store* lz77,
-                            size_t lstart, size_t lend,
-                            size_t* ll_counts, size_t* d_counts);
+void ZopfliLZ77GetHistogram(
+	const ZopfliLZ77Store* lz77, size_t lstart, size_t lend,
+	size_t* ll_counts, size_t* d_counts);
 
 /*
-
 Does LZ77 using an algorithm similar to gzip, with lazy matching, rather than
 with the slow but better "squeeze" implementation.
 The result is placed in the ZopfliLZ77Store.
 If instart is larger than 0, it uses values before instart as starting
 dictionary.
 */
-void ZopfliLZ77Greedy(size_t cache, const unsigned char* in,
-                      size_t instart, size_t inend,
-                      ZopfliLZ77Store* store);
+void ZopfliLZ77Greedy(
+	size_t cache, const unsigned char* in, size_t instart, size_t inend,
+	ZopfliLZ77Store* store);
 
 #endif  /* ZOPFLI_LZ77_H_ */

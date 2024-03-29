@@ -46,6 +46,9 @@ thread_local!(
 #[no_mangle]
 #[inline]
 #[allow(unsafe_code)]
+/// # Find Longest Match.
+///
+/// This is a rewrite of the original `lz77.c` method.
 pub(crate) extern "C" fn ZopfliFindLongestMatch(
 	arr: *const u8,
 	pos: usize,
@@ -80,7 +83,11 @@ pub(crate) extern "C" fn ZopfliFindLongestMatch(
 #[allow(unsafe_code, clippy::cast_possible_truncation)]
 /// # Is Long Repetition?
 ///
-/// Returns true if the `same` value for this position is long.
+/// Returns true if the position has a long repetition.
+///
+/// This is only used by `GetBestLengths` in `squeeze.c`; performing this check
+/// here enables us to remove all direct traces of the `ZopfliHash` struct from
+/// that half of the codebase.
 pub(crate) extern "C" fn ZopfliLongRepetition(pos: usize) -> c_uchar {
 	HASH.with_borrow(|h| u8::from(
 		ZOPFLI_MAX_MATCH <= pos &&
