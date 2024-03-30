@@ -51,11 +51,10 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	// Zopfli writes data one bit at a time… for reasons. This bit pointer
 	// lets it know which part of the last byte it is currently working on.
 	let mut bp: c_uchar = 0;
-	let bp_ptr = std::ptr::addr_of_mut!(bp);
 
 	// Compress in chunks, à la ZopfliDeflate.
 	let mut i: usize = 0;
-	loop {
+	while i < insize {
 		// Each pass needs to know if it is the last, and how much data to
 		// handle.
 		let (last_part, size) =
@@ -70,7 +69,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 				in_,
 				i,
 				i + size,
-				bp_ptr,
+				&mut bp,
 				out,
 				outsize,
 			);
@@ -78,7 +77,6 @@ pub(crate) extern "C" fn flaca_png_deflate(
 
 		// Onward and upward!
 		i += size;
-		if i >= insize { break; }
 	}
 
 	// Errors panic, so if we're here everything must be fine.

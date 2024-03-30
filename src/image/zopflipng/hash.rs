@@ -28,7 +28,7 @@ use super::{
 const ZOPFLI_WINDOW_SIZE: usize = 32_768;
 const ZOPFLI_WINDOW_MASK: usize = ZOPFLI_WINDOW_SIZE - 1;
 const HASH_SHIFT: i32 = 5;
-const HASH_MASK: u16 = 32_767;
+const HASH_MASK: i16 = 32_767;
 const ZOPFLI_MAX_CHAIN_HITS: usize = 8192;
 
 
@@ -188,39 +188,34 @@ impl ZopfliHash {
 		}
 	}
 
-	#[allow(
-		unsafe_code,
-		clippy::cast_possible_truncation,
-	)]
+	#[allow(unsafe_code)]
 	/// # Initialize Values.
 	///
 	/// Initialize/reset hash values to their defaults so we can reuse the
 	/// structure for a new dataset.
 	unsafe fn init(&mut self) {
-		// The idx<=>hash arrays default to -1 for "None".
+		// All the hash/index arrays default to `-1` for `None`; thanks to
+		// Rust's complementary notation, we can achieve this quickly by
+		// flipping on all the bits.
 		addr_of_mut!(self.chain1.hash_idx).write_bytes(u8::MAX, 1);
 		addr_of_mut!(self.chain1.idx_hash).write_bytes(u8::MAX, 1);
-
-		// Each value in the previous array unfortunately defaults to its
-		// position, so have to be written one at a time.
-		let prev_idx = addr_of_mut!(self.chain1.prev_idx).cast::<u16>();
-		for i in 0..ZOPFLI_WINDOW_SIZE {
-			prev_idx.add(i).write(i as u16);
-		}
+		addr_of_mut!(self.chain1.idx_prev).write_bytes(u8::MAX, 1);
 
 		// The initial hash value is just plain zero.
 		addr_of_mut!(self.chain1.val).write(0);
 
-		// The second chain is the same as the first, so we can copy it
+		// The second chain is the same as the first, so we can simply copy it
 		// wholesale.
 		addr_of_mut!(self.chain2).copy_from_nonoverlapping(addr_of!(self.chain1), 1);
 
-		// The repetition counts all start at zero.
+		// Repetitions default to zero; thanks to zero being zeros all the way
+		// down, we can achieve this by flipping off all the bits.
 		addr_of_mut!(self.same).write_bytes(0, 1);
 	}
 
 	#[allow(
 		clippy::cast_possible_truncation,
+		clippy::cast_possible_wrap,
 		clippy::similar_names,
 	)]
 	#[inline]
@@ -248,7 +243,7 @@ impl ZopfliHash {
 		self.same[hpos] = amount;
 
 		// Cycle the second hash.
-		self.chain2.val = ((amount - ZOPFLI_MIN_MATCH as u16) & 255) ^ self.chain1.val;
+		self.chain2.val = (((amount - ZOPFLI_MIN_MATCH as u16) & 255) as i16) ^ self.chain1.val;
 		self.chain2.update_hash(pos);
 	}
 
@@ -256,7 +251,7 @@ impl ZopfliHash {
 	///
 	/// This updates the rotating (chain1) value.
 	fn update_hash_value(&mut self, c: u8) {
-		self.chain1.val = ((self.chain1.val << HASH_SHIFT) ^ u16::from(c)) & HASH_MASK;
+		self.chain1.val = ((self.chain1.val << HASH_SHIFT) ^ i16::from(c)) & HASH_MASK;
 	}
 }
 
@@ -329,7 +324,7 @@ impl ZopfliHash {
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
 		clippy::cast_ptr_alignment,
-		clippy::cognitive_complexity,
+		clippy::cast_sign_loss,
 		clippy::similar_names,
 	)]
 	/// # Find Longest Match Loop.
@@ -358,15 +353,16 @@ impl ZopfliHash {
 		let mut switched = false;
 		let mut chain = &self.chain1;
 
-		debug_assert_eq!(chain.hash_idx[usize::from(chain.val)], hpos as i16);
+		debug_assert_eq!(chain.hash_idx[chain.val as usize], hpos as i16);
 
-		// Masking is unnecessary but helps the compiler know the values are
-		// within 0..ZOPFLI_WINDOW_SIZE (for indexing purposes).
+		// Keep track of the current and previous matches, if any.
 		let mut pp = hpos;
-		let mut p = usize::from(chain.prev_idx[hpos]);
+		let mut p =
+			if chain.idx_prev[hpos] < 0 { hpos }
+			else { chain.idx_prev[hpos] as usize };
 
 		// Even though the ultimate distance will be u16, this variable needs
-		// to be at least 32-bits to deal with overflowing math.
+		// to be at least 32-bit to keep the math from overflowing.
 		let mut dist =
 			if p < pp { pp - p }
 			else { ZOPFLI_WINDOW_SIZE + pp - p };
@@ -377,9 +373,11 @@ impl ZopfliHash {
 		while p < ZOPFLI_WINDOW_SIZE && dist < ZOPFLI_WINDOW_SIZE && hits < ZOPFLI_MAX_CHAIN_HITS {
 			let mut currentlength = 0;
 
-			// These are simple sanity assertions;
-			debug_assert_eq!(p, usize::from(chain.prev_idx[pp]));
-			debug_assert_eq!(chain.idx_hash[p], chain.val as i16);
+			// These are simple sanity assertions; the values are only ever
+			// altered via ZopfliHashChain::update_hash so there isn't much
+			// room for mistake.
+			debug_assert!(p as i16 == chain.idx_prev[pp] || p == pp);
+			debug_assert_eq!(chain.idx_hash[p], chain.val);
 
 			// If we have distance, we can look for matches!
 			if 0 < dist && dist <= pos {
@@ -452,18 +450,18 @@ impl ZopfliHash {
 			if
 				! switched &&
 				same0 <= bestlength &&
-				self.chain2.idx_hash[p] == self.chain2.val as i16
+				self.chain2.idx_hash[p] == self.chain2.val
 			{
 				switched = true;
 				chain = &self.chain2;
 			}
 
-			// Reset the reference points for the next iteration.
-			pp = p;
-			p = usize::from(chain.prev_idx[p]);
+			// If there's no next previous match, we're done!
+			if chain.idx_prev[p] < 0 { break; }
 
-			// Stop early if we've run out of matching tails.
-			if p == pp { break; }
+			// Otherwise shift to the next (previous) value.
+			pp = p;
+			p = chain.idx_prev[p] as usize;
 
 			// Increase the distance accordingly.
 			dist +=
@@ -485,40 +483,34 @@ impl ZopfliHash {
 
 /// # Zopfli Hash Chain.
 ///
-/// In the original C, these four values are repeated twice in the main struct
-/// with names like `head`/`head2`, `prev`/`prev2`, etc.
+/// This struct stores all recorded hash values and their latest and previous
+/// positions.
 ///
-/// This simply abstracts the collection to its own chain to improve the
-/// efficiency.
+/// Written values are all in the range of `0..=i16::MAX`, matching the array
+/// sizes, elminating bounds checking on the upper end.
 ///
-/// Note that most of the integer types are larger than necessary for their
-/// payloads as that works out better for performance (for mysterious
-/// reasons).
+/// The remaining "sign" bit is logically repurposed to serve as a sort of
+/// `None`, allowing us to cheaply identify unwritten values. (Testing for that
+/// takes care of bounds checking on the lower end.)
 pub(crate) struct ZopfliHashChain {
 	/// Hash value to (most recent) index.
 	///
-	/// -1 is used for "None"; otherwise this is basically half a u16.
-	///
 	/// Note: the original (head/head2) `hash.c` implementation was
 	/// over-allocated for some reason; the hash values are masked like
-	/// everything else so won't exceed 0..ZOPFLI_WINDOW_SIZE.
+	/// everything else so can't exceed `0..ZOPFLI_WINDOW_SIZE`.
 	hash_idx: [i16; ZOPFLI_WINDOW_SIZE],
 
 	/// Index to hash value (if any); this is the reverse of `hash_idx`.
-	///
-	/// -1 is used for "None"; otherwise this is basically half a u16.
 	idx_hash: [i16; ZOPFLI_WINDOW_SIZE],
 
 	/// Index to the previous index with the same hash.
-	///
-	/// This has the same range as the hash indexes, but without -1 since its
-	/// default values match the index (e.g. 0, 1, 2, 3, 4…).
-	prev_idx: [u16; ZOPFLI_WINDOW_SIZE],
+	idx_prev: [i16; ZOPFLI_WINDOW_SIZE],
 
 	/// Current hash value.
 	///
-	/// Again, only half the u16 range is actually used.
-	val: u16,
+	/// Note: this value defaults to zero and is never negative, but its
+	/// upper range is `i16::MAX`, so the signed type still makes sense.
+	val: i16,
 }
 
 impl ZopfliHashChain {
@@ -531,20 +523,20 @@ impl ZopfliHashChain {
 	/// # Update Hash.
 	fn update_hash(&mut self, pos: usize) {
 		let hpos = pos & ZOPFLI_WINDOW_MASK;
-		let hval = self.val & HASH_MASK; // Masked for the compiler; self.val is always in range.
+		let hval = i16::max(0, self.val);
 
 		// Update the hash.
-		self.idx_hash[hpos] = hval as i16;
+		self.idx_hash[hpos] = hval;
 
 		// Update the tail.
-		let hash_idx = self.hash_idx[usize::from(hval)];
-		self.prev_idx[hpos] =
-			if 0 <= hash_idx && self.idx_hash[hash_idx as usize] == hval as i16 {
-				hash_idx as u16
+		let hash_idx = self.hash_idx[hval as usize];
+		self.idx_prev[hpos] =
+			if 0 <= hash_idx && self.idx_hash[hash_idx as usize] == hval {
+				hash_idx
 			}
-			else { hpos as u16 };
+			else { hpos as i16 };
 
 		// Update the head.
-		self.hash_idx[usize::from(hval)] = hpos as i16;
+		self.hash_idx[hval as usize] = hpos as i16;
 	}
 }
