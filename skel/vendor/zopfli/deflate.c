@@ -691,15 +691,3 @@ void ZopfliDeflatePart(
 	free(splitpoints);
 	free(splitpoints_uncompressed);
 }
-
-void ZopfliDeflate(
-	int numiterations, const unsigned char* in, size_t insize,
-	unsigned char* bp, unsigned char** out, size_t* outsize) {
-	size_t i = 0;
-	do {
-		int masterfinal = (i + ZOPFLI_MASTER_BLOCK_SIZE >= insize);
-		size_t size = masterfinal ? insize - i : ZOPFLI_MASTER_BLOCK_SIZE;
-		ZopfliDeflatePart(numiterations, masterfinal, in, i, i + size, bp, out, outsize);
-		i += size;
-	} while (i < insize);
-}

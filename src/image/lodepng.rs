@@ -25,6 +25,10 @@ include!(concat!(env!("OUT_DIR"), "/lodepng-bindgen.rs"));
 
 
 
+const ZOPFLI_MASTER_BLOCK_SIZE: usize = 1_000_000;
+
+
+
 #[no_mangle]
 #[inline]
 #[allow(unsafe_code)]
@@ -44,17 +48,40 @@ pub(crate) extern "C" fn flaca_png_deflate(
 		numiterations = if insize < 200_000 { 60 } else { 20 };
 	}
 
+	// Zopfli writes data one bit at a time… for reasons. This bit pointer
+	// lets it know which part of the last byte it is currently working on.
 	let mut bp: c_uchar = 0;
-	unsafe {
-		ZopfliDeflate(
-			numiterations,
-			in_,
-			insize,
-			std::ptr::addr_of_mut!(bp),
-			out,
-			outsize,
-		);
+	let bp_ptr = std::ptr::addr_of_mut!(bp);
+
+	// Compress in chunks, à la ZopfliDeflate.
+	let mut i: usize = 0;
+	loop {
+		// Each pass needs to know if it is the last, and how much data to
+		// handle.
+		let (last_part, size) =
+			if i + ZOPFLI_MASTER_BLOCK_SIZE >= insize { (1_i32, insize - i) }
+			else { (0_i32, ZOPFLI_MASTER_BLOCK_SIZE) };
+
+		// Crunch the part!
+		unsafe {
+			ZopfliDeflatePart(
+				numiterations,
+				last_part,
+				in_,
+				i,
+				i + size,
+				bp_ptr,
+				out,
+				outsize,
+			);
+		}
+
+		// Onward and upward!
+		i += size;
+		if i >= insize { break; }
 	}
+
+	// Errors panic, so if we're here everything must be fine.
 	0
 }
 

@@ -123,7 +123,7 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 		.allowlist_function("lodepng_encode")
 		.allowlist_function("lodepng_state_cleanup")
 		.allowlist_function("lodepng_state_init")
-		.allowlist_function("ZopfliDeflate")
+		.allowlist_function("ZopfliDeflatePart")
 		.allowlist_type("LodePNGColorStats")
 		.allowlist_type("LodePNGCompressSettings")
 		.allowlist_type("LodePNGState")
