@@ -15,6 +15,18 @@ interop across the sea of C.
 #include "lodepng/lodepng.h"
 #include "zopfli/util.h"
 
+typedef struct SymbolStats {
+	/* The literal and length symbols. */
+	size_t litlens[ZOPFLI_NUM_LL];
+	/* The 32 unique dist symbols, not the 32768 possible dists. */
+	size_t dists[ZOPFLI_NUM_D];
+
+	/* Length of each lit/len symbol in bits. */
+	double ll_symbols[ZOPFLI_NUM_LL];
+	/* Length of each dist symbol in bits. */
+	double d_symbols[ZOPFLI_NUM_D];
+} SymbolStats;
+
 /*
 Custom Deflate Callback.
 
@@ -24,6 +36,17 @@ unsigned flaca_png_deflate(
 	unsigned char** out, size_t* outsize,
 	const unsigned char* in, size_t insize,
 	const LodePNGCompressSettings* settings);
+
+/*
+Get Best Lengths.
+
+Performs the forward pass for "squeeze". Gets the most optimal length to reach
+every byte from a previous byte, using cost calculations. Returns the cost that
+was, according to the costmodel, needed to get to the end.
+*/
+double GetBestLengths(
+	const unsigned char* arr, size_t instart, size_t inend,
+	const SymbolStats* stats, unsigned short* length_array, float* costs);
 
 /*
 Write Fixed Tree.
@@ -110,13 +133,6 @@ Rust side.
 */
 void ZopfliLengthsToSymbols7(const unsigned* lengths, size_t n, unsigned* symbols);
 void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbols);
-
-/*
-Is Long Repetition?
-
-Check the ZopfliHash sameness index to see if this position repeats a lot.
-*/
-unsigned char ZopfliLongRepetition(size_t pos);
 
 /*
 Reset Longest Match Hashes.

@@ -24,6 +24,7 @@ use super::lodepng::{
 	LodePNGColorType,
 	LodePNGFilterStrategy,
 	LodePNGState,
+	SymbolStats,
 };
 
 

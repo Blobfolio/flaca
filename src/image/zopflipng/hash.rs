@@ -21,8 +21,9 @@ use std::{
 use super::{
 	CACHE,
 	SUBLEN_LEN,
-	ZOPFLI_MIN_MATCH,
+	SymbolStats,
 	ZOPFLI_MAX_MATCH,
+	ZOPFLI_MIN_MATCH,
 };
 
 const ZOPFLI_WINDOW_SIZE: usize = 32_768;
@@ -30,6 +31,50 @@ const ZOPFLI_WINDOW_MASK: usize = ZOPFLI_WINDOW_SIZE - 1;
 const HASH_SHIFT: i32 = 5;
 const HASH_MASK: i16 = 32_767;
 const ZOPFLI_MAX_CHAIN_HITS: usize = 8192;
+
+/// # Length Symbols and Extra Bits.
+const LENGTH_SYMBOLS_BITS: [(u16, u16); SUBLEN_LEN] = [
+	(0, 0), (0, 0), (0, 0),
+	(257, 0), (258, 0), (259, 0), (260, 0), (261, 0), (262, 0), (263, 0), (264, 0),
+	(265, 1), (265, 1), (266, 1), (266, 1), (267, 1), (267, 1), (268, 1), (268, 1),
+	(269, 2), (269, 2), (269, 2), (269, 2), (270, 2), (270, 2), (270, 2), (270, 2),
+	(271, 2), (271, 2), (271, 2), (271, 2), (272, 2), (272, 2), (272, 2), (272, 2),
+	(273, 3), (273, 3), (273, 3), (273, 3), (273, 3), (273, 3), (273, 3), (273, 3),
+	(274, 3), (274, 3), (274, 3), (274, 3), (274, 3), (274, 3), (274, 3), (274, 3),
+	(275, 3), (275, 3), (275, 3), (275, 3), (275, 3), (275, 3), (275, 3), (275, 3),
+	(276, 3), (276, 3), (276, 3), (276, 3), (276, 3), (276, 3), (276, 3), (276, 3),
+	(277, 4), (277, 4), (277, 4), (277, 4), (277, 4), (277, 4), (277, 4), (277, 4),
+	(277, 4), (277, 4), (277, 4), (277, 4), (277, 4), (277, 4), (277, 4), (277, 4),
+	(278, 4), (278, 4), (278, 4), (278, 4), (278, 4), (278, 4), (278, 4), (278, 4),
+	(278, 4), (278, 4), (278, 4), (278, 4), (278, 4), (278, 4), (278, 4), (278, 4),
+	(279, 4), (279, 4), (279, 4), (279, 4), (279, 4), (279, 4), (279, 4), (279, 4),
+	(279, 4), (279, 4), (279, 4), (279, 4), (279, 4), (279, 4), (279, 4), (279, 4),
+	(280, 4), (280, 4), (280, 4), (280, 4), (280, 4), (280, 4), (280, 4), (280, 4),
+	(280, 4), (280, 4), (280, 4), (280, 4), (280, 4), (280, 4), (280, 4), (280, 4),
+	(281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5),
+	(281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5),
+	(281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5),
+	(281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5), (281, 5),
+	(282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5),
+	(282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5),
+	(282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5),
+	(282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5), (282, 5),
+	(283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5),
+	(283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5),
+	(283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5),
+	(283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5), (283, 5),
+	(284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5),
+	(284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5),
+	(284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5),
+	(284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (284, 5), (285, 0),
+];
+
+/// # Distance Bits (for minimum cost).
+const MIN_COST_DISTANCES: [u8; 30] = [
+	0, 0, 0, 0, 1, 1, 2, 2, 3, 3,
+	4, 4, 5, 5, 6, 6, 7, 7, 8, 8,
+	9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+];
 
 
 
@@ -42,6 +87,44 @@ thread_local!(
 );
 
 
+
+#[no_mangle]
+#[allow(unsafe_code)]
+pub(crate) extern "C" fn GetBestLengths(
+	arr: *const u8,
+	instart: usize,
+	inend: usize,
+	stats: *const SymbolStats,
+	length_array: *mut u16,
+	costs: *mut f32,
+) -> f64 {
+	// Easy abort.
+	if instart >= inend { return 0.0; }
+
+	// Initialize costs and lengths.
+	let blocksize = inend - instart;
+
+	let costs = unsafe { std::slice::from_raw_parts_mut(costs, blocksize + 1) };
+	costs.fill(f32::INFINITY);
+	costs[0] = 0.0;
+
+	let length_array = unsafe { std::slice::from_raw_parts_mut(length_array, blocksize + 1) };
+	length_array[0] = 0;
+
+	// Dereference the stats if there are any.
+	let stats =
+		if stats.is_null() { None }
+		else { Some(unsafe { &*stats }) };
+
+	HASH.with_borrow_mut(|h| h.get_best_lengths(
+		arr,
+		instart,
+		inend,
+		stats,
+		length_array,
+		costs,
+	))
+}
 
 #[no_mangle]
 #[inline]
@@ -76,24 +159,6 @@ pub(crate) extern "C" fn ZopfliFindLongestMatch(
 		unsafe { &mut *length },
 		if cache == 1 { Some(blockstart) } else { None },
 	));
-}
-
-#[no_mangle]
-#[inline]
-#[allow(unsafe_code, clippy::cast_possible_truncation)]
-/// # Is Long Repetition?
-///
-/// Returns true if the position has a long repetition.
-///
-/// This is only used by `GetBestLengths` in `squeeze.c`; performing this check
-/// here enables us to remove all direct traces of the `ZopfliHash` struct from
-/// that half of the codebase.
-pub(crate) extern "C" fn ZopfliLongRepetition(pos: usize) -> c_uchar {
-	HASH.with_borrow(|h| u8::from(
-		ZOPFLI_MAX_MATCH <= pos &&
-		h.same[pos & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16 * 2 &&
-		h.same[(pos - ZOPFLI_MAX_MATCH) & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16
-	))
 }
 
 #[no_mangle]
@@ -252,6 +317,158 @@ impl ZopfliHash {
 	/// This updates the rotating (chain1) value.
 	fn update_hash_value(&mut self, c: u8) {
 		self.chain1.val = ((self.chain1.val << HASH_SHIFT) ^ i16::from(c)) & HASH_MASK;
+	}
+}
+
+impl ZopfliHash {
+	#[allow(
+		unsafe_code,
+		clippy::cast_possible_truncation,
+	)]
+	/// # Get Best Lengths.
+	///
+	/// This method performs the forward pass for "squeeze", calculating the
+	/// optimal length to reach every byte from a previous byte. The resulting
+	/// cost is returned.
+	///
+	/// Note: the repeated float truncation looks like an oversight but is
+	/// intentional; trying to use only one or the other exclusively alters the
+	/// outcome, so whatever. Haha.
+	///
+	/// This is a rewrite of the original `squeeze.c` method.
+	fn get_best_lengths(
+		&mut self,
+		arr: *const u8,
+		instart: usize,
+		inend: usize,
+		stats: Option<&SymbolStats>,
+		length_array: &mut [u16],
+		costs: &mut [f32],
+	) -> f64 {
+		let windowstart = instart.saturating_sub(ZOPFLI_WINDOW_SIZE);
+
+		// Reset and warm the hash.
+		unsafe {
+			self.init();
+			self.update_hash_value(*arr.add(windowstart));
+			if windowstart + 1 < inend {
+				self.update_hash_value(*arr.add(windowstart + 1));
+			}
+		}
+
+		let mut length = 0_u16;
+		let mut distance = 0_u16;
+		let mut sublen = [0_u16; SUBLEN_LEN];
+
+		// Find the minimum and maximum cost.
+		let min_cost = stats.map_or(12.0, get_minimum_cost);
+
+		// Convert the array to a slice for safer reslicing.
+		let arr = unsafe { std::slice::from_raw_parts(arr, inend) };
+		let mut i = windowstart;
+		while i < arr.len() {
+			// Hash the remainder.
+			self.update_hash(&arr[i..], i);
+			if i < instart {
+				i += 1;
+				continue;
+			}
+
+			// Relative position for both the costs and lengths arrays; these
+			// contain (iend - istart + 1) entries, so anytime i is in range
+			// for arr, j is in range for costs and length_array.
+			let mut j = i - instart;
+
+			// We're in a long repetition of the same character and have more
+			// than ZOPFLI_MAX_MATCH ahead of and behind us.
+			if
+				self.same[i & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16 * 2 &&
+				i > instart + ZOPFLI_MAX_MATCH + 1 &&
+				arr.len() > i + ZOPFLI_MAX_MATCH * 2 + 1 &&
+				self.same[(i - ZOPFLI_MAX_MATCH) & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16
+			{
+				// Set the lengths of each repetition to ZOPFLI_MAX_MATCH, and
+				// the cost to the (precalculated) cost of that length.
+				let symbol_cost = stats.map_or(
+					13.0,
+					|s| (s.ll_symbols[285] + s.d_symbols[0]),
+				);
+				for _ in 0..ZOPFLI_MAX_MATCH {
+					// Safety: we verified at least ZOPFLI_MAX_MATCH entries
+					// remain in arr, so that many plus one remain in the cost
+					// and length arrays too.
+					unsafe {
+						*costs.get_unchecked_mut(j + ZOPFLI_MAX_MATCH) = (
+							f64::from(*costs.get_unchecked(j)) + symbol_cost
+						) as f32;
+						*length_array.get_unchecked_mut(j + ZOPFLI_MAX_MATCH) = ZOPFLI_MAX_MATCH as u16;
+					}
+					i += 1;
+					j += 1;
+					self.update_hash(&arr[i..], i);
+				}
+			}
+
+			// Find the longest remaining match.
+			self.find(
+				arr.as_ptr(),
+				i,
+				arr.len(),
+				ZOPFLI_MAX_MATCH,
+				&mut sublen,
+				&mut distance,
+				&mut length,
+				Some(instart),
+			);
+
+			// Literal.
+			if i < arr.len() {
+				let new_cost = stats.map_or(
+					if arr[i] <= 143 { 8.0 } else { 9.0 },
+					|s| s.ll_symbols[usize::from(arr[i])],
+				) + f64::from(unsafe { *costs.get_unchecked(j) });
+				debug_assert!(0.0 <= new_cost);
+
+				// Update it if lower.
+				if new_cost < f64::from(unsafe { *costs.get_unchecked(j + 1) }) {
+					costs[j + 1] = new_cost as f32;
+					length_array[j + 1] = 1;
+				}
+			}
+
+			// Lengths and Sublengths.
+			let limit = usize::from(length).min(arr.len() - i);
+			if (ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH).contains(&limit) {
+				let min_cost_add = min_cost + f64::from(unsafe { *costs.get_unchecked(j) });
+				let mut k = ZOPFLI_MIN_MATCH;
+				for &v in &sublen[ZOPFLI_MIN_MATCH..=limit] {
+					// The expensive cost calculations are only worth
+					// performing if the stored cost is larger than the
+					// minimum cost we found earlier.
+					if min_cost_add < f64::from(unsafe { *costs.get_unchecked(j + k) }) {
+						let new_cost = stats.map_or_else(
+							|| get_fixed_cost(k as u16, v),
+							|s| get_stat_cost(k as u16, v, s),
+						) + f64::from(costs[j]);
+						debug_assert!(0.0 <= new_cost);
+
+						// Update it if lower.
+						if new_cost < f64::from(costs[j + k]) {
+							costs[j + k] = new_cost as f32;
+							length_array[j + k] = k as u16;
+						}
+					}
+					k += 1;
+				}
+			}
+
+			// Back around again!
+			i += 1;
+		}
+
+		// Return the final cost!
+		debug_assert!(0.0 <= costs[costs.len() - 1]);
+		f64::from(costs[costs.len() - 1])
 	}
 }
 
@@ -538,5 +755,114 @@ impl ZopfliHashChain {
 
 		// Update the head.
 		self.hash_idx[hval as usize] = hpos as i16;
+	}
+}
+
+
+
+#[allow(
+	unsafe_code,
+	clippy::cast_possible_truncation,
+	clippy::similar_names,
+)]
+/// # Fixed Cost Model.
+///
+/// This models the cost using a fixed tree.
+fn get_fixed_cost(len: u16, dist: u16) -> f64 {
+	if dist == 0 {
+		if len <= 143 { 8.0 }
+		else { 9.0 }
+	}
+	else {
+		let (lsym, lbits) = unsafe {
+			// Safety: this is only ever called with lengths between MIN..=MAX
+			// so values are always in range.
+			*LENGTH_SYMBOLS_BITS.get_unchecked(usize::from(len))
+		};
+		let dbits =
+			if dist < 5 { 0 }
+			else { (dist - 1).ilog2() as u16 - 1 };
+		let base =
+			if 279 < lsym { 13 }
+			else { 12 };
+
+		f64::from(base + dbits + lbits)
+	}
+}
+
+#[allow(
+	unsafe_code,
+	clippy::cast_possible_truncation,
+	clippy::similar_names,
+)]
+/// # Minimum Cost Model.
+///
+/// This returns the minimum _statistical_ cost, which is the sum of the
+/// minimum length cost and minimum distance cost.
+fn get_minimum_cost(stats: &SymbolStats) -> f64 {
+	// Find the minimum length cost.
+	let mut length_cost = f64::INFINITY;
+	for &(lsym, lbits) in LENGTH_SYMBOLS_BITS.iter().skip(3) {
+		// Safety: the largest length symbol is 285; the last index of
+		// ll_symbols is 287.
+		let cost = f64::from(lbits) + unsafe { *stats.ll_symbols.get_unchecked(lsym as usize) };
+		if cost < length_cost { length_cost = cost; }
+	}
+
+	// Now find the minimum distance cost.
+	let mut dist_cost = f64::INFINITY;
+	for (bits, v) in MIN_COST_DISTANCES.iter().copied().zip(stats.d_symbols) {
+		let cost = f64::from(bits) + v;
+		if cost < dist_cost { dist_cost = cost; }
+	}
+
+	// Add them together and we have our minimum.
+	length_cost + dist_cost
+}
+
+#[allow(
+	unsafe_code,
+	clippy::cast_possible_truncation,
+	clippy::similar_names,
+)]
+/// # Statistical Cost Model.
+///
+/// This models the cost using the gathered symbol statistics.
+fn get_stat_cost(len: u16, dist: u16, stats: &SymbolStats) -> f64 {
+	if dist == 0 {
+		// Safety: this is only ever called with lengths between MIN..=MAX so
+		// values are always in range.
+		unsafe { *stats.ll_symbols.get_unchecked(usize::from(len)) }
+	}
+	else {
+		// Safety: this is only ever called with lengths between MIN..=MAX so
+		// values are always in range.
+		let (lsym, lbits) = unsafe {
+			*LENGTH_SYMBOLS_BITS.get_unchecked(usize::from(len))
+		};
+		let (dsym, dbits) = distance_symbol_bits(u32::from(dist));
+
+		f64::from(lbits + dbits) +
+		unsafe {
+			// Safety: all returned symbols are in range.
+			*stats.ll_symbols.get_unchecked(lsym as usize) +
+			*stats.d_symbols.get_unchecked(dsym as usize)
+		}
+	}
+}
+
+#[allow(clippy::cast_possible_truncation)]
+/// # Distance Symbol and Extra Bits.
+///
+/// Calculate the symbol and bits given the distance. There is unfortunately
+/// too much variation to justify a simple table like the one used for lengths;
+/// (compiler-optimized) math is our best bet.
+const fn distance_symbol_bits(dist: u32) -> (u16, u16) {
+	if dist < 5 { (dist as u16 - 1, 0) }
+	else {
+		let d_log = (dist - 1).ilog2();
+		let r = ((dist - 1) >> (d_log - 1)) & 1;
+		let sym = (d_log * 2 + r) as u16;
+		(sym, (d_log - 1) as u16)
 	}
 }
