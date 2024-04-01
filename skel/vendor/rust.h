@@ -15,6 +15,29 @@ interop across the sea of C.
 #include "lodepng/lodepng.h"
 #include "zopfli/util.h"
 
+
+/* Not ours, just moved. */
+typedef struct ZopfliLZ77Store {
+	unsigned short* litlens;  /* Lit or len. */
+	unsigned short* dists;  /* If 0: indicates literal in corresponding litlens,
+			if > 0: length in corresponding litlens, this is the distance. */
+	size_t size;
+
+	const unsigned char* data;  /* original data */
+	size_t* pos;  /* position in data where this LZ77 command begins */
+
+	unsigned short* ll_symbol;
+	unsigned short* d_symbol;
+
+	/* Cumulative histograms wrapping around per chunk. Each chunk has the amount
+	of distinct symbols as length, so using 1 value per LZ77 symbol, we have a
+	precise histogram at every N symbols, and the rest can be calculated by
+	looping through the actual symbols of this chunk. */
+	size_t* ll_counts;
+	size_t* d_counts;
+} ZopfliLZ77Store;
+
+/* Not ours, just moved. */
 typedef struct SymbolStats {
 	/* The literal and length symbols. */
 	size_t litlens[ZOPFLI_NUM_LL];
@@ -27,6 +50,8 @@ typedef struct SymbolStats {
 	double d_symbols[ZOPFLI_NUM_D];
 } SymbolStats;
 
+
+
 /*
 Custom Deflate Callback.
 
@@ -38,22 +63,21 @@ unsigned flaca_png_deflate(
 	const LodePNGCompressSettings* settings);
 
 /*
-Get Best Lengths.
-
-Performs the forward pass for "squeeze". Gets the most optimal length to reach
-every byte from a previous byte, using cost calculations. Returns the cost that
-was, according to the costmodel, needed to get to the end.
-*/
-double GetBestLengths(
-	const unsigned char* arr, size_t instart, size_t inend,
-	const SymbolStats* stats, unsigned short* length_array, float* costs);
-
-/*
 Write Fixed Tree.
 
 Initialize the length and distance symbol arrays with fixed tree values.
 */
 void GetFixedTree(unsigned* ll_lengths, unsigned* d_lengths);
+
+/*
+LZ77 Optimal Run.
+
+Does a single run for ZopfliLZ77Optimal. For good compression, repeated runs
+with updated statistics should be performed.
+*/
+double LZ77OptimalRun(
+	const unsigned char* in, size_t instart, size_t inend,
+	SymbolStats* costcontext, ZopfliLZ77Store* store);
 
 /*
 Optimize Huffman RLE Compression.
@@ -101,7 +125,7 @@ void ZopfliFindLongestMatch(
 	unsigned short* sublen, unsigned short* distance, unsigned short* length,
 	unsigned char cache, size_t blockstart);
 
-/* Initializes the Longest Match Cache. */
+/* Initializes the Longest Match and Squeeze Caches. */
 void ZopfliInitCache(size_t blocksize);
 
 /*
@@ -138,8 +162,7 @@ void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbo
 Reset Longest Match Hashes.
 */
 void ZopfliResetHash(
-	const unsigned char* array, size_t length,
-	size_t windowstart, size_t instart);
+	const unsigned char* array, size_t length, size_t windowstart, size_t instart);
 
 /*
 Update Longest Match Hashes.

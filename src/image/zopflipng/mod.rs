@@ -16,7 +16,10 @@ mod cache;
 mod hash;
 mod kat;
 
-use cache::CACHE;
+use cache::{
+	CACHE,
+	SQUEEZE,
+};
 use std::os::raw::c_uint;
 use super::ffi::EncodedImage;
 use super::lodepng::{
@@ -25,6 +28,8 @@ use super::lodepng::{
 	LodePNGFilterStrategy,
 	LodePNGState,
 	SymbolStats,
+	ZopfliStoreLitLenDist,
+	ZopfliLZ77Store,
 };
 
 

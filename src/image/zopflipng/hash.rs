@@ -20,10 +20,13 @@ use std::{
 };
 use super::{
 	CACHE,
+	SQUEEZE,
 	SUBLEN_LEN,
 	SymbolStats,
 	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
+	ZopfliLZ77Store,
+	ZopfliStoreLitLenDist,
 };
 
 const ZOPFLI_WINDOW_SIZE: usize = 32_768;
@@ -83,47 +86,65 @@ thread_local!(
 	///
 	/// There is only ever one instance of the hash active per thread, so we
 	/// might as well persist it to save on the allocations!
-	static HASH: RefCell<Box<ZopfliHash>> = RefCell::new(ZopfliHash::new())
+	static HASH: RefCell<Box<ZopfliHash>> = RefCell::new(ZopfliHash::new());
 );
 
 
 
 #[no_mangle]
 #[allow(unsafe_code)]
-pub(crate) extern "C" fn GetBestLengths(
+/// # LZ77 Optimal Run.
+///
+/// Perform a single run for `ZopfliLZ77Optimal`.
+///
+/// This is a rewrite of the original `squeeze.c` method.
+pub(crate) extern "C" fn LZ77OptimalRun(
 	arr: *const u8,
 	instart: usize,
 	inend: usize,
 	stats: *const SymbolStats,
-	length_array: *mut u16,
-	costs: *mut f32,
+	store: *mut ZopfliLZ77Store,
 ) -> f64 {
 	// Easy abort.
 	if instart >= inend { return 0.0; }
-
-	// Initialize costs and lengths.
-	let blocksize = inend - instart;
-
-	let costs = unsafe { std::slice::from_raw_parts_mut(costs, blocksize + 1) };
-	costs.fill(f32::INFINITY);
-	costs[0] = 0.0;
-
-	let length_array = unsafe { std::slice::from_raw_parts_mut(length_array, blocksize + 1) };
-	length_array[0] = 0;
 
 	// Dereference the stats if there are any.
 	let stats =
 		if stats.is_null() { None }
 		else { Some(unsafe { &*stats }) };
 
-	HASH.with_borrow_mut(|h| h.get_best_lengths(
-		arr,
-		instart,
-		inend,
-		stats,
-		length_array,
-		costs,
-	))
+	// Initialize costs and lengths.
+	SQUEEZE.with_borrow_mut(|s| {
+		s.reset_costs();
+
+		// Pull the hasher.
+		let cost = HASH.with_borrow_mut(|h| {
+			// Get the cost.
+			let cost = h.get_best_lengths(
+				arr,
+				instart,
+				inend,
+				stats,
+				s.lengths.as_mut_slice(),
+				s.costs.as_mut_slice(),
+			);
+
+			// Trace backwards and forwards.
+			s.trace_paths();
+			h.follow_paths(
+				arr,
+				instart,
+				inend,
+				s.paths.as_slice(),
+				store,
+			);
+
+			cost
+		});
+
+		assert!(cost < 1E30);
+		cost
+	})
 }
 
 #[no_mangle]
@@ -173,26 +194,7 @@ pub(crate) extern "C" fn ZopfliResetHash(
 	windowstart: usize,
 	instart: usize,
 ) {
-	HASH.with_borrow_mut(|h| {
-		unsafe {
-			// Set all values to their defaults.
-			h.init();
-
-			// Cycle the hash once or twice.
-			h.update_hash_value(*arr.add(windowstart));
-			if windowstart + 1 < length {
-				h.update_hash_value(*arr.add(windowstart + 1));
-			}
-		}
-
-		// Process the values between windowstart and instart.
-		for i in windowstart..instart {
-			h.update_hash(
-				unsafe { std::slice::from_raw_parts(arr.add(i), length - i) },
-				i,
-			);
-		}
-	});
+	HASH.with_borrow_mut(|h| h.reset(arr, length, windowstart, instart));
 }
 
 #[no_mangle]
@@ -278,6 +280,35 @@ impl ZopfliHash {
 		addr_of_mut!(self.same).write_bytes(0, 1);
 	}
 
+	#[allow(unsafe_code)]
+	/// # Reset/Warm Up.
+	fn reset(
+		&mut self,
+		arr: *const c_uchar,
+		length: usize,
+		windowstart: usize,
+		instart: usize,
+	) {
+		unsafe {
+			// Set all values to their defaults.
+			self.init();
+
+			// Cycle the hash once or twice.
+			self.update_hash_value(*arr.add(windowstart));
+			if windowstart + 1 < length {
+				self.update_hash_value(*arr.add(windowstart + 1));
+			}
+		}
+
+		// Process the values between windowstart and instart.
+		for i in windowstart..instart {
+			self.update_hash(
+				unsafe { std::slice::from_raw_parts(arr.add(i), length - i) },
+				i,
+			);
+		}
+	}
+
 	#[allow(
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
@@ -345,6 +376,13 @@ impl ZopfliHash {
 		length_array: &mut [u16],
 		costs: &mut [f32],
 	) -> f64 {
+		// Costs and lengths are resized prior to this point; they should be
+		// one larger than the data of interest (and equal to each other).
+		assert!(
+			length_array.len() == inend - instart + 1 &&
+			costs.len() == length_array.len()
+		);
+
 		let windowstart = instart.saturating_sub(ZOPFLI_WINDOW_SIZE);
 
 		// Reset and warm the hash.
@@ -439,7 +477,8 @@ impl ZopfliHash {
 			// Lengths and Sublengths.
 			let limit = usize::from(length).min(arr.len() - i);
 			if (ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH).contains(&limit) {
-				let min_cost_add = min_cost + f64::from(unsafe { *costs.get_unchecked(j) });
+				let cost_j = f64::from(unsafe { *costs.get_unchecked(j) });
+				let min_cost_add = min_cost + cost_j;
 				let mut k = ZOPFLI_MIN_MATCH;
 				for &v in &sublen[ZOPFLI_MIN_MATCH..=limit] {
 					// The expensive cost calculations are only worth
@@ -449,7 +488,7 @@ impl ZopfliHash {
 						let new_cost = stats.map_or_else(
 							|| get_fixed_cost(k as u16, v),
 							|s| get_stat_cost(k as u16, v, s),
-						) + f64::from(costs[j]);
+						) + cost_j;
 						debug_assert!(0.0 <= new_cost);
 
 						// Update it if lower.
@@ -469,6 +508,72 @@ impl ZopfliHash {
 		// Return the final cost!
 		debug_assert!(0.0 <= costs[costs.len() - 1]);
 		f64::from(costs[costs.len() - 1])
+	}
+
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	/// # Follow Paths.
+	fn follow_paths(
+		&mut self,
+		arr: *const u8,
+		instart: usize,
+		inend: usize,
+		paths: &[u16],
+		store: *mut ZopfliLZ77Store,
+	) {
+		// Easy abort.
+		if instart >= inend { return; }
+
+		// Verify all the lengths will fit so we can safely skip bounds
+		// checking during iteration.
+		assert!(
+			instart + paths.iter().map(|&n| usize::from(n)).sum::<usize>() <= inend
+		);
+
+		// Reset the hash.
+		let windowstart = instart.saturating_sub(ZOPFLI_WINDOW_SIZE);
+		self.reset(arr, inend, windowstart, instart);
+
+		// Hash the path symbols.
+		let arr = unsafe { std::slice::from_raw_parts(arr, inend) };
+
+		let mut i = instart;
+		for &length in paths.iter().rev() {
+			self.update_hash(unsafe { arr.get_unchecked(i..) }, i);
+
+			// Add to output.
+			if length >= ZOPFLI_MIN_MATCH as u16 {
+				// Get the distance by recalculating the longest match, and
+				// make sure the length matches afterwards (as that's easy to
+				// screw up!).
+				let mut test_length = 0;
+				let mut dist = 0;
+				self.find(
+					arr.as_ptr(),
+					i,
+					arr.len(),
+					usize::from(length),
+					&mut [],
+					&mut dist,
+					&mut test_length,
+					Some(instart),
+				);
+				assert!(! (test_length != length && length > 2 && test_length > 2));
+
+				// Add it to the store.
+				unsafe { ZopfliStoreLitLenDist(length, dist, i, store); }
+			}
+			// Add it to the store.
+			else {
+				unsafe { ZopfliStoreLitLenDist(u16::from(arr[i]), 0, i, store); }
+			}
+
+			// Hash the rest of the match.
+			for j in 1..usize::from(length) {
+				self.update_hash(unsafe { arr.get_unchecked(i + j..) }, i + j);
+			}
+
+			i += usize::from(length);
+		}
 	}
 }
 

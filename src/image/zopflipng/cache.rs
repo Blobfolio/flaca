@@ -18,7 +18,14 @@ thread_local!(
 	///
 	/// There is only ever one instance of the LZ77 cache active per thread,
 	/// so we might as well persist it to save on the allocations!
-	pub(crate) static CACHE: RefCell<MatchCache> = RefCell::new(MatchCache::default())
+	pub(crate) static CACHE: RefCell<MatchCache> = const { RefCell::new(MatchCache::new()) };
+
+	/// # Static Squeeze Scratch.
+	///
+	/// Similar to the above, the costs, lengths, and paths crunched during the
+	/// squeeze passes never overlap so can be shared to reduce allocation
+	/// overhead.
+	pub(crate) static SQUEEZE: RefCell<SqueezeCache> = const { RefCell::new(SqueezeCache::new()) };
 );
 
 /// # Default Length (1) and Distance (0).
@@ -37,16 +44,16 @@ const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 #[no_mangle]
 #[allow(unsafe_code)]
 #[inline]
-/// # Initialize Longest Match Cache.
+/// # Initialize Longest Match and Squeeze Caches.
 ///
 /// This is a rewrite of the original `cache.c` method.
 pub(crate) extern "C" fn ZopfliInitCache(blocksize: usize) {
-	CACHE.with_borrow_mut(|c| { c.init(blocksize); });
+	CACHE.with_borrow_mut(|c| c.init(blocksize));
+	SQUEEZE.with_borrow_mut(|c| c.init(blocksize + 1));
 }
 
 
 
-#[derive(Default)]
 /// # Longest Match Cache.
 ///
 /// This structure holds cached length/distance details for individual
@@ -58,6 +65,14 @@ pub(crate) struct MatchCache {
 }
 
 impl MatchCache {
+	/// # New.
+	const fn new() -> Self {
+		Self {
+			ld: Vec::new(),
+			sublen: Vec::new(),
+		}
+	}
+
 	/// # Initialize.
 	///
 	/// This resizes the cache buffers and resets their values to their default
@@ -277,6 +292,91 @@ impl MatchCache {
 			}
 			if length == maxlength { return; }
 			prevlength = length + 1;
+		}
+	}
+}
+
+
+
+/// # Squeeze Scratchpad.
+///
+/// This structure is used to keep track of the data gathered during the
+/// forward/backward "squeeze" passes.
+///
+/// It is initialized with the `MatchCache` because they're used together, but
+/// kept separate to mitigate lock contention.
+pub(crate) struct SqueezeCache {
+	pub(crate) costs: Vec<f32>,
+	pub(crate) lengths: Vec<u16>,
+	pub(crate) paths: Vec<u16>,
+}
+
+impl SqueezeCache {
+	/// # New.
+	const fn new() -> Self {
+		Self {
+			costs: Vec::new(),
+			lengths: Vec::new(),
+			paths: Vec::new(),
+		}
+	}
+
+	#[inline]
+	/// # Initialize/Reset.
+	///
+	/// This (potentially) resizes the cost and length vectors for the given
+	/// blocksize — which is `(inend - instart + 1)` by the way.
+	///
+	/// Unlike the `MatchCache`, this doesn't worry about setting the
+	/// appropriate values; `SqueezeCache::reset_costs` handles that.
+	///
+	/// The paths are unchanged by this method; subsequent calls to
+	/// `SqueezeCache::trace_paths` gets them sorted.
+	fn init(&mut self, blocksize: usize) {
+		// Resize if needed.
+		if blocksize != self.costs.len() {
+			self.costs.resize(blocksize, f32::INFINITY);
+			self.lengths.resize(blocksize, 0);
+		}
+	}
+
+	#[inline]
+	/// # Reset Costs.
+	///
+	/// This nudges all costs to infinity except the first, which is set to
+	/// zero instead.
+	pub(crate) fn reset_costs(&mut self) {
+		if ! self.costs.is_empty() {
+			self.costs.fill(f32::INFINITY);
+			self.costs[0] = 0.0;
+		}
+	}
+
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	/// # Trace Paths.
+	///
+	/// Calculate the optimal path of lz77 lengths to use, from the
+	/// lengths gathered during the `ZopfliHash::get_best_lengths` pass.
+	pub(crate) fn trace_paths(&mut self) {
+		self.paths.truncate(0);
+		let len = self.lengths.len();
+		if len < 2 { return; }
+
+		let mut idx = len - 1;
+		while 0 < idx {
+			// Safety: the compiler doesn't realize the index is always in
+			// range for some reason.
+			let v = unsafe { *self.lengths.get_unchecked(idx) };
+			assert!((1..=ZOPFLI_MAX_MATCH as u16).contains(&v));
+
+			// Only lengths of at least ZOPFLI_MIN_MATCH count as lengths
+			// after tracing.
+			self.paths.push(
+				if v < ZOPFLI_MIN_MATCH as u16 { 1 } else { v }
+			);
+
+			// Move onto the next length or finish.
+			idx = idx.saturating_sub(usize::from(v));
 		}
 	}
 }

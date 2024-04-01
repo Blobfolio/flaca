@@ -95,74 +95,6 @@ static void ClearStatFreqs(SymbolStats* stats) {
 	memset(stats->dists, 0, ZOPFLI_NUM_D * sizeof(size_t));
 }
 
-/*
-Calculates the optimal path of lz77 lengths to use, from the calculated
-length_array. The length_array must contain the optimal length to reach that
-byte. The path will be filled with the lengths to use, so its data size will be
-the amount of lz77 symbols.
-*/
-static void TraceBackwards(
-	size_t size, const unsigned short* length_array,
-	unsigned short** path, size_t* pathsize) {
-	size_t index = size;
-	if (size == 0) return;
-	for (;;) {
-		ZOPFLI_APPEND_DATA(length_array[index], path, pathsize);
-		assert(length_array[index] <= index);
-		assert(length_array[index] <= ZOPFLI_MAX_MATCH);
-		assert(length_array[index] != 0);
-		index -= length_array[index];
-		if (index == 0) break;
-	}
-
-	/* Mirror result. */
-	for (index = 0; index < *pathsize / 2; index++) {
-		unsigned short temp = (*path)[index];
-		(*path)[index] = (*path)[*pathsize - index - 1];
-		(*path)[*pathsize - index - 1] = temp;
-	}
-}
-
-static void FollowPath(
-	const unsigned char* in, size_t instart, size_t inend,
-	unsigned short* path, size_t pathsize, ZopfliLZ77Store* store) {
-	size_t i, j, pos = 0;
-	size_t windowstart = instart > ZOPFLI_WINDOW_SIZE ? instart - ZOPFLI_WINDOW_SIZE : 0;
-
-	if (instart == inend) return;
-
-	ZopfliResetHash(in, inend, windowstart, instart);
-
-	pos = instart;
-	for (i = 0; i < pathsize; i++) {
-		unsigned short length = path[i];
-		unsigned short dummy_length;
-		unsigned short dist;
-		assert(pos < inend);
-
-		ZopfliUpdateHash(in, pos, inend);
-
-		/* Add to output. */
-		if (length >= ZOPFLI_MIN_MATCH) {
-			/* Get the distance by recalculating longest match. The found length
-			should match the length from the path. */
-			ZopfliFindLongestMatch(in, pos, inend, length, 0, &dist, &dummy_length, 1, instart);
-			assert(!(dummy_length != length && length > 2 && dummy_length > 2));
-			ZopfliStoreLitLenDist(length, dist, pos, store);
-		} else {
-			length = 1;
-			ZopfliStoreLitLenDist(in[pos], 0, pos, store);
-		}
-
-		assert(pos + length <= inend);
-		for (j = 1; j < length; j++) {
-			ZopfliUpdateHash(in, pos + j, inend);
-		}
-
-		pos += length;
-	}
-}
-
 /* Calculates the entropy of the statistics */
 static void CalculateStatistics(SymbolStats* stats) {
 	ZopfliCalculateEntropy(stats->litlens, ZOPFLI_NUM_LL, stats->ll_symbols);
@@ -185,56 +117,21 @@ static void GetStatistics(const ZopfliLZ77Store* store, SymbolStats* stats) {
 	CalculateStatistics(stats);
 }
 
-/*
-Does a single run for ZopfliLZ77Optimal. For good compression, repeated runs
-with updated statistics should be performed.
-in: the input data array
-instart: where to start
-inend: where to stop (not inclusive)
-path: pointer to dynamically allocated memory to store the path
-pathsize: pointer to the size of the dynamic path array
-length_array: array of size (inend - instart) used to store lengths
-costcontext: stats, if any
-store: place to output the LZ77 data
-returns the cost that was, according to the costmodel, needed to get to the end.
-	This is not the actual cost.
-*/
-static double LZ77OptimalRun(
-	const unsigned char* in, size_t instart, size_t inend,
-	unsigned short** path, size_t* pathsize,
-	unsigned short* length_array,
-	SymbolStats* costcontext, ZopfliLZ77Store* store, float* costs) {
-	double cost = GetBestLengths(in, instart, inend, costcontext, length_array, costs);
-	free(*path);
-	*path = 0;
-	*pathsize = 0;
-	TraceBackwards(inend - instart, length_array, path, pathsize);
-	FollowPath(in, instart, inend, *path, *pathsize, store);
-	assert(cost < ZOPFLI_LARGE_FLOAT);
-	return cost;
-}
 
 void ZopfliLZ77Optimal(
 	const unsigned char* in, size_t instart, size_t inend,
 	int numiterations, ZopfliLZ77Store* store) {
 	/* Dist to get to here with smallest cost. */
 	size_t blocksize = inend - instart;
-	unsigned short* length_array = (unsigned short*)malloc(sizeof(unsigned short) * (blocksize + 1));
-	unsigned short* path = 0;
-	size_t pathsize = 0;
 	ZopfliLZ77Store currentstore;
 	SymbolStats stats, beststats, laststats;
 	int i;
-	float* costs = (float*)malloc(sizeof(float) * (blocksize + 1));
 	double cost;
 	double bestcost = ZOPFLI_LARGE_FLOAT;
 	double lastcost = 0;
 	/* Try randomizing the costs a bit once the size stabilizes. */
 	RanState ran_state;
 	int lastrandomstep = -1;
-
-	if (!costs) exit(-1); /* Allocation failed. */
-	if (!length_array) exit(-1); /* Allocation failed. */
 
 	InitRanState(&ran_state);
 	InitStats(&stats);
@@ -253,11 +150,7 @@ void ZopfliLZ77Optimal(
 	for (i = 0; i < numiterations; i++) {
 		ZopfliCleanLZ77Store(&currentstore);
 		ZopfliInitLZ77Store(in, &currentstore);
-		LZ77OptimalRun(
-			in, instart, inend, &path, &pathsize,
-			length_array, &stats,
-			&currentstore, costs
-		);
+		LZ77OptimalRun(in, instart, inend, &stats, &currentstore);
 		cost = ZopfliCalculateBlockSize(&currentstore, 0, currentstore.size, 2);
 		if (cost < bestcost) {
 			/* Copy to the output store. */
@@ -284,9 +177,6 @@ void ZopfliLZ77Optimal(
 		lastcost = cost;
 	}
 
-	free(length_array);
-	free(path);
-	free(costs);
 	ZopfliCleanLZ77Store(&currentstore);
 }
 
@@ -294,23 +184,9 @@ void ZopfliLZ77OptimalFixed(
 	const unsigned char* in, size_t instart, size_t inend, ZopfliLZ77Store* store) {
 	/* Dist to get to here with smallest cost. */
 	size_t blocksize = inend - instart;
-	unsigned short* length_array = (unsigned short*)malloc(sizeof(unsigned short) * (blocksize + 1));
-	unsigned short* path = 0;
-	size_t pathsize = 0;
-	float* costs = (float*)malloc(sizeof(float) * (blocksize + 1));
-
-	if (!costs) exit(-1); /* Allocation failed. */
-	if (!length_array) exit(-1); /* Allocation failed. */
 
 	/* Shortest path for fixed tree This one should give the shortest possible
 	result for fixed tree, no repeated runs are needed since the tree is known. */
 	ZopfliInitCache(blocksize);
-	LZ77OptimalRun(
-		in, instart, inend, &path, &pathsize,
-		length_array, 0, store, costs
-	);
-
-	free(length_array);
-	free(path);
-	free(costs);
+	LZ77OptimalRun(in, instart, inend, 0, store);
 }

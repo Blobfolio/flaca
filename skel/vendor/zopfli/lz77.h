@@ -39,25 +39,7 @@ The memory can best be managed by using ZopfliInitLZ77Store to initialize it,
 ZopfliCleanLZ77Store to destroy it, and ZopfliStoreLitLenDist to append values.
 
 */
-typedef struct ZopfliLZ77Store {
-	unsigned short* litlens;  /* Lit or len. */
-	unsigned short* dists;  /* If 0: indicates literal in corresponding litlens,
-			if > 0: length in corresponding litlens, this is the distance. */
-	size_t size;
 
-	const unsigned char* data;  /* original data */
-	size_t* pos;  /* position in data where this LZ77 command begins */
-
-	unsigned short* ll_symbol;
-	unsigned short* d_symbol;
-
-	/* Cumulative histograms wrapping around per chunk. Each chunk has the amount
-	of distinct symbols as length, so using 1 value per LZ77 symbol, we have a
-	precise histogram at every N symbols, and the rest can be calculated by
-	looping through the actual symbols of this chunk. */
-	size_t* ll_counts;
-	size_t* d_counts;
-} ZopfliLZ77Store;
 
 void ZopfliInitLZ77Store(const unsigned char* data, ZopfliLZ77Store* store);
 void ZopfliCleanLZ77Store(ZopfliLZ77Store* store);
