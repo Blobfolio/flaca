@@ -26,10 +26,7 @@ doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
-export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Clinker=clang -Clink-arg=-fuse-ld=lld"
-export CC := "clang"
-export CXX := "clang++"
-export TARGET_CPU := "x86-64-v3"
+export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3"
 
 
 
@@ -38,7 +35,6 @@ export TARGET_CPU := "x86-64-v3"
 	# First let's build the Rust bit.
 	cargo build \
 		--bin "{{ pkg_id }}" \
-		--features clto \
 		--release \
 		--target-dir "{{ cargo_dir }}"
 

@@ -25,7 +25,6 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 
 #include "../rust.h"
 #include "blocksplitter.h"
-#include "squeeze.h"
 #include "symbols.h"
 #include "util.h"
 

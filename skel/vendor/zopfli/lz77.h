@@ -60,15 +60,4 @@ void ZopfliLZ77GetHistogram(
 	const ZopfliLZ77Store* lz77, size_t lstart, size_t lend,
 	size_t* ll_counts, size_t* d_counts);
 
-/*
-Does LZ77 using an algorithm similar to gzip, with lazy matching, rather than
-with the slow but better "squeeze" implementation.
-The result is placed in the ZopfliLZ77Store.
-If instart is larger than 0, it uses values before instart as starting
-dictionary.
-*/
-void ZopfliLZ77Greedy(
-	size_t cache, const unsigned char* in, size_t instart, size_t inend,
-	ZopfliLZ77Store* store);
-
 #endif  /* ZOPFLI_LZ77_H_ */

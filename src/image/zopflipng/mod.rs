@@ -15,6 +15,7 @@ functionality.
 mod cache;
 mod hash;
 mod kat;
+mod stats;
 
 use cache::{
 	CACHE,
@@ -27,9 +28,12 @@ use super::lodepng::{
 	LodePNGColorType,
 	LodePNGFilterStrategy,
 	LodePNGState,
-	SymbolStats,
-	ZopfliStoreLitLenDist,
+	ZopfliCalculateBlockSize,
+	ZopfliCleanLZ77Store,
+	ZopfliCopyLZ77Store,
+	ZopfliInitLZ77Store,
 	ZopfliLZ77Store,
+	ZopfliStoreLitLenDist,
 };
 
 
@@ -188,50 +192,6 @@ pub(crate) extern "C" fn PatchDistanceCodesForBuggyDecoders(d_lengths: *mut c_ui
 		Some(_) => unsafe { d_lengths.write(1); },
 		// There were no codes, so let's just patch the first two.
 		None => unsafe { d_lengths.write_bytes(1, 2); },
-	}
-}
-
-#[no_mangle]
-#[allow(unsafe_code, clippy::cast_precision_loss)]
-/// # Zopfli Claculate Entropy.
-///
-/// This is a rewrite of the original `tree.c` method.
-pub(crate) extern "C" fn ZopfliCalculateEntropy(
-	count: *const usize,
-	n: usize,
-	bitlengths: *mut f64
-) {
-	// Turn the pointers into slices.
-	if n == 0 { return; }
-	let count: &[usize] = unsafe { std::slice::from_raw_parts(count, n) };
-
-	// Sum the counts and log some shit.
-	let sum = count.iter().copied().sum::<usize>();
-
-	// If there are no counts, every value has the same cost.
-	if sum == 0 {
-		let log2sum = (n as f64).log2();
-		unsafe {
-			for i in 0..n { bitlengths.add(i).write(log2sum); }
-		}
-	}
-	// Otherwise each gets its own fractional cost.
-	else {
-		let log2sum = (sum as f64).log2();
-
-		for (i, &c) in count.iter().enumerate() {
-			// Even zeroes get a cost because they were requested.
-			if c == 0 {
-				unsafe { bitlengths.add(i).write(log2sum); }
-			}
-			else {
-				// Floating point math sucks; make sure it doesn't magically
-				// drop below zero.
-				let mut v = log2sum - (c as f64).log2();
-				if v.is_sign_negative() { v = 0.0; }
-				unsafe { bitlengths.add(i).write(v); }
-			}
-		}
 	}
 }
 

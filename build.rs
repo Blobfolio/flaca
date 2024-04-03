@@ -70,19 +70,14 @@ fn build_ffi() {
 		c.flag_if_supported(&format!("-march={target_cpu}"));
 	}
 
-	c.flag_if_supported("-Wlm");
-
-	#[cfg(feature = "clto")]
-	c.flag_if_supported("-flto");
-
-	c.flag_if_supported("-Wno-unused-function")
+	c.flag_if_supported("-Wlm")
+		.flag_if_supported("-Wno-unused-function")
 		.pic(true)
 		.static_flag(true)
 		.files(&[
 			zopfli_src.join("blocksplitter.c"),
 			zopfli_src.join("deflate.c"),
 			zopfli_src.join("lz77.c"),
-			zopfli_src.join("squeeze.c"),
 			lodepng_src.join("lodepng.c"),
 		])
 		.define("LODEPNG_NO_COMPILE_DISK", None)
@@ -124,12 +119,15 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 		.allowlist_function("lodepng_encode")
 		.allowlist_function("lodepng_state_cleanup")
 		.allowlist_function("lodepng_state_init")
+		.allowlist_function("ZopfliCalculateBlockSize")
+		.allowlist_function("ZopfliCleanLZ77Store")
+		.allowlist_function("ZopfliCopyLZ77Store")
 		.allowlist_function("ZopfliDeflatePart")
+		.allowlist_function("ZopfliInitLZ77Store")
 		.allowlist_function("ZopfliStoreLitLenDist")
 		.allowlist_type("LodePNGColorStats")
 		.allowlist_type("LodePNGCompressSettings")
 		.allowlist_type("LodePNGState")
-		.allowlist_type("SymbolStats")
 		.allowlist_type("ZopfliLZ77Store")
 		.rustified_enum("LodePNGColorType")
 		.rustified_enum("LodePNGFilterStrategy")

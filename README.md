@@ -48,49 +48,26 @@ cargo build \
 
 In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`/`clang`, `make`, `nasm`, and the dev libraries for `libjpeg` and `libpng`.
 
+### Special Build Options
 
+Image compression is a pretty CPU-intensive task. If you're building Flaca from source and running it on known hardware, you can probably improve the resulting runtime performance by setting a more specialized target ABI level, e.g. `-march=native` or `-march=x86-64-v3`.
 
-## Build Optimizations
-
-Like many CPU-intensive tasks, image compression benefits greatly from architecture-specific tunings.
-
-You can use the `RUSTFLAGS` and `TARGET_CPU` environmental variables to pass the desired "march" setting to the compiler when building Flaca:
+In Rust, that is accomplished via `RUSTFLAGS`, like:
 
 ```bash
-# To target an x86-64-v3 baseline, for example:
+export RUSTFLAGS="-Ctarget-cpu=x86-64-v3"
+cargo build…
+```
+
+You can also set the custom `TARGET_CPU` environmental variable to pass the appropriate `-march` flag when building the embedded C components:
+
+```bash
 export RUSTFLAGS="-Ctarget-cpu=x86-64-v3"
 export TARGET_CPU="x86-64-v3"
-cargo build \
-    --bin flaca \
-    --release
+cargo build…
 ```
 
-Flaca's runtime performance can be further improved by enabling cross-language Link-Time-Optimizations. (By default, Rust will only link the rust portions of the codebase.)
-
-This can be accomplished by enabling the `clto` crate feature and building/linking with `clang` rather than `gcc`:
-
-```bash
-export RUSTFLAGS="-Clinker=clang -Clink-arg=-fuse-ld=lld"
-export CC = "clang"
-export CXX = "clang++"
-cargo build \
-    --bin flaca \
-    --features clto \
-    --release
-```
-
-Of course for best results, you should do both!
-
-```bash
-export RUSTFLAGS="-Ctarget-cpu=x86-64-v3 -Clinker=clang -Clink-arg=-fuse-ld=lld"
-export TARGET_CPU="x86-64-v3"
-export CC = "clang"
-export CXX = "clang++"
-cargo build \
-    --bin flaca \
-    --features clto \
-    --release
-```
+As always, you should benchmark the performance with and without the flags to see if they help or hurt; results will vary by machine and compiler.
 
 
 

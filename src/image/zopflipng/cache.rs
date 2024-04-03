@@ -41,19 +41,6 @@ const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 
 
 
-#[no_mangle]
-#[allow(unsafe_code)]
-#[inline]
-/// # Initialize Longest Match and Squeeze Caches.
-///
-/// This is a rewrite of the original `cache.c` method.
-pub(crate) extern "C" fn ZopfliInitCache(blocksize: usize) {
-	CACHE.with_borrow_mut(|c| c.init(blocksize));
-	SQUEEZE.with_borrow_mut(|c| c.init(blocksize + 1));
-}
-
-
-
 /// # Longest Match Cache.
 ///
 /// This structure holds cached length/distance details for individual
@@ -80,7 +67,7 @@ impl MatchCache {
 	///
 	/// Because this is a shared buffer, allocations persist for the duration
 	/// of the program run so they can be reused.
-	fn init(&mut self, blocksize: usize) {
+	pub(crate) fn init(&mut self, blocksize: usize) {
 		let mut old_blocksize = self.ld.len();
 
 		// Shrink to fit.
@@ -306,8 +293,7 @@ impl MatchCache {
 /// It is initialized with the `MatchCache` because they're used together, but
 /// kept separate to mitigate lock contention.
 pub(crate) struct SqueezeCache {
-	pub(crate) costs: Vec<f32>,
-	pub(crate) lengths: Vec<u16>,
+	pub(crate) costs: Vec<(f32, u16)>,
 	pub(crate) paths: Vec<u16>,
 }
 
@@ -316,7 +302,6 @@ impl SqueezeCache {
 	const fn new() -> Self {
 		Self {
 			costs: Vec::new(),
-			lengths: Vec::new(),
 			paths: Vec::new(),
 		}
 	}
@@ -332,11 +317,10 @@ impl SqueezeCache {
 	///
 	/// The paths are unchanged by this method; subsequent calls to
 	/// `SqueezeCache::trace_paths` gets them sorted.
-	fn init(&mut self, blocksize: usize) {
+	pub(crate) fn init(&mut self, blocksize: usize) {
 		// Resize if needed.
 		if blocksize != self.costs.len() {
-			self.costs.resize(blocksize, f32::INFINITY);
-			self.lengths.resize(blocksize, 0);
+			self.costs.resize(blocksize, (f32::INFINITY, 0));
 		}
 	}
 
@@ -347,8 +331,8 @@ impl SqueezeCache {
 	/// zero instead.
 	pub(crate) fn reset_costs(&mut self) {
 		if ! self.costs.is_empty() {
-			self.costs.fill(f32::INFINITY);
-			self.costs[0] = 0.0;
+			for c in &mut self.costs { c.0 = f32::INFINITY; }
+			self.costs[0].0 = 0.0;
 		}
 	}
 
@@ -358,15 +342,15 @@ impl SqueezeCache {
 	/// Calculate the optimal path of lz77 lengths to use, from the
 	/// lengths gathered during the `ZopfliHash::get_best_lengths` pass.
 	pub(crate) fn trace_paths(&mut self) {
+		// Kill any previous paths, if any.
 		self.paths.truncate(0);
-		let len = self.lengths.len();
+
+		let len = self.costs.len();
 		if len < 2 { return; }
 
 		let mut idx = len - 1;
 		while 0 < idx {
-			// Safety: the compiler doesn't realize the index is always in
-			// range for some reason.
-			let v = unsafe { *self.lengths.get_unchecked(idx) };
+			let v = self.costs[idx].1;
 			assert!((1..=ZOPFLI_MAX_MATCH as u16).contains(&v));
 
 			// Only lengths of at least ZOPFLI_MIN_MATCH count as lengths

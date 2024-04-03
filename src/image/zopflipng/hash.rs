@@ -21,10 +21,17 @@ use std::{
 use super::{
 	CACHE,
 	SQUEEZE,
+	stats::{
+		RanState,
+		SymbolStats,
+	},
 	SUBLEN_LEN,
-	SymbolStats,
 	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
+	ZopfliCalculateBlockSize,
+	ZopfliCleanLZ77Store,
+	ZopfliCopyLZ77Store,
+	ZopfliInitLZ77Store,
 	ZopfliLZ77Store,
 	ZopfliStoreLitLenDist,
 };
@@ -93,41 +100,197 @@ thread_local!(
 
 #[no_mangle]
 #[allow(unsafe_code)]
-/// # LZ77 Optimal Run.
-///
-/// Perform a single run for `ZopfliLZ77Optimal`.
-///
-/// This is a rewrite of the original `squeeze.c` method.
-pub(crate) extern "C" fn LZ77OptimalRun(
-	arr: *const u8,
+/// # Lazy LZ77 w/ Squeeze.
+pub(crate) extern "C" fn ZopfliLZ77Greedy(
+	cache: usize,
+	arr: *const c_uchar,
 	instart: usize,
 	inend: usize,
-	stats: *const SymbolStats,
 	store: *mut ZopfliLZ77Store,
-) -> f64 {
+) {
 	// Easy abort.
-	if instart >= inend { return 0.0; }
+	if instart >= inend { return; }
 
-	// Dereference the stats if there are any.
-	let stats =
-		if stats.is_null() { None }
-		else { Some(unsafe { &*stats }) };
+	HASH.with_borrow_mut(|h| h.greedy(
+		arr,
+		instart,
+		inend,
+		store,
+		if 0 == cache { None } else { Some(instart) },
+	));
+}
+
+#[no_mangle]
+#[allow(unsafe_code)]
+/// # Optimal LZ77.
+///
+/// Calculate lit/len and dist pairs for the dataset.
+///
+/// Note: this incorporates the functionality of `ZopfliLZ77OptimalRun`
+/// directly.
+///
+/// This is a rewrite of the original `squeeze.c` method.
+pub(crate) extern "C" fn ZopfliLZ77Optimal(
+	arr: *const c_uchar,
+	instart: usize,
+	inend: usize,
+	numiterations: i32,
+	store: *mut ZopfliLZ77Store,
+) {
+	// Easy abort.
+	if instart >= inend { return; }
+
+	// Set up and initialize a temporary LZ77 store.
+	let mut current_store = unsafe {
+		use std::mem::MaybeUninit;
+		let mut current_store: MaybeUninit<ZopfliLZ77Store> = MaybeUninit::uninit();
+		ZopfliInitLZ77Store(arr, current_store.as_mut_ptr());
+		current_store.assume_init()
+	};
+
+	// Reset the main cache for the current blocksize.
+	let blocksize = inend - instart;
+	CACHE.with_borrow_mut(|c| c.init(blocksize));
 
 	// Initialize costs and lengths.
 	SQUEEZE.with_borrow_mut(|s| {
+		// And the squeeze cache!
+		s.init(blocksize + 1);
+
+		HASH.with_borrow_mut(|h| {
+			// Greedy run.
+			s.reset_costs();
+			h.greedy(
+				arr,
+				instart,
+				inend,
+				&mut current_store,
+				Some(instart),
+			);
+
+			// Create new stats with the store (updated by the greedy pass).
+			let mut current_stats = SymbolStats::new();
+			current_stats.load_store(&current_store);
+
+			// Set up dummy stats we can use to track best and last.
+			let mut ran = RanState::new();
+			let mut best_stats = SymbolStats::new();
+
+			// We'll also want dummy best and last costs.
+			let mut last_cost = 0.0;
+			let mut best_cost = 1E30;
+
+			// Repeat statistics with the cost model from the previous
+			// stat run.
+			let mut last_ran = -1;
+			for i in 0..numiterations.max(0) {
+				// Reset the LZ77 store.
+				unsafe {
+					ZopfliCleanLZ77Store(&mut current_store);
+					ZopfliInitLZ77Store(arr, &mut current_store);
+				}
+
+				// Optimal run.
+				s.reset_costs();
+				let current_cost = h.get_best_lengths(
+					arr,
+					instart,
+					inend,
+					Some(&current_stats),
+					s.costs.as_mut_slice(),
+				);
+				debug_assert!(current_cost < 1E30);
+				s.trace_paths();
+				h.follow_paths(
+					arr,
+					instart,
+					inend,
+					s.paths.as_slice(),
+					&mut current_store,
+				);
+
+				// This is the cost we actually care about.
+				let current_cost = unsafe {
+					ZopfliCalculateBlockSize(&current_store, 0, current_store.size, 2)
+				};
+
+				// We have a new best!
+				if current_cost < best_cost {
+					unsafe { ZopfliCopyLZ77Store(&current_store, store); }
+					best_stats = current_stats;
+					best_cost = current_cost;
+				}
+
+				// Copy the stats to last_stats, clear them, and repopulate
+				// with the current store.
+				let (last_litlens, last_dists) = current_stats.clear();
+				current_stats.load_store(&current_store);
+
+				// Once the randomness has kicked in, improve convergence by
+				// weighting the current and previous stats.
+				if last_ran != -1 {
+					current_stats.add_last(&last_litlens, &last_dists);
+					current_stats.crunch();
+				}
+
+				// Replace the current stats with the best stats, randomize,
+				// and see what happens.
+				if 5 < i && (current_cost - last_cost).abs() < std::f64::EPSILON {
+					current_stats = best_stats;
+					current_stats.randomize(&mut ran);
+					current_stats.crunch();
+					last_ran = i;
+				}
+
+				last_cost = current_cost;
+			}
+		});
+	});
+
+	// Clean the store before we go.
+	unsafe { ZopfliCleanLZ77Store(&mut current_store); }
+}
+
+#[no_mangle]
+#[allow(unsafe_code)]
+/// # Fixed LZ77.
+///
+/// This calculates lit/len and dist pairs like `ZopfliLZ77Optimal`, but with
+/// values optimized for a fixed tree rather than trying out different
+/// statistical models.
+///
+/// Note: this incorporates the functionality of `ZopfliLZ77OptimalRun`
+/// directly.
+///
+/// This is a rewrite of the original `squeeze.c` method.
+pub(crate) extern "C" fn ZopfliLZ77OptimalFixed(
+	arr: *const c_uchar,
+	instart: usize,
+	inend: usize,
+	store: *mut ZopfliLZ77Store,
+) {
+	// Easy abort.
+	if instart >= inend { return; }
+
+	let blocksize = inend - instart;
+	CACHE.with_borrow_mut(|c| c.init(blocksize));
+
+	// Initialize costs and lengths.
+	SQUEEZE.with_borrow_mut(|s| {
+		s.init(blocksize + 1);
 		s.reset_costs();
 
 		// Pull the hasher.
-		let cost = HASH.with_borrow_mut(|h| {
+		HASH.with_borrow_mut(|h| {
 			// Get the cost.
 			let cost = h.get_best_lengths(
 				arr,
 				instart,
 				inend,
-				stats,
-				s.lengths.as_mut_slice(),
+				None,
 				s.costs.as_mut_slice(),
 			);
+			debug_assert!(cost < 1E30);
 
 			// Trace backwards and forwards.
 			s.trace_paths();
@@ -138,83 +301,13 @@ pub(crate) extern "C" fn LZ77OptimalRun(
 				s.paths.as_slice(),
 				store,
 			);
-
-			cost
 		});
-
-		assert!(cost < 1E30);
-		cost
-	})
-}
-
-#[no_mangle]
-#[inline]
-#[allow(unsafe_code)]
-/// # Find Longest Match.
-///
-/// This is a rewrite of the original `lz77.c` method.
-pub(crate) extern "C" fn ZopfliFindLongestMatch(
-	arr: *const u8,
-	pos: usize,
-	size: usize,
-	limit: usize,
-	sublen: *mut u16,
-	distance: *mut u16,
-	length: *mut u16,
-	cache: u8,
-	blockstart: usize,
-) {
-	let sublen: &mut [u16] =
-		if sublen.is_null() { &mut [] }
-		else {
-			unsafe { std::slice::from_raw_parts_mut(sublen, SUBLEN_LEN) }
-		};
-
-	HASH.with_borrow(|h| h.find(
-		arr,
-		pos,
-		size,
-		limit,
-		sublen,
-		unsafe { &mut *distance },
-		unsafe { &mut *length },
-		if cache == 1 { Some(blockstart) } else { None },
-	));
-}
-
-#[no_mangle]
-#[allow(unsafe_code)]
-/// # Reset Hash.
-///
-/// Reset the thread-local Zopfli Hash instance to its default values,
-/// "warm up" the hash, and prepopulate entries from windowstart to instart.
-pub(crate) extern "C" fn ZopfliResetHash(
-	arr: *const c_uchar,
-	length: usize,
-	windowstart: usize,
-	instart: usize,
-) {
-	HASH.with_borrow_mut(|h| h.reset(arr, length, windowstart, instart));
-}
-
-#[no_mangle]
-#[allow(unsafe_code)]
-/// # Update Hash.
-///
-/// Add a slice to the hash.
-pub(crate) extern "C" fn ZopfliUpdateHash(
-	arr: *const c_uchar,
-	pos: usize,
-	length: usize,
-) {
-	if pos < length {
-		let arr = unsafe { std::slice::from_raw_parts(arr.add(pos), length - pos) };
-		HASH.with_borrow_mut(|h| h.update_hash(arr, pos));
-	}
+	});
 }
 
 
 
+#[derive(Clone, Copy)]
 /// # Zopfli Hash.
 ///
 /// This is a rewrite of the original `hash.c` struct.
@@ -285,17 +378,17 @@ impl ZopfliHash {
 	fn reset(
 		&mut self,
 		arr: *const c_uchar,
-		length: usize,
-		windowstart: usize,
 		instart: usize,
+		inend: usize,
 	) {
+		let windowstart = instart.saturating_sub(ZOPFLI_WINDOW_SIZE);
 		unsafe {
 			// Set all values to their defaults.
 			self.init();
 
 			// Cycle the hash once or twice.
 			self.update_hash_value(*arr.add(windowstart));
-			if windowstart + 1 < length {
+			if windowstart + 1 < inend {
 				self.update_hash_value(*arr.add(windowstart + 1));
 			}
 		}
@@ -303,7 +396,7 @@ impl ZopfliHash {
 		// Process the values between windowstart and instart.
 		for i in windowstart..instart {
 			self.update_hash(
-				unsafe { std::slice::from_raw_parts(arr.add(i), length - i) },
+				unsafe { std::slice::from_raw_parts(arr.add(i), inend - i) },
 				i,
 			);
 		}
@@ -373,26 +466,14 @@ impl ZopfliHash {
 		instart: usize,
 		inend: usize,
 		stats: Option<&SymbolStats>,
-		length_array: &mut [u16],
-		costs: &mut [f32],
+		costs: &mut [(f32, u16)],
 	) -> f64 {
 		// Costs and lengths are resized prior to this point; they should be
 		// one larger than the data of interest (and equal to each other).
-		assert!(
-			length_array.len() == inend - instart + 1 &&
-			costs.len() == length_array.len()
-		);
-
-		let windowstart = instart.saturating_sub(ZOPFLI_WINDOW_SIZE);
+		debug_assert!(costs.len() == inend - instart + 1);
 
 		// Reset and warm the hash.
-		unsafe {
-			self.init();
-			self.update_hash_value(*arr.add(windowstart));
-			if windowstart + 1 < inend {
-				self.update_hash_value(*arr.add(windowstart + 1));
-			}
-		}
+		self.reset(arr, instart, inend);
 
 		let mut length = 0_u16;
 		let mut distance = 0_u16;
@@ -403,18 +484,13 @@ impl ZopfliHash {
 
 		// Convert the array to a slice for safer reslicing.
 		let arr = unsafe { std::slice::from_raw_parts(arr, inend) };
-		let mut i = windowstart;
+		let mut i = instart;
 		while i < arr.len() {
 			// Hash the remainder.
 			self.update_hash(&arr[i..], i);
-			if i < instart {
-				i += 1;
-				continue;
-			}
 
-			// Relative position for both the costs and lengths arrays; these
-			// contain (iend - istart + 1) entries, so anytime i is in range
-			// for arr, j is in range for costs and length_array.
+			// Relative position for the costs and lengths, which have
+			// (iend - istart + 1) entries, so j is always in range when i is.
 			let mut j = i - instart;
 
 			// We're in a long repetition of the same character and have more
@@ -437,9 +513,9 @@ impl ZopfliHash {
 					// and length arrays too.
 					unsafe {
 						*costs.get_unchecked_mut(j + ZOPFLI_MAX_MATCH) = (
-							f64::from(*costs.get_unchecked(j)) + symbol_cost
-						) as f32;
-						*length_array.get_unchecked_mut(j + ZOPFLI_MAX_MATCH) = ZOPFLI_MAX_MATCH as u16;
+							(f64::from(costs.get_unchecked(j).0) + symbol_cost) as f32,
+							ZOPFLI_MAX_MATCH as u16,
+						);
 					}
 					i += 1;
 					j += 1;
@@ -459,32 +535,33 @@ impl ZopfliHash {
 				Some(instart),
 			);
 
-			// Literal.
+			// Literal. (Note i is always < arr.len() here, but checking again
+			// makes the compiler happy, so whatever.)
+			let cost_j = f64::from(unsafe { costs.get_unchecked(j).0 });
 			if i < arr.len() {
 				let new_cost = stats.map_or(
 					if arr[i] <= 143 { 8.0 } else { 9.0 },
 					|s| s.ll_symbols[usize::from(arr[i])],
-				) + f64::from(unsafe { *costs.get_unchecked(j) });
+				) + cost_j;
 				debug_assert!(0.0 <= new_cost);
 
 				// Update it if lower.
-				if new_cost < f64::from(unsafe { *costs.get_unchecked(j + 1) }) {
-					costs[j + 1] = new_cost as f32;
-					length_array[j + 1] = 1;
+				if new_cost < f64::from(unsafe { costs.get_unchecked(j + 1).0 }) {
+					costs[j + 1].0 = new_cost as f32;
+					costs[j + 1].1 = 1;
 				}
 			}
 
 			// Lengths and Sublengths.
 			let limit = usize::from(length).min(arr.len() - i);
 			if (ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH).contains(&limit) {
-				let cost_j = f64::from(unsafe { *costs.get_unchecked(j) });
 				let min_cost_add = min_cost + cost_j;
 				let mut k = ZOPFLI_MIN_MATCH;
-				for &v in &sublen[ZOPFLI_MIN_MATCH..=limit] {
+				for (&v, c) in sublen[k..=limit].iter().zip(costs.iter_mut().skip(j + k)) {
 					// The expensive cost calculations are only worth
 					// performing if the stored cost is larger than the
 					// minimum cost we found earlier.
-					if min_cost_add < f64::from(unsafe { *costs.get_unchecked(j + k) }) {
+					if min_cost_add < f64::from(c.0) {
 						let new_cost = stats.map_or_else(
 							|| get_fixed_cost(k as u16, v),
 							|s| get_stat_cost(k as u16, v, s),
@@ -492,9 +569,9 @@ impl ZopfliHash {
 						debug_assert!(0.0 <= new_cost);
 
 						// Update it if lower.
-						if new_cost < f64::from(costs[j + k]) {
-							costs[j + k] = new_cost as f32;
-							length_array[j + k] = k as u16;
+						if new_cost < f64::from(c.0) {
+							c.0 = new_cost as f32;
+							c.1 = k as u16;
 						}
 					}
 					k += 1;
@@ -506,8 +583,128 @@ impl ZopfliHash {
 		}
 
 		// Return the final cost!
-		debug_assert!(0.0 <= costs[costs.len() - 1]);
-		f64::from(costs[costs.len() - 1])
+		debug_assert!(0.0 <= costs[costs.len() - 1].0);
+		f64::from(costs[costs.len() - 1].0)
+	}
+
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	/// # Greedy LZ77 Run.
+	fn greedy(
+		&mut self,
+		arr: *const u8,
+		instart: usize,
+		inend: usize,
+		store: *mut ZopfliLZ77Store,
+		cache: Option<usize>,
+	) {
+		// Reset the hash.
+		self.reset(arr, instart, inend);
+
+		// Convert the input to a proper slice.
+		let arr = unsafe { std::slice::from_raw_parts(arr, inend) };
+
+		// We'll need a few more variables…
+		let mut sublen = [0_u16; SUBLEN_LEN];
+		let mut length: u16 = 0;
+		let mut distance: u16 = 0;
+		let mut prev_length: u16 = 0;
+		let mut prev_distance: u16 = 0;
+		let mut match_available = false;
+
+		// Loop the data!
+		let mut i = instart;
+		while i < arr.len() {
+			// Update the hash.
+			self.update_hash(&arr[i..], i);
+
+			// Run the finder.
+			self.find(
+				arr.as_ptr(),
+				i,
+				arr.len(),
+				ZOPFLI_MAX_MATCH,
+				&mut sublen,
+				&mut distance,
+				&mut length,
+				cache,
+			);
+
+			// Lazy matching.
+			let length_score = get_length_score(length, distance);
+			let prev_length_score = get_length_score(prev_length, prev_distance);
+			if match_available {
+				match_available = false;
+
+				if length_score > prev_length_score + 1 {
+					unsafe {
+						ZopfliStoreLitLenDist(
+							// This isn't accessible on the first iteration so
+							// -1 is always in range.
+							u16::from(*arr.get_unchecked(i - 1)),
+							0,
+							i - 1,
+							store,
+						);
+					}
+					if length_score >= ZOPFLI_MIN_MATCH as u16 && length < ZOPFLI_MAX_MATCH as u16 {
+						match_available = true;
+						prev_length = length;
+						prev_distance = distance;
+
+						i += 1;
+						continue;
+					}
+				}
+				else {
+					// Old is new.
+					length = prev_length;
+					distance = prev_distance;
+
+					// Write the values!
+					unsafe { ZopfliStoreLitLenDist(length, distance, i - 1, store); }
+
+					// Update the hash up through length and increment the loop
+					// position accordingly.
+					for _ in 2..length {
+						i += 1;
+						self.update_hash(&arr[i..], i);
+					}
+
+					i += 1;
+					continue;
+				}
+			}
+			// No previous match, but maybe we can set it for the next
+			// iteration?
+			else if length_score >= ZOPFLI_MIN_MATCH as u16 && length < ZOPFLI_MAX_MATCH as u16 {
+				match_available = true;
+				prev_length = length;
+				prev_distance = distance;
+
+				i += 1;
+				continue;
+			}
+
+			// Write the current length/distance.
+			if length_score >= ZOPFLI_MIN_MATCH as u16 {
+				unsafe { ZopfliStoreLitLenDist(length, distance, i, store); }
+			}
+			// Write from the source with no distance and reset the length to
+			// one.
+			else {
+				length = 1;
+				unsafe { ZopfliStoreLitLenDist(u16::from(arr[i]), 0, i, store); }
+			}
+
+			// Update the hash up through length and increment the loop
+			// position accordingly.
+			for _ in 1..length {
+				i += 1;
+				self.update_hash(&arr[i..], i);
+			}
+
+			i += 1;
+		}
 	}
 
 	#[allow(unsafe_code, clippy::cast_possible_truncation)]
@@ -530,8 +727,7 @@ impl ZopfliHash {
 		);
 
 		// Reset the hash.
-		let windowstart = instart.saturating_sub(ZOPFLI_WINDOW_SIZE);
-		self.reset(arr, inend, windowstart, instart);
+		self.reset(arr, instart, inend);
 
 		// Hash the path symbols.
 		let arr = unsafe { std::slice::from_raw_parts(arr, inend) };
@@ -561,18 +757,19 @@ impl ZopfliHash {
 
 				// Add it to the store.
 				unsafe { ZopfliStoreLitLenDist(length, dist, i, store); }
+
+				// Hash the rest of the match.
+				for _ in 1..usize::from(length) {
+					i += 1;
+					self.update_hash(unsafe { arr.get_unchecked(i..) }, i);
+				}
 			}
 			// Add it to the store.
 			else {
 				unsafe { ZopfliStoreLitLenDist(u16::from(arr[i]), 0, i, store); }
 			}
 
-			// Hash the rest of the match.
-			for j in 1..usize::from(length) {
-				self.update_hash(unsafe { arr.get_unchecked(i + j..) }, i + j);
-			}
-
-			i += usize::from(length);
+			i += 1;
 		}
 	}
 }
@@ -803,6 +1000,7 @@ impl ZopfliHash {
 
 
 
+#[derive(Clone, Copy)]
 /// # Zopfli Hash Chain.
 ///
 /// This struct stores all recorded hash values and their latest and previous
@@ -865,6 +1063,22 @@ impl ZopfliHashChain {
 
 
 
+#[allow(clippy::cast_possible_truncation)]
+/// # Distance Symbol and Extra Bits.
+///
+/// Calculate the symbol and bits given the distance. There is unfortunately
+/// too much variation to justify a simple table like the one used for lengths;
+/// (compiler-optimized) math is our best bet.
+const fn distance_symbol_bits(dist: u32) -> (u16, u16) {
+	if dist < 5 { (dist as u16 - 1, 0) }
+	else {
+		let d_log = (dist - 1).ilog2();
+		let r = ((dist - 1) >> (d_log - 1)) & 1;
+		let sym = (d_log * 2 + r) as u16;
+		(sym, (d_log - 1) as u16)
+	}
+}
+
 #[allow(
 	unsafe_code,
 	clippy::cast_possible_truncation,
@@ -893,6 +1107,17 @@ fn get_fixed_cost(len: u16, dist: u16) -> f64 {
 
 		f64::from(base + dbits + lbits)
 	}
+}
+
+/// # Distance-Based Length Score.
+///
+/// This is a simplistic cost model for the "greedy" LZ77 pass that helps it
+/// make a slightly better choice between two options during lazy matching.
+///
+/// This is a rewrite of the original `lz77.c` method.
+const fn get_length_score(length: u16, distance: u16) -> u16 {
+	if 1024 < distance { length - 1 }
+	else { length }
 }
 
 #[allow(
@@ -953,21 +1178,5 @@ fn get_stat_cost(len: u16, dist: u16, stats: &SymbolStats) -> f64 {
 			*stats.ll_symbols.get_unchecked(lsym as usize) +
 			*stats.d_symbols.get_unchecked(dsym as usize)
 		}
-	}
-}
-
-#[allow(clippy::cast_possible_truncation)]
-/// # Distance Symbol and Extra Bits.
-///
-/// Calculate the symbol and bits given the distance. There is unfortunately
-/// too much variation to justify a simple table like the one used for lengths;
-/// (compiler-optimized) math is our best bet.
-const fn distance_symbol_bits(dist: u32) -> (u16, u16) {
-	if dist < 5 { (dist as u16 - 1, 0) }
-	else {
-		let d_log = (dist - 1).ilog2();
-		let r = ((dist - 1) >> (d_log - 1)) & 1;
-		let sym = (d_log * 2 + r) as u16;
-		(sym, (d_log - 1) as u16)
 	}
 }

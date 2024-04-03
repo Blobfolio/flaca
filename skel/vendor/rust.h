@@ -37,19 +37,6 @@ typedef struct ZopfliLZ77Store {
 	size_t* d_counts;
 } ZopfliLZ77Store;
 
-/* Not ours, just moved. */
-typedef struct SymbolStats {
-	/* The literal and length symbols. */
-	size_t litlens[ZOPFLI_NUM_LL];
-	/* The 32 unique dist symbols, not the 32768 possible dists. */
-	size_t dists[ZOPFLI_NUM_D];
-
-	/* Length of each lit/len symbol in bits. */
-	double ll_symbols[ZOPFLI_NUM_LL];
-	/* Length of each dist symbol in bits. */
-	double d_symbols[ZOPFLI_NUM_D];
-} SymbolStats;
-
 
 
 /*
@@ -68,16 +55,6 @@ Write Fixed Tree.
 Initialize the length and distance symbol arrays with fixed tree values.
 */
 void GetFixedTree(unsigned* ll_lengths, unsigned* d_lengths);
-
-/*
-LZ77 Optimal Run.
-
-Does a single run for ZopfliLZ77Optimal. For good compression, repeated runs
-with updated statistics should be performed.
-*/
-double LZ77OptimalRun(
-	const unsigned char* in, size_t instart, size_t inend,
-	SymbolStats* costcontext, ZopfliLZ77Store* store);
 
 /*
 Optimize Huffman RLE Compression.
@@ -103,30 +80,6 @@ Zlib 1.2.2 and here: http://www.jonof.id.au/forum/index.php?topic=515.0.
 d_lengths: the 32 lengths of the distance codes.
 */
 void PatchDistanceCodesForBuggyDecoders(unsigned* d_lengths);
-
-/*
-Calculate Symbol Entropy.
-
-Calculates the entropy of each symbol, based on the counts of each symbol. The
-result is similar to the result of ZopfliCalculateBitLengths, but with the
-actual theoritical bit lengths according to the entropy. Since the resulting
-values are fractional, they cannot be used to encode the tree specified by
-DEFLATE.
-*/
-void ZopfliCalculateEntropy(const size_t* count, size_t n, double* bitlengths);
-
-/*
-Find Longest Match.
-
-Update the length, distance, and sublength array with the longest match values.
-*/
-void ZopfliFindLongestMatch(
-	const unsigned char* array, size_t pos, size_t size, size_t limit,
-	unsigned short* sublen, unsigned short* distance, unsigned short* length,
-	unsigned char cache, size_t blockstart);
-
-/* Initializes the Longest Match and Squeeze Caches. */
-void ZopfliInitCache(size_t blocksize);
 
 /*
 Length Limited Code Lengths.
@@ -159,17 +112,36 @@ void ZopfliLengthsToSymbols7(const unsigned* lengths, size_t n, unsigned* symbol
 void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbols);
 
 /*
-Reset Longest Match Hashes.
+Does LZ77 using an algorithm similar to gzip, with lazy matching, rather than
+with the slow but better "squeeze" implementation.
+The result is placed in the ZopfliLZ77Store.
+If instart is larger than 0, it uses values before instart as starting
+dictionary.
 */
-void ZopfliResetHash(
-	const unsigned char* array, size_t length, size_t windowstart, size_t instart);
+void ZopfliLZ77Greedy(
+	size_t cache, const unsigned char* in, size_t instart, size_t inend,
+	ZopfliLZ77Store* store);
 
 /*
-Update Longest Match Hashes.
-
-Updates the hash values based on the current position in the array. All calls
-to this must be made for consecutive bytes.
+Calculates lit/len and dist pairs for given data.
+If instart is larger than 0, it uses values before instart as starting
+dictionary.
 */
-void ZopfliUpdateHash(const unsigned char* array, size_t pos, size_t length);
+void ZopfliLZ77Optimal(
+	const unsigned char* in, size_t instart, size_t inend,
+	int numiterations, ZopfliLZ77Store* store);
+
+/*
+Does the same as ZopfliLZ77Optimal, but optimized for the fixed tree of the
+deflate standard.
+The fixed tree never gives the best compression. But this gives the best
+possible LZ77 encoding possible with the fixed tree.
+This does not create or output any fixed tree, only LZ77 data optimized for
+using with a fixed tree.
+If instart is larger than 0, it uses values before instart as starting
+dictionary.
+*/
+void ZopfliLZ77OptimalFixed(
+	const unsigned char* in, size_t instart, size_t inend, ZopfliLZ77Store* store);
 
 #endif
