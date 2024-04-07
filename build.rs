@@ -20,6 +20,9 @@ pub fn main() {
 	println!("cargo:rerun-if-env-changed=TARGET_CPU");
 	println!("cargo:rerun-if-changed=./skel/vendor/");
 
+	#[cfg(not(target_pointer_width = "64"))]
+	panic!("Flaca requires a 64-bit CPU architecture.");
+
 	build_exts();
 	build_ffi();
 }
@@ -64,20 +67,12 @@ fn build_ffi() {
 		.cpp(false)
 		.flag_if_supported("-W")
 		.flag_if_supported("-ansi")
-		.flag_if_supported("-pedantic");
-
-	if let Ok(target_cpu) = std::env::var("TARGET_CPU") {
-		c.flag_if_supported(&format!("-march={target_cpu}"));
-	}
-
-	c.flag_if_supported("-Wlm")
-		.flag_if_supported("-Wno-unused-function")
+		.flag_if_supported("-pedantic")
+		.flag_if_supported("-Wlm")
 		.pic(true)
 		.static_flag(true)
 		.files(&[
-			zopfli_src.join("blocksplitter.c"),
-			zopfli_src.join("deflate.c"),
-			zopfli_src.join("lz77.c"),
+			zopfli_src.join("zopfli.c"),
 			lodepng_src.join("lodepng.c"),
 		])
 		.define("LODEPNG_NO_COMPILE_DISK", None)
@@ -109,9 +104,8 @@ fn write(path: &Path, data: &[u8]) {
 fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 	let bindings = bindgen::Builder::default()
 		.header(lodepng_src.join("lodepng.h").to_string_lossy())
-		.header(zopfli_src.join("deflate.h").to_string_lossy())
-		.header(zopfli_src.join("lz77.h").to_string_lossy())
 		.header(repo.join("rust.h").to_string_lossy())
+		.header(zopfli_src.join("zopfli.h").to_string_lossy())
 		.allowlist_function("lodepng_color_mode_copy")
 		.allowlist_function("lodepng_color_stats_init")
 		.allowlist_function("lodepng_compute_color_stats")
@@ -119,10 +113,14 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 		.allowlist_function("lodepng_encode")
 		.allowlist_function("lodepng_state_cleanup")
 		.allowlist_function("lodepng_state_init")
-		.allowlist_function("ZopfliCalculateBlockSize")
+		.allowlist_function("ZopfliAddBit")
+		.allowlist_function("ZopfliAddBits")
+		.allowlist_function("ZopfliAddHuffmanBits")
+		.allowlist_function("ZopfliAddNonCompressedBlock")
+		.allowlist_function("ZopfliAppendLZ77Store")
 		.allowlist_function("ZopfliCleanLZ77Store")
 		.allowlist_function("ZopfliCopyLZ77Store")
-		.allowlist_function("ZopfliDeflatePart")
+		.allowlist_function("ZopfliEncodeTree")
 		.allowlist_function("ZopfliInitLZ77Store")
 		.allowlist_function("ZopfliStoreLitLenDist")
 		.allowlist_type("LodePNGColorStats")

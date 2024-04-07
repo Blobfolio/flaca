@@ -13,6 +13,10 @@ mod zopflipng;
 use kind::ImageKind;
 use oxipng::Options as OxipngOptions;
 use std::path::Path;
+use zopflipng::{
+	deflate_part,
+	SplitPoints,
+};
 
 
 

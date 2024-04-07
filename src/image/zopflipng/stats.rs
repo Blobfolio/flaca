@@ -6,6 +6,7 @@ in `squeeze.c`.
 */
 
 use super::{
+	distance_symbol,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
 	ZopfliLZ77Store,
@@ -221,20 +222,5 @@ impl SymbolStats {
 
 		// Set the end symbol.
 		self.litlens[256] = 1;
-	}
-}
-
-
-
-#[allow(clippy::cast_possible_truncation)]
-/// # Distance Symbol.
-///
-/// Same as `hash::distance_symbol_bits`, minus the bits.
-const fn distance_symbol(dist: u32) -> usize {
-	if dist < 5 { dist.saturating_sub(1) as usize }
-	else {
-		let d_log = (dist - 1).ilog2();
-		let r = ((dist - 1) >> (d_log - 1)) & 1;
-		(d_log * 2 + r) as usize
 	}
 }

@@ -2,10 +2,7 @@
 # Flaca: Zopflipng Longest Match Cache.
 */
 
-use std::{
-	cell::RefCell,
-	os::raw::c_ushort,
-};
+use std::cell::RefCell;
 use super::{
 	ZOPFLI_MIN_MATCH,
 	ZOPFLI_MAX_MATCH,
@@ -168,7 +165,7 @@ impl MatchCache {
 	}
 
 	/// # Set Length and Distance.
-	fn set_ld(&mut self, pos: usize, len: c_ushort, dist: c_ushort) {
+	fn set_ld(&mut self, pos: usize, len: u16, dist: u16) {
 		let [l1, l2] = len.to_le_bytes();
 		let [d1, d2] = dist.to_le_bytes();
 		self.ld[pos] = u32::from_le_bytes([l1, l2, d1, d2]);
@@ -180,8 +177,8 @@ impl MatchCache {
 		&mut self,
 		pos: usize,
 		sublen: &[u16],
-		distance: c_ushort,
-		length: c_ushort,
+		distance: u16,
+		length: u16,
 	) {
 		let (cache_len, cache_dist) = self.ld(pos);
 		if cache_len == 0 || cache_dist != 0 { return; }
@@ -257,7 +254,7 @@ impl MatchCache {
 	/// boundary confusion.
 	fn sublen_array(&self, pos: usize) -> &[u8; SUBLEN_CACHED_LEN] {
 		let start = SUBLEN_CACHED_LEN * pos;
-		unsafe { &* (self.sublen.get_unchecked(start..start + SUBLEN_CACHED_LEN).as_ptr().cast()) }
+		unsafe { &* self.sublen.as_ptr().add(start).cast() }
 	}
 
 	#[allow(unsafe_code)]

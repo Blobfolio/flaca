@@ -16,7 +16,11 @@ use std::{
 	},
 	mem::MaybeUninit,
 };
-use super::ffi::EncodedImage;
+use super::{
+	deflate_part,
+	ffi::EncodedImage,
+	SplitPoints,
+};
 
 
 
@@ -38,7 +42,7 @@ const ZOPFLI_MASTER_BLOCK_SIZE: usize = 1_000_000;
 pub(crate) extern "C" fn flaca_png_deflate(
 	out: *mut *mut c_uchar,
 	outsize: *mut usize,
-	in_: *const c_uchar,
+	arr: *const c_uchar,
 	insize: usize,
 	_settings: *const LodePNGCompressSettings,
 ) -> c_uint {
@@ -52,28 +56,30 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	// lets it know which part of the last byte it is currently working on.
 	let mut bp: c_uchar = 0;
 
+	// Initialize a reusable split-point buffer.
+	let mut splits = SplitPoints::new();
+
 	// Compress in chunks, à la ZopfliDeflate.
 	let mut i: usize = 0;
 	while i < insize {
 		// Each pass needs to know if it is the last, and how much data to
 		// handle.
 		let (last_part, size) =
-			if i + ZOPFLI_MASTER_BLOCK_SIZE >= insize { (1_i32, insize - i) }
-			else { (0_i32, ZOPFLI_MASTER_BLOCK_SIZE) };
+			if i + ZOPFLI_MASTER_BLOCK_SIZE >= insize { (true, insize - i) }
+			else { (false, ZOPFLI_MASTER_BLOCK_SIZE) };
 
 		// Crunch the part!
-		unsafe {
-			ZopfliDeflatePart(
-				numiterations,
-				last_part,
-				in_,
-				i,
-				i + size,
-				&mut bp,
-				out,
-				outsize,
-			);
-		}
+		deflate_part(
+			&mut splits,
+			numiterations,
+			last_part,
+			arr,
+			i,
+			i + size,
+			&mut bp,
+			out,
+			outsize,
+		);
 
 		// Onward and upward!
 		i += size;

@@ -10,9 +10,7 @@ use std::{
 	},
 	cmp::Ordering,
 	mem::MaybeUninit,
-	os::raw::c_uint,
 };
-use super::ZOPFLI_NUM_LL;
 
 
 
@@ -28,37 +26,43 @@ thread_local!(
 
 
 #[no_mangle]
+#[allow(unsafe_code)]
+/// # Length Limited Code Lengths (FFI).
+///
+/// This is only called in one place from C with fixed sizes.
+pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
+	frequencies: &[usize; 19],
+	bitlengths: *mut u32,
+) {
+	zopfli_length_limited_code_lengths::<7, 19>(frequencies, bitlengths);
+}
+
 #[allow(unsafe_code, clippy::cast_sign_loss)]
 /// # Length Limited Code Lengths.
 ///
-/// This is a rewrite of the original `katajainen.c` method.
+/// This writes minimum-redundancy length-limited code bitlengths for symbols
+/// with the given counts, limited by `MAXBITS`.
 ///
-/// It writes minimum-redundancy length-limited code bitlengths for symbols
-/// with the given counts, limited by `maxbits`.
-///
-/// ## Panics
-///
-/// This will panic on error, matching the original C behavior.
-pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
-	frequencies: *const usize,
-	n: usize,
-	mut maxbits: usize,
-	bitlengths: *mut c_uint,
+/// Note that `bitlengths` has the same size as `frequencies` — `SIZE` — but is
+/// passed as a pointer instead of an array because `&mut u32` isn't `Copy` and
+/// we need to freely pass them around.
+pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZE: usize>(
+	frequencies: &[usize; SIZE],
+	bitlengths: *mut u32,
 ) {
 	// Convert (used) frequencies to leaves. There will never be more than
 	// ZOPFLI_NUM_LL of them, but often there will be less, so we'll leverage
 	// MaybeUninit to save unnecessary writes.
-	let mut leaves: [MaybeUninit<Leaf>; ZOPFLI_NUM_LL] = unsafe {
+	let mut leaves: [MaybeUninit<Leaf>; SIZE] = unsafe {
 		MaybeUninit::uninit().assume_init()
 	};
 	let mut len_leaves = 0;
-	for i in 0..n {
+	for (i, &frequency) in frequencies.iter().enumerate() {
 		unsafe {
 			// Zero out the bitlength regardless.
 			let bitlength = bitlengths.add(i);
 			bitlength.write(0);
 
-			let frequency = *frequencies.add(i);
 			if frequency != 0 {
 				leaves[len_leaves].write(Leaf { frequency, bitlength });
 				len_leaves += 1;
@@ -72,7 +76,7 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	// This method is either called with 15 maxbits and 32 or 288 potential
 	// leaves, or 7 maxbits and 19 potential leaves; in either case, the max
 	// leaves are well within range.
-	assert!((1 << maxbits) >= len_leaves, "Insufficient maxbits for symbols.");
+	assert!((1 << MAXBITS) >= len_leaves, "Insufficient maxbits for symbols.");
 
 	// The leaves we can actually use:
 	let final_leaves: &mut [Leaf] = unsafe {
@@ -93,7 +97,9 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 
 	// Shrink maxbits if we have fewer leaves. Note that "maxbits" is an
 	// inclusive value.
-	if len_leaves - 1 < maxbits { maxbits = len_leaves - 1; }
+	let maxbits =
+		if len_leaves - 1 < MAXBITS { len_leaves - 1 }
+		else { MAXBITS };
 
 	// Set up the pool!
 	BUMP.with_borrow_mut(|nodes| {
@@ -141,7 +147,7 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 /// This joins a frequency with its matching bitlength from the raw C slices.
 struct Leaf {
 	frequency: usize,
-	bitlength: *mut c_uint,
+	bitlength: *mut u32,
 }
 
 impl Eq for Leaf {}

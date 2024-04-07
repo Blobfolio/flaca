@@ -48,27 +48,6 @@ cargo build \
 
 In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`/`clang`, `make`, `nasm`, and the dev libraries for `libjpeg` and `libpng`.
 
-### Special Build Options
-
-Image compression is a pretty CPU-intensive task. If you're building Flaca from source and running it on known hardware, you can probably improve the resulting runtime performance by setting a more specialized target ABI level, e.g. `-march=native` or `-march=x86-64-v3`.
-
-In Rust, that is accomplished via `RUSTFLAGS`, like:
-
-```bash
-export RUSTFLAGS="-Ctarget-cpu=x86-64-v3"
-cargo build…
-```
-
-You can also set the custom `TARGET_CPU` environmental variable to pass the appropriate `-march` flag when building the embedded C components:
-
-```bash
-export RUSTFLAGS="-Ctarget-cpu=x86-64-v3"
-export TARGET_CPU="x86-64-v3"
-cargo build…
-```
-
-As always, you should benchmark the performance with and without the flags to see if they help or hurt; results will vary by machine and compiler.
-
 
 
 ## Usage

@@ -1,11 +1,10 @@
 /*
 Rust Externs.
 
-Since Google has effectively abandoned Zopfli — shocker! — we're moving some of
-the methods into Rust where they can be more easily managed.
-
-This file contains the signatures to allow (more or less) seamless
-interop across the sea of C.
+Since Google has effectively abandoned Zopfli — shocker! — we're moving most of
+the methods into Rust where they can be more easily managed. At some point
+hopefully all of it will live Rust side, but until then, these headers allow
+interop with the remaining sea of C.
 */
 
 #ifndef ZOPFLI_RUST_H_
@@ -13,8 +12,6 @@ interop across the sea of C.
 
 #include <stdlib.h> /* for size_t */
 #include "lodepng/lodepng.h"
-#include "zopfli/util.h"
-
 
 /* Not ours, just moved. */
 typedef struct ZopfliLZ77Store {
@@ -37,8 +34,6 @@ typedef struct ZopfliLZ77Store {
 	size_t* d_counts;
 } ZopfliLZ77Store;
 
-
-
 /*
 Custom Deflate Callback.
 
@@ -48,38 +43,6 @@ unsigned flaca_png_deflate(
 	unsigned char** out, size_t* outsize,
 	const unsigned char* in, size_t insize,
 	const LodePNGCompressSettings* settings);
-
-/*
-Write Fixed Tree.
-
-Initialize the length and distance symbol arrays with fixed tree values.
-*/
-void GetFixedTree(unsigned* ll_lengths, unsigned* d_lengths);
-
-/*
-Optimize Huffman RLE Compression.
-
-Changes the population counts in a way that the consequent Huffman tree
-compression, especially its rle-part, will be more likely to compress this data
-more efficiently. length contains the size of the histogram.
-*/
-void OptimizeHuffmanForRle(size_t length, size_t* counts);
-
-/*
-Patch Buggy Distance Codes.
-
-Ensures there are at least 2 distance codes to support buggy decoders.
-Zlib 1.2.1 and below have a bug where it fails if there isn't at least 1
-distance code (with length > 0), even though it's valid according to the
-deflate spec to have 0 distance codes. On top of that, some mobile phones
-require at least two distance codes. To support these decoders too (but
-potentially at the cost of a few bytes), add dummy code lengths of 1.
-References to this bug can be found in the changelog of
-Zlib 1.2.2 and here: http://www.jonof.id.au/forum/index.php?topic=515.0.
-
-d_lengths: the 32 lengths of the distance codes.
-*/
-void PatchDistanceCodesForBuggyDecoders(unsigned* d_lengths);
 
 /*
 Length Limited Code Lengths.
@@ -97,8 +60,7 @@ maxbits: Maximum bit length, inclusive.
 bitlengths: Output, the bitlengths for the symbol prefix codes.
 return: 0 for OK, non-0 for error.
 */
-void ZopfliLengthLimitedCodeLengths(
-	const size_t* frequencies, size_t n, size_t maxbits, unsigned* bitlengths);
+void ZopfliLengthLimitedCodeLengths(const size_t* frequencies, unsigned* bitlengths);
 
 /*
 Code Lengths to Symbols.
@@ -108,40 +70,6 @@ Converts a series of Huffman tree bitlengths, to the bit values of the symbols.
 The original method was split into two to improve memory allocations on the
 Rust side.
 */
-void ZopfliLengthsToSymbols7(const unsigned* lengths, size_t n, unsigned* symbols);
-void ZopfliLengthsToSymbols15(const unsigned* lengths, size_t n, unsigned* symbols);
-
-/*
-Does LZ77 using an algorithm similar to gzip, with lazy matching, rather than
-with the slow but better "squeeze" implementation.
-The result is placed in the ZopfliLZ77Store.
-If instart is larger than 0, it uses values before instart as starting
-dictionary.
-*/
-void ZopfliLZ77Greedy(
-	size_t cache, const unsigned char* in, size_t instart, size_t inend,
-	ZopfliLZ77Store* store);
-
-/*
-Calculates lit/len and dist pairs for given data.
-If instart is larger than 0, it uses values before instart as starting
-dictionary.
-*/
-void ZopfliLZ77Optimal(
-	const unsigned char* in, size_t instart, size_t inend,
-	int numiterations, ZopfliLZ77Store* store);
-
-/*
-Does the same as ZopfliLZ77Optimal, but optimized for the fixed tree of the
-deflate standard.
-The fixed tree never gives the best compression. But this gives the best
-possible LZ77 encoding possible with the fixed tree.
-This does not create or output any fixed tree, only LZ77 data optimized for
-using with a fixed tree.
-If instart is larger than 0, it uses values before instart as starting
-dictionary.
-*/
-void ZopfliLZ77OptimalFixed(
-	const unsigned char* in, size_t instart, size_t inend, ZopfliLZ77Store* store);
+void ZopfliLengthsToSymbolsCode(const unsigned* lengths, unsigned* symbols);
 
 #endif

@@ -26,8 +26,43 @@ compression.
 #define ZOPFLI_LZ77_H_
 
 #include <stdlib.h>
-
 #include "../rust.h"
+
+/*
+bp = bitpointer, always in range [0, 7].
+The outsize is number of necessary bytes to encode the bits.
+Given the value of bp and the amount of bytes, the amount of bits represented
+is not simply bytesize * 8 + bp because even representing one bit requires a
+whole byte. It is: (bp == 0) ? (bytesize * 8) : ((bytesize - 1) * 8 + bp)
+*/
+void ZopfliAddBit(int bit, unsigned char* bp, unsigned char** out, size_t* outsize);
+
+void ZopfliAddBits(
+	unsigned symbol, unsigned length,
+	unsigned char* bp, unsigned char** out, size_t* outsize);
+
+/*
+Adds bits, like AddBits, but the order is inverted. The deflate specification
+uses both orders in one standard.
+*/
+void ZopfliAddHuffmanBits(
+	unsigned symbol, unsigned length,
+	unsigned char* bp, unsigned char** out, size_t* outsize);
+
+/* Since an uncompressed block can be max 65535 in size, it actually adds
+multible blocks if needed. */
+void ZopfliAddNonCompressedBlock(
+	int final, const unsigned char* in, size_t instart, size_t inend,
+	unsigned char* bp, unsigned char** out, size_t* outsize);
+
+/*
+Encodes the Huffman tree and returns how many bits its encoding takes. If out
+is a null pointer, only returns the size and runs faster.
+*/
+size_t ZopfliEncodeTree(
+	const unsigned* ll_lengths, const unsigned* d_lengths,
+	int use_16, int use_17, int use_18,
+	unsigned char* bp, unsigned char** out, size_t* outsize);
 
 /*
 Stores lit/length and dist pairs for LZ77.
@@ -37,10 +72,7 @@ no dist and the corresponding litlens value is a literal instead of a length.
 Parameter size: The size of both the litlens and dists arrays.
 The memory can best be managed by using ZopfliInitLZ77Store to initialize it,
 ZopfliCleanLZ77Store to destroy it, and ZopfliStoreLitLenDist to append values.
-
 */
-
-
 void ZopfliInitLZ77Store(const unsigned char* data, ZopfliLZ77Store* store);
 void ZopfliCleanLZ77Store(ZopfliLZ77Store* store);
 void ZopfliCopyLZ77Store(const ZopfliLZ77Store* source, ZopfliLZ77Store* dest);
@@ -48,16 +80,5 @@ void ZopfliStoreLitLenDist(
 	unsigned short length, unsigned short dist, size_t pos, ZopfliLZ77Store* store);
 void ZopfliAppendLZ77Store(
 	const ZopfliLZ77Store* store, ZopfliLZ77Store* target);
-
-/* Gets the amount of raw bytes that this range of LZ77 symbols spans. */
-size_t ZopfliLZ77GetByteRange(
-	const ZopfliLZ77Store* lz77, size_t lstart, size_t lend);
-
-/* Gets the histogram of lit/len and dist symbols in the given range, using the
-cumulative histograms, so faster than adding one by one for large range. Does
-not add the one end symbol of value 256. */
-void ZopfliLZ77GetHistogram(
-	const ZopfliLZ77Store* lz77, size_t lstart, size_t lend,
-	size_t* ll_counts, size_t* d_counts);
 
 #endif  /* ZOPFLI_LZ77_H_ */
