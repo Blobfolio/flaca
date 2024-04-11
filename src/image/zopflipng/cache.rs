@@ -13,27 +13,23 @@ use super::{
 thread_local!(
 	/// # Static Cache.
 	///
-	/// There is only ever one instance of the LZ77 cache active per thread,
-	/// so we might as well persist it to save on the allocations!
-	pub(crate) static CACHE: RefCell<MatchCache> = const { RefCell::new(MatchCache::new()) };
-
-	/// # Static Squeeze Scratch.
-	///
-	/// Similar to the above, the costs, lengths, and paths crunched during the
-	/// squeeze passes never overlap so can be shared to reduce allocation
-	/// overhead.
-	pub(crate) static SQUEEZE: RefCell<SqueezeCache> = const { RefCell::new(SqueezeCache::new()) };
+	/// There is only ever one instance of the longest match cache active per
+	/// thread, so we might as well persist it to save on the allocations!
+	pub(crate) static CACHE: RefCell<MatchCache> = const { RefCell::new(MatchCache::new()) }
 );
 
 /// # Default Length (1) and Distance (0).
 ///
-/// Length and distance are always fetched together, so are stored together to
-/// halve the bounds-checking overhead.
+/// Length and distance are always fetched/stored together, so are grouped into
+/// a single value to reduce indexing/bounds overhead.
 const DEFAULT_LD: u32 = u32::from_le_bytes([1, 0, 0, 0]);
 
+/// # Sublength Cache Entries.
 const ZOPFLI_CACHE_LENGTH: usize = 8;
 
-/// # Length of Cached Sublength Slice.
+/// # Sublength Cache Total Length.
+///
+/// Each entry uses three bytes, so the total size is…
 const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 
 
@@ -88,15 +84,13 @@ impl MatchCache {
 	}
 
 	#[inline]
-	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[allow(clippy::cast_possible_truncation)]
 	/// # Find Match.
 	///
 	/// Find the sublength, distance, and length from cache, if possible.
 	///
 	/// Values are written directly to the passed arguments. A bool is returned
 	/// to indicate whether or not the find was successful.
-	///
-	/// Note: All the mismatched integer types are Zopfli's fault. Haha.
 	pub(crate) fn find(
 		&self,
 		pos: usize,
@@ -112,7 +106,7 @@ impl MatchCache {
 		// Find the max sublength once, if ever.
 		let maxlength =
 			if sublen.is_empty() { 0 }
-			else { max_sublen(self.sublen_array(pos)) };
+			else { max_sublen(&self.sublen[SUBLEN_CACHED_LEN * pos..]) };
 
 		// Proceed if our cached length or max sublength are under the limit.
 		if
@@ -171,8 +165,10 @@ impl MatchCache {
 		self.ld[pos] = u32::from_le_bytes([l1, l2, d1, d2]);
 	}
 
-	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[allow(clippy::cast_possible_truncation)]
 	/// # Set Sublength.
+	///
+	/// Save the provided sublength data to the cache.
 	pub(crate) fn set_sublen(
 		&mut self,
 		pos: usize,
@@ -203,67 +199,43 @@ impl MatchCache {
 		);
 		self.set_ld(pos, length, distance);
 
-		// Convert (the relevant) part of the sublength to a slice to make
-		// it easier to work with.
-		let start = unsafe { self.sublen.as_mut_ptr().add(SUBLEN_CACHED_LEN * pos) };
-		let mut ptr = start;
-		let mut written = 0;
+		// The cache gets written three bytes at a time; this iterator will
+		// help us eliminate the bounds checks we'd otherwise run into.
+		// let mut dst = self.sublen[SUBLEN_CACHED_LEN * pos..SUBLEN_CACHED_LEN * pos + SUBLEN_CACHED_LEN].chunks_exact_mut(3);
+		let mut dst = self.sublen.chunks_exact_mut(3)
+			.skip(ZOPFLI_CACHE_LENGTH * pos)
+			.take(ZOPFLI_CACHE_LENGTH);
 
 		// Write all mismatched pairs.
 		for (i, pair) in sublen.windows(2).skip(ZOPFLI_MIN_MATCH).take(usize::from(length) - 3).enumerate() {
 			if pair[0] != pair[1] {
-				unsafe {
-					ptr.write(i as u8);
-					std::ptr::copy_nonoverlapping(
-						pair[0].to_le_bytes().as_ptr(),
-						ptr.add(1),
-						2,
-					);
-
-					written += 1;
-					if written == ZOPFLI_CACHE_LENGTH { return; }
-
-					ptr = ptr.add(3);
-				}
+				let Some(next) = dst.next() else { return; };
+				next[0] = i as u8;
+				next[1..].copy_from_slice(pair[0].to_le_bytes().as_slice());
 			}
 		}
 
-		// Write the final length/distance.
-		unsafe {
-			ptr.write((length - 3) as u8);
-			std::ptr::copy_nonoverlapping(
-				sublen.get_unchecked(length as usize).to_le_bytes().as_ptr(),
-				ptr.add(1),
-				2,
-			);
+		// Write the final length if we're still here.
+		if let Some(next) = dst.next() {
+			next[0] = (length - 3) as u8;
+			next[1..].copy_from_slice(sublen[usize::from(length)].to_le_bytes().as_slice());
 
-			written += 1;
-
-			// If we didn't fill the cache, redundantly write the last length
-			// into the last chunk to make our future lives easier.
-			if written < ZOPFLI_CACHE_LENGTH {
-				start.add(SUBLEN_CACHED_LEN - 3).write((length - 3) as u8);
+			// And copy that value to the end of the cache if we still haven't
+			// hit the limit.
+			if let Some([c1, _rest @ ..]) = dst.last() {
+				*c1 = (length - 3) as u8;
 			}
 		}
 	}
 
-	#[allow(unsafe_code)]
-	/// # Sublength Array.
-	///
-	/// Return the cached sublength as a fixed array to ease any subsequent
-	/// boundary confusion.
-	fn sublen_array(&self, pos: usize) -> &[u8; SUBLEN_CACHED_LEN] {
-		let start = SUBLEN_CACHED_LEN * pos;
-		unsafe { &* self.sublen.as_ptr().add(start).cast() }
-	}
-
-	#[allow(unsafe_code)]
 	/// # Write Sublength.
+	///
+	/// Fill the provided sublength slice with data from the cache.
 	fn write_sublen(&self, pos: usize, length: usize, sublen: &mut [u16]) {
 		// Short circuit.
 		if length < ZOPFLI_MIN_MATCH { return; }
 
-		let slice = self.sublen_array(pos);
+		let slice = &self.sublen[SUBLEN_CACHED_LEN * pos..SUBLEN_CACHED_LEN * pos + SUBLEN_CACHED_LEN];
 		let maxlength = max_sublen(slice);
 		let mut prevlength = 0;
 
@@ -271,8 +243,7 @@ impl MatchCache {
 			let length = usize::from(chunk[0]) + ZOPFLI_MIN_MATCH;
 			if prevlength <= length {
 				let dist = u16::from_le_bytes([chunk[1], chunk[2]]);
-				// Safety: these positions existed before.
-				unsafe { sublen.get_unchecked_mut(prevlength..=length).fill(dist); }
+				sublen[prevlength..=length].fill(dist);
 			}
 			if length == maxlength { return; }
 			prevlength = length + 1;
@@ -287,8 +258,8 @@ impl MatchCache {
 /// This structure is used to keep track of the data gathered during the
 /// forward/backward "squeeze" passes.
 ///
-/// It is initialized with the `MatchCache` because they're used together, but
-/// kept separate to mitigate lock contention.
+/// Similar to `MatchCache`, this structure is only ever really needed once per
+/// image so is frequently reset/reused to reduce allocation overhead.
 pub(crate) struct SqueezeCache {
 	pub(crate) costs: Vec<(f32, u16)>,
 	pub(crate) paths: Vec<u16>,
@@ -296,14 +267,13 @@ pub(crate) struct SqueezeCache {
 
 impl SqueezeCache {
 	/// # New.
-	const fn new() -> Self {
+	pub(crate) const fn new() -> Self {
 		Self {
 			costs: Vec::new(),
 			paths: Vec::new(),
 		}
 	}
 
-	#[inline]
 	/// # Initialize/Reset.
 	///
 	/// This (potentially) resizes the cost and length vectors for the given
@@ -321,33 +291,34 @@ impl SqueezeCache {
 		}
 	}
 
-	#[inline]
+	#[allow(unsafe_code)]
 	/// # Reset Costs.
 	///
 	/// This nudges all costs to infinity except the first, which is set to
 	/// zero instead.
-	pub(crate) fn reset_costs(&mut self) {
-		if ! self.costs.is_empty() {
-			for c in &mut self.costs { c.0 = f32::INFINITY; }
-			self.costs[0].0 = 0.0;
+	pub(crate) fn reset_costs(&mut self) -> &mut [(f32, u16)] {
+		let slice = self.costs.as_mut_slice();
+		if ! slice.is_empty() {
+			for c in slice.iter_mut() { c.0 = f32::INFINITY; }
+			slice[0].0 = 0.0;
 		}
+		slice
 	}
 
-	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[allow(clippy::cast_possible_truncation)]
+	#[inline]
 	/// # Trace Paths.
 	///
 	/// Calculate the optimal path of lz77 lengths to use, from the
 	/// lengths gathered during the `ZopfliHash::get_best_lengths` pass.
-	pub(crate) fn trace_paths(&mut self) {
-		// Kill any previous paths, if any.
+	pub(crate) fn trace_paths(&mut self) -> Option<&[u16]> {
+		let costs = self.costs.as_slice();
+		if costs.len() < 2 { return None; }
+
 		self.paths.truncate(0);
-
-		let len = self.costs.len();
-		if len < 2 { return; }
-
-		let mut idx = len - 1;
-		while 0 < idx {
-			let v = self.costs[idx].1;
+		let mut idx = costs.len() - 1;
+		while 0 < idx && idx < costs.len() {
+			let v = costs[idx].1;
 			assert!((1..=ZOPFLI_MAX_MATCH as u16).contains(&v));
 
 			// Only lengths of at least ZOPFLI_MIN_MATCH count as lengths
@@ -359,6 +330,8 @@ impl SqueezeCache {
 			// Move onto the next length or finish.
 			idx = idx.saturating_sub(usize::from(v));
 		}
+
+		Some(self.paths.as_slice())
 	}
 }
 
@@ -367,7 +340,7 @@ impl SqueezeCache {
 /// # Max Sublength.
 ///
 /// Return the maximum sublength length for a given chunk.
-const fn max_sublen(slice: &[u8; SUBLEN_CACHED_LEN]) -> usize {
-	if slice[1] == 0 && slice[2] == 0 { 0 }
+const fn max_sublen(slice: &[u8]) -> usize {
+	if slice.len() < SUBLEN_CACHED_LEN || (slice[1] == 0 && slice[2] == 0) { 0 }
 	else { slice[SUBLEN_CACHED_LEN - 3] as usize + 3 }
 }

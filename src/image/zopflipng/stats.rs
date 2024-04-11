@@ -6,50 +6,10 @@ in `squeeze.c`.
 */
 
 use super::{
-	distance_symbol,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
-	ZopfliLZ77Store,
+	LZ77Store,
 };
-
-
-
-/// # Length Symbols.
-const LENGTH_SYMBOLS: [u16; 259] = [
-	0, 0, 0,
-	257, 258, 259, 260, 261, 262, 263, 264,
-	265, 265, 266, 266, 267, 267, 268, 268,
-	269, 269, 269, 269, 270, 270, 270, 270,
-	271, 271, 271, 271, 272, 272, 272, 272,
-	273, 273, 273, 273, 273, 273, 273, 273,
-	274, 274, 274, 274, 274, 274, 274, 274,
-	275, 275, 275, 275, 275, 275, 275, 275,
-	276, 276, 276, 276, 276, 276, 276, 276,
-	277, 277, 277, 277, 277, 277, 277, 277,
-	277, 277, 277, 277, 277, 277, 277, 277,
-	278, 278, 278, 278, 278, 278, 278, 278,
-	278, 278, 278, 278, 278, 278, 278, 278,
-	279, 279, 279, 279, 279, 279, 279, 279,
-	279, 279, 279, 279, 279, 279, 279, 279,
-	280, 280, 280, 280, 280, 280, 280, 280,
-	280, 280, 280, 280, 280, 280, 280, 280,
-	281, 281, 281, 281, 281, 281, 281, 281,
-	281, 281, 281, 281, 281, 281, 281, 281,
-	281, 281, 281, 281, 281, 281, 281, 281,
-	281, 281, 281, 281, 281, 281, 281, 281,
-	282, 282, 282, 282, 282, 282, 282, 282,
-	282, 282, 282, 282, 282, 282, 282, 282,
-	282, 282, 282, 282, 282, 282, 282, 282,
-	282, 282, 282, 282, 282, 282, 282, 282,
-	283, 283, 283, 283, 283, 283, 283, 283,
-	283, 283, 283, 283, 283, 283, 283, 283,
-	283, 283, 283, 283, 283, 283, 283, 283,
-	283, 283, 283, 283, 283, 283, 283, 283,
-	284, 284, 284, 284, 284, 284, 284, 284,
-	284, 284, 284, 284, 284, 284, 284, 284,
-	284, 284, 284, 284, 284, 284, 284, 284,
-	284, 284, 284, 284, 284, 284, 284, 285,
-];
 
 
 
@@ -172,30 +132,19 @@ impl SymbolStats {
 		calculate_entropy::<ZOPFLI_NUM_D>(&self.dists, &mut self.d_symbols);
 	}
 
-	#[allow(unsafe_code, clippy::similar_names)]
+	#[allow(clippy::similar_names)]
 	/// # Load Statistics.
 	///
 	/// This updates the `litlens` and `dists` stats using the data from the
 	/// `ZopfliLZ77Store` store, then crunches the results.
-	pub(crate) fn load_store(&mut self, store: &ZopfliLZ77Store) {
-		for i in 0..store.size {
-			// We'll need both of these values regardless of what they
-			// represent.
-			let litlen = usize::from(unsafe { *store.litlens.add(i) });
-			let dist = u32::from(unsafe { *store.dists.add(i) });
-
-			if 0 == dist {
-				// Safety: `ZopfliStoreLitLenDist` asserts lengths are < 259
-				// before storing them.
-				unsafe { *self.litlens.get_unchecked_mut(litlen) += 1; }
+	pub(crate) fn load_store(&mut self, store: &LZ77Store) {
+		for e in &store.entries {
+			if e.dist <= 0 {
+				self.litlens[e.litlen as usize] += 1;
 			}
 			else {
-				// Safety: all LENGTH_SYMBOLS are in range.
-				let lsym = usize::from(unsafe { *LENGTH_SYMBOLS.get_unchecked(litlen) });
-				unsafe { *self.litlens.get_unchecked_mut(lsym) += 1; }
-
-				let dsym = distance_symbol(dist);
-				self.dists[dsym] += 1;
+				self.litlens[e.ll_symbol as usize] += 1;
+				self.dists[e.d_symbol as usize] += 1;
 			}
 		}
 

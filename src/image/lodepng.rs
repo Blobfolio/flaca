@@ -52,12 +52,13 @@ pub(crate) extern "C" fn flaca_png_deflate(
 		numiterations = if insize < 200_000 { 60 } else { 20 };
 	}
 
-	// Zopfli writes data one bit at a time… for reasons. This bit pointer
-	// lets it know which part of the last byte it is currently working on.
-	let mut bp: c_uchar = 0;
-
 	// Initialize a reusable split-point buffer.
 	let mut splits = SplitPoints::new();
+	let mut dst = ZopfliOut {
+		bp: 0,
+		out,
+		outsize,
+	};
 
 	// Compress in chunks, à la ZopfliDeflate.
 	let mut i: usize = 0;
@@ -73,12 +74,9 @@ pub(crate) extern "C" fn flaca_png_deflate(
 			&mut splits,
 			numiterations,
 			last_part,
-			arr,
+			unsafe { std::slice::from_raw_parts(arr, i + size) },
 			i,
-			i + size,
-			&mut bp,
-			out,
-			outsize,
+			&mut dst,
 		);
 
 		// Onward and upward!
@@ -108,6 +106,102 @@ impl Drop for DecodedImage {
 		}
 	}
 }
+
+
+
+/// # Lodepng Output Pointers.
+///
+/// This struct provides a wrapper around the lingering bit-writing zopfli C
+/// methods, saving us the trouble of having to pass down three different
+/// pointers (and using a bunch of unsafe blocks) just to get the data saved.
+pub(super) struct ZopfliOut {
+	bp: u8,
+	out: *mut *mut u8,
+	outsize: *mut usize,
+}
+
+impl ZopfliOut {
+	#[allow(unsafe_code)]
+	#[inline]
+	/// # Add Bit.
+	pub(crate) fn add_bit(&mut self, bit: i32) {
+		unsafe {
+			// Safety: only unsafe because of FFI.
+			ZopfliAddBit(bit, &mut self.bp, self.out, self.outsize);
+		}
+	}
+
+	#[allow(unsafe_code)]
+	#[inline]
+	/// # Add Multiple Bits.
+	pub(crate) fn add_bits(&mut self, symbol: u32, length: u32) {
+		unsafe {
+			// Safety: only unsafe because of FFI.
+			ZopfliAddBits(symbol, length,&mut self.bp, self.out, self.outsize);
+		}
+	}
+
+	#[allow(unsafe_code)]
+	#[inline]
+	/// # Add Huffman Bits.
+	pub(crate) fn add_huffman_bits(&mut self, symbol: u32, length: u32) {
+		unsafe {
+			// Safety: only unsafe because of FFI.
+			ZopfliAddHuffmanBits(symbol, length,&mut self.bp, self.out, self.outsize);
+		}
+	}
+
+	#[allow(unsafe_code)]
+	#[inline]
+	/// # Add Non-Compressed Block.
+	pub(crate) fn add_uncompressed_block(
+		&mut self,
+		last_block: bool,
+		arr: *const u8,
+		start: usize,
+		end: usize,
+	) {
+		unsafe {
+			// Safety: only unsafe because of FFI.
+			ZopfliAddNonCompressedBlock(
+				i32::from(last_block),
+				arr,
+				start,
+				end,
+				&mut self.bp,
+				self.out,
+				self.outsize,
+			);
+		}
+	}
+
+	#[allow(unsafe_code)]
+	#[inline]
+	/// # Encode Tree.
+	pub(crate) fn encode_tree(
+		&mut self,
+		ll_lengths: *const u32,
+		d_lengths: *const u32,
+		use_16: i32,
+		use_17: i32,
+		use_18: i32,
+	) {
+		unsafe {
+			// Safety: only unsafe because of FFI.
+			ZopfliEncodeTree(
+				ll_lengths,
+				d_lengths,
+				use_16,
+				use_17,
+				use_18,
+				&mut self.bp,
+				self.out,
+				self.outsize,
+			);
+		}
+	}
+}
+
 
 
 impl Default for LodePNGColorStats {

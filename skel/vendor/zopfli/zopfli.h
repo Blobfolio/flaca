@@ -18,12 +18,14 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 */
 
 /*
-Functions for basic LZ77 compression and utilities for the "squeeze" LZ77
-compression.
+Note: almost all of the (relevant) zopfli code has been rewritten and ported to
+the Rust side of Flaca; this file contains all that remains, i.e. the
+bit-related, malloc-calling stuff. (There's no point managing C memory from
+Rust.)
 */
 
-#ifndef ZOPFLI_LZ77_H_
-#define ZOPFLI_LZ77_H_
+#ifndef ZOPFLI_H_
+#define ZOPFLI_H_
 
 #include <stdlib.h>
 #include "../rust.h"
@@ -64,21 +66,4 @@ size_t ZopfliEncodeTree(
 	int use_16, int use_17, int use_18,
 	unsigned char* bp, unsigned char** out, size_t* outsize);
 
-/*
-Stores lit/length and dist pairs for LZ77.
-Parameter litlens: Contains the literal symbols or length values.
-Parameter dists: Contains the distances. A value is 0 to indicate that there is
-no dist and the corresponding litlens value is a literal instead of a length.
-Parameter size: The size of both the litlens and dists arrays.
-The memory can best be managed by using ZopfliInitLZ77Store to initialize it,
-ZopfliCleanLZ77Store to destroy it, and ZopfliStoreLitLenDist to append values.
-*/
-void ZopfliInitLZ77Store(const unsigned char* data, ZopfliLZ77Store* store);
-void ZopfliCleanLZ77Store(ZopfliLZ77Store* store);
-void ZopfliCopyLZ77Store(const ZopfliLZ77Store* source, ZopfliLZ77Store* dest);
-void ZopfliStoreLitLenDist(
-	unsigned short length, unsigned short dist, size_t pos, ZopfliLZ77Store* store);
-void ZopfliAppendLZ77Store(
-	const ZopfliLZ77Store* store, ZopfliLZ77Store* target);
-
-#endif  /* ZOPFLI_LZ77_H_ */
+#endif  /* ZOPFLI_H_ */

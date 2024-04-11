@@ -32,7 +32,7 @@ thread_local!(
 /// This is only called in one place from C with fixed sizes.
 pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 	frequencies: &[usize; 19],
-	bitlengths: *mut u32,
+	bitlengths: &mut [u32; 19],
 ) {
 	zopfli_length_limited_code_lengths::<7, 19>(frequencies, bitlengths);
 }
@@ -48,7 +48,7 @@ pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
 /// we need to freely pass them around.
 pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZE: usize>(
 	frequencies: &[usize; SIZE],
-	bitlengths: *mut u32,
+	bitlengths: &mut [u32; SIZE],
 ) {
 	// Convert (used) frequencies to leaves. There will never be more than
 	// ZOPFLI_NUM_LL of them, but often there will be less, so we'll leverage
@@ -57,16 +57,13 @@ pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZ
 		MaybeUninit::uninit().assume_init()
 	};
 	let mut len_leaves = 0;
-	for (i, &frequency) in frequencies.iter().enumerate() {
-		unsafe {
-			// Zero out the bitlength regardless.
-			let bitlength = bitlengths.add(i);
-			bitlength.write(0);
+	for (&frequency, bitlength) in frequencies.iter().zip(bitlengths.iter_mut()) {
+		// Zero out the bitlength regardless.
+		*bitlength = 0;
 
-			if frequency != 0 {
-				leaves[len_leaves].write(Leaf { frequency, bitlength });
-				len_leaves += 1;
-			}
+		if frequency != 0 {
+			leaves[len_leaves].write(Leaf { frequency, bitlength });
+			len_leaves += 1;
 		}
 	}
 
@@ -78,31 +75,29 @@ pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZ
 	// leaves are well within range.
 	assert!((1 << MAXBITS) >= len_leaves, "Insufficient maxbits for symbols.");
 
-	// The leaves we can actually use:
-	let final_leaves: &mut [Leaf] = unsafe {
-		&mut *(std::ptr::addr_of_mut!(leaves[..len_leaves]) as *mut [Leaf])
-	};
-
-	// Sortcut: weighting only applies when there are more than two leaves;
-	// otherwise we can just record their values as one and call it a day.
-	if len_leaves <= 2 {
-		for leaf in final_leaves {
-			unsafe { leaf.bitlength.write(1); }
-		}
-		return;
-	}
-
-	// Sort the leaves.
-	final_leaves.sort();
-
-	// Shrink maxbits if we have fewer leaves. Note that "maxbits" is an
-	// inclusive value.
-	let maxbits =
-		if len_leaves - 1 < MAXBITS { len_leaves - 1 }
-		else { MAXBITS };
-
 	// Set up the pool!
 	BUMP.with_borrow_mut(|nodes| {
+		// The leaves we can actually use:
+		let final_leaves: &mut [Leaf] = unsafe {
+			&mut *(std::ptr::addr_of_mut!(leaves[..len_leaves]) as *mut [Leaf])
+		};
+
+		// Sortcut: weighting only applies when there are more than two leaves;
+		// otherwise we can just record their values as one and call it a day.
+		if len_leaves <= 2 {
+			for leaf in final_leaves { *leaf.bitlength = 1; }
+			return;
+		}
+
+		// Sort the leaves.
+		final_leaves.sort();
+
+		// Shrink maxbits if we have fewer leaves. Note that "maxbits" is an
+		// inclusive value.
+		let maxbits =
+			if len_leaves - 1 < MAXBITS { len_leaves - 1 }
+			else { MAXBITS };
+
 		let lookahead0 = nodes.alloc(Node {
 			weight: final_leaves[0].frequency,
 			count: 1,
@@ -141,28 +136,27 @@ pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZ
 
 
 
-#[derive(Clone, Copy)]
 /// # Leaf.
 ///
 /// This joins a frequency with its matching bitlength from the raw C slices.
-struct Leaf {
+struct Leaf<'a> {
 	frequency: usize,
-	bitlength: *mut u32,
+	bitlength: &'a mut u32,
 }
 
-impl Eq for Leaf {}
+impl<'a> Eq for Leaf<'a> {}
 
-impl Ord for Leaf {
+impl<'a> Ord for Leaf<'a> {
 	#[inline]
 	fn cmp(&self, other: &Self) -> Ordering { self.frequency.cmp(&other.frequency) }
 }
 
-impl PartialEq for Leaf {
+impl<'a> PartialEq for Leaf<'a> {
 	#[inline]
 	fn eq(&self, other: &Self) -> bool { self.frequency == other.frequency }
 }
 
-impl PartialOrd for Leaf {
+impl<'a> PartialOrd for Leaf<'a> {
 	#[inline]
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
@@ -203,7 +197,7 @@ struct Node<'a> {
 /// # Node Pool.
 struct Pool<'a> {
 	nodes: &'a Bump,
-	leaves: &'a mut [Leaf],
+	leaves: &'a mut [Leaf<'a>],
 }
 
 impl<'a> Pool<'a> {
@@ -286,7 +280,6 @@ impl<'a> Pool<'a> {
 		}
 	}
 
-	#[allow(unsafe_code)]
 	/// # Extract/Write Bit Lengths.
 	///
 	/// Copy the bit lengths from the last chain of the last list.
@@ -296,7 +289,7 @@ impl<'a> Pool<'a> {
 		while let Some(tail) = node.tail.get() {
 			if val > tail.count {
 				for leaf in &mut self.leaves[tail.count..val] {
-					unsafe { leaf.bitlength.write(value); }
+					*leaf.bitlength = value;
 				}
 				val = tail.count;
 			}
@@ -304,7 +297,7 @@ impl<'a> Pool<'a> {
 			node = tail;
 		}
 		for leaf in &mut self.leaves[..val] {
-			unsafe { leaf.bitlength.write(value); }
+			*leaf.bitlength = value;
 		}
 	}
 }

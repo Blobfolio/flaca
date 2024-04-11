@@ -12,6 +12,15 @@ use std::{
 	},
 };
 
+/// # Distance Extra Bits Value Masks.
+const DISTANCE_EXTRA_BITS_MASK: [(u32, u32); 16] = [
+	(0, 0), (0, 0), (5, 1), (9, 3), (17, 7), (33, 15), (65, 31), (129, 63),
+	(257, 127), (513, 255), (1025, 511), (2049, 1023), (4097, 2047),
+	(8193, 4095), (16_385, 8191), (32_769, 16_383),
+];
+
+const ZOPFLI_WINDOW_SIZE: u16 = 32_768;
+
 
 
 /// # Build.
@@ -25,6 +34,7 @@ pub fn main() {
 
 	build_exts();
 	build_ffi();
+	build_symbols();
 }
 
 /// # Pre-Compute Extensions.
@@ -82,19 +92,94 @@ fn build_ffi() {
 	bindings(repo, &lodepng_src, &zopfli_src);
 }
 
-/// # Output Path.
+/// # Build Symbols.
 ///
-/// Append the sub-path to OUT_DIR and return it.
-fn out_path(stub: &str) -> PathBuf {
-	std::fs::canonicalize(std::env::var("OUT_DIR").expect("Missing OUT_DIR."))
-		.expect("Missing OUT_DIR.")
-		.join(stub)
+/// The compiler struggles with Zopfli's litlen-distance-symbol-as-index
+/// structures. Enums are a silly but simple way to help it better understand
+/// the boundaries.
+///
+/// Plus they're easy to automate, like so:
+fn build_symbols() {
+	use std::fmt::Write;
+
+	let mut out = r"#[allow(dead_code)]
+#[repr(u16)]
+#[derive(Clone, Copy)]
+/// # Distance Symbols.
+pub(crate) enum Dsym {".to_owned();
+	for i in 0..32 {
+		write!(&mut out, "\n\tD{i:02} = {i}_u16,").unwrap();
+	}
+	out.push_str(r"
 }
 
-/// # Write File.
-fn write(path: &Path, data: &[u8]) {
-	File::create(path).and_then(|mut f| f.write_all(data).and_then(|_| f.flush()))
-		.expect("Unable to write file.");
+#[allow(dead_code)]
+#[repr(u16)]
+#[derive(Clone, Copy)]
+/// # Lit/Lengths.
+pub(crate) enum LitLen {");
+	for i in 0..259 {
+		write!(&mut out, "\n\tL{i:03} = {i}_u16,").unwrap();
+	}
+	out.push_str(r"
+}
+
+#[allow(dead_code)]
+#[repr(u16)]
+#[derive(Clone, Copy)]
+/// # Lit/Len Symbols.
+pub(crate) enum Lsym {");
+	for i in 0..=285 {
+		write!(&mut out, "\n\tL{i:03} = {i}_u16,").unwrap();
+	}
+	out.push_str("
+}
+
+/// # Distance Symbols by Distance
+///
+/// This table is kinda terrible, but the performance gains (versus calculating
+/// the symbols on-the-fly) are incredible, so whatever.
+pub(crate) const DISTANCE_SYMBOLS: &[Dsym; 32_768] = &[");
+	// Apologies… this might be somewhat slow to build, but better now than at
+	// runtime!
+	for i in 0..ZOPFLI_WINDOW_SIZE {
+		let dsym =
+			if i < 5 { i.saturating_sub(1) }
+			else {
+				let d_log = (i - 1).ilog2();
+				let r = ((i as u32 - 1) >> (d_log - 1)) & 1;
+				(d_log * 2 + r) as u16
+			};
+
+		// Add some line breaks, but not too many!
+		if i % 128 == 0 { out.push('\n'); }
+		write!(&mut out, "Dsym::D{dsym:02}, ").unwrap();
+	}
+	out.push_str("
+];
+
+/// # Distance Bit Values by Distance.
+///
+/// Same as the symbol table, but for an obscure value used in only one
+/// hot-hot place. Haha.
+pub(crate) const DISTANCE_VALUES: &[u16; 32_768] = &[");
+	for i in 0..ZOPFLI_WINDOW_SIZE {
+		let dvalue =
+			if i < 5 { 0 }
+			else {
+				let d_log = (i - 1).ilog2();
+				let (m1, m2) = DISTANCE_EXTRA_BITS_MASK[d_log as usize];
+				(i as u32 - m1) & m2
+			};
+
+		// Add some line breaks, but not too many!
+		if i % 128 == 0 { out.push('\n'); }
+		write!(&mut out, "{dvalue}, ").unwrap();
+	}
+	out.push_str("\n];\n");
+
+	// Save it!
+	write(&out_path("symbols.rs"), out.as_bytes());
 }
 
 /// # FFI Bindings.
@@ -117,16 +202,10 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 		.allowlist_function("ZopfliAddBits")
 		.allowlist_function("ZopfliAddHuffmanBits")
 		.allowlist_function("ZopfliAddNonCompressedBlock")
-		.allowlist_function("ZopfliAppendLZ77Store")
-		.allowlist_function("ZopfliCleanLZ77Store")
-		.allowlist_function("ZopfliCopyLZ77Store")
 		.allowlist_function("ZopfliEncodeTree")
-		.allowlist_function("ZopfliInitLZ77Store")
-		.allowlist_function("ZopfliStoreLitLenDist")
 		.allowlist_type("LodePNGColorStats")
 		.allowlist_type("LodePNGCompressSettings")
 		.allowlist_type("LodePNGState")
-		.allowlist_type("ZopfliLZ77Store")
 		.rustified_enum("LodePNGColorType")
 		.rustified_enum("LodePNGFilterStrategy")
 		.derive_debug(true)
@@ -184,4 +263,19 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 	// Write the bindings and tests.
 	write(&out_path("lodepng-bindgen.rs"), out.as_bytes());
 	write(&out_path("lodepng-bindgen-tests.rs"), tests.as_bytes());
+}
+
+/// # Output Path.
+///
+/// Append the sub-path to OUT_DIR and return it.
+fn out_path(stub: &str) -> PathBuf {
+	std::fs::canonicalize(std::env::var("OUT_DIR").expect("Missing OUT_DIR."))
+		.expect("Missing OUT_DIR.")
+		.join(stub)
+}
+
+/// # Write File.
+fn write(path: &Path, data: &[u8]) {
+	File::create(path).and_then(|mut f| f.write_all(data).and_then(|_| f.flush()))
+		.expect("Unable to write file.");
 }

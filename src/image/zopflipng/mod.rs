@@ -21,44 +21,40 @@ mod blocks;
 mod cache;
 mod hash;
 mod kat;
+mod lz77;
 mod stats;
-mod store;
+mod symbols;
 
-use blocks::{
-	BlockType,
-	calculate_block_size,
-};
 pub(crate) use blocks::{
 	deflate_part,
 	SplitPoints,
 };
 use cache::{
 	CACHE,
-	SQUEEZE,
+	SqueezeCache,
 };
-use hash::{
-	HASH,
-	lz77_optimal,
-};
+use hash::HASH;
+use lz77::LZ77Store;
 use kat::zopfli_length_limited_code_lengths;
-use store::LZ77Store;
-use super::ffi::EncodedImage;
-use super::lodepng::{
-	DecodedImage,
-	LodePNGColorType,
-	LodePNGFilterStrategy,
-	LodePNGState,
-	ZopfliAddBit,
-	ZopfliAddBits,
-	ZopfliAddHuffmanBits,
-	ZopfliAddNonCompressedBlock,
-	ZopfliAppendLZ77Store,
-	ZopfliCleanLZ77Store,
-	ZopfliCopyLZ77Store,
-	ZopfliEncodeTree,
-	ZopfliInitLZ77Store,
-	ZopfliLZ77Store,
-	ZopfliStoreLitLenDist,
+use super::{
+	ffi::EncodedImage,
+	lodepng::{
+		DecodedImage,
+		LodePNGColorType,
+		LodePNGFilterStrategy,
+		ZopfliOut,
+		LodePNGState,
+		ZopfliEncodeTree,
+	},
+};
+use symbols::{
+	DISTANCE_BITS,
+	DISTANCE_SYMBOLS,
+	DISTANCE_VALUES,
+	Dsym,
+	LENGTH_SYMBOLS_BITS_VALUES,
+	LitLen,
+	Lsym,
 };
 
 
@@ -118,6 +114,11 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
 #[no_mangle]
 #[allow(unsafe_code)]
 /// # Zopfli Code Lengths to Symbols.
+///
+/// This is a C wrapper for `zopfli_lengths_to_symbols`, which cannot be
+/// exported directly due to its const parameters.
+///
+/// (This is only used by `ZopfliEncodeTree`.)
 pub(crate) extern "C" fn ZopfliLengthsToSymbolsCode(
 	lengths: &[u32; 19],
 	symbols: &mut [u32; 19],
@@ -147,19 +148,6 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrateg
 		.filter_map(|s| encode(dec, img, s, false).map(|out| (out.size, s)))
 		.min_by(|a, b| a.0.cmp(&b.0))
 		.map_or(LodePNGFilterStrategy::LFS_ZERO, |(_, s)| s)
-}
-
-#[allow(clippy::cast_possible_truncation)]
-/// # Distance Symbol.
-///
-/// Same as `hash::distance_symbol_bits`, minus the bits.
-const fn distance_symbol(dist: u32) -> usize {
-	if dist < 5 { dist.saturating_sub(1) as usize }
-	else {
-		let d_log = (dist - 1).ilog2();
-		let r = ((dist - 1) >> (d_log - 1)) & 1;
-		(d_log * 2 + r) as usize
-	}
 }
 
 /// # Apply Optimizations.
@@ -196,7 +184,7 @@ fn encode(
 #[allow(unsafe_code)]
 /// # Zopfli Lengths to Symbols.
 ///
-/// This is a rewrite of the method `ZopfliLengthsToSymbols` from `tree.c`.
+/// This updates the symbol array given the corresponding lengths.
 fn zopfli_lengths_to_symbols<const MAXBITS: usize, const SIZE: usize>(
 	lengths: &[u32; SIZE],
 	symbols: &mut [u32; SIZE],
@@ -222,6 +210,8 @@ fn zopfli_lengths_to_symbols<const MAXBITS: usize, const SIZE: usize>(
 	for (s, l) in symbols.iter_mut().zip(lengths.iter().copied()) {
 		if l == 0 { *s = 0; }
 		else {
+			// Safety: all lengths were tested to be < MAXBITS a few lines up.
+			debug_assert!((l as usize) < MAXBITS);
 			*s = unsafe { *next_code.get_unchecked(l as usize) };
 			next_code[l as usize] += 1;
 		}
