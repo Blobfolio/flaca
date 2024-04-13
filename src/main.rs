@@ -173,11 +173,24 @@ fn _main() -> Result<(), FlacaError> {
 				let tmp = x.to_string_lossy();
 				progress.add(&tmp);
 
-				if let Some((b, a)) = image::encode(x, kinds, &oxi) {
-					before.fetch_add(b, Relaxed);
-					after.fetch_add(a, Relaxed);
+				match image::encode(x, kinds, &oxi) {
+					// The image was intentionally skipped.
+					Some((0, 0)) => {
+						skipped.fetch_add(1, Relaxed);
+					},
+					// The image was processed and maybe updated.
+					Some((b, a)) => {
+						before.fetch_add(b, Relaxed);
+						after.fetch_add(a, Relaxed);
+					},
+					// The image could not be read or decoded.
+					None => {
+						progress.push_msg(Msg::custom("Skipped", 11, &format!(
+							"{tmp} \x1b[2m(Unrecognized format.)\x1b[0m"
+						)), true);
+						skipped.fetch_add(1, Relaxed);
+					},
 				}
-				else { skipped.fetch_add(1, Relaxed); }
 
 				progress.remove(&tmp);
 			}
@@ -190,6 +203,7 @@ fn _main() -> Result<(), FlacaError> {
 			progress.summary(MsgKind::Crunched, "image", "images")
 		}
 		else {
+			// And summarize what we did do.
 			Msg::crunched(format!(
 				"{}\x1b[2m/\x1b[0m{} in {}.",
 				NiceU64::from(total - skipped),
@@ -201,7 +215,7 @@ fn _main() -> Result<(), FlacaError> {
 				before.into_inner(),
 				after.into_inner(),
 			)))
-			.print();
+			.eprint();
 	}
 	// Silent run-through.
 	else {
@@ -214,21 +228,6 @@ fn _main() -> Result<(), FlacaError> {
 	// Early abort?
 	if killed.load(Acquire) { Err(FlacaError::Killed) }
 	else { Ok(()) }
-}
-
-#[no_mangle]
-#[allow(unsafe_code)]
-/// # Share Zopfli Iterations w/ C.
-///
-/// This will return the user-specified value (if any), otherwise 60 for small
-/// images and 20 for large ones (same as zopflipng does).
-///
-/// (This is used by the C `custom_png_deflate()` method.)
-pub(crate) extern "C" fn flaca_zopfli_iterations(size: usize) -> i32 {
-	let num = *ZOPFLI_ITERATIONS.get_or_init(|| 0);
-	if num > 0 { num }
-	else if size < 200_000 { 60 }
-	else { 20 }
 }
 
 #[cold]

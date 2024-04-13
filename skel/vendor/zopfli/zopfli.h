@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,78 +17,63 @@ Author: lode.vandevenne@gmail.com (Lode Vandevenne)
 Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 */
 
-#ifndef ZOPFLI_ZOPFLI_H_
-#define ZOPFLI_ZOPFLI_H_
+/*
+NOTE: The actual zopfli functionality has been entirely rewritten in Rust. All
+that remains of the original project is the C-to-C bit-writing/malloc stuff,
+gathered here for convenience.
+*/
 
-#include <stddef.h>
-#include <stdlib.h> /* for size_t */
+#ifndef ZOPFLI_H_
+#define ZOPFLI_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdlib.h>
 
 /*
-Options used throughout the program.
+bp = bitpointer, always in range [0, 7].
+The outsize is number of necessary bytes to encode the bits.
+Given the value of bp and the amount of bytes, the amount of bits represented
+is not simply bytesize * 8 + bp because even representing one bit requires a
+whole byte. It is: (bp == 0) ? (bytesize * 8) : ((bytesize - 1) * 8 + bp)
 */
-typedef struct ZopfliOptions {
-  /* Whether to print output */
-  int verbose;
+void ZopfliAddBit(int bit, unsigned char* bp, unsigned char** out, size_t* outsize);
 
-  /* Whether to print more detailed output */
-  int verbose_more;
-
-  /*
-  Maximum amount of times to rerun forward and backward pass to optimize LZ77
-  compression cost. Good values: 10, 15 for small files, 5 for files over
-  several MB in size or it will be too slow.
-  */
-  int numiterations;
-
-  /*
-  If true, splits the data in multiple deflate blocks with optimal choice
-  for the block boundaries. Block splitting gives better compression. Default:
-  true (1).
-  */
-  int blocksplitting;
-
-  /*
-  No longer used, left for compatibility.
-  */
-  int blocksplittinglast;
-
-  /*
-  Maximum amount of blocks to split into (0 for unlimited, but this can give
-  extreme results that hurt compression on some files). Default value: 15.
-  */
-  int blocksplittingmax;
-} ZopfliOptions;
-
-/* Initializes options with default values. */
-void ZopfliInitOptions(ZopfliOptions* options);
-
-/* Output format */
-typedef enum {
-  ZOPFLI_FORMAT_GZIP,
-  ZOPFLI_FORMAT_ZLIB,
-  ZOPFLI_FORMAT_DEFLATE
-} ZopfliFormat;
+void ZopfliAddBits(
+	unsigned symbol, unsigned length,
+	unsigned char* bp, unsigned char** out, size_t* outsize);
 
 /*
-Compresses according to the given output format and appends the result to the
-output.
-
-options: global program options
-output_type: the output format to use
-out: pointer to the dynamic output array to which the result is appended. Must
-  be freed after use
-outsize: pointer to the dynamic output array size
+Adds bits, like AddBits, but the order is inverted. The deflate specification
+uses both orders in one standard.
 */
-void ZopfliCompress(const ZopfliOptions* options, ZopfliFormat output_type,
-                    const unsigned char* in, size_t insize,
-                    unsigned char** out, size_t* outsize);
+void ZopfliAddHuffmanBits(
+	unsigned symbol, unsigned length,
+	unsigned char* bp, unsigned char** out, size_t* outsize);
 
-#ifdef __cplusplus
-}  // extern "C"
-#endif
+/* Since an uncompressed block can be max 65535 in size, it actually adds
+multible blocks if needed. */
+void ZopfliAddNonCompressedBlock(
+	int final, const unsigned char* in, size_t instart, size_t inend,
+	unsigned char* bp, unsigned char** out, size_t* outsize);
 
-#endif  /* ZOPFLI_ZOPFLI_H_ */
+/*
+Appends value to dynamically allocated memory, doubling its allocation size
+whenever needed.
+
+value: the value to append, type T
+data: pointer to the dynamic array to append to, type T**
+size: pointer to the size of the array to append to, type size_t*. This is the
+size that you consider the array to be, not the internal allocation size.
+Precondition: allocated size of data is at least a power of two greater than or
+equal than *size.
+*/
+#define ZOPFLI_APPEND_DATA(/* T */ value, /* T** */ data, /* size_t* */ size) {\
+	if (!((*size) & ((*size) - 1))) {\
+		/*double alloc size if it's a power of two*/\
+		(*data) = (*size) == 0 ? malloc(sizeof(**data))\
+			: realloc((*data), (*size) * 2 * sizeof(**data));\
+	}\
+	(*data)[(*size)] = (value);\
+	(*size)++;\
+}
+
+#endif  /* ZOPFLI_H_ */

@@ -38,7 +38,7 @@ git clone https://github.com/Blobfolio/flaca.git
 # Go to it.
 cd flaca
 
-# Build as usual. Specify additional flags as desired.
+# Build as usual.
 cargo build \
     --bin flaca \
     --release
@@ -46,9 +46,7 @@ cargo build \
 
 (This should work under other 64-bit Unix environments too, like MacOS.)
 
-In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`, `make`, `nasm`, a C++ compiler, and the dev libraries for `libjpeg` and `libpng`.
-
-The above list may not be exhaustive, though. If you find you need anything else, please open a ticket so this list can be updated!
+In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`/`clang`, `make`, `nasm`, and the dev libraries for `libjpeg` and `libpng`.
 
 
 
@@ -61,7 +59,7 @@ The following flags and options are available:
 | Short | Long | Value | Description |
 | ----- | ---- | ----- | ----------- |
 | `-h` | `--help` | | Print help information and exit. |
-| `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file, one entry per line. |
+| `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file — or STDIN if "-" — one entry per line, instead of or in addition to the trailing `<PATH(S)>`. |
 | | `--no-jpeg` | | Skip JPEG images. |
 | | `--no-png` | | Skip PNG Images. |
 | `-z` | `--zopfli-iterations` | Override the number of zopfli iterations when compressing PNGs. |

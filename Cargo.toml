@@ -1,10 +1,9 @@
 [package]
 name = "flaca"
-version = "2.4.6"
+version = "3.0.0"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
-rust-version = "1.73"
 description = "Brute-force, lossless JPEG and PNG compression."
 readme = "README.md"
 publish = false
@@ -102,19 +101,20 @@ items = [
 
 [dependencies]
 argyle = "0.7.*"
-ctrlc = "3.4.*"
+bumpalo = "=3.16.0"
+ctrlc = "=3.4.4"
 dactyl = "0.7.*"
-dowser = "0.8.*"
+dowser = "0.9.*"
 libc = "0.2.*"
-rayon = "1.8.*"
+rayon = "1.10.*"
 write_atomic = "0.5.*"
 
 [dependencies.fyi_msg]
-version = "0.12.*"
+version = "0.13.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
-version = "=2.0.6"
+version = "=2.1.0"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
@@ -122,8 +122,9 @@ version = "=9.0.0"
 default-features = false
 
 [build-dependencies]
+bindgen = "0.69.*"
 cc = "1.0.*"
-dowser = "0.8.*"
+dowser = "0.9.*"
 
 [profile.release]
 lto = true
