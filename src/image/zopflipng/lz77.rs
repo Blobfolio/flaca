@@ -10,6 +10,7 @@ use super::{
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LitLen,
 	Lsym,
+	ZopfliError,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
 };
@@ -50,8 +51,8 @@ impl LZ77Store {
 	}
 
 	/// # Push Values.
-	pub(crate) fn push(&mut self, litlen: u16, dist: u16, pos: usize) {
-		self.push_entry(LZ77StoreEntry::new(litlen, dist, pos));
+	pub(crate) fn push(&mut self, litlen: u16, dist: u16, pos: usize) -> Result<(), ZopfliError> {
+		LZ77StoreEntry::new(litlen, dist, pos).map(|e| self.push_entry(e))
 	}
 
 	#[allow(unsafe_code)]
@@ -119,7 +120,7 @@ impl LZ77Store {
 
 	/// # Histogram.
 	pub(crate) fn histogram(&self, lstart: usize, lend: usize)
-	-> ([usize; ZOPFLI_NUM_LL], [usize; ZOPFLI_NUM_D]) {
+	-> Result<([usize; ZOPFLI_NUM_LL], [usize; ZOPFLI_NUM_D]), ZopfliError> {
 		// Count the symbols directly.
 		if lstart + ZOPFLI_NUM_LL * 3 > lend {
 			let mut ll_counts = [0_usize; ZOPFLI_NUM_LL];
@@ -132,23 +133,23 @@ impl LZ77Store {
 				}
 			}
 
-			(ll_counts, d_counts)
+			Ok((ll_counts, d_counts))
 		}
 		// Subtract the cumulative histograms at the start from the end to get the
 		// one for this range.
 		else {
-			let (mut ll_counts, mut d_counts) = self._histogram(lend - 1);
+			let (mut ll_counts, mut d_counts) = self._histogram(lend - 1)?;
 			if 0 < lstart {
 				self._histogram_sub(lstart - 1, &mut ll_counts, &mut d_counts);
 			}
 
-			(ll_counts, d_counts)
+			Ok((ll_counts, d_counts))
 		}
 	}
 
 	/// # Histogram at Position.
 	fn _histogram(&self, pos: usize)
-	-> ([usize; ZOPFLI_NUM_LL], [usize; ZOPFLI_NUM_D]) {
+	-> Result<([usize; ZOPFLI_NUM_LL], [usize; ZOPFLI_NUM_D]), ZopfliError> {
 		// The relative chunked positions.
 		let ll_start = ZOPFLI_NUM_LL * pos.wrapping_div(ZOPFLI_NUM_LL);
 		let d_start = ZOPFLI_NUM_D * pos.wrapping_div(ZOPFLI_NUM_D);
@@ -156,10 +157,12 @@ impl LZ77Store {
 		let d_end = d_start + ZOPFLI_NUM_D;
 
 		// Start by copying the counts directly from the nearest chunk.
-		let mut ll_counts = [0_usize; ZOPFLI_NUM_LL];
-		ll_counts.copy_from_slice(&self.ll_counts[ll_start..ll_end]);
-		let mut d_counts = [0_usize; ZOPFLI_NUM_D];
-		d_counts.copy_from_slice(&self.d_counts[d_start..d_end]);
+		let mut ll_counts: [usize; ZOPFLI_NUM_LL] = self.ll_counts.get(ll_start..ll_end)
+			.and_then(|c| c.try_into().ok())
+			.ok_or(ZopfliError::HistogramRange)?;
+		let mut d_counts: [usize; ZOPFLI_NUM_D] = self.d_counts.get(d_start..d_end)
+			.and_then(|c| c.try_into().ok())
+			.ok_or(ZopfliError::HistogramRange)?;
 
 		// Subtract the symbol occurences between (pos+1) and the end of the
 		// chunks.
@@ -173,7 +176,7 @@ impl LZ77Store {
 		}
 
 		// We have our answer!
-		(ll_counts, d_counts)
+		Ok((ll_counts, d_counts))
 	}
 
 	/// # Subtract Histogram.
@@ -232,8 +235,8 @@ impl LZ77StoreEntry {
 		clippy::cast_sign_loss,
 	)]
 	/// # New.
-	const fn new(litlen: u16, dist: u16, pos: usize) -> Self {
-		assert!(litlen < 259);
+	const fn new(litlen: u16, dist: u16, pos: usize) -> Result<Self, ZopfliError> {
+		if litlen >= 259 { return Err(ZopfliError::LitLen(litlen)); }
 		debug_assert!(dist < 32_768);
 
 		// Using the signed type helps the compiler understand the upper
@@ -249,13 +252,13 @@ impl LZ77StoreEntry {
 				DISTANCE_SYMBOLS[dist as usize],
 			)};
 
-		Self {
+		Ok(Self {
 			pos,
 			litlen: unsafe { std::mem::transmute(litlen) },
 			dist,
 			ll_symbol,
 			d_symbol,
-		}
+		})
 	}
 
 	/// # Length.

@@ -7,6 +7,7 @@ the thread-local LMC static.
 
 use std::cell::RefCell;
 use super::{
+	ZopfliError,
 	ZOPFLI_MIN_MATCH,
 	ZOPFLI_MAX_MATCH,
 };
@@ -101,10 +102,10 @@ impl MatchCache {
 		sublen: &mut [u16],
 		distance: &mut u16,
 		length: &mut u16,
-	) -> bool {
+	) -> Result<bool, ZopfliError> {
 		// If we have no distance, we have no cache.
 		let (cache_len, cache_dist) = self.ld(pos);
-		if cache_len != 0 && cache_dist == 0 { return false; }
+		if cache_len != 0 && cache_dist == 0 { return Ok(false); }
 
 		// Find the max sublength once, if ever.
 		let maxlength =
@@ -138,13 +139,17 @@ impl MatchCache {
 
 					// Sanity check: make sure the sublength distance at length
 					// matches the redundantly-cached distance.
-					if *limit == ZOPFLI_MAX_MATCH && usize::from(*length) >= ZOPFLI_MIN_MATCH {
-						assert_eq!(*distance, cache_dist);
+					if
+						*limit == ZOPFLI_MAX_MATCH &&
+						usize::from(*length) >= ZOPFLI_MIN_MATCH &&
+						*distance != cache_dist
+					{
+						return Err(ZopfliError::LMCDistance);
 					}
 				}
 
 				// We did stuff!
-				return true;
+				return Ok(true);
 			}
 
 			// Replace the limit with our sad cached length.
@@ -152,7 +157,7 @@ impl MatchCache {
 		}
 
 		// Nothing happened.
-		false
+		Ok(false)
 	}
 
 	/// # Get Length and Distance.
@@ -322,7 +327,8 @@ impl SqueezeCache {
 		let mut idx = costs.len() - 1;
 		while 0 < idx && idx < costs.len() {
 			let v = costs[idx].1;
-			assert!((1..=ZOPFLI_MAX_MATCH as u16).contains(&v));
+			debug_assert!((1..=ZOPFLI_MAX_MATCH as u16).contains(&v));
+			if ! (1..=ZOPFLI_MAX_MATCH as u16).contains(&v) { return None; }
 
 			// Only lengths of at least ZOPFLI_MIN_MATCH count as lengths
 			// after tracing.

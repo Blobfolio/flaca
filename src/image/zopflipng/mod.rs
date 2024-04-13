@@ -16,6 +16,7 @@ performant.
 
 mod blocks;
 mod cache;
+mod error;
 mod hash;
 mod kat;
 mod lz77;
@@ -30,6 +31,7 @@ use cache::{
 	CACHE,
 	SqueezeCache,
 };
+use error::ZopfliError;
 use hash::HASH;
 use lz77::LZ77Store;
 use kat::zopfli_length_limited_code_lengths;

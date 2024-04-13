@@ -14,6 +14,7 @@ use std::{
 	cmp::Ordering,
 	mem::MaybeUninit,
 };
+use super::ZopfliError;
 
 
 
@@ -36,7 +37,7 @@ thread_local!(
 pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZE: usize>(
 	frequencies: &[usize; SIZE],
 	bitlengths: &mut [u32; SIZE],
-) {
+) -> Result<(), ZopfliError> {
 	// Convert (used) frequencies to leaves. There will never be more than
 	// ZOPFLI_NUM_LL of them, but often there will be less, so we'll leverage
 	// MaybeUninit to save unnecessary writes.
@@ -55,12 +56,14 @@ pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZ
 	}
 
 	// Nothing to do!
-	if len_leaves == 0 { return; }
+	if len_leaves == 0 { return Ok(()); }
 
 	// This method is either called with 15 maxbits and 32 or 288 potential
 	// leaves, or 7 maxbits and 19 potential leaves; in either case, the max
 	// leaves are well within range.
-	assert!((1 << MAXBITS) >= len_leaves, "Insufficient maxbits for symbols.");
+	if (1 << MAXBITS) < len_leaves {
+		return Err(ZopfliError::LeafSize(MAXBITS, len_leaves));
+	}
 
 	// Set up the pool!
 	BUMP.with_borrow_mut(|nodes| {
@@ -73,7 +76,7 @@ pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZ
 		// otherwise we can just record their values as one and call it a day.
 		if len_leaves <= 2 {
 			for leaf in final_leaves { *leaf.bitlength = 1; }
-			return;
+			return Ok(());
 		}
 
 		// Sort the leaves.
@@ -118,7 +121,8 @@ pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZ
 
 		// Please be kind, rewind!
 		nodes.reset();
-	});
+		Ok(())
+	})
 }
 
 

@@ -70,7 +70,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 			else { (false, ZOPFLI_MASTER_BLOCK_SIZE) };
 
 		// Crunch the part!
-		deflate_part(
+		let res = deflate_part(
 			&mut splits,
 			numiterations,
 			last_part,
@@ -78,6 +78,14 @@ pub(crate) extern "C" fn flaca_png_deflate(
 			i,
 			&mut dst,
 		);
+
+		if res.is_err() {
+			// Force a panic in debug mode.
+			#[cfg(debug_assertions)] panic!("{res:?}");
+
+			// Otherwise just let lodepng know we failed.
+			return 1;
+		}
 
 		// Onward and upward!
 		i += size;
