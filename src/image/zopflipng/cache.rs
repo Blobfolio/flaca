@@ -1,5 +1,8 @@
 /*!
-# Flaca: Zopflipng Longest Match Cache.
+# Flaca: Zopflipng Caches.
+
+This module defines the longest match and squeeze cache structures, and hosts
+the thread-local LMC static.
 */
 
 use std::cell::RefCell;

@@ -18,17 +18,15 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 */
 
 /*
-Note: almost all of the (relevant) zopfli code has been rewritten and ported to
-the Rust side of Flaca; this file contains all that remains, i.e. the
-bit-related, malloc-calling stuff. (There's no point managing C memory from
-Rust.)
+NOTE: The actual zopfli functionality has been entirely rewritten in Rust. All
+that remains of the original project is the C-to-C bit-writing/malloc stuff,
+gathered here for convenience.
 */
 
 #ifndef ZOPFLI_H_
 #define ZOPFLI_H_
 
 #include <stdlib.h>
-#include "../rust.h"
 
 /*
 bp = bitpointer, always in range [0, 7].
@@ -58,12 +56,24 @@ void ZopfliAddNonCompressedBlock(
 	unsigned char* bp, unsigned char** out, size_t* outsize);
 
 /*
-Encodes the Huffman tree and returns how many bits its encoding takes. If out
-is a null pointer, only returns the size and runs faster.
+Appends value to dynamically allocated memory, doubling its allocation size
+whenever needed.
+
+value: the value to append, type T
+data: pointer to the dynamic array to append to, type T**
+size: pointer to the size of the array to append to, type size_t*. This is the
+size that you consider the array to be, not the internal allocation size.
+Precondition: allocated size of data is at least a power of two greater than or
+equal than *size.
 */
-size_t ZopfliEncodeTree(
-	const unsigned* ll_lengths, const unsigned* d_lengths,
-	int use_16, int use_17, int use_18,
-	unsigned char* bp, unsigned char** out, size_t* outsize);
+#define ZOPFLI_APPEND_DATA(/* T */ value, /* T** */ data, /* size_t* */ size) {\
+	if (!((*size) & ((*size) - 1))) {\
+		/*double alloc size if it's a power of two*/\
+		(*data) = (*size) == 0 ? malloc(sizeof(**data))\
+			: realloc((*data), (*size) * 2 * sizeof(**data));\
+	}\
+	(*data)[(*size)] = (value);\
+	(*size)++;\
+}
 
 #endif  /* ZOPFLI_H_ */

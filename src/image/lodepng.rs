@@ -174,32 +174,6 @@ impl ZopfliOut {
 			);
 		}
 	}
-
-	#[allow(unsafe_code)]
-	#[inline]
-	/// # Encode Tree.
-	pub(crate) fn encode_tree(
-		&mut self,
-		ll_lengths: *const u32,
-		d_lengths: *const u32,
-		use_16: i32,
-		use_17: i32,
-		use_18: i32,
-	) {
-		unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliEncodeTree(
-				ll_lengths,
-				d_lengths,
-				use_16,
-				use_17,
-				use_18,
-				&mut self.bp,
-				self.out,
-				self.outsize,
-			);
-		}
-	}
 }
 
 

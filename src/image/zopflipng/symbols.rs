@@ -1,5 +1,8 @@
 /*!
-# Flaca: Zopflipng Symbols
+# Flaca: Zopflipng Symbols.
+
+This module contains custom types and lookup tables for length and distance
+symbols, bit counts, and bit values.
 */
 
 // This defines the Dsym, LitLen, and Lsym symbol enums, as well as the

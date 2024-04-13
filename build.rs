@@ -78,7 +78,6 @@ fn build_ffi() {
 		.flag_if_supported("-W")
 		.flag_if_supported("-ansi")
 		.flag_if_supported("-pedantic")
-		.flag_if_supported("-Wlm")
 		.pic(true)
 		.static_flag(true)
 		.files(&[
@@ -202,7 +201,6 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 		.allowlist_function("ZopfliAddBits")
 		.allowlist_function("ZopfliAddHuffmanBits")
 		.allowlist_function("ZopfliAddNonCompressedBlock")
-		.allowlist_function("ZopfliEncodeTree")
 		.allowlist_type("LodePNGColorStats")
 		.allowlist_type("LodePNGCompressSettings")
 		.allowlist_type("LodePNGState")

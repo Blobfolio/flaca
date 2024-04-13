@@ -1,7 +1,8 @@
 /*!
 # Flaca: Zopflipng Matches and Hashes.
 
-This replaces the original `hash.c` content.
+This module contains the zopfli match-hashing functionality, including the
+thread-local `HASH` static.
 */
 
 use std::{

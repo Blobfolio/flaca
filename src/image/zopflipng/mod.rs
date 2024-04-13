@@ -1,5 +1,5 @@
 /*!
-# Flaca: Zopflipng
+# Flaca: Zopflipng!
 
 The `optimize` method in this module emulates the behaviors of the zopflipng
 CLI tool when called with:
@@ -8,13 +8,10 @@ CLI tool when called with:
 zopflipng -m <input> <output>
 ```
 
-This no longer links to `libzopflipng` itself, but instead reimplements its
-functionality. Some of the original C code still lingers (see `build.rs`), but
-most of it has been freshly ported to Rust.
-
-(The structures are a bit odd because of the C/Rust inter-op; if and when the
-last dregs of the dirty, abandoned C codebase are migrated, a major refactor
-will be in order!)
+As Google is no longer maintaining the original zopfli project, all relevant
+functionality supporting the above has been rewritten and ported to Rust,
+resulting in code that is safer, (slightly) saner, and ultimately more
+performant.
 */
 
 mod blocks;
@@ -44,7 +41,6 @@ use super::{
 		LodePNGFilterStrategy,
 		ZopfliOut,
 		LodePNGState,
-		ZopfliEncodeTree,
 	},
 };
 use symbols::{
@@ -107,23 +103,6 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
 	// Return it if better and nonzero!
 	if out.size < src.len() { Some(out) }
 	else { None }
-}
-
-
-
-#[no_mangle]
-#[allow(unsafe_code)]
-/// # Zopfli Code Lengths to Symbols.
-///
-/// This is a C wrapper for `zopfli_lengths_to_symbols`, which cannot be
-/// exported directly due to its const parameters.
-///
-/// (This is only used by `ZopfliEncodeTree`.)
-pub(crate) extern "C" fn ZopfliLengthsToSymbolsCode(
-	lengths: &[u32; 19],
-	symbols: &mut [u32; 19],
-) {
-	zopfli_lengths_to_symbols::<8, 19>(lengths, symbols);
 }
 
 

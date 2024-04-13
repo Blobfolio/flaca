@@ -1,5 +1,8 @@
 /*!
 # Flaca: Zopflipng Blocks.
+
+This module contains the deflate entrypoint and all of the block-related odds
+and ends that didn't make it into other modules.
 */
 
 use dactyl::NoHash;
@@ -22,7 +25,6 @@ use super::{
 	zopfli_lengths_to_symbols,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
-	ZopfliEncodeTree,
 	ZopfliOut,
 };
 
@@ -409,7 +411,7 @@ fn add_lz77_block(
 				&mut ll_lengths,
 				&mut d_lengths,
 			);
-			add_dynamic_tree(ll_lengths.as_ptr(), d_lengths.as_ptr(), out);
+			add_dynamic_tree(&ll_lengths, &d_lengths, out);
 			(ll_lengths, d_lengths)
 		};
 
@@ -488,17 +490,18 @@ fn add_lz77_block_auto_type(
 	);
 }
 
+#[inline(never)]
 /// # Add Dynamic Tree.
 ///
 /// Determine the optimal tree index, then add it to the output.
 fn add_dynamic_tree(
-	ll_lengths: *const u32,
-	d_lengths: *const u32,
+	ll_lengths: &[u32; ZOPFLI_NUM_LL],
+	d_lengths: &[u32; ZOPFLI_NUM_D],
 	out: &mut ZopfliOut
 ) {
 	// Find the index that produces the best size.
 	let (i, _) = calculate_tree_size(ll_lengths, d_lengths);
-	out.encode_tree(ll_lengths, d_lengths, i & 1, i & 2, i & 4);
+	encode_tree(ll_lengths, d_lengths, i, Some(out));
 }
 
 #[allow(
@@ -730,27 +733,16 @@ fn calculate_block_symbol_size_small(
 /// # Calculate the Exact Tree Size (in Bits).
 ///
 /// This returns the index that produced the smallest size, and its size.
-///
-/// The index is an i32 for historical reasons, but will always be between
-/// `1..8`.
-fn calculate_tree_size(ll_lengths: *const u32, d_lengths: *const u32) -> (i32, usize) {
+fn calculate_tree_size(
+	ll_lengths: &[u32; ZOPFLI_NUM_LL],
+	d_lengths: &[u32; ZOPFLI_NUM_D],
+) -> (u8, usize) {
 	let mut best_size = 0;
 	let mut best_idx = 0;
 
 	for i in 0..8 {
-		let size = unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliEncodeTree(
-				ll_lengths,
-				d_lengths,
-				i & 1,
-				i & 2,
-				i & 4,
-				std::ptr::null_mut(),
-				std::ptr::null_mut(),
-				std::ptr::null_mut(),
-			)
-		};
+		let size = encode_tree(ll_lengths, d_lengths, i, None);
+
 		if best_size == 0 || size < best_size {
 			best_size = size;
 			best_idx = i;
@@ -758,6 +750,178 @@ fn calculate_tree_size(ll_lengths: *const u32, d_lengths: *const u32) -> (i32, u
 	}
 
 	(best_idx, best_size)
+}
+
+#[allow(
+	unsafe_code,
+	clippy::cast_possible_truncation,
+	clippy::cognitive_complexity, // Yeah, this is terrible!
+	clippy::similar_names,
+)]
+#[inline(never)]
+/// # Encode Huffman Tree.
+///
+/// Build a tree and optionally write it to the output file, returning the
+/// resulting size in any case.
+///
+/// The `use_16`, et al, variables indicate whether or not to encode
+/// eligible counts in the extended parts of the alphabet.
+fn encode_tree(
+	ll_lengths: &[u32; ZOPFLI_NUM_LL],
+	d_lengths: &[u32; ZOPFLI_NUM_D],
+	extra: u8,
+	out: Option<&mut ZopfliOut>,
+) -> usize {
+	// Discombobulated cl_length/cl_count indexes.
+	const ORDER: [usize; 19] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+
+	// To use or not to use the extended part of the alphabet.
+	let use_16: bool = 0 != extra & 1;
+	let use_17: bool = 0 != extra & 2;
+	let use_18: bool = 0 != extra & 4;
+
+	// Repetition counts and bit values. Only applicable when `out.is_some()`.
+	let mut rle: Vec<(u32, u32)> = Vec::new();
+
+	// Code counts and lengths.
+	let mut cl_counts = [0_usize; 19];
+	let mut cl_lengths = [0_u32; 19];
+
+	// Find the last non-zero length index.
+	let mut hlit = 29;
+	while hlit > 0 && ll_lengths[257 + hlit - 1] == 0 { hlit -= 1; }
+	let hlit2 = hlit + 257; // Same as hlit, but in symbol form.
+
+	// And do the same for distance.
+	let mut hdist = 29;
+	while hdist > 0 && d_lengths[hdist] == 0 { hdist -= 1; }
+
+	// We process length and distance symbols in the same loop, in that order.
+	// With that in mind, this returns the symbol from the appropriate table.
+	let length_or_distance = |idx: usize| {
+		// The compiler is smart enough to know hlit2 is valid for ll_lengths.
+		if idx < hlit2 { ll_lengths[idx] }
+		else {
+			// Safety: the index will always be between 0..L+D, where L
+			// is within range for ll_lengths and D is in range for
+			// d_lengths. If we're past the L point, what's left is a valid D.
+			unsafe { *d_lengths.get_unchecked(idx - hlit2) }
+		}
+	};
+
+	// Run through all the length symbols, then the distance symbols, with the
+	// odd skip to keep us on our toes.
+	let lld_total = hlit2 + hdist + 1;
+	let mut i = 0;
+	while i < lld_total {
+		let mut count = 1;
+		let symbol = length_or_distance(i);
+
+		// Peek ahead; we may be able to do more in one go.
+		if use_16 || (symbol == 0 && (use_17 || use_18)) {
+			let mut j = i + 1;
+			while j < lld_total && symbol == length_or_distance(j) {
+				count += 1;
+				j += 1;
+			}
+
+			// Skip these indices, if any, on the next pass.
+			i += count - 1;
+		}
+
+		// Repetitions of zeroes.
+		if symbol == 0 && count >= 3 {
+			if use_18 {
+				while count >= 11 {
+					let count2 = count.min(138);
+					if out.is_some() { rle.push((18, count2 as u32 - 11)); }
+					cl_counts[18] += 1;
+					count -= count2;
+				}
+			}
+			if use_17 {
+				while count >= 3 {
+					let count2 = count.min(10);
+					if out.is_some() { rle.push((17, count2 as u32 - 3)); }
+					cl_counts[17] += 1;
+					count -= count2;
+				}
+			}
+		}
+
+		// Repetitions of any symbol.
+		if use_16 && count >= 4 {
+			// The first one always counts.
+			count -= 1;
+			cl_counts[symbol as usize] += 1;
+			if out.is_some() { rle.push((symbol, 0)); }
+
+			while count >= 3 {
+				let count2 = count.min(6);
+				if out.is_some() { rle.push((16, count2 as u32 - 3)); }
+				cl_counts[16] += 1;
+				count -= count2;
+			}
+		}
+
+		// Deal with non- or insufficiently-repeating values.
+		cl_counts[symbol as usize] += count;
+		if out.is_some() {
+			for _ in 0..count { rle.push((symbol, 0)); }
+		}
+
+		i += 1;
+	}
+
+	// Update the lengths and symbols given the counts.
+	zopfli_length_limited_code_lengths::<7, 19>(&cl_counts, &mut cl_lengths);
+
+	// Find the last non-zero index of the counts table. Note that every ORDER
+	// value is between 0..19, so we can get_unchecked().
+	let mut hclen = 15;
+	while hclen > 0 && unsafe { *cl_counts.get_unchecked(ORDER[hclen + 3]) } == 0 {
+		hclen -= 1;
+	}
+
+	// Write the tree!
+	if let Some(out) = out {
+		// Convert the lengths to symbols.
+		let mut cl_symbols = [0_u32; 19];
+		zopfli_lengths_to_symbols::<8, 19>(&cl_lengths, &mut cl_symbols);
+
+		// Write the main lengths.
+		out.add_bits(hlit as u32, 5);
+		out.add_bits(hdist as u32, 5);
+		out.add_bits(hclen as u32, 4);
+
+		// Write each cl_length in the jumbled DEFLATE order.
+		for &o in &ORDER[..hclen + 4] {
+			// Safety: all ORDER values are between 0..19.
+			out.add_bits(unsafe { *cl_lengths.get_unchecked(o) }, 3);
+		}
+
+		// Write each symbol in order of appearance along with its extra bits,
+		// if any.
+		for (a, b) in rle {
+			let symbol = cl_symbols[a as usize];
+			out.add_huffman_bits(symbol, cl_lengths[a as usize]);
+
+			// Extra bits.
+			if a == 16 { out.add_bits(b, 2); }
+			else if a == 17 { out.add_bits(b, 3); }
+			else if a == 18 { out.add_bits(b, 7); }
+		}
+	}
+
+	// Calculate the spatial requirements for all this data.
+	let mut size = 14;         // hlit, hdist, hclen.
+	size += (hclen + 4) * 3;   // cl_lengths.
+	for (&a, b) in cl_lengths.iter().zip(cl_counts.iter()) {
+		size += (a as usize) * b;
+	}
+	size += cl_counts[16] * 2; // Extra bits.
+	size += cl_counts[17] * 3;
+	size +  cl_counts[18] * 7
 }
 
 #[allow(clippy::similar_names)]
@@ -1180,7 +1344,7 @@ fn try_optimize_huffman_for_rle(
 	ll_lengths: &mut [u32; ZOPFLI_NUM_LL],
 	d_lengths: &mut [u32; ZOPFLI_NUM_D],
 ) -> usize {
-	let (_, treesize) = calculate_tree_size(ll_lengths.as_ptr(), d_lengths.as_ptr());
+	let (_, treesize) = calculate_tree_size(ll_lengths, d_lengths);
 
 	let datasize = calculate_block_symbol_size_given_counts(
 		ll_counts,
@@ -1203,7 +1367,7 @@ fn try_optimize_huffman_for_rle(
 	zopfli_length_limited_code_lengths::<15, ZOPFLI_NUM_D>(&d_counts2, &mut d_lengths2);
 	patch_distance_codes(&mut d_lengths2);
 
-	let (_, treesize2) = calculate_tree_size(ll_lengths2.as_ptr(), d_lengths2.as_ptr());
+	let (_, treesize2) = calculate_tree_size(&ll_lengths2, &d_lengths2);
 	let datasize2 = calculate_block_symbol_size_given_counts(
 		ll_counts,
 		d_counts,

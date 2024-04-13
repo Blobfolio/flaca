@@ -1,5 +1,7 @@
 /*!
-# Flaca: Zopflipng LZ77 Store
+# Flaca: Zopflipng LZ77 Store.
+
+This module defines the LZ77 store structure.
 */
 
 use super::{

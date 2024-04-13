@@ -1,5 +1,8 @@
 /*!
-# Flaca: Zopfli Katajainen
+# Flaca: Zopfli Katajainen.
+
+This module contains the Katajainen minimum-redundancy length-limited
+code-writing logic, which is just as messy as it sounds. Haha.
 */
 
 use bumpalo::Bump;
@@ -17,35 +20,19 @@ use std::{
 thread_local!(
 	/// # Shared Arena.
 	///
-	/// Each call to `ZopfliLengthLimitedCodeLengths` generates a hefty list
-	/// of recursive node chains. This helps mitigate the costs of
+	/// Each call to `zopfli_length_limited_code_lengths` generates a hefty
+	/// list of recursive node chains. This helps mitigate the costs of
 	/// reallocation.
 	static BUMP: RefCell<Bump> = RefCell::new(Bump::with_capacity(32_768))
 );
 
 
 
-#[no_mangle]
-#[allow(unsafe_code)]
-/// # Length Limited Code Lengths (FFI).
-///
-/// This is only called in one place from C with fixed sizes.
-pub(crate) extern "C" fn ZopfliLengthLimitedCodeLengths(
-	frequencies: &[usize; 19],
-	bitlengths: &mut [u32; 19],
-) {
-	zopfli_length_limited_code_lengths::<7, 19>(frequencies, bitlengths);
-}
-
 #[allow(unsafe_code, clippy::cast_sign_loss)]
 /// # Length Limited Code Lengths.
 ///
 /// This writes minimum-redundancy length-limited code bitlengths for symbols
 /// with the given counts, limited by `MAXBITS`.
-///
-/// Note that `bitlengths` has the same size as `frequencies` — `SIZE` — but is
-/// passed as a pointer instead of an array because `&mut u32` isn't `Copy` and
-/// we need to freely pass them around.
 pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZE: usize>(
 	frequencies: &[usize; SIZE],
 	bitlengths: &mut [u32; SIZE],

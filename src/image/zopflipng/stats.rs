@@ -1,14 +1,13 @@
 /*!
 # Flaca: Zopflipng Squeeze Stats.
 
-This replaces the `SymbolStats` and `RanState` functionality originally found
-in `squeeze.c`.
+This module defines the squeeze stats structure and its companion PRNG.
 */
 
 use super::{
+	LZ77Store,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
-	LZ77Store,
 };
 
 
