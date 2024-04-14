@@ -292,3 +292,75 @@ impl<'a> Pool<'a> {
 		}
 	}
 }
+
+
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// The original zopfli has no unit tests, but the zopfli-rs Rust port has
+	// a few. The 3/4/7/15 maxbit tests below have been adapted from those.
+	// They work, so that's promising!
+	// <https://github.com/zopfli-rs/zopfli/blob/main/src/katajainen.rs>
+
+	#[test]
+	fn t_kat3() {
+		let f = [1, 1, 5, 7, 10, 14];
+		let mut b = [0; 6];
+		assert!(zopfli_length_limited_code_lengths::<3, 6>(&f, &mut b).is_ok());
+		assert_eq!(b, [3, 3, 3, 3, 2, 2]);
+	}
+
+	#[test]
+	fn t_kat4() {
+		let f = [1, 1, 5, 7, 10, 14];
+		let mut b = [0; 6];
+		assert!(zopfli_length_limited_code_lengths::<4, 6>(&f, &mut b).is_ok());
+		assert_eq!(b, [4, 4, 3, 2, 2, 2]);
+	}
+
+	#[test]
+	fn t_kat7() {
+		let f = [252, 0, 1, 6, 9, 10, 6, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+		let mut b = [0; 19];
+		assert!(zopfli_length_limited_code_lengths::<7, 19>(&f, &mut b).is_ok());
+		assert_eq!(b, [1, 0, 6, 4, 3, 3, 3, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+	}
+
+	#[test]
+	fn t_kat15() {
+		let f = [
+			0, 0, 0, 0, 0, 0, 18, 0, 6, 0, 12, 2, 14, 9, 27, 15,
+			23, 15, 17, 8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		];
+		let mut b = [0; 32];
+		assert!(zopfli_length_limited_code_lengths::<15, 32>(&f, &mut b).is_ok());
+		assert_eq!(
+			b,
+			[
+				0, 0, 0, 0, 0, 0, 3, 0, 5, 0, 4, 6, 4, 4, 3, 4,
+				3, 3, 3, 4, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			]
+		);
+	}
+
+	#[test]
+	fn t_kat_limited() {
+		// No frequencies.
+		let mut f = [0; 19];
+		let mut b = [5; 19]; // Also test the bits get reset correctly.
+		assert!(zopfli_length_limited_code_lengths::<7, 19>(&f, &mut b).is_ok());
+		assert_eq!(b, [0; 19]);
+
+		// One frequency.
+		f[2] = 10;
+		assert!(zopfli_length_limited_code_lengths::<7, 19>(&f, &mut b).is_ok());
+		assert_eq!(b, [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+		// Two frequencies.
+		f[0] = 248;
+		assert!(zopfli_length_limited_code_lengths::<7, 19>(&f, &mut b).is_ok());
+		assert_eq!(b, [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+	}
+}
