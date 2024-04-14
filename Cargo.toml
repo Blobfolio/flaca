@@ -62,6 +62,12 @@ long = "--version"
 description = "Print version information and exit."
 
 [[package.metadata.bashman.options]]
+short = "-j"
+label = "<NUM>"
+description = "Limit parallelization to this many threads (instead of giving each logical core its own image to work on). If negative, the value will be subtracted from the total number of logical cores."
+path = false
+
+[[package.metadata.bashman.options]]
 short = "-l"
 long = "--list"
 label = "<FILE>"

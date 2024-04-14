@@ -59,6 +59,7 @@ The following flags and options are available:
 | Short | Long | Value | Description |
 | ----- | ---- | ----- | ----------- |
 | `-h` | `--help` | | Print help information and exit. |
+| `-j` | | `<NUM>` | Limit parallelization to this many threads (instead of using all logical cores). |
 | `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file — or STDIN if "-" — one entry per line, instead of or in addition to the trailing `<PATH(S)>`. |
 | | `--no-jpeg` | | Skip JPEG images. |
 | | `--no-png` | | Skip PNG Images. |
@@ -80,10 +81,13 @@ flaca /path/to/image.jpg
 flaca -p /path/to/assets
 
 # Tackle a whole folder, but only look for JPEG images.
-flaca -p --no-png /path/to/assets
+flaca --no-png /path/to/assets
 
 # Or load it up with a lot of places separately:
 flaca /path/to/assets /path/to/favicon.png …
+
+# Limit parallel processing to two images at a time.
+flaca -j2 /path/to/assets
 
 # Zopfli compression is slow and scales more or less linearly with the number
 # of iterations set. Flaca uses the same default as zopflipng: 60 for small
