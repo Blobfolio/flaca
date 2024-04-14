@@ -236,7 +236,7 @@ impl LZ77StoreEntry {
 	)]
 	/// # New.
 	const fn new(litlen: u16, dist: u16, pos: usize) -> Result<Self, ZopfliError> {
-		if litlen >= 259 { return Err(ZopfliError::LitLen(litlen)); }
+		if litlen >= 259 { return Err(ZopfliError::LitLen); }
 		debug_assert!(dist < 32_768);
 
 		// Using the signed type helps the compiler understand the upper

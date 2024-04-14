@@ -81,7 +81,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 
 		if res.is_err() {
 			// Force a panic in debug mode.
-			#[cfg(debug_assertions)] panic!("{res:?}");
+			#[cfg(debug_assertions)] panic!("(zopfli) {res:?}");
 
 			// Otherwise just let lodepng know we failed.
 			return 1;

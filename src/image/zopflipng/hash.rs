@@ -623,7 +623,7 @@ impl ZopfliHash {
 				length,
 			))? {
 				if pos + usize::from(*length) <= arr.len() { return Ok(()); }
-				return Err(ZopfliError::MatchRange(pos, arr.len(), *length));
+				return Err(ZopfliError::MatchRange);
 			}
 		}
 
@@ -659,7 +659,7 @@ impl ZopfliHash {
 		*length = bestlength;
 		if pos + usize::from(*length) <= arr.len() { Ok(()) }
 		else {
-			Err(ZopfliError::MatchRange(pos, arr.len(), *length))
+			Err(ZopfliError::MatchRange)
 		}
 	}
 

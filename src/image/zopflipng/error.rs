@@ -7,38 +7,46 @@ use std::fmt;
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ZopfliError {
 	HistogramRange,
-	LeafSize(usize, usize),
-	LitLen(u16),
-	LitLenLiteral(u16),
+	LeafSize,
+	LitLen,
+	LitLenLiteral,
 	LMCDistance,
-	MatchRange(usize, usize, u16),
-	PathLength,
+	MatchRange,
 	NoDistance,
 	NoLength,
-	SplitRange(usize, usize, usize),
+	PathLength,
+	SplitRange,
 	SublenLength,
+	TreeSymbol,
 	Write,
 }
 
 impl fmt::Display for ZopfliError {
+	#[inline]
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str("(zopfli) ")?;
-
-		match self {
-			Self::HistogramRange => f.write_str("invalid histogram range"),
-			Self::LeafSize(bits, leaves) => f.write_fmt(format_args!("{bits} insufficient for {leaves}")),
-			Self::LitLen(n) => f.write_fmt(format_args!("invalid LitLen: {n}")),
-			Self::LitLenLiteral(n) => f.write_fmt(format_args!("invalid LitLen literal: {n}")),
-			Self::LMCDistance => f.write_str("incorrect cache distance found"),
-			Self::MatchRange(start, end, pos) => f.write_fmt(format_args!("invalid match length for {start}..{end}: {pos}")),
-			Self::NoDistance => f.write_str("expected non-zero distance"),
-			Self::NoLength => f.write_str("expected non-zero length"),
-			Self::PathLength => f.write_str("path length/find mismatch"),
-			Self::SplitRange(start, end, pos) => f.write_fmt(format_args!("invalid split position for {start}..{end}: {pos}")),
-			Self::SublenLength => f.write_str("invalid sublen slice length"),
-			Self::Write => f.write_str("failed to write output"),
-		}
+		f.write_str(self.as_str())
 	}
 }
 
 impl std::error::Error for ZopfliError {}
+
+impl ZopfliError {
+	/// # As String Slice.
+	pub(crate) const fn as_str(self) -> &'static str {
+		match self {
+			Self::HistogramRange => "invalid histogram range",
+			Self::LeafSize => "insufficient maxbits for leaves",
+			Self::LitLen => "invalid litlen",
+			Self::LitLenLiteral => "invalid litlen literal",
+			Self::LMCDistance => "LMC returned an unexpected distance",
+			Self::MatchRange => "invalid match range",
+			Self::NoDistance => "expected non-zero distance",
+			Self::NoLength => "expected non-zero length",
+			Self::PathLength => "invalid path length",
+			Self::SplitRange => "invalid split range",
+			Self::SublenLength => "incorrectly sized sublength array",
+			Self::TreeSymbol => "invalid tree symbol",
+			Self::Write => "failed to write output",
+		}
+	}
+}

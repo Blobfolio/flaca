@@ -128,7 +128,7 @@ impl SplitPoints {
 		loop {
 			let (llpos, llcost) = find_minimum_cost(store, lstart + 1, lend)?;
 			if llpos <= lstart || llpos >= lend {
-				return Err(ZopfliError::SplitRange(lstart, lend, llpos));
+				return Err(ZopfliError::SplitRange);
 			}
 
 			// Ignore points we've already covered.
@@ -190,7 +190,7 @@ impl SplitPoints {
 			// Make another store.
 			store2.clear();
 			lz77_optimal(
-				// Safety: split_raw asserts splits are in range.
+				// Safety: the split points are checked at creation.
 				unsafe { arr.get_unchecked(..end) },
 				start,
 				numiterations,
@@ -536,7 +536,7 @@ fn add_lz77_data(
 		// Length only.
 		if e.dist <= 0 {
 			if (e.litlen as u16) >= 256 {
-				return Err(ZopfliError::LitLenLiteral(e.litlen as u16));
+				return Err(ZopfliError::LitLenLiteral);
 			}
 			if ll_lengths[e.litlen as usize] == 0 { return Err(ZopfliError::NoLength); }
 
@@ -801,7 +801,7 @@ fn encode_tree(
 
 	// Find the last non-zero length index.
 	let mut hlit = 29;
-	while hlit > 0 && ll_lengths[257 + hlit - 1] == 0 { hlit -= 1; }
+	while hlit > 0 && ll_lengths[256 + hlit] == 0 { hlit -= 1; }
 	let hlit2 = hlit + 257; // Same as hlit, but in symbol form.
 
 	// And do the same for distance.
@@ -828,6 +828,7 @@ fn encode_tree(
 	while i < lld_total {
 		let mut count = 1;
 		let symbol = length_or_distance(i);
+		if symbol >= 19 { return Err(ZopfliError::TreeSymbol); }
 
 		// Peek ahead; we may be able to do more in one go.
 		if use_16 || (symbol == 0 && (use_17 || use_18)) {
@@ -888,8 +889,8 @@ fn encode_tree(
 	// Update the lengths and symbols given the counts.
 	zopfli_length_limited_code_lengths::<7, 19>(&cl_counts, &mut cl_lengths)?;
 
-	// Find the last non-zero index of the counts table. Note that every ORDER
-	// value is between 0..19, so we can get_unchecked().
+	// Find the last non-zero index of the counts table.
+	// Safety: all ORDER values are between 0..19.
 	let mut hclen = 15;
 	while hclen > 0 && unsafe { *cl_counts.get_unchecked(ORDER[hclen + 3]) } == 0 {
 		hclen -= 1;
@@ -1072,8 +1073,7 @@ fn get_lz77_byte_range(
 ) -> usize {
 	if lstart >= lend { 0 }
 	else {
-		// Safety: split points are asserted to be in range during the carving
-		// stage.
+		// Safety: the split points are checked at creation.
 		debug_assert!(lend <= store.entries.len());
 		let e = unsafe { store.entries.get_unchecked(lend - 1) };
 		e.length() as usize + e.pos - store.entries[lstart].pos
@@ -1305,7 +1305,7 @@ fn try_lz77_expensive_fixed(
 	out: &mut ZopfliOut,
 ) -> Result<bool, ZopfliError> {
 	let mut fixed_store = LZ77Store::new();
-	// Safety: the split points are asserted during their creation.
+	// Safety: the split points are checked at creation.
 	debug_assert!(lstart < store.entries.len());
 	let instart = unsafe { store.entries.get_unchecked(lstart).pos };
 	let inend = instart + get_lz77_byte_range(store, lstart, lend);
@@ -1360,8 +1360,8 @@ fn try_optimize_huffman_for_rle(
 	ll_lengths: &mut [u32; ZOPFLI_NUM_LL],
 	d_lengths: &mut [u32; ZOPFLI_NUM_D],
 ) -> Result<usize, ZopfliError> {
+	// Calculate the tree and data sizes as are.
 	let (_, treesize) = calculate_tree_size(ll_lengths, d_lengths)?;
-
 	let datasize = calculate_block_symbol_size_given_counts(
 		ll_counts,
 		d_counts,
@@ -1383,6 +1383,7 @@ fn try_optimize_huffman_for_rle(
 	zopfli_length_limited_code_lengths::<15, ZOPFLI_NUM_D>(&d_counts2, &mut d_lengths2)?;
 	patch_distance_codes(&mut d_lengths2);
 
+	// Calculate the optimized tree and data sizes.
 	let (_, treesize2) = calculate_tree_size(&ll_lengths2, &d_lengths2)?;
 	let datasize2 = calculate_block_symbol_size_given_counts(
 		ll_counts,
@@ -1394,6 +1395,7 @@ fn try_optimize_huffman_for_rle(
 		lend,
 	);
 
+	// Return whichever's better.
 	let sum = treesize + datasize;
 	let sum2 = treesize2 + datasize2;
 	if sum <= sum2 { Ok(sum) }
