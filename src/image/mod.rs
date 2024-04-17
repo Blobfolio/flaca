@@ -16,6 +16,7 @@ use std::path::Path;
 use zopflipng::{
 	deflate_part,
 	SplitPoints,
+	ZopfliState,
 };
 
 

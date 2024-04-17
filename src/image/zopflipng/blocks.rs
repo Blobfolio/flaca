@@ -8,15 +8,12 @@ and ends that didn't make it into other modules.
 use dactyl::NoHash;
 use std::collections::HashSet;
 use super::{
-	CACHE,
 	DISTANCE_BITS,
 	DISTANCE_VALUES,
 	FIXED_TREE_D,
 	FIXED_TREE_LL,
-	HASH,
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LZ77Store,
-	SqueezeCache,
 	stats::{
 		RanState,
 		SymbolStats,
@@ -27,6 +24,7 @@ use super::{
 	ZOPFLI_NUM_LL,
 	ZopfliError,
 	ZopfliOut,
+	ZopfliState,
 };
 
 
@@ -78,16 +76,12 @@ impl SplitPoints {
 	///
 	/// In terms of order-of-operations, this must be called _before_ the
 	/// second-stage LZ77 pass as it would otherwise blow away that data.
-	fn split_raw(&mut self, arr: &[u8], instart: usize) -> Result<usize, ZopfliError> {
+	fn split_raw(&mut self, arr: &[u8], instart: usize, state: &mut ZopfliState)
+	-> Result<usize, ZopfliError> {
 		// Populate an LZ77 store from a greedy pass. This results in better
 		// block choices than a full optimal pass.
 		let mut store = LZ77Store::new();
-		HASH.with_borrow_mut(|h| h.greedy(
-			arr,
-			instart,
-			&mut store,
-			None,
-		))?;
+		state.greedy(arr, instart, &mut store, None)?;
 
 		// Do an LZ77 pass.
 		let len = self.split_lz77(&store)?;
@@ -173,10 +167,10 @@ impl SplitPoints {
 		arr: &[u8],
 		instart: usize,
 		store: &mut LZ77Store,
-		squeeze: &mut SqueezeCache,
+		state: &mut ZopfliState,
 	) -> Result<&[usize], ZopfliError> {
 		// Start by splitting uncompressed.
-		let limit = self.split_raw(arr, instart)?.min(MAX_SPLIT_POINTS);
+		let limit = self.split_raw(arr, instart, state)?.min(MAX_SPLIT_POINTS);
 
 		let mut cost1 = 0;
 		let mut store2 = LZ77Store::new();
@@ -195,7 +189,7 @@ impl SplitPoints {
 				numiterations,
 				&mut store2,
 				&mut store3,
-				squeeze,
+				state,
 			)?;
 			cost1 += calculate_block_size_auto_type(&store2, 0, store2.len())?;
 
@@ -238,6 +232,7 @@ impl SplitPoints {
 /// More specifically, this explores different possible split points for the
 /// chunk, then writes the resulting blocks to the output file.
 pub(crate) fn deflate_part(
+	state: &mut ZopfliState,
 	splits: &mut SplitPoints,
 	numiterations: i32,
 	last_block: bool,
@@ -246,14 +241,13 @@ pub(crate) fn deflate_part(
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
 	// Find the split points.
-	let mut squeeze = SqueezeCache::new();
 	let mut store = LZ77Store::new();
 	let best = splits.split(
 		numiterations,
 		arr,
 		instart,
 		&mut store,
-		&mut squeeze,
+		state,
 	)?;
 
 	// Write the data!
@@ -263,7 +257,7 @@ pub(crate) fn deflate_part(
 		add_lz77_block_auto_type(
 			i == best.len() && last_block,
 			&store,
-			&mut squeeze,
+			state,
 			arr.as_ptr(),
 			start,
 			end,
@@ -451,7 +445,7 @@ fn add_lz77_block(
 fn add_lz77_block_auto_type(
 	last_block: bool,
 	store: &LZ77Store,
-	squeeze: &mut SqueezeCache,
+	state: &mut ZopfliState,
 	arr: *const u8,
 	lstart: usize,
 	lend: usize,
@@ -476,7 +470,7 @@ fn add_lz77_block_auto_type(
 	if
 		(store.len() < 1000 || (fixed_cost as f64) <= (dynamic_cost as f64) * 1.1) &&
 		try_lz77_expensive_fixed(
-			store, squeeze, uncompressed_cost, dynamic_cost,
+			store, state, uncompressed_cost, dynamic_cost,
 			arr, lstart, lend, last_block,
 			expected_data_size, out,
 		)?
@@ -1092,95 +1086,85 @@ fn lz77_optimal(
 	numiterations: i32,
 	store: &mut LZ77Store,
 	scratch_store: &mut LZ77Store,
-	squeeze: &mut SqueezeCache,
+	state: &mut ZopfliState,
 ) -> Result<(), ZopfliError> {
 	// Easy abort.
 	if instart >= arr.len() { return Ok(()); }
 
 	// Reset the main cache for the current blocksize.
-	let blocksize = arr.len() - instart;
-	CACHE.with_borrow_mut(|c| c.init(blocksize));
-	squeeze.init(blocksize + 1);
+	state.init_lmc(arr.len() - instart);
 
-	HASH.with_borrow_mut(|h| {
-		// Greedy run.
+	// Greedy run.
+	scratch_store.clear();
+	state.greedy(arr, instart, scratch_store, Some(instart))?;
+
+	// Create new stats with the store (updated by the greedy pass).
+	let mut current_stats = SymbolStats::new();
+	current_stats.load_store(scratch_store);
+
+	// Set up dummy stats we can use to track best and last.
+	let mut ran = RanState::new();
+	let mut best_stats = SymbolStats::new();
+
+	// We'll also want dummy best and last costs.
+	let mut last_cost = 0;
+	let mut best_cost = usize::MAX;
+
+	// Repeat statistics with the cost model from the previous
+	// stat run.
+	let mut last_ran = -1;
+	for i in 0..numiterations.max(0) {
+		// Reset the LZ77 store.
 		scratch_store.clear();
-		h.greedy(
+
+		// Optimal run.
+		state.optimal_run(
 			arr,
 			instart,
+			Some(&current_stats),
 			scratch_store,
-			Some(instart),
 		)?;
 
-		// Create new stats with the store (updated by the greedy pass).
-		let mut current_stats = SymbolStats::new();
-		current_stats.load_store(scratch_store);
+		// This is the cost we actually care about.
+		let current_cost = calculate_block_size(
+			scratch_store,
+			0,
+			scratch_store.len(),
+			BlockType::Dynamic,
+		)?;
 
-		// Set up dummy stats we can use to track best and last.
-		let mut ran = RanState::new();
-		let mut best_stats = SymbolStats::new();
-
-		// We'll also want dummy best and last costs.
-		let mut last_cost = 0;
-		let mut best_cost = usize::MAX;
-
-		// Repeat statistics with the cost model from the previous
-		// stat run.
-		let mut last_ran = -1;
-		for i in 0..numiterations.max(0) {
-			// Reset the LZ77 store.
-			scratch_store.clear();
-
-			// Optimal run.
-			h.optimal_run(
-				arr,
-				instart,
-				Some(&current_stats),
-				squeeze,
-				scratch_store,
-			)?;
-
-			// This is the cost we actually care about.
-			let current_cost = calculate_block_size(
-				scratch_store,
-				0,
-				scratch_store.len(),
-				BlockType::Dynamic,
-			)?;
-
-			// We have a new best!
-			if current_cost < best_cost {
-				store.replace(scratch_store);
-				best_stats = current_stats;
-				best_cost = current_cost;
-			}
-
-			// Copy the stats to last_stats, clear them, and repopulate
-			// with the current store.
-			let (last_litlens, last_dists) = current_stats.clear();
-			current_stats.load_store(scratch_store);
-
-			// Once the randomness has kicked in, improve convergence by
-			// weighting the current and previous stats.
-			if last_ran != -1 {
-				current_stats.add_last(&last_litlens, &last_dists);
-				current_stats.crunch();
-			}
-
-			// Replace the current stats with the best stats, randomize,
-			// and see what happens.
-			if 5 < i && current_cost == last_cost {
-				current_stats = best_stats;
-				current_stats.randomize(&mut ran);
-				current_stats.crunch();
-				last_ran = i;
-			}
-
-			last_cost = current_cost;
+		// We have a new best!
+		if current_cost < best_cost {
+			store.replace(scratch_store);
+			best_stats = current_stats;
+			best_cost = current_cost;
 		}
 
-		Ok(())
-	})
+		// Copy the stats to last_stats, clear them, and repopulate
+		// with the current store.
+		let (last_litlens, last_dists) = current_stats.clear();
+		current_stats.load_store(scratch_store);
+
+		// Once the randomness has kicked in, improve convergence by
+		// weighting the current and previous stats.
+		if last_ran != -1 {
+			current_stats.add_last(&last_litlens, &last_dists);
+			current_stats.crunch();
+		}
+
+		// Replace the current stats with the best stats, randomize,
+		// and see what happens.
+		if 5 < i && current_cost == last_cost {
+			current_stats = best_stats;
+			current_stats.randomize(&mut ran);
+			current_stats.crunch();
+			last_ran = i;
+		}
+
+		last_cost = current_cost;
+	}
+
+	Ok(())
 }
 
 /// # Split Block Cost.
@@ -1293,7 +1277,7 @@ fn patch_distance_codes(d_lengths: &mut [u32; ZOPFLI_NUM_D]) {
 /// Returns `true` if data was written.
 fn try_lz77_expensive_fixed(
 	store: &LZ77Store,
-	squeeze: &mut SqueezeCache,
+	state: &mut ZopfliState,
 	uncompressed_cost: usize,
 	dynamic_cost: usize,
 	arr: *const u8,
@@ -1308,20 +1292,17 @@ fn try_lz77_expensive_fixed(
 	debug_assert!(lstart < store.entries.len());
 	let instart = unsafe { store.entries.get_unchecked(lstart).pos };
 	let inend = instart + get_lz77_byte_range(store, lstart, lend);
-	let blocksize = inend - instart;
 
 	// Run all the expensive fixed-cost checks.
-	CACHE.with_borrow_mut(|c| c.init(blocksize));
-	squeeze.init(blocksize + 1);
+	state.init_lmc(inend - instart);
 
 	// Pull the hasher.
-	HASH.with_borrow_mut(|h| h.optimal_run(
+	state.optimal_run(
 		unsafe { std::slice::from_raw_parts(arr, inend) },
 		instart,
 		None,
-		squeeze,
 		&mut fixed_store,
-	))?;
+	)?;
 
 	// Find the resulting cost.
 	let fixed_cost = calculate_block_size(

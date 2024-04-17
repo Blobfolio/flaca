@@ -5,7 +5,6 @@ This module defines the longest match and squeeze cache structures, and hosts
 the thread-local LMC static.
 */
 
-use std::cell::RefCell;
 use super::{
 	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
@@ -13,14 +12,6 @@ use super::{
 };
 
 
-
-thread_local!(
-	/// # Static Cache.
-	///
-	/// There is only ever one instance of the longest match cache active per
-	/// thread, so we might as well persist it to save on the allocations!
-	pub(crate) static CACHE: RefCell<MatchCache> = const { RefCell::new(MatchCache::new()) }
-);
 
 /// # Default Length (1) and Distance (0).
 ///
@@ -50,7 +41,7 @@ pub(crate) struct MatchCache {
 
 impl MatchCache {
 	/// # New.
-	const fn new() -> Self {
+	pub(super) const fn new() -> Self {
 		Self {
 			ld: Vec::new(),
 			sublen: Vec::new(),
@@ -256,90 +247,6 @@ impl MatchCache {
 			if length == maxlength { return; }
 			prevlength = length + 1;
 		}
-	}
-}
-
-
-
-/// # Squeeze Scratchpad.
-///
-/// This structure is used to keep track of the data gathered during the
-/// forward/backward "squeeze" passes.
-///
-/// Similar to `MatchCache`, this structure is only ever really needed once per
-/// image so is frequently reset/reused to reduce allocation overhead.
-pub(crate) struct SqueezeCache {
-	pub(crate) costs: Vec<(f32, u16)>,
-	pub(crate) paths: Vec<u16>,
-}
-
-impl SqueezeCache {
-	/// # New.
-	pub(crate) const fn new() -> Self {
-		Self {
-			costs: Vec::new(),
-			paths: Vec::new(),
-		}
-	}
-
-	/// # Initialize/Reset.
-	///
-	/// This (potentially) resizes the cost and length vectors for the given
-	/// blocksize — which is `(inend - instart + 1)` by the way.
-	///
-	/// Unlike the `MatchCache`, this doesn't worry about setting the
-	/// appropriate values; `SqueezeCache::reset_costs` handles that.
-	///
-	/// The paths are unchanged by this method; subsequent calls to
-	/// `SqueezeCache::trace_paths` gets them sorted.
-	pub(crate) fn init(&mut self, blocksize: usize) {
-		// Resize if needed.
-		if blocksize != self.costs.len() {
-			self.costs.resize(blocksize, (f32::INFINITY, 0));
-		}
-	}
-
-	/// # Reset Costs.
-	///
-	/// This nudges all costs to infinity except the first, which is set to
-	/// zero instead.
-	pub(crate) fn reset_costs(&mut self) -> &mut [(f32, u16)] {
-		let slice = self.costs.as_mut_slice();
-		if ! slice.is_empty() {
-			for c in slice.iter_mut() { c.0 = f32::INFINITY; }
-			slice[0].0 = 0.0;
-		}
-		slice
-	}
-
-	#[allow(clippy::cast_possible_truncation)]
-	#[inline]
-	/// # Trace Paths.
-	///
-	/// Calculate the optimal path of lz77 lengths to use, from the
-	/// lengths gathered during the `ZopfliHash::get_best_lengths` pass.
-	pub(crate) fn trace_paths(&mut self) -> Option<&[u16]> {
-		let costs = self.costs.as_slice();
-		if costs.len() < 2 { return None; }
-
-		self.paths.truncate(0);
-		let mut idx = costs.len() - 1;
-		while 0 < idx && idx < costs.len() {
-			let v = costs[idx].1;
-			debug_assert!((1..=ZOPFLI_MAX_MATCH as u16).contains(&v));
-			if ! (1..=ZOPFLI_MAX_MATCH as u16).contains(&v) { return None; }
-
-			// Only lengths of at least ZOPFLI_MIN_MATCH count as lengths
-			// after tracing.
-			self.paths.push(
-				if v < ZOPFLI_MIN_MATCH as u16 { 1 } else { v }
-			);
-
-			// Move onto the next length or finish.
-			idx = idx.saturating_sub(usize::from(v));
-		}
-
-		Some(self.paths.as_slice())
 	}
 }
 

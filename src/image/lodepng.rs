@@ -20,6 +20,7 @@ use super::{
 	deflate_part,
 	ffi::EncodedImage,
 	SplitPoints,
+	ZopfliState,
 };
 
 
@@ -51,6 +52,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	}
 
 	// Initialize a reusable split-point buffer.
+	let mut state = ZopfliState::new();
 	let mut splits = SplitPoints::new();
 	let mut dst = ZopfliOut {
 		bp: 0,
@@ -69,6 +71,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 
 		// Crunch the part!
 		let res = deflate_part(
+			&mut state,
 			&mut splits,
 			numiterations,
 			last_part,

@@ -27,12 +27,9 @@ pub(crate) use blocks::{
 	deflate_part,
 	SplitPoints,
 };
-use cache::{
-	CACHE,
-	SqueezeCache,
-};
+use cache::MatchCache;
 use error::ZopfliError;
-use hash::HASH;
+pub(crate) use hash::ZopfliState;
 use lz77::LZ77Store;
 use kat::zopfli_length_limited_code_lengths;
 use super::{
