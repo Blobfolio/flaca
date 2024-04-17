@@ -69,6 +69,7 @@ impl SplitPoints {
 }
 
 impl SplitPoints {
+	#[inline]
 	/// # Uncompressed Split Pass.
 	///
 	/// This sets the uncompressed split points, by way of first setting the
@@ -76,15 +77,14 @@ impl SplitPoints {
 	///
 	/// In terms of order-of-operations, this must be called _before_ the
 	/// second-stage LZ77 pass as it would otherwise blow away that data.
-	fn split_raw(&mut self, arr: &[u8], instart: usize, state: &mut ZopfliState)
+	fn split_raw(&mut self, arr: &[u8], instart: usize, state: &mut ZopfliState, store: &mut LZ77Store)
 	-> Result<usize, ZopfliError> {
 		// Populate an LZ77 store from a greedy pass. This results in better
 		// block choices than a full optimal pass.
-		let mut store = LZ77Store::new();
-		state.greedy(arr, instart, &mut store, None)?;
+		state.greedy(arr, instart, store, None)?;
 
 		// Do an LZ77 pass.
-		let len = self.split_lz77(&store)?;
+		let len = self.split_lz77(store)?;
 
 		// Find the corresponding uncompressed positions.
 		if 0 < len && len <= MAX_SPLIT_POINTS {
@@ -157,6 +157,7 @@ impl SplitPoints {
 	}
 
 	#[allow(unsafe_code)]
+	#[inline]
 	/// # Split Best.
 	///
 	/// Compare the optimal raw split points with a dedicated lz77 pass and
@@ -167,13 +168,13 @@ impl SplitPoints {
 		arr: &[u8],
 		instart: usize,
 		store: &mut LZ77Store,
+		store2: &mut LZ77Store,
 		state: &mut ZopfliState,
 	) -> Result<&[usize], ZopfliError> {
 		// Start by splitting uncompressed.
-		let limit = self.split_raw(arr, instart, state)?.min(MAX_SPLIT_POINTS);
+		let limit = self.split_raw(arr, instart, state, store2)?.min(MAX_SPLIT_POINTS);
 
 		let mut cost1 = 0;
-		let mut store2 = LZ77Store::new();
 		let mut store3 = LZ77Store::new();
 		for i in 0..=limit {
 			let start = if i == 0 { instart } else { self.slice1[i - 1] };
@@ -187,14 +188,14 @@ impl SplitPoints {
 				unsafe { arr.get_unchecked(..end) },
 				start,
 				numiterations,
-				&mut store2,
+				store2,
 				&mut store3,
 				state,
 			)?;
-			cost1 += calculate_block_size_auto_type(&store2, 0, store2.len())?;
+			cost1 += calculate_block_size_auto_type(store2, 0, store2.len())?;
 
 			// Append its data to our main store.
-			store.append(&store2);
+			store.append(store2);
 
 			// Save the chunk size to our best.
 			if i < limit { self.slice2[i] = store.len(); }
@@ -242,11 +243,13 @@ pub(crate) fn deflate_part(
 ) -> Result<(), ZopfliError> {
 	// Find the split points.
 	let mut store = LZ77Store::new();
+	let mut store2 = LZ77Store::new();
 	let best = splits.split(
 		numiterations,
 		arr,
 		instart,
 		&mut store,
+		&mut store2,
 		state,
 	)?;
 
@@ -257,6 +260,7 @@ pub(crate) fn deflate_part(
 		add_lz77_block_auto_type(
 			i == best.len() && last_block,
 			&store,
+			&mut store2,
 			state,
 			arr.as_ptr(),
 			start,
@@ -438,6 +442,7 @@ fn add_lz77_block(
 	clippy::cast_sign_loss,
 	clippy::too_many_arguments,
 )]
+#[inline]
 /// # Add LZ77 Block (Automatic Type).
 ///
 /// This calculates the expected output sizes for all three block types, then
@@ -445,6 +450,7 @@ fn add_lz77_block(
 fn add_lz77_block_auto_type(
 	last_block: bool,
 	store: &LZ77Store,
+	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
 	arr: *const u8,
 	lstart: usize,
@@ -470,7 +476,7 @@ fn add_lz77_block_auto_type(
 	if
 		(store.len() < 1000 || (fixed_cost as f64) <= (dynamic_cost as f64) * 1.1) &&
 		try_lz77_expensive_fixed(
-			store, state, uncompressed_cost, dynamic_cost,
+			store, fixed_store, state, uncompressed_cost, dynamic_cost,
 			arr, lstart, lend, last_block,
 			expected_data_size, out,
 		)?
@@ -1269,6 +1275,7 @@ fn patch_distance_codes(d_lengths: &mut [u32; ZOPFLI_NUM_D]) {
 }
 
 #[allow(unsafe_code, clippy::too_many_arguments)]
+#[inline(never)]
 /// # (Maybe) Add LZ77 Expensive Fixed Block.
 ///
 /// This runs the full suite of fixed-tree tests on the data and writes it to
@@ -1277,6 +1284,7 @@ fn patch_distance_codes(d_lengths: &mut [u32; ZOPFLI_NUM_D]) {
 /// Returns `true` if data was written.
 fn try_lz77_expensive_fixed(
 	store: &LZ77Store,
+	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
 	uncompressed_cost: usize,
 	dynamic_cost: usize,
@@ -1287,7 +1295,6 @@ fn try_lz77_expensive_fixed(
 	expected_data_size: usize,
 	out: &mut ZopfliOut,
 ) -> Result<bool, ZopfliError> {
-	let mut fixed_store = LZ77Store::new();
 	// Safety: the split points are checked at creation.
 	debug_assert!(lstart < store.entries.len());
 	let instart = unsafe { store.entries.get_unchecked(lstart).pos };
@@ -1297,16 +1304,17 @@ fn try_lz77_expensive_fixed(
 	state.init_lmc(inend - instart);
 
 	// Pull the hasher.
+	fixed_store.clear();
 	state.optimal_run(
 		unsafe { std::slice::from_raw_parts(arr, inend) },
 		instart,
 		None,
-		&mut fixed_store,
+		fixed_store,
 	)?;
 
 	// Find the resulting cost.
 	let fixed_cost = calculate_block_size(
-		&fixed_store,
+		fixed_store,
 		0,
 		fixed_store.len(),
 		BlockType::Fixed,
@@ -1316,7 +1324,7 @@ fn try_lz77_expensive_fixed(
 	// fixed and dynamic, it's the best and worth writing!
 	if fixed_cost < dynamic_cost && (fixed_cost <= uncompressed_cost || dynamic_cost <= uncompressed_cost) {
 		add_lz77_block(
-			BlockType::Fixed, last_block, &fixed_store, arr, 0, fixed_store.len(),
+			BlockType::Fixed, last_block, fixed_store, arr, 0, fixed_store.len(),
 			expected_data_size, out,
 		)
 			.map(|()| true)
