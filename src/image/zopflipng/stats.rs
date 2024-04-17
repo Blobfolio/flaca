@@ -127,8 +127,8 @@ impl SymbolStats {
 			}
 		}
 
-		calculate_entropy::<ZOPFLI_NUM_LL>(&self.litlens, &mut self.ll_symbols);
-		calculate_entropy::<ZOPFLI_NUM_D>(&self.dists, &mut self.d_symbols);
+		calculate_entropy(&self.litlens, &mut self.ll_symbols);
+		calculate_entropy(&self.dists, &mut self.d_symbols);
 	}
 
 	#[allow(clippy::similar_names)]
@@ -165,8 +165,8 @@ impl SymbolStats {
 				}
 			}
 		}
-		randomize_freqs::<ZOPFLI_NUM_LL>(&mut self.litlens, state);
-		randomize_freqs::<ZOPFLI_NUM_D>(&mut self.dists, state);
+		randomize_freqs(&mut self.litlens, state);
+		randomize_freqs(&mut self.dists, state);
 
 		// Set the end symbol.
 		self.litlens[256] = 1;
