@@ -10,9 +10,9 @@ use super::{
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LitLen,
 	Lsym,
-	ZopfliError,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
+	ZopfliError,
 };
 
 
@@ -80,7 +80,8 @@ impl LZ77Store {
 
 		// If the distance is zero, we just need to bump the litlen count.
 		if entry.dist <= 0 {
-			// Safety: the counts were just resized a few lines back.
+			// Safety: the counts were pre-allocated a few lines back (if
+			// needed).
 			unsafe {
 				*self.ll_counts.get_unchecked_mut(ll_start + entry.litlen as usize) += 1;
 			}
@@ -88,7 +89,8 @@ impl LZ77Store {
 		// If it is non-zero, we need to set the correct symbols and bump both
 		// counts.
 		else {
-			// Safety: the counts were just resized a few lines back.
+			// Safety: the counts were pre-allocated a few lines back (if
+			// needed).
 			unsafe {
 				*self.ll_counts.get_unchecked_mut(ll_start + entry.ll_symbol as usize) += 1;
 				*self.d_counts.get_unchecked_mut(d_start + entry.d_symbol as usize) += 1;

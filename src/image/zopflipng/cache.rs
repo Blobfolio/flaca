@@ -7,9 +7,9 @@ the thread-local LMC static.
 
 use std::cell::RefCell;
 use super::{
-	ZopfliError,
-	ZOPFLI_MIN_MATCH,
 	ZOPFLI_MAX_MATCH,
+	ZOPFLI_MIN_MATCH,
+	ZopfliError,
 };
 
 
@@ -299,7 +299,6 @@ impl SqueezeCache {
 		}
 	}
 
-	#[allow(unsafe_code)]
 	/// # Reset Costs.
 	///
 	/// This nudges all costs to infinity except the first, which is set to

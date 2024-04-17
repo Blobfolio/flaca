@@ -30,9 +30,9 @@ use super::{
 	SqueezeCache,
 	stats::SymbolStats,
 	SUBLEN_LEN,
-	ZopfliError,
 	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
+	ZopfliError,
 };
 
 const ZOPFLI_WINDOW_SIZE: usize = 32_768;
@@ -218,19 +218,14 @@ impl ZopfliHash {
 		store: &mut LZ77Store,
 	) -> Result<(), ZopfliError> {
 		let costs = squeeze.reset_costs();
-		let tmp = self.get_best_lengths(arr, instart, stats, costs)?;
-		debug_assert!(tmp < 1E30);
+		self.get_best_lengths(arr, instart, stats, costs)?;
 		if let Some(paths) = squeeze.trace_paths() {
 			self.follow_paths(arr, instart, paths, store)?;
 		}
 		Ok(())
 	}
 
-	#[allow(
-		unsafe_code,
-		clippy::cast_possible_truncation,
-		clippy::cast_possible_wrap,
-	)]
+	#[allow(clippy::cast_possible_truncation)]
 	#[inline]
 	/// # Get Best Lengths.
 	///
@@ -249,7 +244,7 @@ impl ZopfliHash {
 		instart: usize,
 		stats: Option<&SymbolStats>,
 		costs: &mut [(f32, u16)],
-	) -> Result<f64, ZopfliError> {
+	) -> Result<(), ZopfliError> {
 		// Reset and warm the hash.
 		self.reset(arr, instart);
 
@@ -291,46 +286,85 @@ impl ZopfliHash {
 				Some(instart),
 			)?;
 
-			// Literal. (Note: this condition should never not be true, but it
-			// doesn't hurt too much to be extra sure!)
-			let cost_j = f64::from(unsafe { costs.get_unchecked(j).0 });
-			if i < arr.len() && j + 1 < costs.len() {
-				let new_cost = stats.map_or(
-					if arr[i] <= 143 { 8.0 } else { 9.0 },
-					|s| s.ll_symbols[usize::from(arr[i])],
-				) + cost_j;
-				debug_assert!(0.0 <= new_cost);
+			// This should never trigger; it is mainly a reminder to the
+			// compiler that our i/j indices are still applicable.
+			if i >= arr.len() || j + 1 >= costs.len() { break; }
 
-				// Update it if lower.
-				if new_cost < f64::from(costs[j + 1].0) {
-					costs[j + 1].0 = new_cost as f32;
-					costs[j + 1].1 = 1;
-				}
+			let cost_j = f64::from(costs[j].0);
+			let new_cost = stats.map_or_else(
+				|| if arr[i] <= 143 { 8.0 } else { 9.0 },
+				|s| s.ll_symbols[usize::from(arr[i])],
+			) + cost_j;
+			debug_assert!(0.0 <= new_cost);
+
+			// Update it if lower.
+			if new_cost < f64::from(costs[j + 1].0) {
+				costs[j + 1].0 = new_cost as f32;
+				costs[j + 1].1 = 1;
 			}
 
-			// Lengths and Sublengths.
-			let limit = usize::from(length).min(arr.len() - i);
+			// If a long match was found, peek forward to recalculate those
+			// costs, at least the ones who could benefit from the expense of
+			// all that effort.
+			let limit = usize::from(length).min(costs.len().saturating_sub(j + 1));
 			if (ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH).contains(&limit) {
 				let min_cost_add = min_cost + cost_j;
 				let mut k = ZOPFLI_MIN_MATCH;
-				for (v, c) in sublen[k..=limit].iter().copied().zip(costs.iter_mut().skip(j + k)) {
-					// The expensive cost calculations are only worth
-					// performing if the stored cost is larger than the
-					// minimum cost we found earlier.
-					if min_cost_add < f64::from(c.0) {
-						let new_cost = stats.map_or_else(
-							|| get_fixed_cost(k as u16, v),
-							|s| get_stat_cost(k, v, s)
-						) + cost_j;
-						debug_assert!(0.0 <= new_cost);
+				let iter = sublen[k..=limit].iter()
+					.copied()
+					.zip(costs.iter_mut().skip(j + k));
 
-						// Update it if lower.
-						if new_cost < f64::from(c.0) {
-							c.0 = new_cost as f32;
-							c.1 = k as u16;
+				// Stat-based cost calculations.
+				if let Some(s) = stats {
+					for (dist, c) in iter {
+						if min_cost_add < f64::from(c.0) {
+							let mut new_cost = cost_j;
+							if dist == 0 {
+								new_cost += s.ll_symbols[k];
+							}
+							else {
+								let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
+								new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
+								new_cost += s.d_symbols[dsym as usize];
+								new_cost += s.ll_symbols[LENGTH_SYMBOLS_BITS_VALUES[k].0 as usize];
+								new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k].1);
+							}
+
+							// Update it if lower.
+							if (0.0..f64::from(c.0)).contains(&new_cost) {
+								c.0 = new_cost as f32;
+								c.1 = k as u16;
+							}
 						}
+						k += 1;
 					}
-					k += 1;
+				}
+				// Fixed cost calculations.
+				else {
+					for (dist, c) in iter {
+						if min_cost_add < f64::from(c.0) {
+							let mut new_cost = cost_j;
+							if dist == 0 {
+								if k <= 143 { new_cost += 8.0; }
+								else { new_cost += 9.0; }
+							}
+							else {
+								if 114 < k { new_cost += 13.0; }
+								else { new_cost += 12.0; }
+
+								let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
+								new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
+								new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k].1);
+							}
+
+							// Update it if lower.
+							if (0.0..f64::from(c.0)).contains(&new_cost) {
+								c.0 = new_cost as f32;
+								c.1 = k as u16;
+							}
+						}
+						k += 1;
+					}
 				}
 			}
 
@@ -338,9 +372,9 @@ impl ZopfliHash {
 			i += 1;
 		}
 
-		// Return the final cost!
-		debug_assert!(0.0 <= costs[costs.len() - 1].0);
-		Ok(f64::from(costs[costs.len() - 1].0))
+		// The final cost should in a reasonable range.
+		debug_assert!((0.0..1E30).contains(&costs[costs.len() - 1].0));
+		Ok(())
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
@@ -892,37 +926,6 @@ impl ZopfliHashChain {
 
 
 
-#[allow(
-	unsafe_code,
-	clippy::cast_possible_truncation,
-	clippy::similar_names,
-)]
-/// # Fixed Cost Model.
-///
-/// This models the cost using a fixed tree.
-fn get_fixed_cost(len: u16, dist: u16) -> f64 {
-	if dist == 0 {
-		if len <= 143 { 8.0 }
-		else { 9.0 }
-	}
-	else {
-		let (lsym, lbits, _) = unsafe {
-			// Safety: this is only ever called with lengths between
-			// ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH, so values are always in
-			// range.
-			*LENGTH_SYMBOLS_BITS_VALUES.get_unchecked(usize::from(len))
-		};
-		let dbits =
-			if dist < 5 { 0 }
-			else { (dist - 1).ilog2() as u16 - 1 };
-		let base =
-			if 279 < lsym as u16 { 13 }
-			else { 12 };
-
-		f64::from(base + dbits + u16::from(lbits))
-	}
-}
-
 /// # Distance-Based Length Score.
 ///
 /// This is a simplistic cost model for the "greedy" LZ77 pass that helps it
@@ -957,30 +960,39 @@ fn get_minimum_cost(stats: &SymbolStats) -> f64 {
 	length_cost + dist_cost
 }
 
-#[allow(
-	unsafe_code,
-	clippy::cast_possible_truncation,
-	clippy::similar_names,
-)]
-#[inline]
-/// # Statistical Cost Model.
-///
-/// This models the cost using the gathered symbol statistics.
-fn get_stat_cost(len: usize, dist: u16, stats: &SymbolStats) -> f64 {
-	// Safety: this is only ever called with lengths between
-	// ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH so values are always in range.
-	if len > ZOPFLI_MAX_MATCH {
-		unsafe { core::hint::unreachable_unchecked(); }
-	}
 
-	if dist == 0 { stats.ll_symbols[len] }
-	else {
-		let (lsym, lbits, _) = LENGTH_SYMBOLS_BITS_VALUES[len];
-		let dsym = DISTANCE_SYMBOLS[usize::from(dist & 32_767)];
-		let dbits = DISTANCE_BITS[dsym as usize];
 
-		f64::from(lbits + dbits) +
-		stats.ll_symbols[lsym as usize] +
-		stats.d_symbols[dsym as usize]
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn t_fixed_cost() {
+		// Get the largest dbit and lbit values.
+		let d_max: u8 = DISTANCE_BITS.iter().copied().max().unwrap();
+		let l_max: u8 = LENGTH_SYMBOLS_BITS_VALUES.iter()
+			.map(|(_, a, _)| *a)
+			.max()
+			.unwrap();
+
+		// Make sure their sum (along with the largest base) fits within
+		// the u8 space, since that's what we're using at runtime.
+		let max = u16::from(d_max) + u16::from(l_max) + 13;
+		assert!(
+			max <= 255,
+			"maximum get_fixed_cost() is too big for u8: {max}"
+		);
+
+		// The original base is calculated by checking (279 < symbol), but we
+		// instead test (114 < litlen) because the symbol isn't otherwise
+		// needed. This sanity check makes sure the two conditions are indeed
+		// interchangeable.
+		for (i, (sym, _, _)) in LENGTH_SYMBOLS_BITS_VALUES.iter().copied().enumerate() {
+			assert_eq!(
+				279 < (sym as u16),
+				114 < i,
+				"get_fixed_cost() base logic is wrong: len {i} has symbol {}", sym as u16
+			);
+		}
 	}
 }

@@ -29,7 +29,7 @@ thread_local!(
 
 
 
-#[allow(unsafe_code, clippy::cast_sign_loss)]
+#[allow(unsafe_code)]
 /// # Length Limited Code Lengths.
 ///
 /// This writes minimum-redundancy length-limited code bitlengths for symbols

@@ -41,8 +41,8 @@ use super::{
 		DecodedImage,
 		LodePNGColorType,
 		LodePNGFilterStrategy,
-		ZopfliOut,
 		LodePNGState,
+		ZopfliOut,
 	},
 };
 use symbols::{

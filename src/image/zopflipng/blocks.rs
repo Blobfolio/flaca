@@ -110,7 +110,6 @@ impl SplitPoints {
 		else { Ok(len) }
 	}
 
-	#[allow(clippy::cast_precision_loss)]
 	/// # LZ77 Split Pass.
 	///
 	/// This sets the LZ77 split points according to convoluted cost
@@ -132,7 +131,7 @@ impl SplitPoints {
 			}
 
 			// Ignore points we've already covered.
-			if llpos == lstart + 1 || (calculate_block_size_auto_type(store, lstart, lend)? as f64) < llcost {
+			if llpos == lstart + 1 || calculate_block_size_auto_type(store, lstart, lend)? < llcost {
 				self.done.insert(lstart);
 			}
 			else {
@@ -334,7 +333,9 @@ impl<'a> Iterator for GoodForRle<'a> {
 		let scratch = self.counts[0];
 		let mut stride = 0;
 		while let [count, rest @ ..] = self.counts {
-			// Note the reptition and circle back around.
+			// Note the reptition and circle back around. This will always
+			// trigger on the first pass, so stride will always be at least
+			// one.
 			if *count == scratch {
 				stride += 1;
 				self.counts = rest;
@@ -505,7 +506,6 @@ fn add_dynamic_tree(
 	d_lengths: &[u32; ZOPFLI_NUM_D],
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
-	// Find the index that produces the best size.
 	let (i, _) = calculate_tree_size(ll_lengths, d_lengths)?;
 	encode_tree(ll_lengths, d_lengths, i, Some(out))?;
 	Ok(())
@@ -513,7 +513,6 @@ fn add_dynamic_tree(
 
 #[allow(
 	clippy::cast_sign_loss,
-	clippy::similar_names,
 	clippy::too_many_arguments,
 )]
 /// # Add LZ77 Data.
@@ -741,7 +740,6 @@ fn calculate_block_symbol_size_small(
 	result
 }
 
-#[allow(unsafe_code)]
 /// # Calculate the Exact Tree Size (in Bits).
 ///
 /// This returns the index that produced the smallest size, and its size.
@@ -784,7 +782,7 @@ fn encode_tree(
 	extra: u8,
 	out: Option<&mut ZopfliOut>,
 ) -> Result<usize, ZopfliError> {
-	// Discombobulated cl_length/cl_count indexes.
+	// Discombobulated cl_length/cl_count indexes, because DEFLATE is hateful.
 	const ORDER: [usize; 19] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
 
 	// To use or not to use the extended part of the alphabet.
@@ -808,15 +806,15 @@ fn encode_tree(
 	let mut hdist = 29;
 	while hdist > 0 && d_lengths[hdist] == 0 { hdist -= 1; }
 
-	// We process length and distance symbols in the same loop, in that order.
-	// With that in mind, this returns the symbol from the appropriate table.
+	// We process length and (then) distance symbols in the same loop. This
+	// returns the symbol for one or the other depending on how far we've
+	// gotten.
 	let length_or_distance = |idx: usize| {
 		// The compiler is smart enough to know hlit2 is valid for ll_lengths.
 		if idx < hlit2 { ll_lengths[idx] }
 		else {
-			// Safety: the index will always be between 0..L+D, where L
-			// is within range for ll_lengths and D is in range for
-			// d_lengths. If we're past the L point, what's left is a valid D.
+			// Safety: the index will always be between 0..L+D; if we're
+			// past the Ls, we're onto the Ds.
 			unsafe { *d_lengths.get_unchecked(idx - hlit2) }
 		}
 	};
@@ -979,12 +977,12 @@ fn find_minimum_cost(
 	store: &LZ77Store,
 	mut start: usize,
 	mut end: usize,
-) -> Result<(usize, f64), ZopfliError> {
+) -> Result<(usize, usize), ZopfliError> {
 	// Keep track of the original start/end points.
 	let split_start = start - 1;
 	let split_end = end;
 
-	let mut best_cost = f64::INFINITY;
+	let mut best_cost = usize::MAX;
 	let mut best_idx = start;
 
 	// Small chunks don't need much.
@@ -1001,7 +999,7 @@ fn find_minimum_cost(
 
 	// Divide and conquer.
 	let mut p = [0_usize; MINIMUM_SPLIT_DISTANCE - 1];
-	let mut last_best_cost = f64::INFINITY;
+	let mut last_best_cost = usize::MAX;
 	while MINIMUM_SPLIT_DISTANCE <= end - start {
 		let mut best_p_idx = 0;
 		for (i, pp) in p.iter_mut().enumerate() {
@@ -1185,19 +1183,18 @@ fn lz77_optimal(
 	})
 }
 
-#[allow(clippy::cast_precision_loss)]
 /// # Split Block Cost.
 ///
 /// Return the sum of the estimated costs of the left and right sections of the
 /// data.
-fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<f64, ZopfliError> {
-	Ok((
+fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<usize, ZopfliError> {
+	Ok(
 		calculate_block_size_auto_type(store, start, mid)? +
 		calculate_block_size_auto_type(store, mid, end)?
-	) as f64)
+	)
 }
 
-#[allow(unsafe_code, clippy::integer_division, clippy::cast_sign_loss)]
+#[allow(unsafe_code, clippy::integer_division)]
 /// # Optimize Huffman RLE Compression.
 ///
 /// Change the population counts to improve Huffman tree compression,
@@ -1238,6 +1235,8 @@ fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 			// current), take a sort of weighted average of them.
 			if i < four {
 				scratch = (
+					// Safety: the compiler doesn't understand (i < four) means
+					// we have at least i+3 entries left.
 					unsafe { *counts.get_unchecked(i + 3) } +
 					counts[i + 2] +
 					counts[i + 1] +
@@ -1338,8 +1337,8 @@ fn try_lz77_expensive_fixed(
 		add_lz77_block(
 			BlockType::Fixed, last_block, &fixed_store, arr, 0, fixed_store.len(),
 			expected_data_size, out,
-		)?;
-		Ok(true)
+		)
+			.map(|()| true)
 	}
 	else { Ok(false) }
 }
