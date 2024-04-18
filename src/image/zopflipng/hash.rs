@@ -26,6 +26,7 @@ use super::{
 	MatchCache,
 	stats::SymbolStats,
 	SUBLEN_LEN,
+	zopfli_error,
 	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
 	ZopfliError,
@@ -674,7 +675,7 @@ impl ZopfliHash {
 				// This logic is so screwy; I hesitate to make this a debug
 				// assertion!
 				if test_length != length && length > 2 && test_length > 2 {
-					return Err(ZopfliError::PathLength);
+					return Err(zopfli_error!());
 				}
 
 				// Add it to the store.
@@ -729,11 +730,12 @@ impl ZopfliHash {
 				length,
 			)? {
 				if pos + usize::from(*length) <= arr.len() { return Ok(()); }
-				return Err(ZopfliError::MatchRange);
+				return Err(zopfli_error!());
 			}
 		}
 
-		// These are both hard-coded or asserted by the caller.
+		// This is explicitly checked by the caller and again by find_loop()
+		// below, so we can leave this as a redundant debug assertion.
 		debug_assert!((ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH).contains(&limit));
 
 		// We'll need at least ZOPFLI_MIN_MATCH bytes for a search; if we don't
@@ -754,7 +756,7 @@ impl ZopfliHash {
 		// Cache the results for next time, maybe.
 		if let Some(blockstart) = cache {
 			if limit == ZOPFLI_MAX_MATCH && ! sublen.is_empty() {
-				lmc.set_sublen(pos - blockstart, sublen, bestdist, bestlength);
+				lmc.set_sublen(pos - blockstart, sublen, bestdist, bestlength)?;
 			}
 		}
 
@@ -762,9 +764,7 @@ impl ZopfliHash {
 		*distance = bestdist;
 		*length = bestlength;
 		if pos + usize::from(*length) <= arr.len() { Ok(()) }
-		else {
-			Err(ZopfliError::MatchRange)
-		}
+		else { Err(zopfli_error!()) }
 	}
 
 	#[allow(
@@ -786,12 +786,12 @@ impl ZopfliHash {
 		sublen: &mut [u16],
 	) -> Result<(u16, u16), ZopfliError> {
 		// This is asserted by find() too, but it's a good reminder.
-		debug_assert!(limit <= ZOPFLI_MAX_MATCH);
+		if ZOPFLI_MAX_MATCH < limit { return Err(zopfli_error!()); }
 
 		// Help the compiler understand sublen has a fixed size if provided.
 		// (We can't do an Option<Array> because it's too big for Copy.)
 		if ! sublen.is_empty() && sublen.len() != ZOPFLI_MAX_MATCH + 1 {
-			return Err(ZopfliError::SublenLength);
+			return Err(zopfli_error!());
 		}
 
 		let hpos = pos & ZOPFLI_WINDOW_MASK;

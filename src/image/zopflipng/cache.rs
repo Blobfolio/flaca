@@ -6,6 +6,7 @@ the thread-local LMC static.
 */
 
 use super::{
+	zopfli_error,
 	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
 	ZopfliError,
@@ -135,7 +136,7 @@ impl MatchCache {
 						usize::from(*length) >= ZOPFLI_MIN_MATCH &&
 						*distance != cache_dist
 					{
-						return Err(ZopfliError::LMCDistance);
+						return Err(zopfli_error!());
 					}
 				}
 
@@ -174,28 +175,20 @@ impl MatchCache {
 		sublen: &[u16],
 		distance: u16,
 		length: u16,
-	) {
-		let (cache_len, cache_dist) = self.ld(pos);
-		if cache_len == 0 || cache_dist != 0 { return; }
-		debug_assert_eq!(
-			(cache_len, cache_dist),
-			(1, 0),
-			"Length and/or distance are already cached!"
-		);
+	) -> Result<(), ZopfliError> {
+		let old_ld = self.ld(pos);
+		if old_ld.0 == 0 || old_ld.1 != 0 { return Ok(()); }
+		else if old_ld != (1, 0) { return Err(zopfli_error!()); }
 
 		// The sublength isn't cacheable, but that fact is itself worth
 		// caching!
 		if usize::from(length) < ZOPFLI_MIN_MATCH {
 			self.set_ld(pos, 0, 0);
-			return;
+			return Ok(());
 		}
 
 		// Save the length/distance bit.
-		debug_assert_ne!(
-			distance,
-			0,
-			"Distance cannot be zero when length > ZOPFLI_MIN_MATCH!"
-		);
+		if distance == 0 { return Err(zopfli_error!()); }
 		self.set_ld(pos, length, distance);
 
 		// The cache gets written three bytes at a time; this iterator will
@@ -208,7 +201,7 @@ impl MatchCache {
 		// Write all mismatched pairs.
 		for (i, pair) in sublen.windows(2).skip(ZOPFLI_MIN_MATCH).take(usize::from(length) - 3).enumerate() {
 			if pair[0] != pair[1] {
-				let Some(next) = dst.next() else { return; };
+				let Some(next) = dst.next() else { return Ok(()); };
 				next[0] = i as u8;
 				next[1..].copy_from_slice(pair[0].to_le_bytes().as_slice());
 			}
@@ -225,6 +218,8 @@ impl MatchCache {
 				*c1 = (length - 3) as u8;
 			}
 		}
+
+		Ok(())
 	}
 
 	/// # Write Sublength.

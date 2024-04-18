@@ -14,7 +14,10 @@ use std::{
 	cmp::Ordering,
 	mem::MaybeUninit,
 };
-use super::ZopfliError;
+use super::{
+	zopfli_error,
+	ZopfliError,
+};
 
 
 
@@ -62,7 +65,7 @@ pub(crate) fn zopfli_length_limited_code_lengths<const MAXBITS: usize, const SIZ
 	// leaves, or 7 maxbits and 19 potential leaves; in either case, the max
 	// leaves are well within range.
 	if (1 << MAXBITS) < len_leaves {
-		return Err(ZopfliError::LeafSize);
+		return Err(zopfli_error!());
 	}
 
 	// Set up the pool!

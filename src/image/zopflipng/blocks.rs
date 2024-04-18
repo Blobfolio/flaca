@@ -18,6 +18,7 @@ use super::{
 		RanState,
 		SymbolStats,
 	},
+	zopfli_error,
 	zopfli_length_limited_code_lengths,
 	zopfli_lengths_to_symbols,
 	ZOPFLI_NUM_D,
@@ -121,7 +122,7 @@ impl SplitPoints {
 		loop {
 			let (llpos, llcost) = find_minimum_cost(store, lstart + 1, lend)?;
 			if llpos <= lstart || llpos >= lend {
-				return Err(ZopfliError::SplitRange);
+				return Err(zopfli_error!());
 			}
 
 			// Ignore points we've already covered.
@@ -179,6 +180,9 @@ impl SplitPoints {
 		for i in 0..=limit {
 			let start = if i == 0 { instart } else { self.slice1[i - 1] };
 			let end = if i < limit { self.slice1[i] } else { arr.len() };
+
+			// This assertion is redundant as we explicitly check range sanity
+			// earlier and later in the pipeline.
 			debug_assert!(start <= end && end <= arr.len());
 
 			// Make another store.
@@ -262,7 +266,7 @@ pub(crate) fn deflate_part(
 			&store,
 			&mut store2,
 			state,
-			arr.as_ptr(),
+			arr,
 			start,
 			end,
 			0,
@@ -381,7 +385,7 @@ fn add_lz77_block(
 	btype: BlockType,
 	last_block: bool,
 	store: &LZ77Store,
-	arr: *const u8,
+	arr: &[u8],
 	lstart: usize,
 	lend: usize,
 	expected_data_size: usize,
@@ -389,11 +393,8 @@ fn add_lz77_block(
 ) -> Result<(), ZopfliError> {
 	// Uncompressed blocks are easy!
 	if matches!(btype, BlockType::Uncompressed) {
-		let length = get_lz77_byte_range(store, lstart, lend);
-		let pos =
-			if lstart >= lend { 0 }
-			else { store.entries[lstart].pos };
-		out.add_uncompressed_block(last_block, arr, pos, pos + length);
+		let (instart, inend) = get_lz77_byte_range(store, lstart, lend)?;
+		out.add_uncompressed_block(last_block, arr.as_ptr(), instart, inend);
 		return Ok(());
 	}
 
@@ -452,7 +453,7 @@ fn add_lz77_block_auto_type(
 	store: &LZ77Store,
 	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
-	arr: *const u8,
+	arr: &[u8],
 	lstart: usize,
 	lend: usize,
 	expected_data_size: usize,
@@ -535,9 +536,9 @@ fn add_lz77_data(
 		// Length only.
 		if e.dist <= 0 {
 			if (e.litlen as u16) >= 256 {
-				return Err(ZopfliError::LitLenLiteral);
+				return Err(zopfli_error!());
 			}
-			if ll_lengths[e.litlen as usize] == 0 { return Err(ZopfliError::NoLength); }
+			if ll_lengths[e.litlen as usize] == 0 { return Err(zopfli_error!()); }
 
 			out.add_huffman_bits(
 				ll_symbols[e.litlen as usize],
@@ -548,7 +549,7 @@ fn add_lz77_data(
 		// Length and distance.
 		else {
 			let (symbol, bits, value) = LENGTH_SYMBOLS_BITS_VALUES[e.litlen as usize];
-			if ll_lengths[symbol as usize] == 0 { return Err(ZopfliError::NoLength); }
+			if ll_lengths[symbol as usize] == 0 { return Err(zopfli_error!()); }
 
 			out.add_huffman_bits(
 				ll_symbols[symbol as usize],
@@ -557,7 +558,7 @@ fn add_lz77_data(
 			out.add_bits(u32::from(value), u32::from(bits));
 
 			// Now the distance bits.
-			if d_lengths[e.d_symbol as usize] == 0 { return Err(ZopfliError::NoDistance); }
+			if d_lengths[e.d_symbol as usize] == 0 { return Err(zopfli_error!()); }
 			out.add_huffman_bits(
 				d_symbols[e.d_symbol as usize],
 				d_lengths[e.d_symbol as usize],
@@ -572,7 +573,7 @@ fn add_lz77_data(
 	}
 
 	if expected_data_size == 0 || test_size == expected_data_size { Ok(()) }
-	else { Err(ZopfliError::Write) }
+	else { Err(zopfli_error!()) }
 }
 
 /// # Calculate Block Size (in Bits).
@@ -584,11 +585,12 @@ fn calculate_block_size(
 ) -> Result<usize, ZopfliError> {
 	match btype {
 		BlockType::Uncompressed => {
-			let length = get_lz77_byte_range(store, lstart, lend);
-			let blocks = length.div_ceil(65_535);
+			let (instart, inend) = get_lz77_byte_range(store, lstart, lend)?;
+			let blocksize = inend - instart;
 
 			// Blocks larger than u16::MAX need to be split.
-			Ok(blocks * 40 + length * 8)
+			let blocks = blocksize.div_ceil(65_535);
+			Ok(blocks * 40 + blocksize * 8)
 		},
 		BlockType::Fixed =>
 			Ok(calculate_block_symbol_size(
@@ -826,7 +828,7 @@ fn encode_tree(
 	while i < lld_total {
 		let mut count = 1;
 		let symbol = length_or_distance(i);
-		if symbol >= 19 { return Err(ZopfliError::TreeSymbol); }
+		if symbol >= 19 { return Err(zopfli_error!()); }
 
 		// Peek ahead; we may be able to do more in one go.
 		if use_16 || (symbol == 0 && (use_17 || use_18)) {
@@ -1062,20 +1064,21 @@ fn get_dynamic_lengths(
 	)
 }
 
-#[allow(unsafe_code)]
-/// # Symbol Spans in Raw Bytes.
+/// # Symbol Span Range.
+///
+/// Convert an LZ77 range to the start/end positions of the block.
 fn get_lz77_byte_range(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-) -> usize {
-	if lstart >= lend { 0 }
-	else {
-		// Safety: the split points are checked at creation.
-		debug_assert!(lend <= store.entries.len());
-		let e = unsafe { store.entries.get_unchecked(lend - 1) };
-		e.length() as usize + e.pos - store.entries[lstart].pos
+) -> Result<(usize, usize), ZopfliError> {
+	let slice = store.entries.as_slice();
+	if lstart < lend && lend <= slice.len() {
+		let instart = slice[lstart].pos;
+		let e = slice[lend - 1];
+		Ok((instart, e.length() as usize + e.pos))
 	}
+	else { Err(zopfli_error!()) }
 }
 
 /// # Optimal LZ77.
@@ -1274,7 +1277,7 @@ fn patch_distance_codes(d_lengths: &mut [u32; ZOPFLI_NUM_D]) {
 	}
 }
 
-#[allow(unsafe_code, clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 #[inline(never)]
 /// # (Maybe) Add LZ77 Expensive Fixed Block.
 ///
@@ -1288,7 +1291,7 @@ fn try_lz77_expensive_fixed(
 	state: &mut ZopfliState,
 	uncompressed_cost: usize,
 	dynamic_cost: usize,
-	arr: *const u8,
+	arr: &[u8],
 	lstart: usize,
 	lend: usize,
 	last_block: bool,
@@ -1296,9 +1299,7 @@ fn try_lz77_expensive_fixed(
 	out: &mut ZopfliOut,
 ) -> Result<bool, ZopfliError> {
 	// Safety: the split points are checked at creation.
-	debug_assert!(lstart < store.entries.len());
-	let instart = unsafe { store.entries.get_unchecked(lstart).pos };
-	let inend = instart + get_lz77_byte_range(store, lstart, lend);
+	let (instart, inend) = get_lz77_byte_range(store, lstart, lend)?;
 
 	// Run all the expensive fixed-cost checks.
 	state.init_lmc(inend - instart);
@@ -1306,7 +1307,7 @@ fn try_lz77_expensive_fixed(
 	// Pull the hasher.
 	fixed_store.clear();
 	state.optimal_run(
-		unsafe { std::slice::from_raw_parts(arr, inend) },
+		arr.get(..inend).ok_or(zopfli_error!())?,
 		instart,
 		None,
 		fixed_store,

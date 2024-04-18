@@ -10,6 +10,7 @@ use super::{
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LitLen,
 	Lsym,
+	zopfli_error,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
 	ZopfliError,
@@ -161,10 +162,10 @@ impl LZ77Store {
 		// Start by copying the counts directly from the nearest chunk.
 		let mut ll_counts: [usize; ZOPFLI_NUM_LL] = self.ll_counts.get(ll_start..ll_end)
 			.and_then(|c| c.try_into().ok())
-			.ok_or(ZopfliError::HistogramRange)?;
+			.ok_or(zopfli_error!())?;
 		let mut d_counts: [usize; ZOPFLI_NUM_D] = self.d_counts.get(d_start..d_end)
 			.and_then(|c| c.try_into().ok())
-			.ok_or(ZopfliError::HistogramRange)?;
+			.ok_or(zopfli_error!())?;
 
 		// Subtract the symbol occurences between (pos+1) and the end of the
 		// chunks.
@@ -238,29 +239,29 @@ impl LZ77StoreEntry {
 	)]
 	/// # New.
 	const fn new(litlen: u16, dist: u16, pos: usize) -> Result<Self, ZopfliError> {
-		if litlen >= 259 { return Err(ZopfliError::LitLen); }
-		debug_assert!(dist < 32_768);
+		if litlen < 259 && dist < 32_768 {
+			// Using the signed type helps the compiler understand the upper
+			// range fits ZOPFLI_WINDOW_MAX.
+			let dist = dist as i16;
+			let (ll_symbol, d_symbol) =
+				if dist <= 0 {
+					// Safety: the maximum Lsym is 285.
+					(unsafe { std::mem::transmute(litlen) }, Dsym::D00)
+				}
+				else {(
+					LENGTH_SYMBOLS_BITS_VALUES[litlen as usize].0,
+					DISTANCE_SYMBOLS[dist as usize],
+				)};
 
-		// Using the signed type helps the compiler understand the upper
-		// range fits ZOPFLI_WINDOW_MAX.
-		let dist = dist as i16;
-		let (ll_symbol, d_symbol) =
-			if dist <= 0 {
-				// Safety: the maximum Lsym is 285.
-				(unsafe { std::mem::transmute(litlen) }, Dsym::D00)
-			}
-			else {(
-				LENGTH_SYMBOLS_BITS_VALUES[litlen as usize].0,
-				DISTANCE_SYMBOLS[dist as usize],
-			)};
-
-		Ok(Self {
-			pos,
-			litlen: unsafe { std::mem::transmute(litlen) },
-			dist,
-			ll_symbol,
-			d_symbol,
-		})
+			Ok(Self {
+				pos,
+				litlen: unsafe { std::mem::transmute(litlen) },
+				dist,
+				ll_symbol,
+				d_symbol,
+			})
+		}
+		else { Err(zopfli_error!()) }
 	}
 
 	/// # Length.

@@ -28,7 +28,10 @@ pub(crate) use blocks::{
 	SplitPoints,
 };
 use cache::MatchCache;
-use error::ZopfliError;
+use error::{
+	zopfli_error,
+	ZopfliError,
+};
 pub(crate) use hash::ZopfliState;
 use lz77::LZ77Store;
 use kat::zopfli_length_limited_code_lengths;
