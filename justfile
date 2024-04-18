@@ -57,6 +57,15 @@ export CXX := "clang++"
 	mv "{{ justfile_directory() }}/target" "{{ cargo_dir }}"
 
 
+# Bench PNG Compression.
+[no-cd]
+@bench-png BIN:
+	[ -f "{{ BIN }}" ] || exit 1
+	just _bench-reset
+	"{{ absolute_path(BIN) }}" -p --no-jpeg "{{ bench_dir }}"
+	cd "{{ bench_dir }}" && b3sum -c png.b3 --quiet
+
+
 @clean:
 	# Most things go here.
 	[ ! -d "{{ cargo_dir }}" ] || rm -rf "{{ cargo_dir }}"
