@@ -287,8 +287,6 @@ impl LodePNGState {
 
 		enc.encoder.filter_palette_zero = 0;
 		enc.encoder.filter_strategy = strategy;
-		enc.encoder.add_id = 0;
-		enc.encoder.text_compression = 1;
 
 		// For final compression, enable the custom zopfli deflater.
 		if slow {

@@ -73,19 +73,20 @@ fn build_ffi() {
 
 	// Build Zopfli first.
 	let mut c = cc::Build::new();
-	c.includes(&[repo, &lodepng_src, &zopfli_src])
+	c.includes([repo, &lodepng_src, &zopfli_src])
 		.cpp(false)
 		.flag_if_supported("-W")
 		.flag_if_supported("-ansi")
 		.flag_if_supported("-pedantic")
 		.pic(true)
 		.static_flag(true)
-		.files(&[
+		.files([
 			zopfli_src.join("zopfli.c"),
 			lodepng_src.join("lodepng.c"),
 		])
-		.define("LODEPNG_NO_COMPILE_DISK", None)
+		.define("LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS", None)
 		.define("LODEPNG_NO_COMPILE_CPP", None)
+		.define("LODEPNG_NO_COMPILE_DISK", None)
 		.compile("zopflipng");
 
 	bindings(repo, &lodepng_src, &zopfli_src);
@@ -187,6 +188,11 @@ pub(crate) const DISTANCE_VALUES: &[u16; 32_768] = &[");
 /// commented-out code can be re-enabled if they ever need to be updated.
 fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 	let bindings = bindgen::Builder::default()
+		.clang_args([
+			"-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS",
+			"-DLODEPNG_NO_COMPILE_CPP",
+			"-DLODEPNG_NO_COMPILE_DISK",
+		])
 		.header(lodepng_src.join("lodepng.h").to_string_lossy())
 		.header(repo.join("rust.h").to_string_lossy())
 		.header(zopfli_src.join("zopfli.h").to_string_lossy())
