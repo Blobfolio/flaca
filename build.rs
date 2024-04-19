@@ -102,11 +102,21 @@ fn build_ffi() {
 fn build_symbols() {
 	use std::fmt::Write;
 
-	let mut out = r"#[allow(dead_code)]
+	let mut out = r"#[repr(usize)]
+#[derive(Clone, Copy)]
+/// # Whackadoodle Deflate Indices.
+pub(crate) enum DeflateSym {".to_owned();
+	for i in 0..19 {
+		write!(&mut out, "\n\tD{i:02} = {i}_usize,").unwrap();
+	}
+	out.push_str(r"
+}
+
+#[allow(dead_code)]
 #[repr(u16)]
 #[derive(Clone, Copy)]
 /// # Distance Symbols.
-pub(crate) enum Dsym {".to_owned();
+pub(crate) enum Dsym {");
 	for i in 0..32 {
 		write!(&mut out, "\n\tD{i:02} = {i}_u16,").unwrap();
 	}

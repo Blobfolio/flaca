@@ -19,6 +19,17 @@ pub(crate) const DISTANCE_BITS: [u8; 32] = [
 	7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 0, 0,
 ];
 
+/// # Whackadoodle DEFLATE Ordering.
+///
+/// Tree encoding writes data out-of-order for some reason. This is that order.
+pub(crate) const DEFLATE_ORDER: [DeflateSym; 19] = [
+	DeflateSym::D16, DeflateSym::D17, DeflateSym::D18, DeflateSym::D00,
+	DeflateSym::D08, DeflateSym::D07, DeflateSym::D09, DeflateSym::D06,
+	DeflateSym::D10, DeflateSym::D05, DeflateSym::D11, DeflateSym::D04,
+	DeflateSym::D12, DeflateSym::D03, DeflateSym::D13, DeflateSym::D02,
+	DeflateSym::D14, DeflateSym::D01, DeflateSym::D15,
+];
+
 /// # Length Symbols, Extra Bits, and Bit Values.
 ///
 /// This contains all symbols, bits, and bit values indexed by their

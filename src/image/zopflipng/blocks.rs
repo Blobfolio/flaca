@@ -8,6 +8,7 @@ and ends that didn't make it into other modules.
 use dactyl::NoHash;
 use std::collections::HashSet;
 use super::{
+	DEFLATE_ORDER,
 	DISTANCE_BITS,
 	DISTANCE_VALUES,
 	FIXED_TREE_D,
@@ -765,7 +766,6 @@ fn calculate_tree_size(
 }
 
 #[allow(
-	unsafe_code,
 	clippy::cast_possible_truncation,
 	clippy::cognitive_complexity, // Yeah, this is terrible!
 	clippy::similar_names,
@@ -784,9 +784,6 @@ fn encode_tree(
 	extra: u8,
 	out: Option<&mut ZopfliOut>,
 ) -> Result<usize, ZopfliError> {
-	// Discombobulated cl_length/cl_count indexes, because DEFLATE is hateful.
-	const ORDER: [usize; 19] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
-
 	// To use or not to use the extended part of the alphabet.
 	let use_16: bool = 0 != extra & 1;
 	let use_17: bool = 0 != extra & 2;
@@ -808,18 +805,19 @@ fn encode_tree(
 	let mut hdist = 29;
 	while hdist > 0 && d_lengths[hdist] == 0 { hdist -= 1; }
 
-	// We process length and (then) distance symbols in the same loop. This
-	// returns the symbol for one or the other depending on how far we've
-	// gotten.
-	let length_or_distance = |idx: usize| {
-		// The compiler is smart enough to know hlit2 is valid for ll_lengths.
-		if idx < hlit2 { ll_lengths[idx] }
-		else {
-			// Safety: the index will always be between 0..L+D; if we're
-			// past the Ls, we're onto the Ds.
-			unsafe { *d_lengths.get_unchecked(idx - hlit2) }
-		}
-	};
+	// The upcoming loop processes lengths and distances together (one after
+	// the other). This macro returns the symbol from the appropriate table
+	// based on the index.
+	macro_rules! length_or_distance {
+		($idx:ident) => (
+			if $idx < hlit2 { ll_lengths[$idx] }
+			else {
+				// This mask isn't necessary but the compiler doesn't
+				// understand what we're trying to do.
+				d_lengths[($idx - hlit2).min(29)]
+			}
+		);
+	}
 
 	// Run through all the length symbols, then the distance symbols, with the
 	// odd skip to keep us on our toes.
@@ -827,13 +825,13 @@ fn encode_tree(
 	let mut i = 0;
 	while i < lld_total {
 		let mut count = 1;
-		let symbol = length_or_distance(i);
+		let symbol = length_or_distance!(i);
 		if symbol >= 19 { return Err(zopfli_error!()); }
 
 		// Peek ahead; we may be able to do more in one go.
 		if use_16 || (symbol == 0 && (use_17 || use_18)) {
 			let mut j = i + 1;
-			while j < lld_total && symbol == length_or_distance(j) {
+			while j < lld_total && symbol == length_or_distance!(j) {
 				count += 1;
 				j += 1;
 			}
@@ -892,7 +890,7 @@ fn encode_tree(
 	// Find the last non-zero index of the counts table.
 	// Safety: all ORDER values are between 0..19.
 	let mut hclen = 15;
-	while hclen > 0 && unsafe { *cl_counts.get_unchecked(ORDER[hclen + 3]) } == 0 {
+	while hclen > 0 && cl_counts[DEFLATE_ORDER[hclen + 3] as usize] == 0 {
 		hclen -= 1;
 	}
 
@@ -908,9 +906,9 @@ fn encode_tree(
 		out.add_bits(hclen as u32, 4);
 
 		// Write each cl_length in the jumbled DEFLATE order.
-		for &o in &ORDER[..hclen + 4] {
+		for &o in &DEFLATE_ORDER[..hclen + 4] {
 			// Safety: all ORDER values are between 0..19.
-			out.add_bits(unsafe { *cl_lengths.get_unchecked(o) }, 3);
+			out.add_bits(cl_lengths[o as usize], 3);
 		}
 
 		// Write each symbol in order of appearance along with its extra bits,

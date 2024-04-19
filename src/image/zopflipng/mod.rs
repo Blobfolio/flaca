@@ -46,6 +46,7 @@ use super::{
 	},
 };
 use symbols::{
+	DEFLATE_ORDER,
 	DISTANCE_BITS,
 	DISTANCE_SYMBOLS,
 	DISTANCE_VALUES,
