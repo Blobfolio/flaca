@@ -101,11 +101,12 @@ impl SplitPoints {
 				pos += e.length() as usize;
 			}
 
-			unreachable!();
+			Err(zopfli_error!())
 		}
 		else { Ok(len) }
 	}
 
+	#[inline(never)]
 	/// # LZ77 Split Pass.
 	///
 	/// This sets the LZ77 split points according to convoluted cost
@@ -230,6 +231,7 @@ impl SplitPoints {
 
 
 
+#[inline]
 /// # Deflate a Part.
 ///
 /// Image compression is done in chunks of a million bytes. This does all the
