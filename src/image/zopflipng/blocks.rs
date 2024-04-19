@@ -579,6 +579,7 @@ fn add_lz77_data(
 	else { Err(zopfli_error!()) }
 }
 
+#[inline(never)]
 /// # Calculate Block Size (in Bits).
 fn calculate_block_size(
 	store: &LZ77Store,
@@ -617,6 +618,7 @@ fn calculate_block_size(
 	}
 }
 
+#[inline]
 /// # Calculate Best Block Size (in Bits).
 fn calculate_block_size_auto_type(
 	store: &LZ77Store,
@@ -642,6 +644,7 @@ fn calculate_block_size_auto_type(
 	else { Ok(dynamic_cost) }
 }
 
+#[inline]
 /// # Calculate Block Symbol Size w/ Histogram.
 fn calculate_block_symbol_size(
 	ll_lengths: &[u32; ZOPFLI_NUM_LL],
@@ -673,6 +676,7 @@ fn calculate_block_symbol_size(
 	}
 }
 
+#[inline]
 /// # Calculate Block Symbol Size w/ Histogram and Counts.
 fn calculate_block_symbol_size_given_counts(
 	ll_counts: &[usize; ZOPFLI_NUM_LL],
@@ -715,6 +719,7 @@ fn calculate_block_symbol_size_given_counts(
 	result
 }
 
+#[inline]
 /// # Calculate Small Block Symbol Size.
 fn calculate_block_symbol_size_small(
 	ll_lengths: &[u32; ZOPFLI_NUM_LL],
@@ -727,9 +732,10 @@ fn calculate_block_symbol_size_small(
 	let mut result = ll_lengths[256] as usize;
 
 	// Loop the store if we have data to loop.
-	if lstart < lend {
+	let slice = store.entries.as_slice();
+	if lstart < lend && lend <= slice.len() {
 		// Make sure the end does not exceed the store!
-		for e in &store.entries[lstart..lend] {
+		for e in &slice[lstart..lend] {
 			if e.dist <= 0 {
 				result += ll_lengths[e.litlen as usize] as usize;
 			}
