@@ -1234,18 +1234,18 @@ fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 /// Ensure there are at least two distance codes to avoid issues with buggy
 /// decoders.
 fn patch_distance_codes(d_lengths: &mut [u32; ZOPFLI_NUM_D]) {
-	let mut one: Option<usize> = None;
+	let mut one: Option<bool> = None;
 	for (i, dist) in d_lengths.iter().copied().enumerate().take(30) {
 		// We have (at least) two non-zero entries; no patching needed!
-		if 0 != dist && one.replace(i).is_some() { return; }
+		if 0 != dist && one.replace(i == 0).is_some() { return; }
 	}
 
 	match one {
-		// The first entry had a code, so patch the second to give us two.
-		Some(0) => { d_lengths[1] = 1; },
-		// Patch the first entry to give us two.
-		Some(_) => { d_lengths[0] = 1; },
-		// There were no codes, so let's just patch the first two.
+		// The first entry had a code, so patching the second gives us two.
+		Some(true) => { d_lengths[1] = 1; },
+		// The first entry didn't have a code, so patching it gives us two.
+		Some(false) => { d_lengths[0] = 1; },
+		// There were no codes, so we can just patch the first two.
 		None => {
 			d_lengths[0] = 1;
 			d_lengths[1] = 1;
