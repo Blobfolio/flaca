@@ -596,14 +596,18 @@ fn calculate_block_size(
 			let blocks = blocksize.div_ceil(65_535);
 			Ok(blocks * 40 + blocksize * 8)
 		},
-		BlockType::Fixed =>
-			Ok(calculate_block_symbol_size(
+		BlockType::Fixed => {
+			let (ll_counts, d_counts) = store.histogram(lstart, lend)?;
+			Ok(calculate_block_symbol_size_given_counts(
+				&ll_counts,
+				&d_counts,
 				&FIXED_TREE_LL,
 				&FIXED_TREE_D,
 				store,
 				lstart,
 				lend,
-			)? + 3),
+			) + 3)
+		},
 		BlockType::Dynamic => {
 			let mut ll_lengths = [0_u32; ZOPFLI_NUM_LL];
 			let mut d_lengths = [0_u32; ZOPFLI_NUM_D];
@@ -642,38 +646,6 @@ fn calculate_block_size_auto_type(
 	// Otherwise choose the smaller of fixed and dynamic.
 	else if fixed_cost < dynamic_cost { Ok(fixed_cost) }
 	else { Ok(dynamic_cost) }
-}
-
-#[inline]
-/// # Calculate Block Symbol Size w/ Histogram.
-fn calculate_block_symbol_size(
-	ll_lengths: &[u32; ZOPFLI_NUM_LL],
-	d_lengths: &[u32; ZOPFLI_NUM_D],
-	store: &LZ77Store,
-	lstart: usize,
-	lend: usize,
-) -> Result<usize, ZopfliError> {
-	if lstart + ZOPFLI_NUM_LL * 3 > lend {
-		Ok(calculate_block_symbol_size_small(
-			ll_lengths,
-			d_lengths,
-			store,
-			lstart,
-			lend,
-		))
-	}
-	else {
-		let (ll_counts, d_counts) = store.histogram(lstart, lend)?;
-		Ok(calculate_block_symbol_size_given_counts(
-			&ll_counts,
-			&d_counts,
-			ll_lengths,
-			d_lengths,
-			store,
-			lstart,
-			lend,
-		))
-	}
 }
 
 #[inline]
@@ -896,7 +868,6 @@ fn encode_tree(
 	zopfli_length_limited_code_lengths::<7, 19>(&cl_counts, &mut cl_lengths)?;
 
 	// Find the last non-zero index of the counts table.
-	// Safety: all ORDER values are between 0..19.
 	let mut hclen = 15;
 	while hclen > 0 && cl_counts[DEFLATE_ORDER[hclen + 3] as usize] == 0 {
 		hclen -= 1;
@@ -915,7 +886,6 @@ fn encode_tree(
 
 		// Write each cl_length in the jumbled DEFLATE order.
 		for &o in &DEFLATE_ORDER[..hclen + 4] {
-			// Safety: all ORDER values are between 0..19.
 			out.add_bits(cl_lengths[o as usize], 3);
 		}
 
@@ -1304,7 +1274,6 @@ fn try_lz77_expensive_fixed(
 	expected_data_size: usize,
 	out: &mut ZopfliOut,
 ) -> Result<bool, ZopfliError> {
-	// Safety: the split points are checked at creation.
 	let (instart, inend) = get_lz77_byte_range(store, lstart, lend)?;
 
 	// Run all the expensive fixed-cost checks.
