@@ -674,7 +674,7 @@ impl ZopfliHash {
 
 				// This logic is so screwy; I hesitate to make this a debug
 				// assertion!
-				if test_length != length && length > 2 && test_length > 2 {
+				if test_length != length && test_length > 2 {
 					return Err(zopfli_error!());
 				}
 

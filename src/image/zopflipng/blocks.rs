@@ -758,13 +758,13 @@ fn calculate_tree_size(
 	ll_lengths: &[u32; ZOPFLI_NUM_LL],
 	d_lengths: &[u32; ZOPFLI_NUM_D],
 ) -> Result<(u8, usize), ZopfliError> {
-	let mut best_size = 0;
+	let mut best_size = usize::MAX;
 	let mut best_idx = 0;
 
 	for i in 0..8 {
 		let size = encode_tree(ll_lengths, d_lengths, i, None)?;
 
-		if best_size == 0 || size < best_size {
+		if size < best_size {
 			best_size = size;
 			best_idx = i;
 		}
