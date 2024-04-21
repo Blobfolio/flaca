@@ -71,7 +71,6 @@ impl SplitPoints {
 }
 
 impl SplitPoints {
-	#[inline]
 	/// # Uncompressed Split Pass.
 	///
 	/// This sets the uncompressed split points, by way of first setting the
@@ -106,7 +105,6 @@ impl SplitPoints {
 		else { Ok(len) }
 	}
 
-	#[inline(never)]
 	/// # LZ77 Split Pass.
 	///
 	/// This sets the LZ77 split points according to convoluted cost
@@ -160,7 +158,6 @@ impl SplitPoints {
 	}
 
 	#[allow(unsafe_code)]
-	#[inline]
 	/// # Split Best.
 	///
 	/// Compare the optimal raw split points with a dedicated lz77 pass and
@@ -231,7 +228,6 @@ impl SplitPoints {
 
 
 
-#[inline]
 /// # Deflate a Part.
 ///
 /// Image compression is done in chunks of a million bytes. This does all the
@@ -446,7 +442,6 @@ fn add_lz77_block(
 	clippy::cast_sign_loss,
 	clippy::too_many_arguments,
 )]
-#[inline]
 /// # Add LZ77 Block (Automatic Type).
 ///
 /// This calculates the expected output sizes for all three block types, then
@@ -501,7 +496,6 @@ fn add_lz77_block_auto_type(
 	)
 }
 
-#[inline(never)]
 /// # Add Dynamic Tree.
 ///
 /// Determine the optimal tree index, then add it to the output.
@@ -579,7 +573,6 @@ fn add_lz77_data(
 	else { Err(zopfli_error!()) }
 }
 
-#[inline(never)]
 /// # Calculate Block Size (in Bits).
 fn calculate_block_size(
 	store: &LZ77Store,
@@ -622,7 +615,6 @@ fn calculate_block_size(
 	}
 }
 
-#[inline]
 /// # Calculate Best Block Size (in Bits).
 fn calculate_block_size_auto_type(
 	store: &LZ77Store,
@@ -648,7 +640,6 @@ fn calculate_block_size_auto_type(
 	else { Ok(dynamic_cost) }
 }
 
-#[inline]
 /// # Calculate Block Symbol Size w/ Histogram and Counts.
 fn calculate_block_symbol_size_given_counts(
 	ll_counts: &[usize; ZOPFLI_NUM_LL],
@@ -691,7 +682,6 @@ fn calculate_block_symbol_size_given_counts(
 	result
 }
 
-#[inline]
 /// # Calculate Small Block Symbol Size.
 fn calculate_block_symbol_size_small(
 	ll_lengths: &[u32; ZOPFLI_NUM_LL],
@@ -750,7 +740,6 @@ fn calculate_tree_size(
 	clippy::cognitive_complexity, // Yeah, this is terrible!
 	clippy::similar_names,
 )]
-#[inline(never)]
 /// # Encode Huffman Tree.
 ///
 /// Build a tree and optionally write it to the output file, returning the
@@ -1012,8 +1001,6 @@ fn find_minimum_cost(
 /// (This is not necessarily the optimal Huffman lengths.)
 ///
 /// The total size in bits (minus the 3-bit header) is returned.
-///
-/// This is a rewrite of the original `deflate.c` method.
 fn get_dynamic_lengths(
 	store: &LZ77Store,
 	lstart: usize,
@@ -1063,8 +1050,6 @@ fn get_lz77_byte_range(
 ///
 /// Note: this incorporates the functionality of `ZopfliLZ77OptimalRun`
 /// directly.
-///
-/// This is a rewrite of the original `squeeze.c` method.
 fn lz77_optimal(
 	arr: &[u8],
 	instart: usize,
@@ -1168,8 +1153,6 @@ fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result
 ///
 /// Change the population counts to improve Huffman tree compression,
 /// particularly its RLE part.
-///
-/// This is a rewrite of the original `deflate.c` method.
 fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 	// Convert counts to a proper slice with trailing zeroes trimmed.
 	let ptr = counts.as_mut_ptr();
@@ -1254,7 +1237,6 @@ fn patch_distance_codes(d_lengths: &mut [u32; ZOPFLI_NUM_D]) {
 }
 
 #[allow(clippy::too_many_arguments)]
-#[inline(never)]
 /// # (Maybe) Add LZ77 Expensive Fixed Block.
 ///
 /// This runs the full suite of fixed-tree tests on the data and writes it to

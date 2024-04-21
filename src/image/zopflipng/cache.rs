@@ -80,7 +80,6 @@ impl MatchCache {
 		}
 	}
 
-	#[inline]
 	#[allow(clippy::cast_possible_truncation)]
 	/// # Find Match.
 	///

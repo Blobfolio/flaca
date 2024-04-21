@@ -244,7 +244,6 @@ impl ZopfliState {
 
 impl ZopfliState {
 	#[allow(clippy::cast_possible_truncation)]
-	#[inline]
 	/// # Trace Paths.
 	///
 	/// Calculate the optimal path of lz77 lengths to use, from the
@@ -381,7 +380,6 @@ impl ZopfliHash {
 		clippy::cast_possible_wrap,
 		clippy::similar_names,
 	)]
-	#[inline]
 	/// # Update Hash.
 	///
 	/// This updates the hash tables using the data from `arr`. The `pos` value
@@ -421,18 +419,14 @@ impl ZopfliHash {
 
 impl ZopfliHash {
 	#[allow(clippy::cast_possible_truncation)]
-	#[inline]
 	/// # Get Best Lengths.
 	///
 	/// This method performs the forward pass for "squeeze", calculating the
 	/// optimal length to reach every byte from a previous byte. The resulting
 	/// cost is returned.
 	///
-	/// Note: the repeated float truncation looks like an oversight but is
-	/// intentional; trying to use only one or the other exclusively alters the
-	/// outcome, so whatever. Haha.
-	///
-	/// This is a rewrite of the original `squeeze.c` method.
+	/// Note: the costs really do need to be calculated in 64 bits, truncated
+	/// to 32 bits for storage, then widened back to 64 bits for comparison.
 	fn get_best_lengths(
 		&mut self,
 		arr: &[u8],
@@ -572,7 +566,6 @@ impl ZopfliHash {
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
-	#[inline]
 	/// # Best Length Max Match.
 	///
 	/// This fast-forwards through long repetitions in the middle of a
@@ -675,8 +668,7 @@ impl ZopfliHash {
 					Some(instart),
 				)?;
 
-				// This logic is so screwy; I hesitate to make this a debug
-				// assertion!
+				// Make sure we were able to find what we were expecting.
 				if test_length != length && test_length > 2 {
 					return Err(zopfli_error!());
 				}
@@ -999,8 +991,6 @@ impl ZopfliHashChain {
 ///
 /// This is a simplistic cost model for the "greedy" LZ77 pass that helps it
 /// make a slightly better choice between two options during lazy matching.
-///
-/// This is a rewrite of the original `lz77.c` method.
 const fn get_length_score(length: u16, distance: u16) -> u16 {
 	if 1024 < distance { length - 1 }
 	else { length }

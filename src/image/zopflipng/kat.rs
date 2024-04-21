@@ -141,17 +141,14 @@ struct Leaf<'a> {
 impl<'a> Eq for Leaf<'a> {}
 
 impl<'a> Ord for Leaf<'a> {
-	#[inline]
 	fn cmp(&self, other: &Self) -> Ordering { self.frequency.cmp(&other.frequency) }
 }
 
 impl<'a> PartialEq for Leaf<'a> {
-	#[inline]
 	fn eq(&self, other: &Self) -> bool { self.frequency == other.frequency }
 }
 
 impl<'a> PartialOrd for Leaf<'a> {
-	#[inline]
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
@@ -165,11 +162,9 @@ struct List<'a> {
 }
 
 impl<'a> List<'a> {
-	#[inline]
 	/// # Rotate.
 	fn rotate(&mut self) { self.lookahead0 = self.lookahead1; }
 
-	#[inline]
 	/// # Weight Sum.
 	const fn weight_sum(&self) -> usize {
 		self.lookahead0.weight + self.lookahead1.weight

@@ -51,13 +51,11 @@ impl LZ77Store {
 		self.d_counts.truncate(0);
 	}
 
-	#[inline(never)]
 	/// # Push Values.
 	pub(crate) fn push(&mut self, litlen: u16, dist: u16, pos: usize) -> Result<(), ZopfliError> {
 		LZ77StoreEntry::new(litlen, dist, pos).map(|e| self.push_entry(e))
 	}
 
-	#[inline]
 	/// # Push Entry.
 	fn push_entry(&mut self, entry: LZ77StoreEntry) {
 		let old_len = self.entries.len();
