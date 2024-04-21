@@ -51,11 +51,13 @@ impl LZ77Store {
 		self.d_counts.truncate(0);
 	}
 
+	#[inline(never)]
 	/// # Push Values.
 	pub(crate) fn push(&mut self, litlen: u16, dist: u16, pos: usize) -> Result<(), ZopfliError> {
 		LZ77StoreEntry::new(litlen, dist, pos).map(|e| self.push_entry(e))
 	}
 
+	#[inline]
 	/// # Push Entry.
 	fn push_entry(&mut self, entry: LZ77StoreEntry) {
 		let old_len = self.entries.len();
@@ -79,14 +81,13 @@ impl LZ77Store {
 		}
 
 		// If the distance is zero, we just need to bump the litlen count.
+		let ll_counts = self.ll_counts.as_mut_slice();
 		if entry.dist <= 0 {
-			let ll_counts = self.ll_counts.as_mut_slice();
 			ll_counts[ll_counts.len() - ZOPFLI_NUM_LL + entry.litlen as usize] += 1;
 		}
 		// If it is non-zero, we need to set the correct symbols and bump both
 		// counts.
 		else {
-			let ll_counts = self.ll_counts.as_mut_slice();
 			ll_counts[ll_counts.len() - ZOPFLI_NUM_LL + entry.ll_symbol as usize] += 1;
 
 			let d_counts = self.d_counts.as_mut_slice();
@@ -163,11 +164,9 @@ impl LZ77Store {
 			.ok_or(zopfli_error!())?;
 
 		// Subtract the symbol occurences between (pos+1) and the end of the
-		// chunks.
-		for (i, e) in self.entries.iter().enumerate().take(ll_end.max(d_end)).skip(pos + 1) {
-			if i < ll_end {
-				ll_counts[e.ll_symbol as usize] -= 1;
-			}
+		// available data for the chunk.
+		for (i, e) in self.entries.iter().enumerate().take(ll_end).skip(pos + 1) {
+			ll_counts[e.ll_symbol as usize] -= 1;
 			if i < d_end && 0 < e.dist {
 				d_counts[e.d_symbol as usize] -= 1;
 			}
@@ -194,10 +193,8 @@ impl LZ77Store {
 		// the end_counts. We can avoid intermediate storage by rearranging
 		// the formula so that the start_symbols get _added_ to the end_counts
 		// directly.
-		for (i, e) in self.entries.iter().enumerate().take(ll_end.max(d_end)).skip(pos + 1) {
-			if i < ll_end {
-				ll_counts[e.ll_symbol as usize] += 1;
-			}
+		for (i, e) in self.entries.iter().enumerate().take(ll_end).skip(pos + 1) {
+			ll_counts[e.ll_symbol as usize] += 1;
 			if i < d_end && 0 < e.dist {
 				d_counts[e.d_symbol as usize] += 1;
 			}
@@ -265,5 +262,26 @@ impl LZ77StoreEntry {
 	pub(crate) const fn length(&self) -> LitLen {
 		if self.dist <= 0 { LitLen::L001 }
 		else { self.litlen }
+	}
+}
+
+
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn t_histogram_sub_take() {
+		// In _histogram_sub(), we assume d_end <= ll_end; let's verify that
+		// pattern seems to hold…
+		for i in 0..=usize::from(u16::MAX) {
+			let ll_start = ZOPFLI_NUM_LL * i.wrapping_div(ZOPFLI_NUM_LL);
+			let d_start = ZOPFLI_NUM_D * i.wrapping_div(ZOPFLI_NUM_D);
+			let ll_end = ll_start + ZOPFLI_NUM_LL;
+			let d_end = d_start + ZOPFLI_NUM_D;
+
+			assert!(d_end <= ll_end, "Failed with {i}!");
+		}
 	}
 }
