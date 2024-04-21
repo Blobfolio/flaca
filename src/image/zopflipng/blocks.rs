@@ -535,7 +535,7 @@ fn add_lz77_data(
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
 	let mut test_size = 0;
-	for e in &store.entries[lstart..lend] {
+	for e in store.entries.get(lstart..lend).ok_or(zopfli_error!())? {
 		// Length only.
 		if e.dist <= 0 {
 			if (e.litlen as u16) >= 256 {
