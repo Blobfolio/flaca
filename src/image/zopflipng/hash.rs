@@ -117,7 +117,7 @@ impl ZopfliState {
 				arr,
 				i,
 				ZOPFLI_MAX_MATCH,
-				&mut sublen,
+				&mut Some(&mut sublen),
 				&mut distance,
 				&mut length,
 				&mut self.lmc,
@@ -227,7 +227,7 @@ impl ZopfliState {
 
 			// Forward and backward squeeze passes.
 			self.hash.get_best_lengths(arr, instart, stats, costs, &mut self.lmc)?;
-			if self.trace_paths() {
+			if self.trace_paths()? {
 				self.hash.follow_paths(
 					arr,
 					instart,
@@ -249,28 +249,31 @@ impl ZopfliState {
 	///
 	/// Calculate the optimal path of lz77 lengths to use, from the
 	/// lengths gathered during the `ZopfliHash::get_best_lengths` pass.
-	fn trace_paths(&mut self) -> bool {
+	fn trace_paths(&mut self) -> Result<bool, ZopfliError> {
 		let costs = self.costs.as_slice();
-		if costs.len() < 2 { return false; }
+		if costs.len() < 2 { Ok(false) }
+		else {
+			self.paths.truncate(0);
+			let mut idx = costs.len() - 1;
+			while 0 < idx && idx < costs.len() {
+				let v = usize::from(costs[idx].1);
+				if 1 <= v && v <= idx && v <= ZOPFLI_MAX_MATCH {
+					// Only lengths of at least ZOPFLI_MIN_MATCH count as lengths
+					// after tracing.
+					self.paths.push(
+						if v < ZOPFLI_MIN_MATCH { 1 } else { v as u16 }
+					);
 
-		self.paths.truncate(0);
-		let mut idx = costs.len() - 1;
-		while 0 < idx && idx < costs.len() {
-			let v = costs[idx].1;
-			debug_assert!((1..=ZOPFLI_MAX_MATCH as u16).contains(&v));
-			if ! (1..=ZOPFLI_MAX_MATCH as u16).contains(&v) { return false; }
+					// Move onto the next length or finish.
+					idx -= v;
+				}
+				else {
+					return Err(zopfli_error!());
+				}
+			}
 
-			// Only lengths of at least ZOPFLI_MIN_MATCH count as lengths
-			// after tracing.
-			self.paths.push(
-				if v < ZOPFLI_MIN_MATCH as u16 { 1 } else { v }
-			);
-
-			// Move onto the next length or finish.
-			idx = idx.saturating_sub(usize::from(v));
+			Ok(true)
 		}
-
-		true
 	}
 }
 
@@ -470,7 +473,7 @@ impl ZopfliHash {
 				arr,
 				i,
 				ZOPFLI_MAX_MATCH,
-				&mut sublen,
+				&mut Some(&mut sublen),
 				&mut distance,
 				&mut length,
 				lmc,
@@ -665,7 +668,7 @@ impl ZopfliHash {
 					arr,
 					i,
 					usize::from(length),
-					&mut [],
+					&mut None,
 					&mut dist,
 					&mut test_length,
 					lmc,
@@ -714,7 +717,7 @@ impl ZopfliHash {
 		arr: &[u8],
 		pos: usize,
 		mut limit: usize,
-		sublen: &mut [u16],
+		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
 		distance: &mut u16,
 		length: &mut u16,
 		lmc: &mut MatchCache,
@@ -735,7 +738,7 @@ impl ZopfliHash {
 		}
 
 		// This is explicitly checked by the caller and again by find_loop()
-		// below, so we can leave this as a redundant debug assertion.
+		// below, so we can leave it as a redundant debug assertion.
 		debug_assert!((ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH).contains(&limit));
 
 		// We'll need at least ZOPFLI_MIN_MATCH bytes for a search; if we don't
@@ -754,9 +757,11 @@ impl ZopfliHash {
 		let (bestdist, bestlength) = self.find_loop(arr, pos, limit, sublen)?;
 
 		// Cache the results for next time, maybe.
-		if let Some(blockstart) = cache {
-			if limit == ZOPFLI_MAX_MATCH && ! sublen.is_empty() {
-				lmc.set_sublen(pos - blockstart, sublen, bestdist, bestlength)?;
+		if limit == ZOPFLI_MAX_MATCH {
+			if let Some(blockstart) = cache {
+				if let Some(s) = sublen {
+					lmc.set_sublen(pos - blockstart, s, bestdist, bestlength)?;
+				}
 			}
 		}
 
@@ -783,16 +788,10 @@ impl ZopfliHash {
 		arr: &[u8],
 		pos: usize,
 		limit: usize,
-		sublen: &mut [u16],
+		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
 	) -> Result<(u16, u16), ZopfliError> {
 		// This is asserted by find() too, but it's a good reminder.
 		if ZOPFLI_MAX_MATCH < limit { return Err(zopfli_error!()); }
-
-		// Help the compiler understand sublen has a fixed size if provided.
-		// (We can't do an Option<Array> because it's too big for Copy.)
-		if ! sublen.is_empty() && sublen.len() != ZOPFLI_MAX_MATCH + 1 {
-			return Err(zopfli_error!());
-		}
 
 		let hpos = pos & ZOPFLI_WINDOW_MASK;
 
@@ -877,13 +876,13 @@ impl ZopfliHash {
 				}
 
 				// We've found a better length!
-				if bestlength < currentlength {
+				if bestlength < currentlength && currentlength < SUBLEN_LEN {
 					// Update the sublength slice, if provided. Note that
 					// sublengths are (ZOPFLI_MAX_MATCH+1) if provided, and
 					// ZOPFLI_MAX_MATCH is the largest possible value of
 					// currentlength.
-					if currentlength < sublen.len() {
-						sublen[bestlength + 1..=currentlength].fill(dist as u16);
+					if let Some(s) = sublen {
+						s[bestlength + 1..=currentlength].fill(dist as u16);
 					}
 
 					bestdist = dist;

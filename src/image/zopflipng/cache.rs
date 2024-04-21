@@ -6,6 +6,7 @@ the thread-local LMC static.
 */
 
 use super::{
+	SUBLEN_LEN,
 	zopfli_error,
 	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
@@ -91,7 +92,7 @@ impl MatchCache {
 		&self,
 		pos: usize,
 		limit: &mut usize,
-		sublen: &mut [u16],
+		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
 		distance: &mut u16,
 		length: &mut u16,
 	) -> Result<bool, ZopfliError> {
@@ -101,33 +102,30 @@ impl MatchCache {
 
 		// Find the max sublength once, if ever.
 		let maxlength =
-			if sublen.is_empty() { 0 }
+			if sublen.is_none() { 0 }
 			else { max_sublen(&self.sublen[SUBLEN_CACHED_LEN * pos..]) };
 
 		// Proceed if our cached length or max sublength are under the limit.
 		if
 			*limit == ZOPFLI_MAX_MATCH ||
 			usize::from(cache_len) <= *limit ||
-			(! sublen.is_empty() && maxlength >= *limit)
+			(sublen.is_some() && maxlength >= *limit)
 		{
 			// Update length and distance if the sublength pointer is null or
 			// the cached sublength is bigger than the cached length.
-			if sublen.is_empty() || usize::from(cache_len) <= maxlength {
+			if sublen.is_none() || usize::from(cache_len) <= maxlength {
 				// Cap the length.
 				*length = cache_len;
 				if usize::from(*length) > *limit {
 					*length = *limit as u16;
 				}
 
-				// Use the cached distance directly.
-				if sublen.is_empty() {
-					*distance = cache_dist;
-				}
-				else {
+				// Set the distance from the sublength cache.
+				if let Some(s) = sublen {
 					// Pull the sublength from cache and pull the distance from
 					// that.
-					self.write_sublen(pos, usize::from(*length), sublen);
-					*distance = sublen[usize::from(*length)];
+					self.write_sublen(pos, usize::from(*length), s);
+					*distance = s[usize::from(*length)];
 
 					// Sanity check: make sure the sublength distance at length
 					// matches the redundantly-cached distance.
@@ -138,6 +136,10 @@ impl MatchCache {
 					{
 						return Err(zopfli_error!());
 					}
+				}
+				// Use the cached distance directly.
+				else {
+					*distance = cache_dist;
 				}
 
 				// We did stuff!
@@ -172,7 +174,7 @@ impl MatchCache {
 	pub(crate) fn set_sublen(
 		&mut self,
 		pos: usize,
-		sublen: &[u16],
+		sublen: &[u16; SUBLEN_LEN],
 		distance: u16,
 		length: u16,
 	) -> Result<(), ZopfliError> {
@@ -225,7 +227,7 @@ impl MatchCache {
 	/// # Write Sublength.
 	///
 	/// Fill the provided sublength slice with data from the cache.
-	fn write_sublen(&self, pos: usize, length: usize, sublen: &mut [u16]) {
+	fn write_sublen(&self, pos: usize, length: usize, sublen: &mut [u16; SUBLEN_LEN]) {
 		// Short circuit.
 		if length < ZOPFLI_MIN_MATCH { return; }
 
