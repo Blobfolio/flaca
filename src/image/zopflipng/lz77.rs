@@ -56,46 +56,41 @@ impl LZ77Store {
 		LZ77StoreEntry::new(litlen, dist, pos).map(|e| self.push_entry(e))
 	}
 
-	#[allow(unsafe_code)]
 	/// # Push Entry.
 	fn push_entry(&mut self, entry: LZ77StoreEntry) {
 		let old_len = self.entries.len();
-		let ll_start = ZOPFLI_NUM_LL * old_len.wrapping_div(ZOPFLI_NUM_LL);
-		let d_start = ZOPFLI_NUM_D * old_len.wrapping_div(ZOPFLI_NUM_D);
 
 		// The histograms are wrapping and cumulative, and need to be extended
-		// any time we reach a new ZOPFLI_NUM_* bucket level.
+		// any time we reach a new ZOPFLI_NUM_* bucket level. The first time
+		// around, we just need to zero-pad.
 		if old_len == 0 {
 			self.ll_counts.resize(ZOPFLI_NUM_LL, 0);
 			self.d_counts.resize(ZOPFLI_NUM_D, 0);
 		}
-		else {
+		// New chunks start with the previous chunk's totals.
+		else if old_len % ZOPFLI_NUM_D == 0 {
+			self.d_counts.extend_from_within((old_len - ZOPFLI_NUM_D)..old_len);
+
+			// 288 (LL) is evenly divisible by 32 (D), so would only ever wrap
+			// in cases where D wrapped too.
 			if old_len % ZOPFLI_NUM_LL == 0 {
 				self.ll_counts.extend_from_within((old_len - ZOPFLI_NUM_LL)..old_len);
-			}
-
-			if old_len % ZOPFLI_NUM_D == 0 {
-				self.d_counts.extend_from_within((old_len - ZOPFLI_NUM_D)..old_len);
 			}
 		}
 
 		// If the distance is zero, we just need to bump the litlen count.
 		if entry.dist <= 0 {
-			// Safety: the counts were pre-allocated a few lines back (if
-			// needed).
-			unsafe {
-				*self.ll_counts.get_unchecked_mut(ll_start + entry.litlen as usize) += 1;
-			}
+			let ll_counts = self.ll_counts.as_mut_slice();
+			ll_counts[ll_counts.len() - ZOPFLI_NUM_LL + entry.litlen as usize] += 1;
 		}
 		// If it is non-zero, we need to set the correct symbols and bump both
 		// counts.
 		else {
-			// Safety: the counts were pre-allocated a few lines back (if
-			// needed).
-			unsafe {
-				*self.ll_counts.get_unchecked_mut(ll_start + entry.ll_symbol as usize) += 1;
-				*self.d_counts.get_unchecked_mut(d_start + entry.d_symbol as usize) += 1;
-			}
+			let ll_counts = self.ll_counts.as_mut_slice();
+			ll_counts[ll_counts.len() - ZOPFLI_NUM_LL + entry.ll_symbol as usize] += 1;
+
+			let d_counts = self.d_counts.as_mut_slice();
+			d_counts[d_counts.len() - ZOPFLI_NUM_D + entry.d_symbol as usize] += 1;
 		}
 
 		// Don't forget to push the entry!
