@@ -21,7 +21,6 @@ use super::{
 	},
 	zopfli_error,
 	zopfli_length_limited_code_lengths,
-	zopfli_lengths_to_symbols,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
 	ZopfliError,
@@ -420,10 +419,8 @@ fn add_lz77_block(
 		};
 
 	// Now sort out the symbols.
-	let mut ll_symbols = [0_u32; ZOPFLI_NUM_LL];
-	let mut d_symbols = [0_u32; ZOPFLI_NUM_D];
-	zopfli_lengths_to_symbols::<16, ZOPFLI_NUM_LL>(&ll_lengths, &mut ll_symbols);
-	zopfli_lengths_to_symbols::<16, ZOPFLI_NUM_D>(&d_lengths, &mut d_symbols);
+	let ll_symbols = lengths_to_symbols::<16, ZOPFLI_NUM_LL>(&ll_lengths)?;
+	let d_symbols = lengths_to_symbols::<16, ZOPFLI_NUM_D>(&d_lengths)?;
 
 	// Write all the data!
 	add_lz77_data(
@@ -865,8 +862,7 @@ fn encode_tree(
 	// Write the tree!
 	if let Some(out) = out {
 		// Convert the lengths to symbols.
-		let mut cl_symbols = [0_u32; 19];
-		zopfli_lengths_to_symbols::<8, 19>(&cl_lengths, &mut cl_symbols);
+		let cl_symbols = lengths_to_symbols::<8, 19>(&cl_lengths)?;
 
 		// Write the main lengths.
 		out.add_bits(hlit as u32, 5);
@@ -1042,6 +1038,40 @@ fn get_lz77_byte_range(
 		Ok((instart, e.length() as usize + e.pos))
 	}
 	else { Err(zopfli_error!()) }
+}
+
+/// # Zopfli Lengths to Symbols.
+///
+/// This updates the symbol array given the corresponding lengths.
+fn lengths_to_symbols<const MAXBITS: usize, const SIZE: usize>(lengths: &[u32; SIZE])
+-> Result<[u32; SIZE], ZopfliError> {
+	// Count up the codes by code length.
+	let mut counts: [u32; MAXBITS] = [0; MAXBITS];
+	for l in lengths.iter().copied() {
+		if (l as usize) < MAXBITS { counts[l as usize] += 1; }
+		else { return Err(zopfli_error!()); }
+	}
+
+	// Find the numerical value of the smallest code for each code length.
+	counts[0] = 0;
+	let mut code = 0;
+	let mut next_code: [u32; MAXBITS] = [0; MAXBITS];
+	for i in 1..MAXBITS {
+		code = (code + counts[i - 1]) << 1;
+		next_code[i] = code;
+	}
+
+	// Update the symbols accordingly.
+	let mut symbols = [0; SIZE];
+	for (s, l) in symbols.iter_mut().zip(lengths.iter().copied()) {
+		// The MAXBITS comparison is only for the compiler; it will never not
+		// be true.
+		if l != 0 && (l as usize) < MAXBITS {
+			*s = next_code[l as usize];
+			next_code[l as usize] += 1;
+		}
+	}
+	Ok(symbols)
 }
 
 /// # Optimal LZ77.
