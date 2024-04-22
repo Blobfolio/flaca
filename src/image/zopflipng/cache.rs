@@ -19,7 +19,7 @@ use super::{
 ///
 /// Length and distance are always fetched/stored together, so are grouped into
 /// a single value to reduce indexing/bounds overhead.
-const DEFAULT_LD: u32 = u32::from_le_bytes([1, 0, 0, 0]);
+const DEFAULT_LD: (u16, u16) = (1, 0);
 
 /// # Sublength Cache Entries.
 const ZOPFLI_CACHE_LENGTH: usize = 8;
@@ -37,7 +37,7 @@ const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 /// sublengths. Its memory usage is no joke, but the performance savings more
 /// than make up for it.
 pub(crate) struct MatchCache {
-	ld: Vec<u32>,
+	ld: Vec<(u16, u16)>,
 	sublen: Vec<u8>,
 }
 
@@ -95,8 +95,13 @@ impl MatchCache {
 		distance: &mut u16,
 		length: &mut u16,
 	) -> Result<bool, ZopfliError> {
+		// One sanity check to rule them all.
+		if pos >= self.ld.len() || SUBLEN_CACHED_LEN * pos >= self.sublen.len() {
+			return Err(zopfli_error!());
+		}
+
 		// If we have no distance, we have no cache.
-		let (cache_len, cache_dist) = self.ld(pos);
+		let (cache_len, cache_dist) = self.ld[pos];
 		if cache_len != 0 && cache_dist == 0 { return Ok(false); }
 
 		// Find the max sublength once, if ever.
@@ -153,19 +158,6 @@ impl MatchCache {
 		Ok(false)
 	}
 
-	/// # Get Length and Distance.
-	fn ld(&self, pos: usize) -> (u16, u16) {
-		let [l1, l2, d1, d2] = self.ld[pos].to_le_bytes();
-		(u16::from_le_bytes([l1, l2]), u16::from_le_bytes([d1, d2]))
-	}
-
-	/// # Set Length and Distance.
-	fn set_ld(&mut self, pos: usize, len: u16, dist: u16) {
-		let [l1, l2] = len.to_le_bytes();
-		let [d1, d2] = dist.to_le_bytes();
-		self.ld[pos] = u32::from_le_bytes([l1, l2, d1, d2]);
-	}
-
 	#[allow(clippy::cast_possible_truncation)]
 	/// # Set Sublength.
 	///
@@ -177,29 +169,33 @@ impl MatchCache {
 		distance: u16,
 		length: u16,
 	) -> Result<(), ZopfliError> {
-		let old_ld = self.ld(pos);
-		if old_ld.0 == 0 || old_ld.1 != 0 { return Ok(()); }
-		else if old_ld != (1, 0) { return Err(zopfli_error!()); }
+		match self.ld.get(pos).copied() {
+			// If the current value is the default, let's proceed!
+			Some(DEFAULT_LD) => {},
+			// If the current value is something else and legit, abort happy.
+			Some((l, d)) if l == 0 || d != 0 => return Ok(()),
+			// Otherwise abort sad!
+			_ => return Err(zopfli_error!()),
+		}
 
 		// The sublength isn't cacheable, but that fact is itself worth
 		// caching!
 		if usize::from(length) < ZOPFLI_MIN_MATCH {
-			self.set_ld(pos, 0, 0);
+			self.ld[pos] = (0, 0);
 			return Ok(());
 		}
 
 		// Save the length/distance bit.
 		if distance == 0 { return Err(zopfli_error!()); }
-		self.set_ld(pos, length, distance);
+		self.ld[pos] = (length, distance);
 
 		// The cache gets written three bytes at a time; this iterator will
 		// help us eliminate the bounds checks we'd otherwise run into.
-		// let mut dst = self.sublen[SUBLEN_CACHED_LEN * pos..SUBLEN_CACHED_LEN * pos + SUBLEN_CACHED_LEN].chunks_exact_mut(3);
 		let mut dst = self.sublen.chunks_exact_mut(3)
 			.skip(ZOPFLI_CACHE_LENGTH * pos)
 			.take(ZOPFLI_CACHE_LENGTH);
 
-		// Write all mismatched pairs.
+		// Start by writing all mismatched pairs, up to the limit.
 		for (i, pair) in sublen.windows(2).skip(ZOPFLI_MIN_MATCH).take(usize::from(length) - 3).enumerate() {
 			if pair[0] != pair[1] {
 				let Some(next) = dst.next() else { return Ok(()); };
@@ -208,13 +204,14 @@ impl MatchCache {
 			}
 		}
 
-		// Write the final length if we're still here.
+		// The final value is implicitly "mismatched"; if we haven't hit the
+		// limit we should write it too.
 		if let Some(next) = dst.next() {
 			next[0] = (length - 3) as u8;
 			next[1..].copy_from_slice(sublen[usize::from(length)].to_le_bytes().as_slice());
 
-			// And copy that value to the end of the cache if we still haven't
-			// hit the limit.
+			// If we're still below the limit, copy (just) the length to the
+			// last slot to simplify any subsequent max_length lookups.
 			if let Some([c1, _rest @ ..]) = dst.last() {
 				*c1 = (length - 3) as u8;
 			}
