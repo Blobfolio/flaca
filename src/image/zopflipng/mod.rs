@@ -34,7 +34,7 @@ use error::{
 };
 pub(crate) use hash::ZopfliState;
 use lz77::LZ77Store;
-use kat::zopfli_length_limited_code_lengths;
+use kat::length_limited_code_lengths;
 use super::{
 	ffi::EncodedImage,
 	lodepng::{

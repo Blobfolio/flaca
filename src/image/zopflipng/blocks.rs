@@ -16,6 +16,7 @@ use super::{
 	DISTANCE_VALUES,
 	FIXED_TREE_D,
 	FIXED_TREE_LL,
+	length_limited_code_lengths,
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LZ77Store,
 	stats::{
@@ -23,7 +24,6 @@ use super::{
 		SymbolStats,
 	},
 	zopfli_error,
-	zopfli_length_limited_code_lengths,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
 	ZopfliError,
@@ -854,7 +854,7 @@ fn encode_tree(
 	}
 
 	// Update the lengths and symbols given the counts.
-	zopfli_length_limited_code_lengths::<7, 19>(&cl_counts, &mut cl_lengths)?;
+	length_limited_code_lengths::<7, 19>(&cl_counts, &mut cl_lengths)?;
 
 	// Find the last non-zero index of the counts table.
 	let mut hclen = 15;
@@ -1011,8 +1011,8 @@ fn get_dynamic_lengths(
 	let (mut ll_counts, d_counts) = store.histogram(lstart, lend)?;
 	ll_counts[256] = 1;
 
-	zopfli_length_limited_code_lengths::<15, ZOPFLI_NUM_LL>(&ll_counts, ll_lengths)?;
-	zopfli_length_limited_code_lengths::<15, ZOPFLI_NUM_D>(&d_counts, d_lengths)?;
+	length_limited_code_lengths::<15, ZOPFLI_NUM_LL>(&ll_counts, ll_lengths)?;
+	length_limited_code_lengths::<15, ZOPFLI_NUM_D>(&d_counts, d_lengths)?;
 
 	patch_distance_codes(d_lengths);
 	try_optimize_huffman_for_rle(
@@ -1354,8 +1354,8 @@ fn try_optimize_huffman_for_rle(
 	let mut d_counts2 = *d_counts;
 	optimize_huffman_for_rle(&mut ll_counts2);
 	optimize_huffman_for_rle(&mut d_counts2);
-	zopfli_length_limited_code_lengths::<15, ZOPFLI_NUM_LL>(&ll_counts2, &mut ll_lengths2)?;
-	zopfli_length_limited_code_lengths::<15, ZOPFLI_NUM_D>(&d_counts2, &mut d_lengths2)?;
+	length_limited_code_lengths::<15, ZOPFLI_NUM_LL>(&ll_counts2, &mut ll_lengths2)?;
+	length_limited_code_lengths::<15, ZOPFLI_NUM_D>(&d_counts2, &mut d_lengths2)?;
 	patch_distance_codes(&mut d_lengths2);
 
 	// Calculate the optimized tree and data sizes.
