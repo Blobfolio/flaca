@@ -6,7 +6,10 @@ and ends that didn't make it into other modules.
 */
 
 use dactyl::NoHash;
-use std::collections::HashSet;
+use std::{
+	cell::Cell,
+	collections::HashSet,
+};
 use super::{
 	DEFLATE_ORDER,
 	DISTANCE_BITS,
@@ -299,14 +302,14 @@ enum BlockType {
 /// It moots the need to collect such values into a vector in advance,
 /// reducing the number of passes required to optimize Huffman codes.
 struct GoodForRle<'a> {
-	counts: &'a [usize],
+	counts: &'a [Cell<usize>],
 	good: usize,
 	bad: usize,
 }
 
 impl<'a> GoodForRle<'a> {
 	/// # New Instance.
-	const fn new(counts: &'a [usize]) -> Self {
+	const fn new(counts: &'a [Cell<usize>]) -> Self {
 		Self { counts, good: 0, bad: 0 }
 	}
 }
@@ -330,13 +333,13 @@ impl<'a> Iterator for GoodForRle<'a> {
 
 		// See how many times the next entry is repeated, if at all, shortening
 		// the slice accordingly.
-		let scratch = self.counts[0];
+		let scratch = self.counts[0].get();
 		let mut stride = 0;
 		while let [count, rest @ ..] = self.counts {
 			// Note the reptition and circle back around. This will always
 			// trigger on the first pass, so stride will always be at least
 			// one.
-			if *count == scratch {
+			if count.get() == scratch {
 				stride += 1;
 				self.counts = rest;
 			}
@@ -1178,34 +1181,35 @@ fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result
 	)
 }
 
-#[allow(unsafe_code, clippy::integer_division)]
+#[allow(clippy::integer_division)]
 /// # Optimize Huffman RLE Compression.
 ///
 /// Change the population counts to improve Huffman tree compression,
 /// particularly its RLE part.
 fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 	// Convert counts to a proper slice with trailing zeroes trimmed.
-	let ptr = counts.as_mut_ptr();
 	while let [ rest @ .., 0 ] = counts { counts = rest; }
 	if counts.is_empty() { return; }
 
+	// We need to read and write simultaneously; once again the Cell trick can
+	// keep us safe!
+	let counts = Cell::from_mut(counts).as_slice_of_cells();
+
 	// Find collapseable ranges!
 	let mut stride = 0;
-	let mut scratch = counts[0];
+	let mut scratch = counts[0].get();
 	let mut sum = 0;
-	let four = counts.len().saturating_sub(3);
-	for (i, (&count, good)) in counts.iter().zip(GoodForRle::new(counts)).enumerate() {
+	for (i, (count, good)) in counts.iter().map(Cell::get).zip(GoodForRle::new(counts)).enumerate() {
 		// Time to reset (and maybe collapse).
 		if good || count.abs_diff(scratch) >= 4 {
 			// Collapse the stride if it is as least four and contained
 			// something non-zero.
 			if sum != 0 && stride >= 4 {
 				let v = ((sum + stride / 2) / stride).max(1);
-				// Safety: this is a very un-Rust thing to do, but we're only
-				// modifying values after-the-fact; the current and future
-				// data remains as it was.
-				unsafe {
-					for j in i - stride..i { ptr.add(j).write(v); }
+				// This condition just helps the compiler understand the range
+				// won't overflow; it can't, but it doesn't know that.
+				if let Some(from) = i.checked_sub(stride) {
+					for c in &counts[from..i] { c.set(v); }
 				}
 			}
 
@@ -1213,21 +1217,13 @@ fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 			stride = 0;
 			sum = 0;
 
-			// If we have at least four remaining values (including the
-			// current), take a sort of weighted average of them.
-			if i < four {
-				scratch = (
-					// Safety: the compiler doesn't understand (i < four) means
-					// we have at least i+3 entries left.
-					unsafe { *counts.get_unchecked(i + 3) } +
-					counts[i + 2] +
-					counts[i + 1] +
-					count +
-					2
-				) / 4;
-			}
-			// Otherwise just use the current value.
-			else { scratch = count; }
+			// If there are at least three future counts, we can set scratch
+			// to a sorted weighted average, otherwise the current value will
+			// do.
+			scratch = counts.get(i..i + 4).map_or(
+				count,
+				|c| c.iter().fold(2, |a, c| a + c.get()) / 4
+			);
 		}
 
 		stride += 1;
@@ -1237,8 +1233,11 @@ fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 	// Collapse the trailing stride, if any.
 	if sum != 0 && stride >= 4 {
 		let v = ((sum + stride / 2) / stride).max(1);
-		let len = counts.len();
-		counts[len - stride..].fill(v);
+		// This condition just helps the compiler understand the range won't
+		// overflow; it can't, but it doesn't know that.
+		if let Some(from) = counts.len().checked_sub(stride) {
+			for c in &counts[from..] { c.set(v); }
+		}
 	}
 }
 
@@ -1390,11 +1389,13 @@ mod test {
 
 	#[test]
 	fn t_good_for_rle() {
-		const COUNTS1: &[usize] = &[196, 23, 10, 12, 5, 4, 1, 23, 8, 2, 6, 5, 0, 0, 0, 29, 5, 0, 0, 4, 4, 1, 0, 5, 2, 0, 0, 1, 4, 0, 1, 34, 10, 5, 7, 2, 1, 2, 0, 0, 3, 2, 5, 0, 1, 0, 0, 4, 2, 1, 0, 0, 1, 1, 0, 1, 1, 2, 0, 1, 4, 1, 5, 47, 13, 0, 5, 3, 1, 2, 0, 4, 0, 1, 6, 3, 0, 0, 0, 1, 3, 2, 2, 1, 4, 6, 0, 5, 0, 0, 1, 0, 0, 0, 1, 10, 4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, 3, 1, 0, 0, 4, 0, 5, 47, 28, 3, 2, 5, 3, 0, 0, 1, 7, 0, 8, 1, 1, 1, 0, 4, 7, 2, 0, 1, 10, 0, 0, 2, 1, 0, 0, 1, 0, 0, 0, 7, 11, 4, 1, 1, 0, 3, 0, 1, 1, 1, 5, 1, 0, 0, 0, 4, 5, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 0, 0, 2, 13, 27, 4, 1, 4, 1, 1, 0, 2, 2, 0, 0, 0, 3, 0, 0, 3, 8, 0, 0, 1, 0, 0, 0, 2, 1, 0, 0, 0, 1, 1, 1, 4, 24, 1, 4, 4, 2, 2, 0, 5, 6, 1, 1, 1, 1, 1, 0, 0, 42, 6, 3, 3, 3, 6, 0, 6, 30, 9, 10, 8, 33, 9, 44, 284, 1, 15, 21, 0, 55, 0, 19, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 13, 320, 12, 0, 0, 17, 3, 0, 3, 2];
-		const COUNTS2: &[usize] = &[2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 122, 0, 288, 11, 41, 6, 5, 2, 0, 0, 0, 1];
-		const COUNTS3: &[usize] = &[201, 24, 10, 12, 5, 4, 1, 24, 8, 2, 6, 4, 0, 0, 0, 29, 5, 0, 0, 4, 4, 1, 0, 5, 2, 0, 0, 1, 4, 0, 1, 34, 10, 5, 7, 2, 1, 2, 0, 0, 3, 2, 5, 0, 1, 0, 0, 4, 2, 1, 0, 0, 1, 1, 0, 1, 1, 2, 0, 1, 4, 1, 5, 47, 13, 0, 5, 3, 1, 2, 0, 4, 0, 1, 6, 3, 0, 0, 0, 1, 3, 2, 2, 1, 4, 6, 0, 5, 0, 0, 1, 0, 0, 0, 1, 10, 4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, 3, 1, 0, 0, 4, 0, 5, 49, 28, 3, 2, 5, 3, 0, 0, 1, 7, 0, 9, 1, 1, 1, 0, 4, 6, 2, 0, 1, 8, 0, 0, 2, 1, 0, 0, 1, 0, 0, 0, 7, 11, 4, 1, 1, 0, 3, 0, 1, 1, 1, 5, 1, 0, 0, 0, 4, 5, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 0, 0, 2, 13, 27, 4, 1, 4, 1, 1, 0, 2, 2, 0, 0, 0, 3, 0, 0, 3, 8, 0, 0, 1, 0, 0, 0, 2, 1, 0, 0, 0, 1, 1, 1, 4, 24, 1, 4, 4, 2, 2, 0, 5, 6, 1, 1, 1, 1, 1, 0, 0, 44, 6, 3, 3, 3, 6, 0, 6, 30, 9, 10, 8, 33, 9, 46, 281, 1, 20, 3, 10, 59, 0, 4, 12, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 13, 318, 12, 0, 0, 21, 0, 0, 3, 2];
+		for c in [
+			[196, 23, 10, 12, 5, 4, 1, 23, 8, 2, 6, 5, 0, 0, 0, 29, 5, 0, 0, 4, 4, 1, 0, 5, 2, 0, 0, 1, 4, 0, 1, 34, 10, 5, 7, 2, 1, 2, 0, 0, 3, 2, 5, 0, 1, 0, 0, 4, 2, 1, 0, 0, 1, 1, 0, 1, 1, 2, 0, 1, 4, 1, 5, 47, 13, 0, 5, 3, 1, 2, 0, 4, 0, 1, 6, 3, 0, 0, 0, 1, 3, 2, 2, 1, 4, 6, 0, 5, 0, 0, 1, 0, 0, 0, 1, 10, 4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, 3, 1, 0, 0, 4, 0, 5, 47, 28, 3, 2, 5, 3, 0, 0, 1, 7, 0, 8, 1, 1, 1, 0, 4, 7, 2, 0, 1, 10, 0, 0, 2, 1, 0, 0, 1, 0, 0, 0, 7, 11, 4, 1, 1, 0, 3, 0, 1, 1, 1, 5, 1, 0, 0, 0, 4, 5, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 0, 0, 2, 13, 27, 4, 1, 4, 1, 1, 0, 2, 2, 0, 0, 0, 3, 0, 0, 3, 8, 0, 0, 1, 0, 0, 0, 2, 1, 0, 0, 0, 1, 1, 1, 4, 24, 1, 4, 4, 2, 2, 0, 5, 6, 1, 1, 1, 1, 1, 0, 0, 42, 6, 3, 3, 3, 6, 0, 6, 30, 9, 10, 8, 33, 9, 44, 284, 1, 15, 21, 0, 55, 0, 19, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 13, 320, 12, 0, 0, 17, 3, 0, 3, 2].as_mut_slice(),
+			[2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 122, 0, 288, 11, 41, 6, 5, 2, 0, 0, 0, 1].as_mut_slice(),
+			[201, 24, 10, 12, 5, 4, 1, 24, 8, 2, 6, 4, 0, 0, 0, 29, 5, 0, 0, 4, 4, 1, 0, 5, 2, 0, 0, 1, 4, 0, 1, 34, 10, 5, 7, 2, 1, 2, 0, 0, 3, 2, 5, 0, 1, 0, 0, 4, 2, 1, 0, 0, 1, 1, 0, 1, 1, 2, 0, 1, 4, 1, 5, 47, 13, 0, 5, 3, 1, 2, 0, 4, 0, 1, 6, 3, 0, 0, 0, 1, 3, 2, 2, 1, 4, 6, 0, 5, 0, 0, 1, 0, 0, 0, 1, 10, 4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, 3, 1, 0, 0, 4, 0, 5, 49, 28, 3, 2, 5, 3, 0, 0, 1, 7, 0, 9, 1, 1, 1, 0, 4, 6, 2, 0, 1, 8, 0, 0, 2, 1, 0, 0, 1, 0, 0, 0, 7, 11, 4, 1, 1, 0, 3, 0, 1, 1, 1, 5, 1, 0, 0, 0, 4, 5, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 0, 0, 2, 13, 27, 4, 1, 4, 1, 1, 0, 2, 2, 0, 0, 0, 3, 0, 0, 3, 8, 0, 0, 1, 0, 0, 0, 2, 1, 0, 0, 0, 1, 1, 1, 4, 24, 1, 4, 4, 2, 2, 0, 5, 6, 1, 1, 1, 1, 1, 0, 0, 44, 6, 3, 3, 3, 6, 0, 6, 30, 9, 10, 8, 33, 9, 46, 281, 1, 20, 3, 10, 59, 0, 4, 12, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 13, 318, 12, 0, 0, 21, 0, 0, 3, 2].as_mut_slice(),
+		] {
+			let c = Cell::from_mut(c).as_slice_of_cells();
 
-		for c in [COUNTS1, COUNTS2, COUNTS3] {
 			// Make sure our ExactSizeness is working.
 			let good = GoodForRle::new(c);
 			assert_eq!(
@@ -1403,7 +1404,7 @@ mod test {
 				"GoodForRle iterator count does not match source.",
 			);
 
-			// And make sure that is the count we actually end up with.
+			// And make sure we actually collect that count!
 			let good = good.collect::<Vec<bool>>();
 			assert_eq!(
 				good.len(),
