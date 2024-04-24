@@ -298,59 +298,43 @@ impl ZopfliHash {
 	#[allow(unsafe_code)]
 	/// # New (Boxed) Instance.
 	///
-	/// Fixed arrays really do seem to be the most efficient structure for
-	/// this data — even though `HashMap` seems ready-made for the job! — but
-	/// they're way too big to throw on the stack willynilly.
+	/// The fixed arrays holding this structure's data are monstrous — 458,756
+	/// bytes per instance! — but absolutely critical for performance.
 	///
-	/// Taking a page from the [`zopfli-rs`](https://github.com/zopfli-rs/zopfli)
-	/// port, new instances are initialized from raw pointers and `Box`ed to
-	/// keep them on the heap.
-	///
-	/// ## Safety.
-	///
-	/// The return value is allocated but **uninitialized**. Re/initialization
-	/// occurs subsequently when `ZopfliHash::reset` is called.
-	///
-	/// The only (crate)-facing entrypoints into this data are
-	/// `ZopfliState::greedy` and `ZopfliState::optimal_run`, both of which
-	/// call reset as their first order business, so in practice everything is
-	/// A-OK!
+	/// To keep Rust from placing all that shit on the stack — as it would
+	/// normally try to do — this method manually initializes everything from
+	/// raw pointers, then boxes it up for delivery à la [`zopfli-rs`](https://github.com/zopfli-rs/zopfli).
 	fn new() -> Box<Self> {
+		// Reserve the space.
 		const LAYOUT: Layout = Layout::new::<ZopfliHash>();
+		let out = NonNull::new(unsafe { alloc(LAYOUT).cast() })
+			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
+		let ptr: *mut Self = out.as_ptr();
 
+		// Safety: all this pointer business is necessary to keep the content
+		// off the stack. Once it's boxed we can breathe easier. ;)
 		unsafe {
-			NonNull::new(alloc(LAYOUT).cast())
-				.map_or_else(
-					|| handle_alloc_error(LAYOUT),
-					|ptr| Box::from_raw(ptr.as_ptr())
-				)
+			// All the hash/index arrays default to `-1_i16` for `None`, which
+			// we can do efficiently by setting all bits to one.
+			addr_of_mut!((*ptr).chain1.hash_idx).write_bytes(u8::MAX, 1);
+			addr_of_mut!((*ptr).chain1.idx_hash).write_bytes(u8::MAX, 1);
+			addr_of_mut!((*ptr).chain1.idx_prev).write_bytes(u8::MAX, 1);
+
+			// The initial hash value is just plain zero.
+			addr_of_mut!((*ptr).chain1.val).write(0);
+
+			// The second chain is the same as the first, so we can simply copy
+			// it wholesale.
+			addr_of_mut!((*ptr).chain2).copy_from_nonoverlapping(addr_of!((*ptr).chain1), 1);
+
+			// The repetition counts default to zero.
+			addr_of_mut!((*ptr).same).write_bytes(0, 1);
+
+			// All set!
+			Box::from_raw(ptr)
 		}
 	}
 
-	#[allow(unsafe_code)]
-	/// # Initialize Values.
-	///
-	/// Initialize/reset hash values to their defaults so we can reuse the
-	/// structure for a new dataset.
-	unsafe fn init(&mut self) {
-		// All the hash/index arrays default to `-1_i16` for `None`, which we
-		// can do efficiently by setting all bits to one.
-		addr_of_mut!(self.chain1.hash_idx).write_bytes(u8::MAX, 1);
-		addr_of_mut!(self.chain1.idx_hash).write_bytes(u8::MAX, 1);
-		addr_of_mut!(self.chain1.idx_prev).write_bytes(u8::MAX, 1);
-
-		// The initial hash value is just plain zero.
-		addr_of_mut!(self.chain1.val).write(0);
-
-		// The second chain is the same as the first, so we can simply copy it
-		// wholesale.
-		addr_of_mut!(self.chain2).copy_from_nonoverlapping(addr_of!(self.chain1), 1);
-
-		// Repetitions default to zero.
-		addr_of_mut!(self.same).write_bytes(0, 1);
-	}
-
-	#[allow(unsafe_code)]
 	/// # Reset/Warm Up.
 	///
 	/// This sets all values to their defaults, then cycles the first chain's
@@ -361,7 +345,10 @@ impl ZopfliHash {
 		arr: &[u8],
 		instart: usize,
 	) {
-		unsafe { self.init(); }
+		// Reset the data.
+		self.chain1.reset();
+		self.chain2.reset();
+		self.same.fill(0);
 
 		// Cycle the hash once or twice.
 		if instart >= arr.len() { return; }
@@ -955,6 +942,16 @@ struct ZopfliHashChain {
 }
 
 impl ZopfliHashChain {
+	/// # Reset.
+	///
+	/// Set everything to its default values so we can begin again.
+	fn reset(&mut self) {
+		self.hash_idx.fill(-1);
+		self.idx_hash.fill(-1);
+		self.idx_prev.fill(-1);
+		self.val = 0;
+	}
+
 	#[allow(
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
