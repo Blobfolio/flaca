@@ -18,6 +18,7 @@ _basher___flaca() {
 		opts+=("-V")
 		opts+=("--version")
 	fi
+	[[ " ${COMP_LINE} " =~ " -j " ]] || opts+=("-j")
 	if [[ ! " ${COMP_LINE} " =~ " -l " ]] && [[ ! " ${COMP_LINE} " =~ " --list " ]]; then
 		opts+=("-l")
 		opts+=("--list")

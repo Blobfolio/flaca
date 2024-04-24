@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.0.0"
+version = "3.0.1"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -62,6 +62,12 @@ long = "--version"
 description = "Print version information and exit."
 
 [[package.metadata.bashman.options]]
+short = "-j"
+label = "<NUM>"
+description = "Limit parallelization to this many threads (instead of giving each logical core its own image to work on). If negative, the value will be subtracted from the total number of logical cores."
+path = false
+
+[[package.metadata.bashman.options]]
 short = "-l"
 long = "--list"
 label = "<FILE>"
@@ -118,7 +124,7 @@ version = "=2.1.0"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
-version = "=9.0.0"
+version = "=9.1.1"
 default-features = false
 
 [build-dependencies]

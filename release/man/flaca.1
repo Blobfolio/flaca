@@ -1,6 +1,6 @@
-.TH "FLACA" "1" "April 2024" "Flaca v3.0.0" "User Commands"
+.TH "FLACA" "1" "April 2024" "Flaca v3.0.1" "User Commands"
 .SH NAME
-Flaca \- Manual page for flaca v3.0.0.
+Flaca \- Manual page for flaca v3.0.1.
 .SH DESCRIPTION
 Brute\-force, lossless JPEG and PNG compression.
 .SS USAGE:
@@ -23,6 +23,9 @@ Show progress bar while minifying.
 \fB\-V\fR, \fB\-\-version\fR
 Print version information and exit.
 .SS OPTIONS:
+.TP
+\fB\-j\fR <NUM>
+Limit parallelization to this many threads (instead of giving each logical core its own image to work on). If negative, the value will be subtracted from the total number of logical cores.
 .TP
 \fB\-l\fR, \fB\-\-list\fR <FILE>
 Read (absolute) image and/or directory paths from this text file — or STDIN if '\-' — one entry per line, instead of or in addition to (actually trailing) <PATH(S)>.

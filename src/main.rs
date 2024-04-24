@@ -51,6 +51,7 @@ use dactyl::{
 	NiceU64,
 	traits::{
 		BytesToSigned,
+		BytesToUnsigned,
 		NiceInflection,
 	},
 };
@@ -69,18 +70,21 @@ use rayon::iter::{
 	IntoParallelRefIterator,
 	ParallelIterator,
 };
-use std::sync::{
-	Arc,
-	atomic::{
-		AtomicBool,
-		AtomicU64,
-		Ordering::{
-			Acquire,
-			Relaxed,
-			SeqCst,
+use std::{
+	num::NonZeroUsize,
+	sync::{
+		Arc,
+		atomic::{
+			AtomicBool,
+			AtomicU64,
+			Ordering::{
+				Acquire,
+				Relaxed,
+				SeqCst,
+			},
 		},
+		OnceLock,
 	},
-	OnceLock,
 };
 
 
@@ -156,6 +160,23 @@ fn _main() -> Result<(), FlacaError> {
 	// location.
 	let oxi = image::oxipng_options();
 
+	// Set up a threadpool for our workload.
+	let mut threads = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+	if let Some(t) = args.option(b"-j") {
+		if let Some(t) = t.strip_prefix(b"-").and_then(NonZeroUsize::btou) {
+			threads = threads.get().checked_sub(t.get())
+				.and_then(NonZeroUsize::new)
+				.unwrap_or(NonZeroUsize::MIN);
+		}
+		else if let Some(t) = NonZeroUsize::btou(t) {
+			if t < threads { threads = t; }
+		}
+	}
+	let pool = rayon::ThreadPoolBuilder::new()
+		.num_threads(threads.get())
+		.build()
+		.map_err(|_| FlacaError::NoThreads)?;
+
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
 		// Boot up a progress bar.
@@ -168,7 +189,7 @@ fn _main() -> Result<(), FlacaError> {
 
 		// Process!
 		sigint(Arc::clone(&killed), Some(progress.clone()));
-		paths.par_iter().with_max_len(1).for_each(|x|
+		pool.install(|| paths.par_iter().with_max_len(1).for_each(|x|
 			if ! killed.load(Acquire) {
 				let tmp = x.to_string_lossy();
 				progress.add(&tmp);
@@ -194,7 +215,7 @@ fn _main() -> Result<(), FlacaError> {
 
 				progress.remove(&tmp);
 			}
-		);
+		));
 
 		// Print a summary.
 		let elapsed = progress.finish();
@@ -220,9 +241,9 @@ fn _main() -> Result<(), FlacaError> {
 	// Silent run-through.
 	else {
 		sigint(Arc::clone(&killed), None);
-		paths.par_iter().for_each(|x| if ! killed.load(Acquire) {
+		pool.install(|| paths.par_iter().for_each(|x| if ! killed.load(Acquire) {
 			let _res = image::encode(x, kinds, &oxi);
-		});
+		}));
 	}
 
 	// Early abort?
@@ -263,6 +284,10 @@ FLAGS:
     -V, --version     Print version information and exit.
 
 OPTIONS:
+    -j <NUM>          Limit parallelization to this many threads (instead of
+                      giving each logical core its own image to work on). If
+                      negative, the value will be subtracted from the total
+                      number of logical cores.
     -l, --list <FILE> Read (absolute) image and/or directory paths from this
                       text file — or STDIN if "-" — one entry per line, instead
                       of or in addition to (actually trailing) <PATH(S)>.

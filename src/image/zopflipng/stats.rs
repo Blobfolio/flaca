@@ -32,11 +32,12 @@ impl RanState {
 
 	/// # Generate Random Number.
 	///
-	/// This uses the 32-bit "Multiply-With-Carry" generator (G. Marsaglia).
+	/// A simple, repeatable [MWC PRNG](https://en.wikipedia.org/wiki/Multiply-with-carry_pseudorandom_number_generator),
+	/// used to shuffle frequencies between runs.
 	fn randomize(&mut self) -> u32 {
 		self.m_z = 36_969 * (self.m_z & 65_535) + (self.m_z >> 16);
 		self.m_w = 18_000 * (self.m_w & 65_535) + (self.m_w >> 16);
-		(self.m_z << 16).wrapping_add(self.m_w) // 32-bit result.
+		(self.m_z << 16).wrapping_add(self.m_w)
 	}
 }
 
@@ -48,8 +49,8 @@ impl RanState {
 /// This holds the length and distance symbols and costs for a given block,
 /// data that can be used to improve compression on subsequent passes.
 pub(crate) struct SymbolStats {
-	litlens: [usize; ZOPFLI_NUM_LL],
-	dists:   [usize; ZOPFLI_NUM_D],
+	ll_counts: [usize; ZOPFLI_NUM_LL],
+	d_counts:  [usize; ZOPFLI_NUM_D],
 
 	pub(crate) ll_symbols: [f64; ZOPFLI_NUM_LL],
 	pub(crate) d_symbols:  [f64; ZOPFLI_NUM_D],
@@ -59,8 +60,8 @@ impl SymbolStats {
 	/// # New Instance.
 	pub(crate) const fn new() -> Self {
 		Self {
-			litlens:    [0; ZOPFLI_NUM_LL],
-			dists:      [0; ZOPFLI_NUM_D],
+			ll_counts:  [0; ZOPFLI_NUM_LL],
+			d_counts:   [0; ZOPFLI_NUM_D],
 
 			ll_symbols: [0.0; ZOPFLI_NUM_LL],
 			d_symbols:  [0.0; ZOPFLI_NUM_D],
@@ -71,38 +72,38 @@ impl SymbolStats {
 impl SymbolStats {
 	/// # Add Previous Stats (Weighted).
 	///
-	/// This is essentially an `AddAssign` for `litlens` and `dists`. Each
+	/// This is essentially an `AddAssign` for `ll_counts` and `d_counts`. Each
 	/// previous value is halved and added to the corresponding current value.
 	pub(crate) fn add_last(
 		&mut self,
-		litlens: &[usize; ZOPFLI_NUM_LL],
-		dists: &[usize; ZOPFLI_NUM_D],
+		ll_counts: &[usize; ZOPFLI_NUM_LL],
+		d_counts: &[usize; ZOPFLI_NUM_D],
 	) {
-		for (l, r) in self.litlens.iter_mut().zip(litlens.iter().copied()) {
+		for (l, r) in self.ll_counts.iter_mut().zip(ll_counts.iter().copied()) {
 			*l += r.wrapping_div(2);
 		}
-		for (l, r) in self.dists.iter_mut().zip(dists.iter().copied()) {
+		for (l, r) in self.d_counts.iter_mut().zip(d_counts.iter().copied()) {
 			*l += r.wrapping_div(2);
 		}
 
 		// Set the end symbol.
-		self.litlens[256] = 1;
+		self.ll_counts[256] = 1;
 	}
 
 	/// # Clear Frequencies.
 	///
-	/// Set all `litlens` and `dists` to zero and return the originals.
+	/// Set all `ll_counts` and `d_counts` to zero and return the originals.
 	pub(crate) fn clear(&mut self) -> ([usize; ZOPFLI_NUM_LL], [usize; ZOPFLI_NUM_D]) {
-		let mut new_litlens = [0; ZOPFLI_NUM_LL];
-		let mut new_dists = [0; ZOPFLI_NUM_D];
-		std::mem::swap(&mut self.litlens, &mut new_litlens);
-		std::mem::swap(&mut self.dists, &mut new_dists);
-		(new_litlens, new_dists)
+		let mut last_ll = [0; ZOPFLI_NUM_LL];
+		let mut last_d = [0; ZOPFLI_NUM_D];
+		std::mem::swap(&mut self.ll_counts, &mut last_ll);
+		std::mem::swap(&mut self.d_counts, &mut last_d);
+		(last_ll, last_d)
 	}
 
 	/// # Calculate/Set Statistics.
 	///
-	/// This calculates the "entropy" of the `litlens` and `dists`, storing the
+	/// This calculates the "entropy" of the `ll_counts` and `d_counts`, storing the
 	/// results in the corresponding symbols arrays.
 	pub(crate) fn crunch(&mut self) {
 		#[allow(clippy::cast_precision_loss)]
@@ -119,36 +120,34 @@ impl SymbolStats {
 				for (&c, b) in count.iter().zip(bitlengths.iter_mut()) {
 					if c == 0 { *b = log2sum; }
 					else {
-						let mut v = log2sum - (c as f64).log2();
-						if v.is_sign_negative() { v = 0.0; }
-						*b = v;
+						*b = log2sum - (c as f64).log2();
+						if b.is_sign_negative() { *b = 0.0; }
 					}
 				}
 			}
 		}
 
-		calculate_entropy::<ZOPFLI_NUM_LL>(&self.litlens, &mut self.ll_symbols);
-		calculate_entropy::<ZOPFLI_NUM_D>(&self.dists, &mut self.d_symbols);
+		calculate_entropy(&self.ll_counts, &mut self.ll_symbols);
+		calculate_entropy(&self.d_counts, &mut self.d_symbols);
 	}
 
-	#[allow(clippy::similar_names)]
 	/// # Load Statistics.
 	///
-	/// This updates the `litlens` and `dists` stats using the data from the
+	/// This updates the `ll_counts` and `d_counts` stats using the data from the
 	/// `ZopfliLZ77Store` store, then crunches the results.
 	pub(crate) fn load_store(&mut self, store: &LZ77Store) {
 		for e in &store.entries {
 			if e.dist <= 0 {
-				self.litlens[e.litlen as usize] += 1;
+				self.ll_counts[e.litlen as usize] += 1;
 			}
 			else {
-				self.litlens[e.ll_symbol as usize] += 1;
-				self.dists[e.d_symbol as usize] += 1;
+				self.ll_counts[e.ll_symbol as usize] += 1;
+				self.d_counts[e.d_symbol as usize] += 1;
 			}
 		}
 
 		// Set the end symbol and crunch.
-		self.litlens[256] = 1;
+		self.ll_counts[256] = 1;
 		self.crunch();
 	}
 
@@ -165,10 +164,10 @@ impl SymbolStats {
 				}
 			}
 		}
-		randomize_freqs::<ZOPFLI_NUM_LL>(&mut self.litlens, state);
-		randomize_freqs::<ZOPFLI_NUM_D>(&mut self.dists, state);
+		randomize_freqs(&mut self.ll_counts, state);
+		randomize_freqs(&mut self.d_counts, state);
 
 		// Set the end symbol.
-		self.litlens[256] = 1;
+		self.ll_counts[256] = 1;
 	}
 }

@@ -16,6 +16,7 @@ performant.
 
 mod blocks;
 mod cache;
+mod error;
 mod hash;
 mod kat;
 mod lz77;
@@ -26,24 +27,26 @@ pub(crate) use blocks::{
 	deflate_part,
 	SplitPoints,
 };
-use cache::{
-	CACHE,
-	SqueezeCache,
+use cache::MatchCache;
+use error::{
+	zopfli_error,
+	ZopfliError,
 };
-use hash::HASH;
+pub(crate) use hash::ZopfliState;
 use lz77::LZ77Store;
-use kat::zopfli_length_limited_code_lengths;
+use kat::length_limited_code_lengths;
 use super::{
 	ffi::EncodedImage,
 	lodepng::{
 		DecodedImage,
 		LodePNGColorType,
 		LodePNGFilterStrategy,
-		ZopfliOut,
 		LodePNGState,
+		ZopfliOut,
 	},
 };
 use symbols::{
+	DEFLATE_ORDER,
 	DISTANCE_BITS,
 	DISTANCE_SYMBOLS,
 	DISTANCE_VALUES,
@@ -158,41 +161,4 @@ fn encode(
 	}
 
 	Some(out)
-}
-
-#[allow(unsafe_code)]
-/// # Zopfli Lengths to Symbols.
-///
-/// This updates the symbol array given the corresponding lengths.
-fn zopfli_lengths_to_symbols<const MAXBITS: usize, const SIZE: usize>(
-	lengths: &[u32; SIZE],
-	symbols: &mut [u32; SIZE],
-) {
-	// Count up the codes by code length.
-	let mut counts: [u32; MAXBITS] = [0; MAXBITS];
-	for l in lengths {
-		let l = *l as usize;
-		if l < MAXBITS { counts[l] += 1; }
-		else { return; }
-	}
-
-	// Find the numerical value of the smallest code for each code length.
-	counts[0] = 0;
-	let mut code = 0;
-	let mut next_code: [u32; MAXBITS] = [0; MAXBITS];
-	for i in 1..MAXBITS {
-		code = (code + counts[i - 1]) << 1;
-		next_code[i] = code;
-	}
-
-	// Update the symbols accordingly.
-	for (s, l) in symbols.iter_mut().zip(lengths.iter().copied()) {
-		if l == 0 { *s = 0; }
-		else {
-			// Safety: all lengths were tested to be < MAXBITS a few lines up.
-			debug_assert!((l as usize) < MAXBITS);
-			*s = unsafe { *next_code.get_unchecked(l as usize) };
-			next_code[l as usize] += 1;
-		}
-	}
 }
