@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   3.0.0
-    Generated: 2024-04-13 07:52:07 UTC
+    Version:   3.0.1
+    Generated: 2024-04-24 05:50:28 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -30,7 +30,7 @@
 | [libdeflater](https://github.com/adamkewley/libdeflater) | 1.20.0 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [log](https://github.com/rust-lang/log) | 0.4.21 | The Rust Project Developers | Apache-2.0 or MIT |
 | [mozjpeg-sys](https://github.com/kornelski/mozjpeg-sys.git) | 2.1.0 | [Kornel](mailto:kornel@geekhood.net) | IJG AND Zlib AND BSD-3-Clause |
-| [oxipng](https://github.com/shssoichiro/oxipng) | 9.0.0 | [Joshua Holmer](mailto:jholmer.in@gmail.com) | MIT |
+| [oxipng](https://github.com/shssoichiro/oxipng) | 9.1.1 | [Joshua Holmer](mailto:jholmer.in@gmail.com) | MIT |
 | [radium](https://github.com/bitvecto-rs/radium) | 0.7.0 | [Nika Layzell](mailto:nika@thelayzells.com) and [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
 | [rayon](https://github.com/rayon-rs/rayon) | 1.10.0 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
 | [rayon-core](https://github.com/rayon-rs/rayon) | 1.12.1 | [Niko Matsakis](mailto:niko@alum.mit.edu) and [Josh Stone](mailto:cuviper@gmail.com) | Apache-2.0 or MIT |
