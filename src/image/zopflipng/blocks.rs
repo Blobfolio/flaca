@@ -159,7 +159,6 @@ impl SplitPoints {
 		Ok(len)
 	}
 
-	#[allow(unsafe_code)]
 	/// # Split Best.
 	///
 	/// Compare the optimal raw split points with a dedicated lz77 pass and
@@ -189,8 +188,7 @@ impl SplitPoints {
 			// Make another store.
 			store2.clear();
 			lz77_optimal(
-				// Safety: the split points are checked at creation.
-				unsafe { arr.get_unchecked(..end) },
+				arr.get(..end).ok_or(zopfli_error!())?,
 				start,
 				numiterations,
 				store2,

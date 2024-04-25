@@ -59,12 +59,15 @@ impl ImageKind {
 	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
 		12 < src.len() &&
 		src[..3] == [0xFF, 0xD8, 0xFF] &&
-		(
-			src[3] == 0xDB ||
-			src[3] == 0xEE ||
-			src[3..12] == [0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00, 0x01] ||
-			(src[3] == 0xE1 && src[6..12] == [b'E', b'x', b'i', b'f', 0x00, 0x00])
-		)
+		match src[3] {
+			0xE0 =>
+				src[6..11] == [b'J', b'F', b'I', b'F', 0x00] ||
+				src[src.len() - 2..] == [0xFF, 0xD9],
+			0xE1 => src[6..11] == [b'E', b'x', b'i', b'f', 0x00],
+			0xE8 => src[6..12] == [b'S', b'P', b'I', b'F', b'F', 0x00],
+			0xDB | 0xED | 0xEE => src[src.len() - 2..] == [0xFF, 0xD9],
+			_ => false,
+		}
 	}
 
 	/// # Is PNG?
