@@ -57,23 +57,14 @@ impl From<u8> for ImageKind {
 impl ImageKind {
 	/// # Is JPEG?
 	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
-		const END: [u8; 2] = [0xFF, 0xD9];
-
 		12 < src.len() &&
 		src[..3] == [0xFF, 0xD8, 0xFF] &&
-		match src[3] {
-			0xE0 =>
-				src[6..11] == [b'J', b'F', b'I', b'F', 0x00] ||
-				src[src.len() - 2..] == END,
-			0xE1 => src[6..11] ==
-				[b'E', b'x', b'i', b'f', 0x00] ||
-				src[src.len() - 2..] == END,
-			0xE8 => src[6..12] ==
-				[b'S', b'P', b'I', b'F', b'F', 0x00] ||
-				src[src.len() - 2..] == END,
-			0xDB | 0xE2..=0xEF => src[src.len() - 2..] == END,
-			_ => false,
-		}
+		(
+			(src[3] == 0xE0 && src[6..11] == [b'J', b'F', b'I', b'F', 0x00]) ||
+			(src[3] == 0xE1 && src[6..11] == [b'E', b'x', b'i', b'f', 0x00]) ||
+			(src[3] == 0xE8 && src[6..12] == [b'S', b'P', b'I', b'F', b'F', 0x00]) ||
+			(matches!(src[3], 0xDB | 0xE0..=0xEF) && src[src.len() - 2..] == [0xFF, 0xD9])
+		)
 	}
 
 	/// # Is PNG?
