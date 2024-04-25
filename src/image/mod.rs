@@ -83,7 +83,7 @@ pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions) -> Opti
 fn encode_mozjpeg(raw: &mut Vec<u8>) {
 	if let Some(new) = jpegtran::optimize(raw) {
 		let slice: &[u8] = &new;
-		if ImageKind::is_jpeg(slice) {
+		if slice.len() < raw.len() && ImageKind::is_jpeg(slice) {
 			raw.truncate(slice.len());
 			raw.copy_from_slice(slice);
 		}
@@ -115,7 +115,7 @@ fn encode_oxipng(raw: &mut Vec<u8>, opts: &OxipngOptions) {
 fn encode_zopflipng(raw: &mut Vec<u8>) {
 	if let Some(new) = zopflipng::optimize(raw) {
 		let slice: &[u8] = &new;
-		if ImageKind::is_png(slice) {
+		if slice.len() < raw.len() && ImageKind::is_png(slice) {
 			raw.truncate(slice.len());
 			raw.copy_from_slice(slice);
 		}
@@ -128,7 +128,7 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 /// This returns the strongest possible Oxipng compression profile (minus
 /// the zopfli bits, which we try in a separate pass).
 ///
-/// This is basically just "preset 3", with:
+/// This is basically just "preset 6", with:
 /// * Error fixing enabled;
 /// * Libdeflater;
 /// * All the alpha optimizations;
