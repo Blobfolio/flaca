@@ -107,6 +107,7 @@ mod tests {
 		test_kind!(
 			"./skel/assets/empty.jpg" None,
 			"./skel/assets/executable.sh" None,
+			"./skel/assets/herring.png" None,
 			"./skel/assets/jpg/01.jpg" Some(ImageKind::Jpeg),
 			"./skel/assets/jpg/02.jpg" Some(ImageKind::Jpeg),
 			"./skel/assets/jpg/03.jpg" Some(ImageKind::Jpeg),
