@@ -72,6 +72,7 @@ use rayon::iter::{
 };
 use std::{
 	num::NonZeroUsize,
+	path::Path,
 	sync::{
 		Arc,
 		atomic::{
@@ -195,10 +196,13 @@ fn _main() -> Result<(), FlacaError> {
 				progress.add(&tmp);
 
 				match image::encode(x, kinds, &oxi) {
-					// The image was intentionally skipped.
+					// The file is empty.
 					Some((0, 0)) => {
 						skipped.fetch_add(1, Relaxed);
+						skip_warn(x, kinds, "Empty file", &progress);
 					},
+					// The image was intentionally skipped.
+					Some((_, 0)) => { skipped.fetch_add(1, Relaxed); },
 					// The image was processed and maybe updated.
 					Some((b, a)) => {
 						before.fetch_add(b, Relaxed);
@@ -206,10 +210,8 @@ fn _main() -> Result<(), FlacaError> {
 					},
 					// The image could not be read or decoded.
 					None => {
-						progress.push_msg(Msg::custom("Skipped", 11, &format!(
-							"{tmp} \x1b[2m(Unrecognized format.)\x1b[0m"
-						)), true);
 						skipped.fetch_add(1, Relaxed);
+						skip_warn(x, kinds, "Unrecognized format", &progress);
 					},
 				}
 
@@ -328,4 +330,21 @@ fn sigint(killed: Arc<AtomicBool>, progress: Option<Progless>) {
 		}
 		else { std::process::exit(1); }
 	);
+}
+
+/// # Maybe Warn About a Skip.
+fn skip_warn(file: &Path, kinds: ImageKind, note: &str, progress: &Progless) {
+	// If we're only compressing one or the other kind of image, make sure the
+	// file extension belongs to that kind before complaining about it.
+	if kinds != ImageKind::All {
+		let file_kind =
+			if Some(E_PNG) == Extension::try_from3(file) { ImageKind::Png }
+			else { ImageKind::Jpeg };
+		if ImageKind::None == kinds & file_kind { return; }
+	}
+
+	progress.push_msg(Msg::custom("Skipped", 11, &format!(
+		"{} \x1b[2m({note}.)\x1b[0m",
+		file.to_string_lossy()
+	)), true);
 }

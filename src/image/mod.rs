@@ -32,18 +32,18 @@ use zopflipng::{
 pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions) -> Option<(u64, u64)> {
 	// Read the file.
 	let mut raw = std::fs::read(file).ok()?;
-	if raw.is_empty() { return None; }
+	if raw.is_empty() { return Some((0, 0)); }
 	let before = u64::try_from(raw.len()).ok()?;
 
 	// Do PNG stuff?
 	if ImageKind::is_png(&raw) {
-		if ImageKind::None == kinds & ImageKind::Png { return Some((0, 0)); }
+		if ImageKind::None == kinds & ImageKind::Png { return Some((before, 0)); }
 		encode_oxipng(&mut raw, oxi);
 		encode_zopflipng(&mut raw);
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
-		if ImageKind::None == kinds & ImageKind::Jpeg { return Some((0, 0)); }
+		if ImageKind::None == kinds & ImageKind::Jpeg { return Some((before, 0)); }
 
 		// Mozjpeg usually panics on error, so we have to do a weird little
 		// dance to keep it from killing the whole thread.
