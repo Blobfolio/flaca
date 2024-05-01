@@ -108,6 +108,7 @@ items = [
 [dependencies]
 argyle = "0.7.*"
 bumpalo = "=3.16.0"
+crc32fast = "1.4.*"
 ctrlc = "=3.4.4"
 dactyl = "0.7.*"
 dowser = "0.9.*"

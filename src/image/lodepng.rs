@@ -94,6 +94,19 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	0
 }
 
+#[no_mangle]
+#[inline(always)]
+#[allow(unsafe_code, clippy::inline_always)]
+/// # Lodepng CRC32.
+///
+/// Replace lodepng's native CRC32 hashing method with Rust's (faster)
+/// `crc32fast`.
+pub(crate) extern "C" fn lodepng_crc32(buf: *const c_uchar, len: usize) -> c_uint {
+	let mut h = crc32fast::Hasher::new();
+    h.update(unsafe { std::slice::from_raw_parts(buf, len) });
+    h.finalize()
+}
+
 
 
 #[derive(Debug)]
