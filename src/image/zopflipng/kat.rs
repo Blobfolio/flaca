@@ -69,11 +69,8 @@ pub(crate) fn length_limited_code_lengths<const MAXBITS: usize, const SIZE: usiz
 		len_leaves += 1;
 	}
 
-	// Shortcut: nothing to do!
-	if len_leaves == 0 || SIZE < len_leaves { return Ok(()); }
-
 	// Reslice to the leaves we're actually using.
-	let leaves = &mut raw_leaves[..len_leaves];
+	let Some(leaves) = raw_leaves.get_mut(..len_leaves) else { return Ok(()) };
 
 	// Sortcut: weighting only applies when there are more than two leaves.
 	if leaves.len() <= 2 {
