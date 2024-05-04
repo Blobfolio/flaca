@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// # Zopfli Error.
 ///
 /// This struct is used for logical failings (bugs) in the ported zopfli

@@ -25,6 +25,7 @@ mod symbols;
 
 pub(crate) use blocks::{
 	deflate_part,
+	lengths_to_symbols,
 	SplitPoints,
 };
 use cache::MatchCache;
@@ -34,7 +35,6 @@ use error::{
 };
 pub(crate) use hash::ZopfliState;
 use lz77::LZ77Store;
-use kat::length_limited_code_lengths;
 use super::{
 	ffi::EncodedImage,
 	lodepng::{
@@ -47,6 +47,7 @@ use super::{
 };
 use symbols::{
 	DEFLATE_ORDER,
+	DeflateSym,
 	DISTANCE_BITS,
 	DISTANCE_SYMBOLS,
 	DISTANCE_VALUES,

@@ -15,8 +15,14 @@ use std::{
 	num::NonZeroUsize,
 };
 use super::{
+	DEFLATE_ORDER,
+	DeflateSym,
+	lengths_to_symbols,
 	zopfli_error,
+	ZOPFLI_NUM_D,
+	ZOPFLI_NUM_LL,
 	ZopfliError,
+	ZopfliOut,
 };
 
 
@@ -32,19 +38,309 @@ thread_local!(
 
 
 
+/// # Tree Lengths and Distances.
+///
+/// This struct is used for calculating the optimal DEFLATE tree size and/or
+/// writing the tree data to the output.
+///
+/// Both involve doing (virtually) the same thing several times in a row, so
+/// the centralized storage helps reduce a little bit of that overhead.
+pub(crate) struct TreeLd<'a> {
+	ll_lengths: &'a [u32; ZOPFLI_NUM_LL],
+	d_lengths: &'a [u32; ZOPFLI_NUM_D],
+	hlit: usize,
+	hdist: usize,
+}
+
+impl<'a> TreeLd<'a> {
+	/// # New.
+	pub(crate) fn new(
+		ll_lengths: &'a [u32; ZOPFLI_NUM_LL],
+		d_lengths: &'a [u32; ZOPFLI_NUM_D],
+	) -> Result<Self, ZopfliError> {
+		// Find the last non-zero length symbol, starting from 285. (The offset
+		// marks the boundary between literals and symbols; we'll use both in
+		// some places, and not in others.)
+		let mut hlit = 29;
+		while hlit > 0 && ll_lengths[256 + hlit] == 0 { hlit -= 1; }
+
+		// Now the same for distance, starting at 29 proper.
+		let mut hdist = 29;
+		while hdist > 0 && d_lengths[hdist] == 0 { hdist -= 1; }
+
+		// All of the values we're considering need to be expressable as
+		// symbols.
+		if
+			ll_lengths.iter().take(hlit + 257).all(|&v| v < 19) &&
+			d_lengths.iter().take(hdist).all(|&v| v < 19)
+		{
+			Ok(Self {
+				ll_lengths,
+				d_lengths,
+				hlit,
+				hdist,
+			})
+		}
+		else { Err(zopfli_error!()) }
+	}
+
+	/// # Total Entries.
+	///
+	/// Return the combined length and distance lengths that can be
+	/// traversed.
+	const fn len(&self) -> usize { self.hlit + 257 + self.hdist + 1 }
+
+	#[allow(unsafe_code)]
+	/// # Symbol.
+	///
+	/// Crunching loops through the length and distance symbols as if they were
+	/// one contiguous set. This returns the appropriate symbol given the
+	/// index. (Length symbols are returned first; once we run out of those
+	/// distance symbols are returned instead.)
+	///
+	/// The compiler doesn't really understand what we're doing, hence the
+	/// unsafe. (Also of note, all raw `u32` are checked during `TreeLd::new`
+	/// to ensure they can be represented as `DeflateSym`.)
+	fn symbol(&self, idx: usize) -> DeflateSym {
+		let ll_len = self.hlit + 257;
+
+		// Fetch it from the lengths table.
+		if idx < ll_len {
+			unsafe {
+				std::mem::transmute::<usize, DeflateSym>(
+					*self.ll_lengths.get_unchecked(idx) as usize
+				)
+			}
+		}
+		// Fetch it from the distance table.
+		else {
+			debug_assert!(idx - ll_len <= 29);
+			unsafe {
+				std::mem::transmute::<usize, DeflateSym>(
+					*self.d_lengths.get_unchecked(idx - ll_len) as usize
+				)
+			}
+		}
+	}
+}
+
+impl<'a> TreeLd<'a> {
+	/// # Calculate the Exact Tree Size (in Bits).
+	///
+	/// This returns the index (0..8) that produced the smallest size, along
+	/// with that size.
+	pub(crate) fn calculate_tree_size(&mut self) -> Result<(u8, usize), ZopfliError> {
+		let mut best_size = usize::MAX;
+		let mut best_idx = 0;
+
+		// Try every combination.
+		for idx in 0..8 {
+			let size = self.crunch(idx, None)?;
+			if size < best_size {
+				best_size = size;
+				best_idx = idx;
+			}
+		}
+
+		Ok((best_idx, best_size))
+	}
+
+	#[allow(clippy::cast_possible_truncation)]
+	/// # Encode Tree.
+	///
+	/// This finds the index that produces the smallest tree size, then writes
+	/// that table's bits to the output.
+	pub(crate) fn encode_tree(&mut self, out: &mut ZopfliOut) -> Result<(), ZopfliError> {
+		let (extra, _) = self.calculate_tree_size()?;
+		self.crunch(extra, Some(out))?;
+		Ok(())
+	}
+
+	#[allow(clippy::cast_possible_truncation)]
+	/// # Crunch the Tree.
+	///
+	/// This crunches the data for the given index, either returning the size
+	/// or writing it to the output (and returning zero).
+	fn crunch(&mut self, extra: u8, out: Option<&mut ZopfliOut>) -> Result<usize, ZopfliError> {
+		// Are we using any of the special alphabet parts?
+		let use_16 = 0 != extra & 1;
+		let use_17 = 0 != extra & 2;
+		let use_18 = 0 != extra & 4;
+
+		// Hold the counts for each symbol.
+		let mut cl_counts = [0_usize; 19];
+
+		// If we're writing the result, we need to collect the RLE data; if not
+		// the vector should go unallocated and require minimal overhead.
+		let mut rle = Vec::new();
+		if out.is_some() { rle.reserve(self.len()); }
+
+		// Run through all the length symbols, then the distance symbols, with
+		// the odd skip to keep us on our toes.
+		let mut i = 0;
+		while i < self.len() {
+			let mut count = 1;
+			let symbol = self.symbol(i);
+			let is_zero = matches!(symbol, DeflateSym::D00);
+
+			// Peek ahead; we may be able to do more in one go.
+			if use_16 || (is_zero && (use_17 || use_18)) {
+				let mut j = i + 1;
+				while j < self.len() && symbol == self.symbol(j) {
+					count += 1;
+					j += 1;
+				}
+
+				// Skip these indices, if any, on the next pass.
+				i += count - 1;
+			}
+
+			// Repetitions of zeroes.
+			if is_zero && count >= 3 {
+				if use_18 {
+					while count >= 11 {
+						let count2 = count.min(138);
+						if out.is_some() {
+							rle.push((DeflateSym::D18, count2 as u32 - 11));
+						}
+						cl_counts[DeflateSym::D18 as usize] += 1;
+						count -= count2;
+					}
+				}
+				if use_17 {
+					while count >= 3 {
+						let count2 = count.min(10);
+						if out.is_some() {
+							rle.push((DeflateSym::D17, count2 as u32 - 3));
+						}
+						cl_counts[DeflateSym::D17 as usize] += 1;
+						count -= count2;
+					}
+				}
+			}
+
+			// Repetitions of any symbol.
+			if use_16 && count >= 4 {
+				// The first one always counts.
+				count -= 1;
+				if out.is_some() { rle.push((symbol, 0)); }
+				cl_counts[symbol as usize] += 1;
+
+				while count >= 3 {
+					let count2 = count.min(6);
+					if out.is_some() {
+						rle.push((DeflateSym::D16, count2 as u32 - 3));
+					}
+					cl_counts[DeflateSym::D16 as usize] += 1;
+					count -= count2;
+				}
+			}
+
+			// Deal with non- or insufficiently-repeating values.
+			if out.is_some() {
+				for _ in 0..count { rle.push((symbol, 0)); }
+			}
+			cl_counts[symbol as usize] += count;
+			i += 1;
+		}
+
+		// Update the lengths and symbols given the counts.
+		let cl_lengths = length_limited_code_lengths_tree(&cl_counts)?;
+
+		// Find the last non-zero count.
+		let mut hclen = 15;
+		while hclen > 0 && cl_counts[DEFLATE_ORDER[hclen + 3] as usize] == 0 {
+			hclen -= 1;
+		}
+
+		// Write the results?
+		if let Some(out) = out {
+			// Convert the lengths to symbols.
+			let cl_symbols = lengths_to_symbols::<8, 19>(&cl_lengths)?;
+
+			// Write the main lengths.
+			out.add_bits(self.hlit as u32, 5);
+			out.add_bits(self.hdist as u32, 5);
+			out.add_bits(hclen as u32, 4);
+
+			// Write each cl_length in the jumbled DEFLATE order.
+			for &o in &DEFLATE_ORDER[..hclen + 4] {
+				out.add_bits(cl_lengths[o as usize], 3);
+			}
+
+			// Write each symbol in order of appearance along with its extra bits,
+			// if any.
+			for (a, b) in rle {
+				let symbol = cl_symbols[a as usize];
+				out.add_huffman_bits(symbol, cl_lengths[a as usize]);
+
+				// Extra bits.
+				match a {
+					DeflateSym::D16 => { out.add_bits(b, 2); },
+					DeflateSym::D17 => { out.add_bits(b, 3); },
+					DeflateSym::D18 => { out.add_bits(b, 7); },
+					_ => {},
+				}
+			}
+
+			// We have to return a number, so why not zero?
+			Ok(0)
+		}
+		// Just calculate the would-be size and return.
+		else {
+			let mut size = 14;              // hlit, hdist, hclen.
+			size += (hclen + 4) * 3;        // cl_lengths.
+			for (&a, b) in cl_lengths.iter().zip(cl_counts.iter()) {
+				size += (a as usize) * b;
+			}
+			size += cl_counts[16] * 2; // Extra bits.
+			size += cl_counts[17] * 3;
+			size += cl_counts[18] * 7;
+			Ok(size)
+		}
+	}
+}
+
+
+
+#[inline]
 /// # Length Limited Code Lengths.
 ///
-/// This writes minimum-redundancy length-limited code bitlengths for symbols
-/// with the given counts, limited by `MAXBITS` (either 7 or 15 in practice).
-pub(crate) fn length_limited_code_lengths<const MAXBITS: usize, const SIZE: usize>(
+/// This writes minimum-redundancy length-limited code bitlengths for tree
+/// symbols with the given counts.
+fn length_limited_code_lengths_tree(frequencies: &[usize; 19])
+-> Result<[u32; 19], ZopfliError> {
+	// Convert bitlengths to a slice-of-cells so we can chop it up willynilly
+	// without losing writeability.
+	let mut bitlengths = [0_u32; 19];
+	let bitcells = Cell::from_mut(bitlengths.as_mut_slice()).as_slice_of_cells();
+
+	// Build up a collection of "leaves" by joining each non-zero frequency
+	// with its corresponding bitlength.
+	let mut raw_leaves = [Leaf { frequency: NonZeroUsize::MIN, bitlength: &bitcells[0] }; 19];
+	let leaves = make_leaves(frequencies, bitcells, &mut raw_leaves);
+
+	// Sortcut: weighting only applies when there are more than two leaves.
+	if leaves.len() <= 2 {
+		for leaf in leaves { leaf.bitlength.set(1); }
+		return Ok(bitlengths);
+	}
+
+	// Sort the leaves by frequency.
+	leaves.sort();
+
+	// Crunch!
+	BUMP.with_borrow_mut(|nodes| llcl::<7>(leaves, nodes)).map(|()| bitlengths)
+}
+
+/// # Length Limited Code Lengths.
+///
+/// This writes minimum-redundancy length-limited code bitlengths for length
+/// and distance symbols.
+pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 	frequencies: &[usize; SIZE],
 	bitlengths: &mut [u32; SIZE],
 ) -> Result<(), ZopfliError> {
-	// SIZE is only ever going to be 19, 32, or 288 at runtime, but the
-	// compiler won't necessarily bother to confirm that in advance. Our tests
-	// go as low as 6, so let's just run with that.
-	if SIZE < 6 { return Err(zopfli_error!()); }
-
 	// For performance reasons the bitlengths are passed by reference, but
 	// they should always be zero-filled by this point.
 	debug_assert!(bitlengths.iter().all(|b| *b == 0));
@@ -56,21 +352,7 @@ pub(crate) fn length_limited_code_lengths<const MAXBITS: usize, const SIZE: usiz
 	// Build up a collection of "leaves" by joining each non-zero frequency
 	// with its corresponding bitlength.
 	let mut raw_leaves = [Leaf { frequency: NonZeroUsize::MIN, bitlength: &bitlengths[0] }; SIZE];
-	let mut len_leaves = 0;
-	for (v, leaf) in frequencies.iter()
-		.copied()
-		.zip(bitlengths)
-		.filter_map(|(frequency, bitlength)| NonZeroUsize::new(frequency).map(
-			|frequency| Leaf { frequency, bitlength }
-		))
-		.zip(raw_leaves.iter_mut())
-	{
-		*leaf = v;
-		len_leaves += 1;
-	}
-
-	// Reslice to the leaves we're actually using.
-	let Some(leaves) = raw_leaves.get_mut(..len_leaves) else { return Ok(()) };
+	let leaves = make_leaves(frequencies, bitlengths, &mut raw_leaves);
 
 	// Sortcut: weighting only applies when there are more than two leaves.
 	if leaves.len() <= 2 {
@@ -82,7 +364,7 @@ pub(crate) fn length_limited_code_lengths<const MAXBITS: usize, const SIZE: usiz
 	leaves.sort();
 
 	// Crunch!
-	BUMP.with_borrow_mut(|nodes| llcl::<MAXBITS>(leaves, nodes))
+	BUMP.with_borrow_mut(|nodes| llcl::<15>(leaves, nodes))
 }
 
 
@@ -100,14 +382,17 @@ struct Leaf<'a> {
 impl<'a> Eq for Leaf<'a> {}
 
 impl<'a> Ord for Leaf<'a> {
+	#[inline]
 	fn cmp(&self, other: &Self) -> Ordering { self.frequency.cmp(&other.frequency) }
 }
 
 impl<'a> PartialEq for Leaf<'a> {
+	#[inline]
 	fn eq(&self, other: &Self) -> bool { self.frequency == other.frequency }
 }
 
 impl<'a> PartialOrd for Leaf<'a> {
+	#[inline]
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
@@ -123,9 +408,28 @@ struct List<'a> {
 }
 
 impl<'a> List<'a> {
+	/// # New (Initial List).
+	fn new(nodes: &'a Bump, f1: NonZeroUsize, f2: NonZeroUsize) -> Self {
+		let lookahead0 = nodes.alloc(Node {
+			weight: f1.get(),
+			count: 1,
+			tail: Cell::new(None),
+		});
+
+		let lookahead1 = nodes.alloc(Node {
+			weight: f2.get(),
+			count: 2,
+			tail: Cell::new(None),
+		});
+
+		Self { lookahead0, lookahead1 }
+	}
+
+	#[inline]
 	/// # Rotate.
 	fn rotate(&mut self) { self.lookahead0 = self.lookahead1; }
 
+	#[inline]
 	/// # Weight Sum.
 	const fn weight_sum(&self) -> usize {
 		self.lookahead0.weight + self.lookahead1.weight
@@ -144,13 +448,14 @@ struct Node<'a> {
 
 
 
+#[inline]
 /// # Crunch the Code Lengths.
 ///
 /// This method serves as the closure for the exported method's
 /// `BUMP.with_borrow_mut()` call, abstracted here mainly just to improve
 /// readability.
 fn llcl<'a, const MAXBITS: usize>(
-	leaves: &'a [Leaf<'a>],
+	leaves: &[Leaf<'a>],
 	nodes: &'a mut Bump,
 ) -> Result<(), ZopfliError> {
 	// This can't happen; it is just a reminder for the compiler.
@@ -158,27 +463,10 @@ fn llcl<'a, const MAXBITS: usize>(
 		return Err(zopfli_error!());
 	}
 
-	// Shrink maxbits if we have fewer (leaves - 1).
-	let maxbits =
-		if leaves.len() - 1 < MAXBITS { leaves.len() - 1 }
-		else { MAXBITS };
-
-	let lookahead0 = nodes.alloc(Node {
-		weight: leaves[0].frequency.get(),
-		count: 1,
-		tail: Cell::new(None),
-	});
-
-	let lookahead1 = nodes.alloc(Node {
-		weight: leaves[1].frequency.get(),
-		count: 2,
-		tail: Cell::new(None),
-	});
-
 	// The max MAXBITS is only 15, so we might as well just (slightly)
 	// over-allocate an array to hold our lists.
-	let mut raw_lists = [List { lookahead0, lookahead1 }; MAXBITS];
-	let lists = &mut raw_lists[..maxbits];
+	let mut raw_lists = [List::new(nodes, leaves[0].frequency, leaves[1].frequency); MAXBITS];
+	let lists = &mut raw_lists[..MAXBITS.min(leaves.len() - 1)];
 
 	// In the last list, (2 * len_leaves - 2) active chains need to be
 	// created. We have two already from initialization; each boundary_pm run
@@ -187,6 +475,7 @@ fn llcl<'a, const MAXBITS: usize>(
 		llcl_boundary_pm(leaves, lists, nodes)?;
 	}
 
+	// Add the last chain and write the results!
 	llcl_finish(leaves, lists, nodes)?;
 
 	// Please be kind, rewind!
@@ -199,7 +488,7 @@ fn llcl<'a, const MAXBITS: usize>(
 ///
 /// Add a new chain to the list, using either a leaf or combination of two
 /// chains from the previous list.
-fn llcl_boundary_pm<'a>(leaves: &'a [Leaf<'a>], lists: &mut [List<'a>], nodes: &'a Bump)
+fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a Bump)
 -> Result<(), ZopfliError> {
 	// This method should never be called with an empty list.
 	let [rest @ .., current] = lists else { return Err(zopfli_error!()); };
@@ -248,13 +537,14 @@ fn llcl_boundary_pm<'a>(leaves: &'a [Leaf<'a>], lists: &mut [List<'a>], nodes: &
 	llcl_boundary_pm(leaves, rest, nodes)
 }
 
+#[inline]
 /// # Finish and Write Code Lengths!
 ///
 /// Add the final chain to the list, then write the weighted counts to the
 /// bitlengths.
 fn llcl_finish<'a>(
-	leaves: &'a [Leaf<'a>],
-	lists: &'a mut [List<'a>],
+	leaves: &[Leaf<'a>],
+	lists: &mut [List<'a>],
 	nodes: &'a Bump,
 ) -> Result<(), ZopfliError> {
 	// This won't fail; we'll always have at least two lists.
@@ -301,6 +591,30 @@ fn llcl_finish<'a>(
 	Ok(())
 }
 
+#[inline]
+/// # Make Leaves.
+fn make_leaves<'a, const SIZE: usize>(
+	frequencies: &'a [usize; SIZE],
+	bitlengths: &'a [Cell<u32>],
+	leaves: &'a mut [Leaf<'a>],
+) -> &'a mut [Leaf<'a>] {
+	let mut len_leaves = 0;
+	for (v, leaf) in frequencies.iter()
+		.copied()
+		.zip(bitlengths)
+		.filter_map(|(frequency, bitlength)| NonZeroUsize::new(frequency).map(
+			|frequency| Leaf { frequency, bitlength }
+		))
+		.zip(leaves.iter_mut())
+	{
+		*leaf = v;
+		len_leaves += 1;
+	}
+
+	// Reslice to the leaves we're actually using.
+	&mut leaves[..len_leaves]
+}
+
 
 
 #[cfg(test)]
@@ -308,32 +622,16 @@ mod tests {
 	use super::*;
 
 	// The original zopfli has no unit tests, but the zopfli-rs Rust port has
-	// a few. The 3/4/7/15 maxbit tests below have been adapted from those.
-	// They work, so that's promising!
+	// a few, and they work for us too, so that's promising!
 	// <https://github.com/zopfli-rs/zopfli/blob/main/src/katajainen.rs>
-
-	#[test]
-	fn t_kat3() {
-		let f = [1, 1, 5, 7, 10, 14];
-		let mut b = [0; 6];
-		assert!(length_limited_code_lengths::<3, 6>(&f, &mut b).is_ok());
-		assert_eq!(b, [3, 3, 3, 3, 2, 2]);
-	}
-
-	#[test]
-	fn t_kat4() {
-		let f = [1, 1, 5, 7, 10, 14];
-		let mut b = [0; 6];
-		assert!(length_limited_code_lengths::<4, 6>(&f, &mut b).is_ok());
-		assert_eq!(b, [4, 4, 3, 2, 2, 2]);
-	}
 
 	#[test]
 	fn t_kat7() {
 		let f = [252, 0, 1, 6, 9, 10, 6, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-		let mut b = [0; 19];
-		assert!(length_limited_code_lengths::<7, 19>(&f, &mut b).is_ok());
-		assert_eq!(b, [1, 0, 6, 4, 3, 3, 3, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+		assert_eq!(
+			length_limited_code_lengths_tree(&f),
+			Ok([1, 0, 6, 4, 3, 3, 3, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+		);
 	}
 
 	#[test]
@@ -343,7 +641,7 @@ mod tests {
 			23, 15, 17, 8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		];
 		let mut b = [0; 32];
-		assert!(length_limited_code_lengths::<15, 32>(&f, &mut b).is_ok());
+		assert!(length_limited_code_lengths(&f, &mut b).is_ok());
 		assert_eq!(
 			b,
 			[
@@ -357,20 +655,23 @@ mod tests {
 	fn t_kat_limited() {
 		// No frequencies.
 		let mut f = [0; 19];
-		let mut b = [0; 19];
-		assert!(length_limited_code_lengths::<7, 19>(&f, &mut b).is_ok());
-		assert_eq!(b, [0; 19]);
+		assert_eq!(
+			length_limited_code_lengths_tree(&f),
+			Ok([0; 19]),
+		);
 
 		// One frequency.
 		f[2] = 10;
-		b.fill(0);
-		assert!(length_limited_code_lengths::<7, 19>(&f, &mut b).is_ok());
-		assert_eq!(b, [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+		assert_eq!(
+			length_limited_code_lengths_tree(&f),
+			Ok([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+		);
 
 		// Two frequencies.
 		f[0] = 248;
-		b.fill(0);
-		assert!(length_limited_code_lengths::<7, 19>(&f, &mut b).is_ok());
-		assert_eq!(b, [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+		assert_eq!(
+			length_limited_code_lengths_tree(&f),
+			Ok([1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+		);
 	}
 }

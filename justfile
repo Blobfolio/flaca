@@ -26,11 +26,12 @@ doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
-export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Cllvm-args=--bounds-checking-single-trap -Cllvm-args=--cost-kind=throughput -Cllvm-args=--enable-no-signed-zeros-fp-math -Clinker=clang -Clink-arg=-fuse-ld=lld"
-export CC := "clang"
-export CXX := "clang++"
-export CFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
-export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
+export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Cllvm-args=--cost-kind=throughput"
+#export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Cllvm-args=--cost-kind=throughput -Clink-arg=-fuse-ld=lld"
+#export CC := "clang"
+#export CXX := "clang++"
+#export CFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
+#export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 
 
 

@@ -104,7 +104,7 @@ fn build_symbols() {
 	use std::fmt::Write;
 
 	let mut out = r"#[repr(usize)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 /// # Whackadoodle Deflate Indices.
 pub(crate) enum DeflateSym {".to_owned();
 	for i in 0..19 {
