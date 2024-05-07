@@ -73,6 +73,7 @@ impl SplitPoints {
 }
 
 impl SplitPoints {
+	#[inline]
 	/// # Uncompressed Split Pass.
 	///
 	/// This sets the uncompressed split points, by way of first setting the
@@ -107,6 +108,7 @@ impl SplitPoints {
 		else { Ok(len) }
 	}
 
+	#[inline]
 	/// # LZ77 Split Pass.
 	///
 	/// This sets the LZ77 split points according to convoluted cost
@@ -159,6 +161,7 @@ impl SplitPoints {
 		Ok(len)
 	}
 
+	#[inline]
 	/// # Split Best.
 	///
 	/// Compare the optimal raw split points with a dedicated lz77 pass and
@@ -228,6 +231,7 @@ impl SplitPoints {
 
 
 
+#[inline]
 /// # Deflate a Part.
 ///
 /// Image compression is done in chunks of a million bytes. This does all the
@@ -440,6 +444,7 @@ fn add_lz77_block(
 	clippy::cast_sign_loss,
 	clippy::too_many_arguments,
 )]
+#[inline]
 /// # Add LZ77 Block (Automatic Type).
 ///
 /// This calculates the expected output sizes for all three block types, then
@@ -498,6 +503,7 @@ fn add_lz77_block_auto_type(
 	clippy::cast_sign_loss,
 	clippy::too_many_arguments,
 )]
+#[inline]
 /// # Add LZ77 Data.
 ///
 /// This adds all lit/len/dist codes from the lists as huffman symbols, but not
@@ -1061,6 +1067,7 @@ fn patch_distance_codes(d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D]) {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[inline]
 /// # (Maybe) Add LZ77 Expensive Fixed Block.
 ///
 /// This runs the full suite of fixed-tree tests on the data and writes it to

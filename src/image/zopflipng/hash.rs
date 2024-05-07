@@ -244,6 +244,7 @@ impl ZopfliState {
 
 impl ZopfliState {
 	#[allow(clippy::cast_possible_truncation)]
+	#[inline]
 	/// # Trace Paths.
 	///
 	/// Calculate the optimal path of lz77 lengths to use, from the
@@ -553,6 +554,7 @@ impl ZopfliHash {
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
+	#[inline]
 	/// # Best Length Max Match.
 	///
 	/// This fast-forwards through long repetitions in the middle of a
@@ -614,6 +616,7 @@ impl ZopfliHash {
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
+	#[inline]
 	/// # Follow Paths.
 	///
 	/// This method repopulates the hash tables by following the provided
