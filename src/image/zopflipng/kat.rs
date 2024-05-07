@@ -17,7 +17,6 @@ use std::{
 use super::{
 	DEFLATE_ORDER,
 	DeflateSym,
-	lengths_to_symbols,
 	zopfli_error,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
@@ -239,7 +238,7 @@ impl<'a> TreeLd<'a> {
 		// Write the results?
 		if let Some(out) = out {
 			// Convert the lengths to symbols.
-			let cl_symbols = lengths_to_symbols::<8, 19>(&cl_lengths)?;
+			let cl_symbols = make_symbols(&cl_lengths)?;
 
 			// Write the main lengths.
 			out.add_bits(self.hlit as u32, 5);
@@ -600,6 +599,41 @@ fn make_leaves<'a, const SIZE: usize>(
 
 	// Reslice to the leaves we're actually using.
 	&mut leaves[..len_leaves]
+}
+
+#[allow(unsafe_code)]
+/// # Zopfli Lengths to Symbols.
+///
+/// This returns a new symbol array given the lengths, which are themselves
+/// symbols, but of a different kind. Haha.
+fn make_symbols(lengths: &[DeflateSym; 19])
+-> Result<[u32; 19], ZopfliError> {
+	// Count up the codes by code length.
+	let mut counts: [u32; 8] = [0; 8];
+	for l in lengths.iter().copied() {
+		if (l as u8) < 8 { counts[l as usize] += 1; }
+		else { return Err(zopfli_error!()); }
+	}
+
+	// Find the numerical value of the smallest code for each code length.
+	counts[0] = 0;
+	let mut code = 0;
+	let mut next_code: [u32; 8] = [0; 8];
+	for i in 1..8 {
+		code = (code + counts[i - 1]) << 1;
+		next_code[i] = code;
+	}
+
+	// Update the symbols accordingly.
+	let mut symbols = [0; 19];
+	for (s, l) in symbols.iter_mut().zip(lengths.iter().copied()) {
+		if ! l.is_zero() {
+			// Safety: we already checked all lengths are less than MAXBITS.
+			*s = unsafe { *next_code.get_unchecked(l as usize) };
+			next_code[l as usize] += 1;
+		}
+	}
+	Ok(symbols)
 }
 
 

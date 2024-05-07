@@ -420,8 +420,8 @@ fn add_lz77_block(
 		};
 
 	// Now sort out the symbols.
-	let ll_symbols = lengths_to_symbols::<16, ZOPFLI_NUM_LL>(&ll_lengths)?;
-	let d_symbols = lengths_to_symbols::<16, ZOPFLI_NUM_D>(&d_lengths)?;
+	let ll_symbols = lengths_to_symbols(&ll_lengths)?;
+	let d_symbols = lengths_to_symbols(&d_lengths)?;
 
 	// Write all the data!
 	add_lz77_data(
@@ -842,23 +842,20 @@ fn get_lz77_byte_range(
 /// # Zopfli Lengths to Symbols.
 ///
 /// This updates the symbol array given the corresponding lengths.
-///
-/// Note: MAXBITS will always be 8 or 16; it is tied to the length-limiting
-/// equivalent, though plus one to keep things slightly confusing.
-pub(crate) fn lengths_to_symbols<const MAXBITS: usize, const SIZE: usize>(lengths: &[DeflateSym; SIZE])
+fn lengths_to_symbols<const SIZE: usize>(lengths: &[DeflateSym; SIZE])
 -> Result<[u32; SIZE], ZopfliError> {
 	// Count up the codes by code length.
-	let mut counts: [u32; MAXBITS] = [0; MAXBITS];
+	let mut counts: [u32; 16] = [0; 16];
 	for l in lengths.iter().copied() {
-		if (l as usize) < MAXBITS { counts[l as usize] += 1; }
+		if (l as u8) < 16 { counts[l as usize] += 1; }
 		else { return Err(zopfli_error!()); }
 	}
 
 	// Find the numerical value of the smallest code for each code length.
 	counts[0] = 0;
 	let mut code = 0;
-	let mut next_code: [u32; MAXBITS] = [0; MAXBITS];
-	for i in 1..MAXBITS {
+	let mut next_code: [u32; 16] = [0; 16];
+	for i in 1..16 {
 		code = (code + counts[i - 1]) << 1;
 		next_code[i] = code;
 	}
@@ -866,10 +863,8 @@ pub(crate) fn lengths_to_symbols<const MAXBITS: usize, const SIZE: usize>(length
 	// Update the symbols accordingly.
 	let mut symbols = [0; SIZE];
 	for (s, l) in symbols.iter_mut().zip(lengths.iter().copied()) {
-		// The MAXBITS comparison is only for the compiler; it will never not
-		// be true.
 		if ! l.is_zero() {
-			// Safety: we already checked all lengths are less than MAXBITS.
+			// Safety: we already checked all lengths are less than 16.
 			*s = unsafe { *next_code.get_unchecked(l as usize) };
 			next_code[l as usize] += 1;
 		}

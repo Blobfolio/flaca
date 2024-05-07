@@ -25,7 +25,6 @@ mod symbols;
 
 pub(crate) use blocks::{
 	deflate_part,
-	lengths_to_symbols,
 	SplitPoints,
 };
 use cache::MatchCache;
