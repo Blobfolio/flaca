@@ -46,42 +46,34 @@ thread_local!(
 /// Both involve doing (virtually) the same thing several times in a row, so
 /// the centralized storage helps reduce a little bit of that overhead.
 pub(crate) struct TreeLd<'a> {
-	ll_lengths: &'a [u32; ZOPFLI_NUM_LL],
-	d_lengths: &'a [u32; ZOPFLI_NUM_D],
+	ll_lengths: &'a [DeflateSym; ZOPFLI_NUM_LL],
+	d_lengths: &'a [DeflateSym; ZOPFLI_NUM_D],
 	hlit: usize,
 	hdist: usize,
 }
 
 impl<'a> TreeLd<'a> {
 	/// # New.
-	pub(crate) fn new(
-		ll_lengths: &'a [u32; ZOPFLI_NUM_LL],
-		d_lengths: &'a [u32; ZOPFLI_NUM_D],
-	) -> Result<Self, ZopfliError> {
+	pub(crate) const fn new(
+		ll_lengths: &'a [DeflateSym; ZOPFLI_NUM_LL],
+		d_lengths: &'a [DeflateSym; ZOPFLI_NUM_D],
+	) -> Self {
 		// Find the last non-zero length symbol, starting from 285. (The offset
 		// marks the boundary between literals and symbols; we'll use both in
 		// some places, and not in others.)
 		let mut hlit = 29;
-		while hlit > 0 && ll_lengths[256 + hlit] == 0 { hlit -= 1; }
+		while hlit > 0 && ll_lengths[256 + hlit].is_zero() { hlit -= 1; }
 
 		// Now the same for distance, starting at 29 proper.
 		let mut hdist = 29;
-		while hdist > 0 && d_lengths[hdist] == 0 { hdist -= 1; }
+		while hdist > 0 && d_lengths[hdist].is_zero() { hdist -= 1; }
 
-		// All of the values we're considering need to be expressable as
-		// symbols.
-		if
-			ll_lengths.iter().take(hlit + 257).all(|&v| v < 19) &&
-			d_lengths.iter().take(hdist).all(|&v| v < 19)
-		{
-			Ok(Self {
-				ll_lengths,
-				d_lengths,
-				hlit,
-				hdist,
-			})
+		Self {
+			ll_lengths,
+			d_lengths,
+			hlit,
+			hdist,
 		}
-		else { Err(zopfli_error!()) }
 	}
 
 	/// # Total Entries.
@@ -106,20 +98,12 @@ impl<'a> TreeLd<'a> {
 
 		// Fetch it from the lengths table.
 		if idx < ll_len {
-			unsafe {
-				std::mem::transmute::<usize, DeflateSym>(
-					*self.ll_lengths.get_unchecked(idx) as usize
-				)
-			}
+			unsafe { *self.ll_lengths.get_unchecked(idx) }
 		}
 		// Fetch it from the distance table.
 		else {
 			debug_assert!(idx - ll_len <= 29);
-			unsafe {
-				std::mem::transmute::<usize, DeflateSym>(
-					*self.d_lengths.get_unchecked(idx - ll_len) as usize
-				)
-			}
+			unsafe { *self.d_lengths.get_unchecked(idx - ll_len) }
 		}
 	}
 }
@@ -181,10 +165,9 @@ impl<'a> TreeLd<'a> {
 		while i < self.len() {
 			let mut count = 1;
 			let symbol = self.symbol(i);
-			let is_zero = matches!(symbol, DeflateSym::D00);
 
 			// Peek ahead; we may be able to do more in one go.
-			if use_16 || (is_zero && (use_17 || use_18)) {
+			if use_16 || (symbol.is_zero() && (use_17 || use_18)) {
 				let mut j = i + 1;
 				while j < self.len() && symbol == self.symbol(j) {
 					count += 1;
@@ -196,7 +179,7 @@ impl<'a> TreeLd<'a> {
 			}
 
 			// Repetitions of zeroes.
-			if is_zero && count >= 3 {
+			if symbol.is_zero() && count >= 3 {
 				if use_18 {
 					while count >= 11 {
 						let count2 = count.min(138);
@@ -265,14 +248,14 @@ impl<'a> TreeLd<'a> {
 
 			// Write each cl_length in the jumbled DEFLATE order.
 			for &o in &DEFLATE_ORDER[..hclen + 4] {
-				out.add_bits(cl_lengths[o as usize], 3);
+				out.add_bits(cl_lengths[o as usize] as u32, 3);
 			}
 
 			// Write each symbol in order of appearance along with its extra bits,
 			// if any.
 			for (a, b) in rle {
 				let symbol = cl_symbols[a as usize];
-				out.add_huffman_bits(symbol, cl_lengths[a as usize]);
+				out.add_huffman_bits(symbol, cl_lengths[a as usize] as u32);
 
 				// Extra bits.
 				match a {
@@ -309,10 +292,10 @@ impl<'a> TreeLd<'a> {
 /// This writes minimum-redundancy length-limited code bitlengths for tree
 /// symbols with the given counts.
 fn length_limited_code_lengths_tree(frequencies: &[usize; 19])
--> Result<[u32; 19], ZopfliError> {
+-> Result<[DeflateSym; 19], ZopfliError> {
 	// Convert bitlengths to a slice-of-cells so we can chop it up willynilly
 	// without losing writeability.
-	let mut bitlengths = [0_u32; 19];
+	let mut bitlengths = [DeflateSym::D00; 19];
 	let bitcells = Cell::from_mut(bitlengths.as_mut_slice()).as_slice_of_cells();
 
 	// Build up a collection of "leaves" by joining each non-zero frequency
@@ -322,7 +305,7 @@ fn length_limited_code_lengths_tree(frequencies: &[usize; 19])
 
 	// Sortcut: weighting only applies when there are more than two leaves.
 	if leaves.len() <= 2 {
-		for leaf in leaves { leaf.bitlength.set(1); }
+		for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
 		return Ok(bitlengths);
 	}
 
@@ -339,11 +322,11 @@ fn length_limited_code_lengths_tree(frequencies: &[usize; 19])
 /// and distance symbols.
 pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 	frequencies: &[usize; SIZE],
-	bitlengths: &mut [u32; SIZE],
+	bitlengths: &mut [DeflateSym; SIZE],
 ) -> Result<(), ZopfliError> {
 	// For performance reasons the bitlengths are passed by reference, but
 	// they should always be zero-filled by this point.
-	debug_assert!(bitlengths.iter().all(|b| *b == 0));
+	debug_assert!(bitlengths.iter().all(|b| b.is_zero()));
 
 	// Convert bitlengths to a slice-of-cells so we can chop it up willynilly
 	// without losing writeability.
@@ -356,7 +339,7 @@ pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 
 	// Sortcut: weighting only applies when there are more than two leaves.
 	if leaves.len() <= 2 {
-		for leaf in leaves { leaf.bitlength.set(1); }
+		for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
 		return Ok(());
 	}
 
@@ -376,7 +359,7 @@ pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 /// bitlength.
 struct Leaf<'a> {
 	frequency: NonZeroUsize,
-	bitlength: &'a Cell<u32>,
+	bitlength: &'a Cell<DeflateSym>,
 }
 
 impl<'a> Eq for Leaf<'a> {}
@@ -573,7 +556,7 @@ fn llcl_finish<'a>(
 
 	// Okay, now we can write them!
 	let mut writer = leaves.iter().take(last_count).rev();
-	let mut value = 1;
+	let mut value = DeflateSym::D01;
 	while let Some(tail) = node.tail.get() {
 		// Wait for a change in counts to write the values.
 		if tail.count < last_count {
@@ -582,7 +565,11 @@ fn llcl_finish<'a>(
 			}
 			last_count = tail.count;
 		}
-		value += 1;
+
+		// We should never have more tails than symbols!
+		debug_assert!(! matches!(value, DeflateSym::D18));
+
+		value = value.inc();
 		node = tail;
 	}
 
@@ -595,7 +582,7 @@ fn llcl_finish<'a>(
 /// # Make Leaves.
 fn make_leaves<'a, const SIZE: usize>(
 	frequencies: &'a [usize; SIZE],
-	bitlengths: &'a [Cell<u32>],
+	bitlengths: &'a [Cell<DeflateSym>],
 	leaves: &'a mut [Leaf<'a>],
 ) -> &'a mut [Leaf<'a>] {
 	let mut len_leaves = 0;
@@ -630,7 +617,13 @@ mod tests {
 		let f = [252, 0, 1, 6, 9, 10, 6, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 		assert_eq!(
 			length_limited_code_lengths_tree(&f),
-			Ok([1, 0, 6, 4, 3, 3, 3, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+			Ok([
+				DeflateSym::D01, DeflateSym::D00, DeflateSym::D06, DeflateSym::D04,
+				DeflateSym::D03, DeflateSym::D03, DeflateSym::D03, DeflateSym::D05,
+				DeflateSym::D06, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00
+			]),
 		);
 	}
 
@@ -640,13 +633,19 @@ mod tests {
 			0, 0, 0, 0, 0, 0, 18, 0, 6, 0, 12, 2, 14, 9, 27, 15,
 			23, 15, 17, 8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		];
-		let mut b = [0; 32];
+		let mut b = [DeflateSym::D00; 32];
 		assert!(length_limited_code_lengths(&f, &mut b).is_ok());
 		assert_eq!(
 			b,
 			[
-				0, 0, 0, 0, 0, 0, 3, 0, 5, 0, 4, 6, 4, 4, 3, 4,
-				3, 3, 3, 4, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D03, DeflateSym::D00,
+				DeflateSym::D05, DeflateSym::D00, DeflateSym::D04, DeflateSym::D06,
+				DeflateSym::D04, DeflateSym::D04, DeflateSym::D03, DeflateSym::D04,
+				DeflateSym::D03, DeflateSym::D03, DeflateSym::D03, DeflateSym::D04,
+				DeflateSym::D06, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
 			]
 		);
 	}
@@ -657,21 +656,33 @@ mod tests {
 		let mut f = [0; 19];
 		assert_eq!(
 			length_limited_code_lengths_tree(&f),
-			Ok([0; 19]),
+			Ok([DeflateSym::D00; 19]),
 		);
 
 		// One frequency.
 		f[2] = 10;
 		assert_eq!(
 			length_limited_code_lengths_tree(&f),
-			Ok([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+			Ok([
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D01, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00
+			]),
 		);
 
 		// Two frequencies.
 		f[0] = 248;
 		assert_eq!(
 			length_limited_code_lengths_tree(&f),
-			Ok([1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+			Ok([
+				DeflateSym::D01, DeflateSym::D00, DeflateSym::D01, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00, DeflateSym::D00,
+				DeflateSym::D00, DeflateSym::D00, DeflateSym::D00
+			]),
 		);
 	}
 }

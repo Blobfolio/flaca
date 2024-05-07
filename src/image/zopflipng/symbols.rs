@@ -72,6 +72,41 @@ pub(crate) const LENGTH_SYMBOLS_BITS_VALUES: [(Lsym, u8, u8); 259] = [
 	(Lsym::L284, 5, 24), (Lsym::L284, 5, 25), (Lsym::L284, 5, 26), (Lsym::L284, 5, 27), (Lsym::L284, 5, 28), (Lsym::L284, 5, 29), (Lsym::L284, 5, 30), (Lsym::L285, 0, 0),
 ];
 
+impl DeflateSym {
+	#[inline]
+	/// # Increment.
+	///
+	/// Increase by one, unless we're already at the max.
+	pub(crate) const fn inc(self) -> Self {
+		match self {
+			Self::D00 => Self::D01,
+			Self::D01 => Self::D02,
+			Self::D02 => Self::D03,
+			Self::D03 => Self::D04,
+			Self::D04 => Self::D05,
+			Self::D05 => Self::D06,
+			Self::D06 => Self::D07,
+			Self::D07 => Self::D08,
+			Self::D08 => Self::D09,
+			Self::D09 => Self::D10,
+			Self::D10 => Self::D11,
+			Self::D11 => Self::D12,
+			Self::D12 => Self::D13,
+			Self::D13 => Self::D14,
+			Self::D14 => Self::D15,
+			Self::D15 => Self::D16,
+			Self::D16 => Self::D17,
+			Self::D17 | Self::D18 => Self::D18,
+		}
+	}
+
+	#[inline]
+	/// # Is Zero?
+	///
+	/// We check this a lot.
+	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::D00) }
+}
+
 
 
 #[cfg(test)]
