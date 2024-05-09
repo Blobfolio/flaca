@@ -15,7 +15,6 @@ use std::{
 	num::NonZeroUsize,
 };
 use super::{
-	DEFLATE_ORDER,
 	DeflateSym,
 	zopfli_error,
 	ZOPFLI_NUM_D,
@@ -26,13 +25,29 @@ use super::{
 
 
 
+#[allow(unsafe_code)]
+const NZ1: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(1) };
+
+#[allow(unsafe_code)]
+const NZ2: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2) };
+
+
+
 thread_local!(
-	/// # Shared Arena.
+	/// # Node Arena.
 	///
-	/// Each call to `length_limited_code_lengths` generates a hefty
-	/// list of recursive node chains. This helps mitigate the costs of
-	/// reallocation.
-	static BUMP: RefCell<Bump> = RefCell::new(Bump::with_capacity(32_768))
+	/// Each and every call to the (two) length-limited-code-length methods has
+	/// the potential to generate _thousands_ of self-referential `Node` chains,
+	/// only to throw them away at the end of the function call. Haha.
+	///
+	/// This shared storage helps take some of the sting out of the ridiculous
+	/// allocation overhead, at least on a per-thread basis.
+	///
+	/// Note: the initial capacity is set to about 10% of the theoretical
+	/// maximum; bumpalo will bump as needed.
+	static BUMP: RefCell<Bump> = RefCell::new(Bump::with_capacity(
+		(2 * ZOPFLI_NUM_D - 2) * 15 * std::mem::size_of::<Node<'_>>()
+	))
 );
 
 
@@ -150,11 +165,12 @@ impl<'a> TreeLd<'a> {
 		let use_17 = 0 != extra & 2;
 		let use_18 = 0 != extra & 4;
 
-		// Hold the counts for each symbol.
+		// We need a structure to hold the counts for each symbol.
 		let mut cl_counts = [0_usize; 19];
 
-		// If we're writing the result, we need to collect the RLE data; if not
-		// the vector should go unallocated and require minimal overhead.
+		// We also need a structure to hold the positional symbol/count data,
+		// but only if we're going to write the tree at the end. If not, this
+		// will remain unallocated (and hopefully have minimal runtime impact).
 		let mut rle = Vec::new();
 		if out.is_some() { rle.reserve(self.len()); }
 
@@ -231,7 +247,7 @@ impl<'a> TreeLd<'a> {
 
 		// Find the last non-zero count.
 		let mut hclen = 15;
-		while hclen > 0 && cl_counts[DEFLATE_ORDER[hclen + 3] as usize] == 0 {
+		while hclen > 0 && cl_counts[DeflateSym::TREE[hclen + 3] as usize] == 0 {
 			hclen -= 1;
 		}
 
@@ -246,7 +262,7 @@ impl<'a> TreeLd<'a> {
 			out.add_bits(hclen as u32, 4);
 
 			// Write each cl_length in the jumbled DEFLATE order.
-			for &o in &DEFLATE_ORDER[..hclen + 4] {
+			for &o in &DeflateSym::TREE[..hclen + 4] {
 				out.add_bits(cl_lengths[o as usize] as u32, 3);
 			}
 
@@ -390,31 +406,14 @@ struct List<'a> {
 }
 
 impl<'a> List<'a> {
-	/// # New (Initial List).
-	fn new(nodes: &'a Bump, f1: NonZeroUsize, f2: NonZeroUsize) -> Self {
-		let lookahead0 = nodes.alloc(Node {
-			weight: f1.get(),
-			count: 1,
-			tail: Cell::new(None),
-		});
-
-		let lookahead1 = nodes.alloc(Node {
-			weight: f2.get(),
-			count: 2,
-			tail: Cell::new(None),
-		});
-
-		Self { lookahead0, lookahead1 }
-	}
-
 	#[inline]
 	/// # Rotate.
 	fn rotate(&mut self) { self.lookahead0 = self.lookahead1; }
 
 	#[inline]
 	/// # Weight Sum.
-	const fn weight_sum(&self) -> usize {
-		self.lookahead0.weight + self.lookahead1.weight
+	const fn weight_sum(&self) -> NonZeroUsize {
+		self.lookahead0.weight.saturating_add(self.lookahead1.weight.get())
 	}
 }
 
@@ -423,13 +422,14 @@ impl<'a> List<'a> {
 #[derive(Clone)]
 /// # Node.
 struct Node<'a> {
-	weight: usize,
-	count: usize,
+	weight: NonZeroUsize,
+	count: NonZeroUsize,
 	tail: Cell<Option<&'a Node<'a>>>,
 }
 
 
 
+#[allow(clippy::similar_names)]
 #[inline]
 /// # Crunch the Code Lengths.
 ///
@@ -445,9 +445,22 @@ fn llcl<'a, const MAXBITS: usize>(
 		return Err(zopfli_error!());
 	}
 
+	// Two starting nodes.
+	let node0 = Node {
+		weight: leaves[0].frequency,
+		count: NZ1,
+		tail: Cell::new(None),
+	};
+
+	let node1 = Node {
+		weight: leaves[1].frequency,
+		count: NZ2,
+		tail: Cell::new(None),
+	};
+
 	// The max MAXBITS is only 15, so we might as well just (slightly)
 	// over-allocate an array to hold our lists.
-	let mut raw_lists = [List::new(nodes, leaves[0].frequency, leaves[1].frequency); MAXBITS];
+	let mut raw_lists = [List { lookahead0: &node0, lookahead1: &node1 }; MAXBITS];
 	let lists = &mut raw_lists[..MAXBITS.min(leaves.len() - 1)];
 
 	// In the last list, (2 * len_leaves - 2) active chains need to be
@@ -479,14 +492,14 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 	// We're at the beginning, which is the end since we're iterating in
 	// reverse.
 	if rest.is_empty() {
-		if last_count < leaves.len() {
+		if let Some(last_leaf) = leaves.get(last_count.get()) {
 			// Shift the lookahead and add a new node.
 			current.rotate();
-			current.lookahead1 = nodes.alloc(Node {
-				weight: leaves[last_count].frequency.get(),
-				count: last_count + 1,
+			current.lookahead1 = nodes.try_alloc(Node {
+				weight: last_leaf.frequency,
+				count: last_count.saturating_add(1),
 				tail: current.lookahead0.tail.clone(),
-			});
+			}).map_err(|_| zopfli_error!())?;
 		}
 		return Ok(());
 	}
@@ -498,21 +511,23 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 	let weight_sum = previous.weight_sum();
 
 	// Add a leaf and increment the count.
-	if last_count < leaves.len() && leaves[last_count].frequency.get() < weight_sum {
-		current.lookahead1 = nodes.alloc(Node {
-			weight: leaves[last_count].frequency.get(),
-			count: last_count + 1,
-			tail: current.lookahead0.tail.clone(),
-		});
-		return Ok(());
+	if let Some(last_leaf) = leaves.get(last_count.get()) {
+		if last_leaf.frequency < weight_sum {
+			current.lookahead1 = nodes.try_alloc(Node {
+				weight: last_leaf.frequency,
+				count: last_count.saturating_add(1),
+				tail: current.lookahead0.tail.clone(),
+			}).map_err(|_| zopfli_error!())?;
+			return Ok(());
+		}
 	}
 
 	// Update the tail.
-	current.lookahead1 = nodes.alloc(Node {
+	current.lookahead1 = nodes.try_alloc(Node {
 		weight: weight_sum,
 		count: last_count,
 		tail: Cell::new(Some(previous.lookahead1)),
-	});
+	}).map_err(|_| zopfli_error!())?;
 
 	// Replace the used-up lookahead chains by recursing twice.
 	llcl_boundary_pm(leaves, rest, nodes)?;
@@ -535,12 +550,12 @@ fn llcl_finish<'a>(
 	// Add one more chain or update the tail.
 	let last_count = list_z.lookahead1.count;
 	let weight_sum = list_y.weight_sum();
-	if last_count < leaves.len() && leaves[last_count].frequency.get() < weight_sum {
-		list_z.lookahead1 = nodes.alloc(Node {
-			weight: 0,
-			count: last_count + 1,
+	if last_count.get() < leaves.len() && leaves[last_count.get()].frequency < weight_sum {
+		list_z.lookahead1 = nodes.try_alloc(Node {
+			weight: NZ1, // We'll never look at this value.
+			count: last_count.saturating_add(1),
 			tail: list_z.lookahead1.tail.clone(),
-		});
+		}).map_err(|_| zopfli_error!())?;
 	}
 	else {
 		list_z.lookahead1.tail.set(Some(list_y.lookahead1));
@@ -551,30 +566,31 @@ fn llcl_finish<'a>(
 	let mut last_count = node.count;
 
 	// But make sure we counted correctly first!
-	if leaves.len() < last_count { return Err(zopfli_error!()); }
+	debug_assert!(leaves.len() >= last_count.get());
 
 	// Okay, now we can write them!
-	let mut writer = leaves.iter().take(last_count).rev();
-	let mut value = DeflateSym::D01;
-	while let Some(tail) = node.tail.get() {
-		// Wait for a change in counts to write the values.
-		if tail.count < last_count {
-			for leaf in writer.by_ref().take(last_count - tail.count) {
-				leaf.bitlength.set(value);
+	let mut writer = leaves.iter().take(last_count.get()).rev();
+	for value in DeflateSym::LIMITED {
+		// Pull the next tail, if any.
+		if let Some(tail) = node.tail.get() {
+			// Wait for a change in counts to write the values.
+			if tail.count < last_count {
+				for leaf in writer.by_ref().take(last_count.get() - tail.count.get()) {
+					leaf.bitlength.set(value);
+				}
+				last_count = tail.count;
 			}
-			last_count = tail.count;
+			node = tail;
 		}
-
-		// We should never have more tails than symbols!
-		debug_assert!(! matches!(value, DeflateSym::D18));
-
-		value = value.inc();
-		node = tail;
+		// Write the remaining entries and quit!
+		else {
+			for leaf in writer { leaf.bitlength.set(value); }
+			return Ok(());
+		}
 	}
 
-	// Write the final value to any remaining leaves.
-	for leaf in writer { leaf.bitlength.set(value); }
-	Ok(())
+	// This shouldn't be reachable.
+	Err(zopfli_error!())
 }
 
 #[inline]
@@ -642,8 +658,7 @@ fn make_symbols(lengths: &[DeflateSym; 19])
 mod tests {
 	use super::*;
 
-	// The original zopfli has no unit tests, but the zopfli-rs Rust port has
-	// a few, and they work for us too, so that's promising!
+	// These tests have been adapted from the zopfli-rs crate:
 	// <https://github.com/zopfli-rs/zopfli/blob/main/src/katajainen.rs>
 
 	#[test]

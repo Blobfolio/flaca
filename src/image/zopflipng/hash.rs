@@ -439,15 +439,10 @@ impl ZopfliHash {
 			// Hash the remainder.
 			self.update_hash(&arr[i..], i);
 
-			// Relative position for the costs and lengths, which have
-			// (iend - istart + 1) entries, so j is always in range when i is.
-			let mut j = i - instart;
-
 			// We're in a long repetition of the same character and have more
 			// than ZOPFLI_MAX_MATCH ahead of and behind us.
 			if self._get_best_lengths_max_match(instart, i, stats, arr, costs) {
 				i += ZOPFLI_MAX_MATCH;
-				j += ZOPFLI_MAX_MATCH;
 			}
 
 			// Find the longest remaining match.
@@ -461,6 +456,10 @@ impl ZopfliHash {
 				lmc,
 				Some(instart),
 			)?;
+
+			// Relative position for the costs and lengths, which have
+			// (iend - istart + 1) entries, so j is always in range when i is.
+			let j = i - instart;
 
 			// This should never trigger; it is mainly a reminder to the
 			// compiler that our i/j indices are still applicable.
