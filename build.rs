@@ -86,6 +86,7 @@ fn build_ffi() {
 		])
 		.define("LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS", None)
 		.define("LODEPNG_NO_COMPILE_CPP", None)
+		.define("LODEPNG_NO_COMPILE_CRC", None)
 		.define("LODEPNG_NO_COMPILE_DISK", None)
 		.compile("zopflipng");
 
@@ -102,12 +103,12 @@ fn build_ffi() {
 fn build_symbols() {
 	use std::fmt::Write;
 
-	let mut out = r"#[repr(usize)]
-#[derive(Clone, Copy)]
+	let mut out = r"#[repr(u8)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// # Whackadoodle Deflate Indices.
 pub(crate) enum DeflateSym {".to_owned();
 	for i in 0..19 {
-		write!(&mut out, "\n\tD{i:02} = {i}_usize,").unwrap();
+		write!(&mut out, "\n\tD{i:02} = {i}_u8,").unwrap();
 	}
 	out.push_str(r"
 }
@@ -201,6 +202,7 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 		.clang_args([
 			"-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS",
 			"-DLODEPNG_NO_COMPILE_CPP",
+			"-DLODEPNG_NO_COMPILE_CRC",
 			"-DLODEPNG_NO_COMPILE_DISK",
 		])
 		.header(lodepng_src.join("lodepng.h").to_string_lossy())
@@ -254,8 +256,8 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 	}
 
 	// Allow dead code for these two enum variants we aren't using.
-	for i in ["LCT_MAX_OCTET_VALUE = 255,", "LFS_PREDEFINED = 8,"] {
-		out = out.replace(i, &format!("#[allow(dead_code)] {i}"));
+	for i in ["pub enum LodePNGFilterStrategy", "pub enum LodePNGColorType"] {
+		out = out.replace(i, &format!("#[allow(dead_code)]\n{i}"));
 	}
 
 	// Switch from pub to pub(super).

@@ -34,7 +34,6 @@ use error::{
 };
 pub(crate) use hash::ZopfliState;
 use lz77::LZ77Store;
-use kat::length_limited_code_lengths;
 use super::{
 	ffi::EncodedImage,
 	lodepng::{
@@ -46,7 +45,7 @@ use super::{
 	},
 };
 use symbols::{
-	DEFLATE_ORDER,
+	DeflateSym,
 	DISTANCE_BITS,
 	DISTANCE_SYMBOLS,
 	DISTANCE_VALUES,
@@ -59,21 +58,18 @@ use symbols::{
 
 
 /// # Fixed Trees (for extern).
-const FIXED_TREE_LL: [u32; 288] = [
-	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
-	8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9,
-	9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
-	9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
-	9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
-	9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
-	9, 9, 9, 9, 9, 9, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8
+const FIXED_TREE_LL: [DeflateSym; 288] = [
+	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
+	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
+	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
+	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
+	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09,
+	DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09,
+	DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09,
+	DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09,
+	DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
 ];
-const FIXED_TREE_D: [u32; 32] = [5; 32];
+const FIXED_TREE_D: [DeflateSym; 32] = [DeflateSym::D05; 32];
 const ZOPFLI_NUM_LL: usize = FIXED_TREE_LL.len();
 const ZOPFLI_NUM_D: usize = FIXED_TREE_D.len();
 

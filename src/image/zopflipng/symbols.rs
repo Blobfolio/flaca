@@ -19,17 +19,6 @@ pub(crate) const DISTANCE_BITS: [u8; 32] = [
 	7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 0, 0,
 ];
 
-/// # Whackadoodle DEFLATE Ordering.
-///
-/// Tree encoding writes data out-of-order for some reason. This is that order.
-pub(crate) const DEFLATE_ORDER: [DeflateSym; 19] = [
-	DeflateSym::D16, DeflateSym::D17, DeflateSym::D18, DeflateSym::D00,
-	DeflateSym::D08, DeflateSym::D07, DeflateSym::D09, DeflateSym::D06,
-	DeflateSym::D10, DeflateSym::D05, DeflateSym::D11, DeflateSym::D04,
-	DeflateSym::D12, DeflateSym::D03, DeflateSym::D13, DeflateSym::D02,
-	DeflateSym::D14, DeflateSym::D01, DeflateSym::D15,
-];
-
 /// # Length Symbols, Extra Bits, and Bit Values.
 ///
 /// This contains all symbols, bits, and bit values indexed by their
@@ -72,11 +61,52 @@ pub(crate) const LENGTH_SYMBOLS_BITS_VALUES: [(Lsym, u8, u8); 259] = [
 	(Lsym::L284, 5, 24), (Lsym::L284, 5, 25), (Lsym::L284, 5, 26), (Lsym::L284, 5, 27), (Lsym::L284, 5, 28), (Lsym::L284, 5, 29), (Lsym::L284, 5, 30), (Lsym::L285, 0, 0),
 ];
 
+impl DeflateSym {
+	/// # Jumbled Tree Symbols.
+	///
+	/// This ordering is used when encoding DEFLATE trees.
+	pub(crate) const TREE: [Self; 19] = [
+		Self::D16, Self::D17, Self::D18, Self::D00, Self::D08,
+		Self::D07, Self::D09, Self::D06, Self::D10, Self::D05,
+		Self::D11, Self::D04, Self::D12, Self::D03, Self::D13,
+		Self::D02, Self::D14, Self::D01, Self::D15,
+	];
+
+	/// # Length-Limited Symbols.
+	///
+	/// This excludes the extra-bit symbols (16-18) and zero.
+	pub(crate) const LIMITED: [Self; 15] = [
+		Self::D01, Self::D02, Self::D03, Self::D04, Self::D05,
+		Self::D06, Self::D07, Self::D08, Self::D09, Self::D10,
+		Self::D11, Self::D12, Self::D13, Self::D14, Self::D15,
+	];
+
+	#[inline]
+	/// # Is Zero?
+	///
+	/// We check this a lot.
+	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::D00) }
+}
+
 
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	/// # Deflate Symbol Incrementation.
+	fn t_deflatesym_inc() {
+		for s in DEFLATE_ORDER.iter().copied() {
+			if matches!(s, DeflateSym::D18) { assert!(s.inc().is_none()); }
+			else {
+				assert_eq!(
+					s.inc().map(|n| n as u8),
+					Some((s as u8) + 1),
+				);
+			}
+		}
+	}
 
 	// Note: the original `symbols.h` distance-related methods come in two
 	// flavors: one leveraging compiler math built-ins and one loaded with

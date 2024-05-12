@@ -26,9 +26,11 @@ doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
-export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Clinker=clang -Clink-arg=-fuse-ld=lld"
+export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Cllvm-args=--cost-kind=throughput -Clinker-plugin-lto -Clink-arg=-fuse-ld=lld"
 export CC := "clang"
 export CXX := "clang++"
+export CFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
+export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 
 
 
@@ -95,13 +97,9 @@ export CXX := "clang++"
 
 # Build Docs.
 @doc:
-	# Make sure nightly is installed; this version generates better docs.
-	env RUSTUP_PERMIT_COPY_RENAME=true rustup install nightly
-
 	# Make the docs.
-	cargo +nightly doc \
+	cargo rustdoc \
 		--release \
-		--no-deps \
 		--target-dir "{{ cargo_dir }}"
 
 	# Move the docs and clean up ownership.

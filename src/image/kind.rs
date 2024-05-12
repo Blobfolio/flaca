@@ -57,23 +57,14 @@ impl From<u8> for ImageKind {
 impl ImageKind {
 	/// # Is JPEG?
 	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
-		const END: [u8; 2] = [0xFF, 0xD9];
-
 		12 < src.len() &&
 		src[..3] == [0xFF, 0xD8, 0xFF] &&
-		match src[3] {
-			0xE0 =>
-				src[6..11] == [b'J', b'F', b'I', b'F', 0x00] ||
-				src[src.len() - 2..] == END,
-			0xE1 => src[6..11] ==
-				[b'E', b'x', b'i', b'f', 0x00] ||
-				src[src.len() - 2..] == END,
-			0xE8 => src[6..12] ==
-				[b'S', b'P', b'I', b'F', b'F', 0x00] ||
-				src[src.len() - 2..] == END,
-			0xDB | 0xE2..=0xEF => src[src.len() - 2..] == END,
-			_ => false,
-		}
+		(
+			(src[3] == 0xE0 && src[6..11] == [b'J', b'F', b'I', b'F', 0x00]) ||
+			(src[3] == 0xE1 && src[6..11] == [b'E', b'x', b'i', b'f', 0x00]) ||
+			(src[3] == 0xE8 && src[6..12] == [b'S', b'P', b'I', b'F', b'F', 0x00]) ||
+			(matches!(src[3], 0xDB | 0xE0..=0xEF) && src[src.len() - 2..] == [0xFF, 0xD9])
+		)
 	}
 
 	/// # Is PNG?
@@ -116,10 +107,42 @@ mod tests {
 		test_kind!(
 			"./skel/assets/empty.jpg" None,
 			"./skel/assets/executable.sh" None,
+			"./skel/assets/herring.png" None,
+			"./skel/assets/jpg/01.jpg" Some(ImageKind::Jpeg),
 			"./skel/assets/jpg/02.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/03.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/04.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/05.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/06.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/07.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/08.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/09.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/10.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/11.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/12.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/13.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/14.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/15.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/16.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/17.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/18.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/19.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/20.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/21.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/22.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/jpg/23.jpg" Some(ImageKind::Jpeg),
+			"./skel/assets/png/01.png" Some(ImageKind::Png),
 			"./skel/assets/png/02.png" Some(ImageKind::Png),
-			"./skel/assets/wolf.png" Some(ImageKind::Jpeg),
-			"./skel/assets/wolf.jpg" Some(ImageKind::Png)
+			"./skel/assets/png/03.png" Some(ImageKind::Png),
+			"./skel/assets/png/04.png" Some(ImageKind::Png),
+			"./skel/assets/png/05.png" Some(ImageKind::Png),
+			"./skel/assets/png/06.png" Some(ImageKind::Png),
+			"./skel/assets/png/poe.png" Some(ImageKind::Png),
+			"./skel/assets/png/small-bw.png" Some(ImageKind::Png),
+			"./skel/assets/png/small-bwa.png" Some(ImageKind::Png),
+			"./skel/assets/png/small.png" Some(ImageKind::Png),
+			"./skel/assets/wolf.jpg" Some(ImageKind::Png),
+			"./skel/assets/wolf.png" Some(ImageKind::Jpeg)
 		);
 	}
 }

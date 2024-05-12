@@ -236,7 +236,7 @@ impl LZ77StoreEntry {
 			let (ll_symbol, d_symbol) =
 				if dist <= 0 {
 					// Safety: the maximum Lsym is 285.
-					(unsafe { std::mem::transmute(litlen) }, Dsym::D00)
+					(unsafe { std::mem::transmute::<u16, Lsym>(litlen) }, Dsym::D00)
 				}
 				else {(
 					LENGTH_SYMBOLS_BITS_VALUES[litlen as usize].0,
@@ -245,7 +245,7 @@ impl LZ77StoreEntry {
 
 			Ok(Self {
 				pos,
-				litlen: unsafe { std::mem::transmute(litlen) },
+				litlen: unsafe { std::mem::transmute::<u16, LitLen>(litlen) },
 				dist,
 				ll_symbol,
 				d_symbol,

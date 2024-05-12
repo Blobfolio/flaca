@@ -36,7 +36,10 @@
 mod error;
 mod image;
 
-pub(crate) use error::FlacaError;
+pub(crate) use error::{
+	EncodingError,
+	FlacaError,
+};
 pub(crate) use image::kind::ImageKind;
 
 use argyle::{
@@ -72,6 +75,7 @@ use rayon::iter::{
 };
 use std::{
 	num::NonZeroUsize,
+	path::Path,
 	sync::{
 		Arc,
 		atomic::{
@@ -161,17 +165,9 @@ fn _main() -> Result<(), FlacaError> {
 	let oxi = image::oxipng_options();
 
 	// Set up a threadpool for our workload.
-	let mut threads = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
-	if let Some(t) = args.option(b"-j") {
-		if let Some(t) = t.strip_prefix(b"-").and_then(NonZeroUsize::btou) {
-			threads = threads.get().checked_sub(t.get())
-				.and_then(NonZeroUsize::new)
-				.unwrap_or(NonZeroUsize::MIN);
-		}
-		else if let Some(t) = NonZeroUsize::btou(t) {
-			if t < threads { threads = t; }
-		}
-	}
+	let threads =
+		if total == 1 { NonZeroUsize::MIN }
+		else { num_threads(&args) };
 	let pool = rayon::ThreadPoolBuilder::new()
 		.num_threads(threads.get())
 		.build()
@@ -195,21 +191,17 @@ fn _main() -> Result<(), FlacaError> {
 				progress.add(&tmp);
 
 				match image::encode(x, kinds, &oxi) {
-					// The image was intentionally skipped.
-					Some((0, 0)) => {
-						skipped.fetch_add(1, Relaxed);
-					},
-					// The image was processed and maybe updated.
-					Some((b, a)) => {
+					// Happy.
+					Ok((b, a)) => {
 						before.fetch_add(b, Relaxed);
 						after.fetch_add(a, Relaxed);
 					},
-					// The image could not be read or decoded.
-					None => {
-						progress.push_msg(Msg::custom("Skipped", 11, &format!(
-							"{tmp} \x1b[2m(Unrecognized format.)\x1b[0m"
-						)), true);
+					// Skipped.
+					Err(e) => {
 						skipped.fetch_add(1, Relaxed);
+						if ! matches!(e, EncodingError::Skipped) {
+							skip_warn(x, kinds, e, &progress);
+						}
 					},
 				}
 
@@ -280,7 +272,7 @@ FLAGS:
     -h, --help        Print help information and exit.
         --no-jpeg     Skip JPEG images.
         --no-png      Skip PNG images.
-    -p, --progress    Show progress bar while minifying.
+    -p, --progress    Show pretty progress while minifying.
     -V, --version     Print version information and exit.
 
 OPTIONS:
@@ -318,6 +310,22 @@ OPTIMIZERS USED:
 	));
 }
 
+/// # Number of Threads.
+fn num_threads(args: &Argue) -> NonZeroUsize {
+	let mut threads = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+	if let Some(t) = args.option(b"-j") {
+		if let Some(t) = t.strip_prefix(b"-").and_then(NonZeroUsize::btou) {
+			threads = threads.get().checked_sub(t.get())
+				.and_then(NonZeroUsize::new)
+				.unwrap_or(NonZeroUsize::MIN);
+		}
+		else if let Some(t) = NonZeroUsize::btou(t) {
+			if t < threads { threads = t; }
+		}
+	}
+	threads
+}
+
 /// # Hook Up CTRL+C.
 ///
 /// Once stops processing new items, twice forces immediate shutdown.
@@ -328,4 +336,23 @@ fn sigint(killed: Arc<AtomicBool>, progress: Option<Progless>) {
 		}
 		else { std::process::exit(1); }
 	);
+}
+
+#[cold]
+/// # Maybe Warn About a Skip.
+fn skip_warn(file: &Path, kinds: ImageKind, err: EncodingError, progress: &Progless) {
+	// If we're only compressing one or the other kind of image, make sure the
+	// file extension belongs to that kind before complaining about it.
+	if kinds != ImageKind::All {
+		let file_kind =
+			if Some(E_PNG) == Extension::try_from3(file) { ImageKind::Png }
+			else { ImageKind::Jpeg };
+		if ImageKind::None == kinds & file_kind { return; }
+	}
+
+	progress.push_msg(Msg::custom("Skipped", 11, &format!(
+		"{} \x1b[2m({})\x1b[0m",
+		file.to_string_lossy(),
+		err.as_str(),
+	)), true);
 }

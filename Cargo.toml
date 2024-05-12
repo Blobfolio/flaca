@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.0.2"
+version = "3.0.3"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -54,7 +54,7 @@ description = "Skip PNG images."
 [[package.metadata.bashman.switches]]
 short = "-p"
 long = "--progress"
-description = "Show progress bar while minifying."
+description = "Show pretty progress while minifying."
 
 [[package.metadata.bashman.switches]]
 short = "-V"
@@ -108,6 +108,7 @@ items = [
 [dependencies]
 argyle = "0.7.*"
 bumpalo = "=3.16.0"
+crc32fast = "1.4.*"
 ctrlc = "=3.4.4"
 dactyl = "0.7.*"
 dowser = "0.9.*"

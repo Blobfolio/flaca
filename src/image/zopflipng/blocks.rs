@@ -11,12 +11,12 @@ use std::{
 	collections::HashSet,
 };
 use super::{
-	DEFLATE_ORDER,
+	DeflateSym,
 	DISTANCE_BITS,
 	DISTANCE_VALUES,
 	FIXED_TREE_D,
 	FIXED_TREE_LL,
-	length_limited_code_lengths,
+	kat,
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LZ77Store,
 	stats::{
@@ -73,6 +73,7 @@ impl SplitPoints {
 }
 
 impl SplitPoints {
+	#[inline]
 	/// # Uncompressed Split Pass.
 	///
 	/// This sets the uncompressed split points, by way of first setting the
@@ -107,6 +108,7 @@ impl SplitPoints {
 		else { Ok(len) }
 	}
 
+	#[inline]
 	/// # LZ77 Split Pass.
 	///
 	/// This sets the LZ77 split points according to convoluted cost
@@ -159,6 +161,7 @@ impl SplitPoints {
 		Ok(len)
 	}
 
+	#[inline]
 	/// # Split Best.
 	///
 	/// Compare the optimal raw split points with a dedicated lz77 pass and
@@ -228,6 +231,7 @@ impl SplitPoints {
 
 
 
+#[inline]
 /// # Deflate a Part.
 ///
 /// Image compression is done in chunks of a million bytes. This does all the
@@ -406,8 +410,8 @@ fn add_lz77_block(
 	let (ll_lengths, d_lengths) =
 		if matches!(btype, BlockType::Fixed) { (FIXED_TREE_LL, FIXED_TREE_D) }
 		else {
-			let mut ll_lengths = [0_u32; ZOPFLI_NUM_LL];
-			let mut d_lengths = [0_u32; ZOPFLI_NUM_D];
+			let mut ll_lengths = [DeflateSym::D00; ZOPFLI_NUM_LL];
+			let mut d_lengths = [DeflateSym::D00; ZOPFLI_NUM_D];
 			get_dynamic_lengths(
 				store,
 				lstart,
@@ -415,13 +419,13 @@ fn add_lz77_block(
 				&mut ll_lengths,
 				&mut d_lengths,
 			)?;
-			add_dynamic_tree(&ll_lengths, &d_lengths, out)?;
+			kat::TreeLd::new(&ll_lengths, &d_lengths).encode_tree(out)?;
 			(ll_lengths, d_lengths)
 		};
 
 	// Now sort out the symbols.
-	let ll_symbols = lengths_to_symbols::<16, ZOPFLI_NUM_LL>(&ll_lengths)?;
-	let d_symbols = lengths_to_symbols::<16, ZOPFLI_NUM_D>(&d_lengths)?;
+	let ll_symbols = lengths_to_symbols(&ll_lengths)?;
+	let d_symbols = lengths_to_symbols(&d_lengths)?;
 
 	// Write all the data!
 	add_lz77_data(
@@ -431,7 +435,7 @@ fn add_lz77_block(
 	)?;
 
 	// Finish up by writting the end symbol.
-	out.add_huffman_bits(ll_symbols[256], ll_lengths[256]);
+	out.add_huffman_bits(ll_symbols[256], ll_lengths[256] as u32);
 	Ok(())
 }
 
@@ -440,6 +444,7 @@ fn add_lz77_block(
 	clippy::cast_sign_loss,
 	clippy::too_many_arguments,
 )]
+#[inline]
 /// # Add LZ77 Block (Automatic Type).
 ///
 /// This calculates the expected output sizes for all three block types, then
@@ -494,23 +499,11 @@ fn add_lz77_block_auto_type(
 	)
 }
 
-/// # Add Dynamic Tree.
-///
-/// Determine the optimal tree index, then add it to the output.
-fn add_dynamic_tree(
-	ll_lengths: &[u32; ZOPFLI_NUM_LL],
-	d_lengths: &[u32; ZOPFLI_NUM_D],
-	out: &mut ZopfliOut
-) -> Result<(), ZopfliError> {
-	let (i, _) = calculate_tree_size(ll_lengths, d_lengths)?;
-	encode_tree(ll_lengths, d_lengths, i, Some(out))?;
-	Ok(())
-}
-
 #[allow(
 	clippy::cast_sign_loss,
 	clippy::too_many_arguments,
 )]
+#[inline]
 /// # Add LZ77 Data.
 ///
 /// This adds all lit/len/dist codes from the lists as huffman symbols, but not
@@ -521,9 +514,9 @@ fn add_lz77_data(
 	lend: usize,
 	expected_data_size: usize,
 	ll_symbols: &[u32; ZOPFLI_NUM_LL],
-	ll_lengths: &[u32; ZOPFLI_NUM_LL],
+	ll_lengths: &[DeflateSym; ZOPFLI_NUM_LL],
 	d_symbols: &[u32; ZOPFLI_NUM_D],
-	d_lengths: &[u32; ZOPFLI_NUM_D],
+	d_lengths: &[DeflateSym; ZOPFLI_NUM_D],
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
 	let mut test_size = 0;
@@ -533,30 +526,30 @@ fn add_lz77_data(
 			if (e.litlen as u16) >= 256 {
 				return Err(zopfli_error!());
 			}
-			if ll_lengths[e.litlen as usize] == 0 { return Err(zopfli_error!()); }
+			if ll_lengths[e.litlen as usize].is_zero() { return Err(zopfli_error!()); }
 
 			out.add_huffman_bits(
 				ll_symbols[e.litlen as usize],
-				ll_lengths[e.litlen as usize],
+				ll_lengths[e.litlen as usize] as u32,
 			);
 			test_size += 1;
 		}
 		// Length and distance.
 		else {
 			let (symbol, bits, value) = LENGTH_SYMBOLS_BITS_VALUES[e.litlen as usize];
-			if ll_lengths[symbol as usize] == 0 { return Err(zopfli_error!()); }
+			if ll_lengths[symbol as usize].is_zero() { return Err(zopfli_error!()); }
 
 			out.add_huffman_bits(
 				ll_symbols[symbol as usize],
-				ll_lengths[symbol as usize],
+				ll_lengths[symbol as usize] as u32,
 			);
 			out.add_bits(u32::from(value), u32::from(bits));
 
 			// Now the distance bits.
-			if d_lengths[e.d_symbol as usize] == 0 { return Err(zopfli_error!()); }
+			if d_lengths[e.d_symbol as usize].is_zero() { return Err(zopfli_error!()); }
 			out.add_huffman_bits(
 				d_symbols[e.d_symbol as usize],
-				d_lengths[e.d_symbol as usize],
+				d_lengths[e.d_symbol as usize] as u32,
 			);
 			out.add_bits(
 				u32::from(DISTANCE_VALUES[e.dist as usize]),
@@ -600,8 +593,8 @@ fn calculate_block_size(
 			) + 3)
 		},
 		BlockType::Dynamic => {
-			let mut ll_lengths = [0_u32; ZOPFLI_NUM_LL];
-			let mut d_lengths = [0_u32; ZOPFLI_NUM_D];
+			let mut ll_lengths = [DeflateSym::D00; ZOPFLI_NUM_LL];
+			let mut d_lengths = [DeflateSym::D00; ZOPFLI_NUM_D];
 			get_dynamic_lengths(
 				store,
 				lstart,
@@ -642,8 +635,8 @@ fn calculate_block_size_auto_type(
 fn calculate_block_symbol_size_given_counts(
 	ll_counts: &[usize; ZOPFLI_NUM_LL],
 	d_counts: &[usize; ZOPFLI_NUM_D],
-	ll_lengths: &[u32; ZOPFLI_NUM_LL],
-	d_lengths: &[u32; ZOPFLI_NUM_D],
+	ll_lengths: &[DeflateSym; ZOPFLI_NUM_LL],
+	d_lengths: &[DeflateSym; ZOPFLI_NUM_D],
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
@@ -669,12 +662,12 @@ fn calculate_block_symbol_size_given_counts(
 	// The lengths and counts with extra bits.
 	for (i, lbit) in LENGTH_EXTRA_BITS.iter().copied().enumerate() {
 		let i = i + 257;
-		result += (ll_lengths[i] + u32::from(lbit)) as usize * ll_counts[i];
+		result += (ll_lengths[i] as usize + usize::from(lbit)) * ll_counts[i];
 	}
 
 	// The distance lengths, counts, and extra bits.
 	for (i, dbit) in DISTANCE_BITS.iter().copied().enumerate().take(30) {
-		result += (d_lengths[i] + u32::from(dbit)) as usize * d_counts[i];
+		result += (d_lengths[i] as usize + usize::from(dbit)) * d_counts[i];
 	}
 
 	result
@@ -682,8 +675,8 @@ fn calculate_block_symbol_size_given_counts(
 
 /// # Calculate Small Block Symbol Size.
 fn calculate_block_symbol_size_small(
-	ll_lengths: &[u32; ZOPFLI_NUM_LL],
-	d_lengths: &[u32; ZOPFLI_NUM_D],
+	ll_lengths: &[DeflateSym; ZOPFLI_NUM_LL],
+	d_lengths: &[DeflateSym; ZOPFLI_NUM_D],
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
@@ -709,196 +702,6 @@ fn calculate_block_symbol_size_small(
 	}
 
 	result
-}
-
-/// # Calculate the Exact Tree Size (in Bits).
-///
-/// This returns the index that produced the smallest size, and its size.
-fn calculate_tree_size(
-	ll_lengths: &[u32; ZOPFLI_NUM_LL],
-	d_lengths: &[u32; ZOPFLI_NUM_D],
-) -> Result<(u8, usize), ZopfliError> {
-	let mut best_size = usize::MAX;
-	let mut best_idx = 0;
-
-	for i in 0..8 {
-		let size = encode_tree(ll_lengths, d_lengths, i, None)?;
-
-		if size < best_size {
-			best_size = size;
-			best_idx = i;
-		}
-	}
-
-	Ok((best_idx, best_size))
-}
-
-#[allow(
-	clippy::cast_possible_truncation,
-	clippy::cognitive_complexity, // Yeah, this is terrible!
-	clippy::similar_names,
-)]
-/// # Encode Huffman Tree.
-///
-/// Build a tree and optionally write it to the output file, returning the
-/// resulting size in any case.
-///
-/// The `use_16`, et al, variables indicate whether or not to encode
-/// eligible counts in the extended parts of the alphabet.
-fn encode_tree(
-	ll_lengths: &[u32; ZOPFLI_NUM_LL],
-	d_lengths: &[u32; ZOPFLI_NUM_D],
-	extra: u8,
-	out: Option<&mut ZopfliOut>,
-) -> Result<usize, ZopfliError> {
-	// To use or not to use the extended part of the alphabet.
-	let use_16: bool = 0 != extra & 1;
-	let use_17: bool = 0 != extra & 2;
-	let use_18: bool = 0 != extra & 4;
-
-	// Repetition counts and bit values. Only applicable when `out.is_some()`.
-	let mut rle: Vec<(u32, u32)> = Vec::new();
-
-	// Code counts and lengths.
-	let mut cl_counts = [0_usize; 19];
-	let mut cl_lengths = [0_u32; 19];
-
-	// Find the last non-zero length index.
-	let mut hlit = 29;
-	while hlit > 0 && ll_lengths[256 + hlit] == 0 { hlit -= 1; }
-	let hlit2 = hlit + 257; // Same as hlit, but in symbol form.
-
-	// And do the same for distance.
-	let mut hdist = 29;
-	while hdist > 0 && d_lengths[hdist] == 0 { hdist -= 1; }
-
-	// The upcoming loop processes lengths and distances together (one after
-	// the other). This macro returns the symbol from the appropriate table
-	// based on the index.
-	macro_rules! length_or_distance {
-		($idx:ident) => (
-			if $idx < hlit2 { ll_lengths[$idx] }
-			else {
-				// This mask isn't necessary but the compiler doesn't
-				// understand what we're trying to do.
-				d_lengths[($idx - hlit2).min(29)]
-			}
-		);
-	}
-
-	// Run through all the length symbols, then the distance symbols, with the
-	// odd skip to keep us on our toes.
-	let lld_total = hlit2 + hdist + 1;
-	let mut i = 0;
-	while i < lld_total {
-		let mut count = 1;
-		let symbol = length_or_distance!(i);
-		if symbol >= 19 { return Err(zopfli_error!()); }
-
-		// Peek ahead; we may be able to do more in one go.
-		if use_16 || (symbol == 0 && (use_17 || use_18)) {
-			let mut j = i + 1;
-			while j < lld_total && symbol == length_or_distance!(j) {
-				count += 1;
-				j += 1;
-			}
-
-			// Skip these indices, if any, on the next pass.
-			i += count - 1;
-		}
-
-		// Repetitions of zeroes.
-		if symbol == 0 && count >= 3 {
-			if use_18 {
-				while count >= 11 {
-					let count2 = count.min(138);
-					if out.is_some() { rle.push((18, count2 as u32 - 11)); }
-					cl_counts[18] += 1;
-					count -= count2;
-				}
-			}
-			if use_17 {
-				while count >= 3 {
-					let count2 = count.min(10);
-					if out.is_some() { rle.push((17, count2 as u32 - 3)); }
-					cl_counts[17] += 1;
-					count -= count2;
-				}
-			}
-		}
-
-		// Repetitions of any symbol.
-		if use_16 && count >= 4 {
-			// The first one always counts.
-			count -= 1;
-			cl_counts[symbol as usize] += 1;
-			if out.is_some() { rle.push((symbol, 0)); }
-
-			while count >= 3 {
-				let count2 = count.min(6);
-				if out.is_some() { rle.push((16, count2 as u32 - 3)); }
-				cl_counts[16] += 1;
-				count -= count2;
-			}
-		}
-
-		// Deal with non- or insufficiently-repeating values.
-		cl_counts[symbol as usize] += count;
-		if out.is_some() {
-			for _ in 0..count { rle.push((symbol, 0)); }
-		}
-
-		i += 1;
-	}
-
-	// Update the lengths and symbols given the counts.
-	length_limited_code_lengths::<7, 19>(&cl_counts, &mut cl_lengths)?;
-
-	// Find the last non-zero index of the counts table.
-	let mut hclen = 15;
-	while hclen > 0 && cl_counts[DEFLATE_ORDER[hclen + 3] as usize] == 0 {
-		hclen -= 1;
-	}
-
-	// Write the tree!
-	if let Some(out) = out {
-		// Convert the lengths to symbols.
-		let cl_symbols = lengths_to_symbols::<8, 19>(&cl_lengths)?;
-
-		// Write the main lengths.
-		out.add_bits(hlit as u32, 5);
-		out.add_bits(hdist as u32, 5);
-		out.add_bits(hclen as u32, 4);
-
-		// Write each cl_length in the jumbled DEFLATE order.
-		for &o in &DEFLATE_ORDER[..hclen + 4] {
-			out.add_bits(cl_lengths[o as usize], 3);
-		}
-
-		// Write each symbol in order of appearance along with its extra bits,
-		// if any.
-		for (a, b) in rle {
-			let symbol = cl_symbols[a as usize];
-			out.add_huffman_bits(symbol, cl_lengths[a as usize]);
-
-			// Extra bits.
-			if a == 16 { out.add_bits(b, 2); }
-			else if a == 17 { out.add_bits(b, 3); }
-			else if a == 18 { out.add_bits(b, 7); }
-		}
-	}
-
-	// Calculate the spatial requirements for all this data.
-	let mut size = 14;         // hlit, hdist, hclen.
-	size += (hclen + 4) * 3;   // cl_lengths.
-	for (&a, b) in cl_lengths.iter().zip(cl_counts.iter()) {
-		size += (a as usize) * b;
-	}
-	size += cl_counts[16] * 2; // Extra bits.
-	size += cl_counts[17] * 3;
-	size += cl_counts[18] * 7;
-
-	Ok(size)
 }
 
 #[allow(clippy::similar_names)]
@@ -1002,15 +805,15 @@ fn get_dynamic_lengths(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-	ll_lengths: &mut [u32; ZOPFLI_NUM_LL],
-	d_lengths: &mut [u32; ZOPFLI_NUM_D],
+	ll_lengths: &mut [DeflateSym; ZOPFLI_NUM_LL],
+	d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D],
 ) -> Result<usize, ZopfliError> {
 	// Populate some counts.
 	let (mut ll_counts, d_counts) = store.histogram(lstart, lend)?;
 	ll_counts[256] = 1;
 
-	length_limited_code_lengths::<15, ZOPFLI_NUM_LL>(&ll_counts, ll_lengths)?;
-	length_limited_code_lengths::<15, ZOPFLI_NUM_D>(&d_counts, d_lengths)?;
+	kat::length_limited_code_lengths(&ll_counts, ll_lengths)?;
+	kat::length_limited_code_lengths(&d_counts, d_lengths)?;
 
 	patch_distance_codes(d_lengths);
 	try_optimize_huffman_for_rle(
@@ -1041,23 +844,24 @@ fn get_lz77_byte_range(
 	else { Err(zopfli_error!()) }
 }
 
+#[allow(unsafe_code)]
 /// # Zopfli Lengths to Symbols.
 ///
 /// This updates the symbol array given the corresponding lengths.
-fn lengths_to_symbols<const MAXBITS: usize, const SIZE: usize>(lengths: &[u32; SIZE])
+fn lengths_to_symbols<const SIZE: usize>(lengths: &[DeflateSym; SIZE])
 -> Result<[u32; SIZE], ZopfliError> {
 	// Count up the codes by code length.
-	let mut counts: [u32; MAXBITS] = [0; MAXBITS];
+	let mut counts: [u32; 16] = [0; 16];
 	for l in lengths.iter().copied() {
-		if (l as usize) < MAXBITS { counts[l as usize] += 1; }
+		if (l as u8) < 16 { counts[l as usize] += 1; }
 		else { return Err(zopfli_error!()); }
 	}
 
 	// Find the numerical value of the smallest code for each code length.
 	counts[0] = 0;
 	let mut code = 0;
-	let mut next_code: [u32; MAXBITS] = [0; MAXBITS];
-	for i in 1..MAXBITS {
+	let mut next_code: [u32; 16] = [0; 16];
+	for i in 1..16 {
 		code = (code + counts[i - 1]) << 1;
 		next_code[i] = code;
 	}
@@ -1065,10 +869,9 @@ fn lengths_to_symbols<const MAXBITS: usize, const SIZE: usize>(lengths: &[u32; S
 	// Update the symbols accordingly.
 	let mut symbols = [0; SIZE];
 	for (s, l) in symbols.iter_mut().zip(lengths.iter().copied()) {
-		// The MAXBITS comparison is only for the compiler; it will never not
-		// be true.
-		if l != 0 && (l as usize) < MAXBITS {
-			*s = next_code[l as usize];
+		if ! l.is_zero() {
+			// Safety: we already checked all lengths are less than 16.
+			*s = unsafe { *next_code.get_unchecked(l as usize) };
 			next_code[l as usize] += 1;
 		}
 	}
@@ -1243,27 +1046,28 @@ fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 ///
 /// Ensure there are at least two distance codes to avoid issues with buggy
 /// decoders.
-fn patch_distance_codes(d_lengths: &mut [u32; ZOPFLI_NUM_D]) {
+fn patch_distance_codes(d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D]) {
 	let mut one: Option<bool> = None;
 	for (i, dist) in d_lengths.iter().copied().enumerate().take(30) {
 		// We have (at least) two non-zero entries; no patching needed!
-		if 0 != dist && one.replace(i == 0).is_some() { return; }
+		if ! dist.is_zero() && one.replace(i == 0).is_some() { return; }
 	}
 
 	match one {
 		// The first entry had a code, so patching the second gives us two.
-		Some(true) => { d_lengths[1] = 1; },
+		Some(true) => { d_lengths[1] = DeflateSym::D01; },
 		// The first entry didn't have a code, so patching it gives us two.
-		Some(false) => { d_lengths[0] = 1; },
+		Some(false) => { d_lengths[0] = DeflateSym::D01; },
 		// There were no codes, so we can just patch the first two.
 		None => {
-			d_lengths[0] = 1;
-			d_lengths[1] = 1;
+			d_lengths[0] = DeflateSym::D01;
+			d_lengths[1] = DeflateSym::D01;
 		},
 	}
 }
 
 #[allow(clippy::too_many_arguments)]
+#[inline]
 /// # (Maybe) Add LZ77 Expensive Fixed Block.
 ///
 /// This runs the full suite of fixed-tree tests on the data and writes it to
@@ -1330,11 +1134,12 @@ fn try_optimize_huffman_for_rle(
 	lend: usize,
 	ll_counts: &[usize; ZOPFLI_NUM_LL],
 	d_counts: &[usize; ZOPFLI_NUM_D],
-	ll_lengths: &mut [u32; ZOPFLI_NUM_LL],
-	d_lengths: &mut [u32; ZOPFLI_NUM_D],
+	ll_lengths: &mut [DeflateSym; ZOPFLI_NUM_LL],
+	d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D],
 ) -> Result<usize, ZopfliError> {
 	// Calculate the tree and data sizes as are.
-	let (_, treesize) = calculate_tree_size(ll_lengths, d_lengths)?;
+	let (_, treesize) = kat::TreeLd::new(ll_lengths, d_lengths)
+		.calculate_tree_size()?;
 	let datasize = calculate_block_symbol_size_given_counts(
 		ll_counts,
 		d_counts,
@@ -1346,18 +1151,19 @@ fn try_optimize_huffman_for_rle(
 	);
 
 	// Copy the counts, optimize them, etc., etc.
-	let mut ll_lengths2 = [0_u32; ZOPFLI_NUM_LL];
-	let mut d_lengths2 = [0_u32; ZOPFLI_NUM_D];
+	let mut ll_lengths2 = [DeflateSym::D00; ZOPFLI_NUM_LL];
+	let mut d_lengths2 = [DeflateSym::D00; ZOPFLI_NUM_D];
 	let mut ll_counts2 = *ll_counts;
 	let mut d_counts2 = *d_counts;
 	optimize_huffman_for_rle(&mut ll_counts2);
 	optimize_huffman_for_rle(&mut d_counts2);
-	length_limited_code_lengths::<15, ZOPFLI_NUM_LL>(&ll_counts2, &mut ll_lengths2)?;
-	length_limited_code_lengths::<15, ZOPFLI_NUM_D>(&d_counts2, &mut d_lengths2)?;
+	kat::length_limited_code_lengths(&ll_counts2, &mut ll_lengths2)?;
+	kat::length_limited_code_lengths(&d_counts2, &mut d_lengths2)?;
 	patch_distance_codes(&mut d_lengths2);
 
 	// Calculate the optimized tree and data sizes.
-	let (_, treesize2) = calculate_tree_size(&ll_lengths2, &d_lengths2)?;
+	let (_, treesize2) = kat::TreeLd::new(&ll_lengths2, &d_lengths2)
+		.calculate_tree_size()?;
 	let datasize2 = calculate_block_symbol_size_given_counts(
 		ll_counts,
 		d_counts,

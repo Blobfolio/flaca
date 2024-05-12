@@ -13,6 +13,7 @@ mod zopflipng;
 use kind::ImageKind;
 use oxipng::Options as OxipngOptions;
 use std::path::Path;
+use super::EncodingError;
 use zopflipng::{
 	deflate_part,
 	SplitPoints,
@@ -21,6 +22,7 @@ use zopflipng::{
 
 
 
+#[inline]
 /// # Encode Image.
 ///
 /// This will attempt to losslessly re-encode the image, overriding the
@@ -29,21 +31,25 @@ use zopflipng::{
 /// The before and after sizes are returned, unless there's an error or the
 /// image is invalid. In cases where compression doesn't help, the before and
 /// after sizes will be identical.
-pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions) -> Option<(u64, u64)> {
+pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions)
+-> Result<(u64, u64), EncodingError> {
 	// Read the file.
-	let mut raw = std::fs::read(file).ok()?;
-	if raw.is_empty() { return None; }
-	let before = u64::try_from(raw.len()).ok()?;
+	let mut raw = std::fs::read(file).map_err(|_|
+		if file.is_file() { EncodingError::Read }
+		else { EncodingError::Vanished }
+	)?;
+	let before = raw.len() as u64;
+	if before == 0 { return Err(EncodingError::Empty); }
 
 	// Do PNG stuff?
 	if ImageKind::is_png(&raw) {
-		if ImageKind::None == kinds & ImageKind::Png { return Some((0, 0)); }
+		if ImageKind::None == kinds & ImageKind::Png { return Err(EncodingError::Skipped); }
 		encode_oxipng(&mut raw, oxi);
 		encode_zopflipng(&mut raw);
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
-		if ImageKind::None == kinds & ImageKind::Jpeg { return Some((0, 0)); }
+		if ImageKind::None == kinds & ImageKind::Jpeg { return Err(EncodingError::Skipped); }
 
 		// Mozjpeg usually panics on error, so we have to do a weird little
 		// dance to keep it from killing the whole thread.
@@ -56,21 +62,23 @@ pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions) -> Opti
 
 			// But make sure the copied data didn't get corrupted along the
 			// way…
-			if ! ImageKind::is_jpeg(&raw) { return Some((before, before)); }
+			if ! ImageKind::is_jpeg(&raw) { return Ok((before, before)); }
 		}
 		// Abort without changing anything.
-		else { return Some((before, before)); }
+		else { return Ok((before, before)); }
 
 	}
 	// Something else entirely?
-	else { return None; }
+	else { return Err(EncodingError::Format); }
 
 	// Save it if better.
 	let after = raw.len() as u64;
-	if after < before && write_atomic::write_file(file, &raw).is_ok() {
-		Some((before, after))
+	if after < before {
+		write_atomic::write_file(file, &raw)
+			.map(|()| (before, after))
+			.map_err(|_| EncodingError::Write)
 	}
-	else { Some((before, before)) }
+	else { Ok((before, before)) }
 }
 
 /// # Compress w/ `MozJPEG`.
@@ -83,7 +91,7 @@ pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions) -> Opti
 fn encode_mozjpeg(raw: &mut Vec<u8>) {
 	if let Some(new) = jpegtran::optimize(raw) {
 		let slice: &[u8] = &new;
-		if ImageKind::is_jpeg(slice) {
+		if slice.len() < raw.len() && ImageKind::is_jpeg(slice) {
 			raw.truncate(slice.len());
 			raw.copy_from_slice(slice);
 		}
@@ -115,7 +123,7 @@ fn encode_oxipng(raw: &mut Vec<u8>, opts: &OxipngOptions) {
 fn encode_zopflipng(raw: &mut Vec<u8>) {
 	if let Some(new) = zopflipng::optimize(raw) {
 		let slice: &[u8] = &new;
-		if ImageKind::is_png(slice) {
+		if slice.len() < raw.len() && ImageKind::is_png(slice) {
 			raw.truncate(slice.len());
 			raw.copy_from_slice(slice);
 		}
@@ -128,7 +136,7 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 /// This returns the strongest possible Oxipng compression profile (minus
 /// the zopfli bits, which we try in a separate pass).
 ///
-/// This is basically just "preset 3", with:
+/// This is basically just "preset 6", with:
 /// * Error fixing enabled;
 /// * Libdeflater;
 /// * All the alpha optimizations;
