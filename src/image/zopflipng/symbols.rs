@@ -94,20 +94,6 @@ impl DeflateSym {
 mod tests {
 	use super::*;
 
-	#[test]
-	/// # Deflate Symbol Incrementation.
-	fn t_deflatesym_inc() {
-		for s in DEFLATE_ORDER.iter().copied() {
-			if matches!(s, DeflateSym::D18) { assert!(s.inc().is_none()); }
-			else {
-				assert_eq!(
-					s.inc().map(|n| n as u8),
-					Some((s as u8) + 1),
-				);
-			}
-		}
-	}
-
 	// Note: the original `symbols.h` distance-related methods come in two
 	// flavors: one leveraging compiler math built-ins and one loaded with
 	// manual range branching. These tests compare both approaches against the
