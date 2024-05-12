@@ -54,7 +54,7 @@ description = "Skip PNG images."
 [[package.metadata.bashman.switches]]
 short = "-p"
 long = "--progress"
-description = "Show progress bar while minifying."
+description = "Show pretty progress while minifying."
 
 [[package.metadata.bashman.switches]]
 short = "-V"

@@ -12,7 +12,41 @@ use std::{
 
 
 #[derive(Debug, Copy, Clone)]
-/// # Error type.
+/// # Encoding Errors.
+pub(super) enum EncodingError {
+	/// # Empty File.
+	Empty,
+	/// # Wrong/Unknown Format.
+	Format,
+	/// # Read Error.
+	Read,
+	/// # Intentionally Skipped.
+	Skipped,
+	/// # Vanished.
+	Vanished,
+	/// # Write Error.
+	Write,
+}
+
+impl EncodingError {
+	#[must_use]
+	/// # As Str.
+	pub(super) const fn as_str(self) -> &'static str {
+		match self {
+			Self::Empty => "empty file",
+			Self::Format => "invalid format",
+			Self::Read => "read error",
+			Self::Skipped => "",
+			Self::Vanished => "vanished!",
+			Self::Write => "write error",
+		}
+	}
+}
+
+
+
+#[derive(Debug, Copy, Clone)]
+/// # General/Deal-Breaking Errors.
 pub(super) enum FlacaError {
 	/// # Argyle Passthrough.
 	Argue(ArgyleError),
