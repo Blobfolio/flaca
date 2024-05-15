@@ -19,7 +19,7 @@ use super::{
 ///
 /// Length and distance are always fetched/stored together, so are grouped into
 /// a single value to reduce indexing/bounds overhead.
-const DEFAULT_LD: (u16, u16) = (1, 0);
+const DEFAULT_LD: u32 = u32::from_le_bytes([1, 0, 0, 0]);
 
 /// # Sublength Cache Entries.
 const ZOPFLI_CACHE_LENGTH: usize = 8;
@@ -37,7 +37,7 @@ const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 /// sublengths. Its memory usage is no joke, but the performance savings more
 /// than make up for it.
 pub(crate) struct MatchCache {
-	ld: Vec<(u16, u16)>,
+	ld: Vec<u32>,
 	sublen: Vec<u8>,
 }
 
@@ -102,7 +102,7 @@ impl MatchCache {
 			.ok_or(zopfli_error!())?;
 
 		// If we have no distance, we have no cache.
-		let (cache_len, cache_dist) = self.ld[pos];
+		let (cache_len, cache_dist) = ld_split(self.ld[pos]);
 		if cache_len != 0 && cache_dist == 0 { return Ok(false); }
 
 		// Find the max sublength once, if ever.
@@ -166,9 +166,9 @@ impl MatchCache {
 		distance: u16,
 		length: u16,
 	) -> Result<(), ZopfliError> {
-		match self.ld.get(pos).copied() {
+		match self.ld.get(pos).map(|&ld| ld_split(ld)) {
 			// If the current value is the default, let's proceed!
-			Some(DEFAULT_LD) => {},
+			Some((1, 0)) => {},
 			// If the current value is something else and legit, abort happy.
 			Some((l, d)) if l == 0 || d != 0 => return Ok(()),
 			// Otherwise abort sad!
@@ -178,7 +178,7 @@ impl MatchCache {
 		// The sublength isn't cacheable, but that fact is itself worth
 		// caching!
 		if usize::from(length) < ZOPFLI_MIN_MATCH {
-			self.ld[pos] = (0, 0);
+			self.ld[pos] = 0;
 			return Ok(());
 		}
 
@@ -190,7 +190,7 @@ impl MatchCache {
 
 		// Save the length/distance bit.
 		if distance == 0 { return Err(zopfli_error!()); }
-		self.ld[pos] = (length, distance);
+		self.ld[pos] = ld_join(length, distance);
 
 		// The cache gets written three bytes at a time; this iterator will
 		// help us eliminate the bounds checks we'd otherwise run into.
@@ -223,6 +223,19 @@ impl MatchCache {
 }
 
 
+
+/// # Join Length Distance.
+const fn ld_join(length: u16, distance: u16) -> u32 {
+	let [l1, l2] = length.to_le_bytes();
+	let [d1, d2] = distance.to_le_bytes();
+	u32::from_le_bytes([l1, l2, d1, d2])
+}
+
+/// # Split Length Distance.
+const fn ld_split(ld: u32) -> (u16, u16) {
+	let [l1, l2, d1, d2] = ld.to_le_bytes();
+	(u16::from_le_bytes([l1, l2]), u16::from_le_bytes([d1, d2]))
+}
 
 /// # Max Sublength.
 ///
