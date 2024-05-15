@@ -754,6 +754,7 @@ impl ZopfliHash {
 	}
 
 	#[allow(
+		unsafe_code,
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
 		clippy::cast_sign_loss,
@@ -772,7 +773,8 @@ impl ZopfliHash {
 		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
 	) -> Result<(u16, u16), ZopfliError> {
 		// This is asserted by find() too, but it's a good reminder.
-		if ZOPFLI_MAX_MATCH < limit { return Err(zopfli_error!()); }
+		if ZOPFLI_MAX_MATCH < limit || arr.len() <= pos { return Err(zopfli_error!()); }
+		let right = &arr[pos..];
 
 		let hpos = pos & ZOPFLI_WINDOW_MASK;
 
@@ -822,55 +824,48 @@ impl ZopfliHash {
 			// * (same <= limit), so…
 			// * (pos + same <= arr.len()) too
 			if 0 < dist && dist <= pos {
-				// Now and Then indexes for comparison, always "dist" apart
-				// from one another.
-				let mut currentlength = 0;
-				let mut now_idx = pos;
-				let mut then_idx = pos - dist;
-
-				// This search is pointless if the first condition is true, but
-				// the compiler prefers that small waste to any sort of if/else
-				// break logic.
-				if
-					now_idx + bestlength >= arr.len() ||
-					arr[now_idx + bestlength] == arr[then_idx + bestlength]
-				{
-					if 2 < same0 && arr[now_idx] == arr[then_idx] {
-						let same2 = usize::from(self.same[then_idx & ZOPFLI_WINDOW_MASK]);
-						let same = usize::min(same1, same2);
-						now_idx += same;
-						then_idx += same;
-					}
-
-					while
-						now_idx < arr.len() &&
-						then_idx < arr.len() &&
-						now_idx < pos + limit &&
-						arr[now_idx] == arr[then_idx]
-					{
-						now_idx += 1;
-						then_idx += 1;
-					}
-
-					// The length is the distance now_idx has traveled.
-					currentlength = now_idx - pos;
+				// Safety: we (safely) sliced right to arr[pos..] earlier and
+				// verified it was non-empty, but the compiler will have
+				// forgotten that by now.
+				let left = unsafe { arr.get_unchecked(pos - dist..pos - dist + right.len()) };
+				if right.is_empty() || left.len() != right.len() {
+					unsafe { core::hint::unreachable_unchecked(); }
 				}
 
-				// We've found a better length!
-				if bestlength < currentlength && currentlength < SUBLEN_LEN {
-					// Update the sublength slice, if provided. Note that
-					// sublengths are (ZOPFLI_MAX_MATCH+1) if provided, and
-					// ZOPFLI_MAX_MATCH is the largest possible value of
-					// currentlength.
-					if let Some(s) = sublen {
-						s[bestlength + 1..=currentlength].fill(dist as u16);
+				// Check to see if we can do better than we've already done.
+				if bestlength >= right.len() || right[bestlength] == left[bestlength] {
+					// Check the match cache to see if we can start later.
+					let mut currentlength =
+						if 2 < same0 && right[0] == left[0] {
+							let same2 = usize::from(self.same[(pos - dist) & ZOPFLI_WINDOW_MASK]);
+							usize::min(same1, same2)
+						}
+						else { 0 };
+
+					while
+						currentlength < limit &&
+						currentlength < right.len() &&
+						left[currentlength] == right[currentlength]
+					{
+						currentlength += 1;
 					}
 
-					bestdist = dist;
-					bestlength = currentlength;
+					// We've found a better length!
+					if bestlength < currentlength && currentlength < SUBLEN_LEN {
+						// Update the sublength slice, if provided. Note that
+						// sublengths are (ZOPFLI_MAX_MATCH+1) if provided, and
+						// ZOPFLI_MAX_MATCH is the largest possible value of
+						// currentlength.
+						if let Some(s) = sublen {
+							s[bestlength + 1..=currentlength].fill(dist as u16);
+						}
 
-					// We can stop looking if we've reached the limit.
-					if currentlength >= limit { break; }
+						bestdist = dist;
+						bestlength = currentlength;
+
+						// We can stop looking if we've reached the limit.
+						if currentlength >= limit { break; }
+					}
 				}
 			}
 
