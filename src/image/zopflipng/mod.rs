@@ -33,7 +33,7 @@ use error::{
 	ZopfliError,
 };
 pub(crate) use hash::ZopfliState;
-use lz77::LZ77Store;
+pub(crate) use lz77::LZ77Store;
 use super::{
 	ffi::EncodedImage,
 	lodepng::{
@@ -73,8 +73,12 @@ const FIXED_TREE_D: [DeflateSym; 32] = [DeflateSym::D05; 32];
 const ZOPFLI_NUM_LL: usize = FIXED_TREE_LL.len();
 const ZOPFLI_NUM_D: usize = FIXED_TREE_D.len();
 
-const ZOPFLI_MAX_MATCH: usize = 258;
+// This is the biggest chunk-o-data that can be passed to deflate.
+pub(super) const ZOPFLI_MASTER_BLOCK_SIZE: usize = 1_000_000;
+
+// The matchable range.
 const ZOPFLI_MIN_MATCH: usize = 3;
+const ZOPFLI_MAX_MATCH: usize = 258;
 
 /// # Length of Sublength Array.
 ///

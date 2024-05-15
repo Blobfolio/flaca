@@ -18,6 +18,7 @@ use zopflipng::{
 	deflate_part,
 	SplitPoints,
 	ZopfliState,
+	ZOPFLI_MASTER_BLOCK_SIZE,
 };
 
 

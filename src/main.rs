@@ -185,7 +185,7 @@ fn _main() -> Result<(), FlacaError> {
 
 		// Process!
 		sigint(Arc::clone(&killed), Some(progress.clone()));
-		pool.install(|| paths.par_iter().with_max_len(1).for_each(|x|
+		pool.install(#[inline(never)] || paths.par_iter().with_max_len(1).for_each(#[inline(always)] |x|
 			if ! killed.load(Acquire) {
 				let tmp = x.to_string_lossy();
 				progress.add(&tmp);
@@ -233,7 +233,7 @@ fn _main() -> Result<(), FlacaError> {
 	// Silent run-through.
 	else {
 		sigint(Arc::clone(&killed), None);
-		pool.install(|| paths.par_iter().for_each(|x| if ! killed.load(Acquire) {
+		pool.install(#[inline(never)] || paths.par_iter().for_each(#[inline(always)] |x| if ! killed.load(Acquire) {
 			let _res = image::encode(x, kinds, &oxi);
 		}));
 	}
