@@ -22,8 +22,8 @@ use super::{
 /// # LZ77 Data Store.
 pub(crate) struct LZ77Store {
 	pub(crate) entries: Vec<LZ77StoreEntry>,
-	pub(crate) ll_counts: Vec<usize>,
-	pub(crate) d_counts: Vec<usize>,
+	pub(crate) ll_counts: Vec<u32>,
+	pub(crate) d_counts: Vec<u32>,
 }
 
 impl LZ77Store {
@@ -117,11 +117,11 @@ impl LZ77Store {
 
 	/// # Histogram.
 	pub(crate) fn histogram(&self, lstart: usize, lend: usize)
-	-> Result<([usize; ZOPFLI_NUM_LL], [usize; ZOPFLI_NUM_D]), ZopfliError> {
+	-> Result<([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]), ZopfliError> {
 		// Count the symbols directly.
 		if lstart + ZOPFLI_NUM_LL * 3 > lend {
-			let mut ll_counts = [0_usize; ZOPFLI_NUM_LL];
-			let mut d_counts = [0_usize; ZOPFLI_NUM_D];
+			let mut ll_counts = [0_u32; ZOPFLI_NUM_LL];
+			let mut d_counts = [0_u32; ZOPFLI_NUM_D];
 
 			for e in &self.entries[lstart..lend] {
 				ll_counts[e.ll_symbol as usize] += 1;
@@ -146,7 +146,7 @@ impl LZ77Store {
 
 	/// # Histogram at Position.
 	fn _histogram(&self, pos: usize)
-	-> Result<([usize; ZOPFLI_NUM_LL], [usize; ZOPFLI_NUM_D]), ZopfliError> {
+	-> Result<([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]), ZopfliError> {
 		// The relative chunked positions.
 		let ll_start = ZOPFLI_NUM_LL * pos.wrapping_div(ZOPFLI_NUM_LL);
 		let d_start = ZOPFLI_NUM_D * pos.wrapping_div(ZOPFLI_NUM_D);
@@ -154,10 +154,10 @@ impl LZ77Store {
 		let d_end = d_start + ZOPFLI_NUM_D;
 
 		// Start by copying the counts directly from the nearest chunk.
-		let mut ll_counts: [usize; ZOPFLI_NUM_LL] = self.ll_counts.get(ll_start..ll_end)
+		let mut ll_counts: [u32; ZOPFLI_NUM_LL] = self.ll_counts.get(ll_start..ll_end)
 			.and_then(|c| c.try_into().ok())
 			.ok_or(zopfli_error!())?;
-		let mut d_counts: [usize; ZOPFLI_NUM_D] = self.d_counts.get(d_start..d_end)
+		let mut d_counts: [u32; ZOPFLI_NUM_D] = self.d_counts.get(d_start..d_end)
 			.and_then(|c| c.try_into().ok())
 			.ok_or(zopfli_error!())?;
 
@@ -178,8 +178,8 @@ impl LZ77Store {
 	fn _histogram_sub(
 		&self,
 		pos: usize,
-		ll_counts: &mut [usize; ZOPFLI_NUM_LL],
-		d_counts: &mut [usize; ZOPFLI_NUM_D],
+		ll_counts: &mut [u32; ZOPFLI_NUM_LL],
+		d_counts: &mut [u32; ZOPFLI_NUM_D],
 	) {
 		// The relative chunked positions.
 		let ll_start = ZOPFLI_NUM_LL * pos.wrapping_div(ZOPFLI_NUM_LL);

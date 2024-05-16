@@ -12,7 +12,7 @@ use std::{
 		RefCell,
 	},
 	cmp::Ordering,
-	num::NonZeroUsize,
+	num::NonZeroU32,
 };
 use super::{
 	DeflateSym,
@@ -26,10 +26,10 @@ use super::{
 
 
 #[allow(unsafe_code)]
-const NZ1: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(1) };
+const NZ1: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1) };
 
 #[allow(unsafe_code)]
-const NZ2: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2) };
+const NZ2: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
 
 
 
@@ -127,8 +127,8 @@ impl<'a> TreeLd<'a> {
 	///
 	/// This returns the index (0..8) that produced the smallest size, along
 	/// with that size.
-	pub(crate) fn calculate_tree_size(&mut self) -> Result<(u8, usize), ZopfliError> {
-		let mut best_size = usize::MAX;
+	pub(crate) fn calculate_tree_size(&self) -> Result<(u8, u32), ZopfliError> {
+		let mut best_size = u32::MAX;
 		let mut best_idx = 0;
 
 		// Try every combination.
@@ -148,7 +148,7 @@ impl<'a> TreeLd<'a> {
 	///
 	/// This finds the index that produces the smallest tree size, then writes
 	/// that table's bits to the output.
-	pub(crate) fn encode_tree(&mut self, out: &mut ZopfliOut) -> Result<(), ZopfliError> {
+	pub(crate) fn encode_tree(&self, out: &mut ZopfliOut) -> Result<(), ZopfliError> {
 		let (extra, _) = self.calculate_tree_size()?;
 		self.crunch(extra, Some(out))?;
 		Ok(())
@@ -159,14 +159,14 @@ impl<'a> TreeLd<'a> {
 	///
 	/// This crunches the data for the given index, either returning the size
 	/// or writing it to the output (and returning zero).
-	fn crunch(&mut self, extra: u8, out: Option<&mut ZopfliOut>) -> Result<usize, ZopfliError> {
+	fn crunch(&self, extra: u8, out: Option<&mut ZopfliOut>) -> Result<u32, ZopfliError> {
 		// Are we using any of the special alphabet parts?
 		let use_16 = 0 != extra & 1;
 		let use_17 = 0 != extra & 2;
 		let use_18 = 0 != extra & 4;
 
 		// We need a structure to hold the counts for each symbol.
-		let mut cl_counts = [0_usize; 19];
+		let mut cl_counts = [0_u32; 19];
 
 		// We also need a structure to hold the positional symbol/count data,
 		// but only if we're going to write the tree at the end. If not, this
@@ -178,7 +178,7 @@ impl<'a> TreeLd<'a> {
 		// the odd skip to keep us on our toes.
 		let mut i = 0;
 		while i < self.len() {
-			let mut count = 1;
+			let mut count: u32 = 1;
 			let symbol = self.symbol(i);
 
 			// Peek ahead; we may be able to do more in one go.
@@ -190,7 +190,7 @@ impl<'a> TreeLd<'a> {
 				}
 
 				// Skip these indices, if any, on the next pass.
-				i += count - 1;
+				i += (count - 1) as usize;
 			}
 
 			// Repetitions of zeroes.
@@ -199,7 +199,7 @@ impl<'a> TreeLd<'a> {
 					while count >= 11 {
 						let count2 = count.min(138);
 						if out.is_some() {
-							rle.push((DeflateSym::D18, count2 as u32 - 11));
+							rle.push((DeflateSym::D18, count2 - 11));
 						}
 						cl_counts[DeflateSym::D18 as usize] += 1;
 						count -= count2;
@@ -209,7 +209,7 @@ impl<'a> TreeLd<'a> {
 					while count >= 3 {
 						let count2 = count.min(10);
 						if out.is_some() {
-							rle.push((DeflateSym::D17, count2 as u32 - 3));
+							rle.push((DeflateSym::D17, count2 - 3));
 						}
 						cl_counts[DeflateSym::D17 as usize] += 1;
 						count -= count2;
@@ -227,7 +227,7 @@ impl<'a> TreeLd<'a> {
 				while count >= 3 {
 					let count2 = count.min(6);
 					if out.is_some() {
-						rle.push((DeflateSym::D16, count2 as u32 - 3));
+						rle.push((DeflateSym::D16, count2 - 3));
 					}
 					cl_counts[DeflateSym::D16 as usize] += 1;
 					count -= count2;
@@ -287,9 +287,9 @@ impl<'a> TreeLd<'a> {
 		// Just calculate the would-be size and return.
 		else {
 			let mut size = 14;              // hlit, hdist, hclen.
-			size += (hclen + 4) * 3;        // cl_lengths.
-			for (&a, b) in cl_lengths.iter().zip(cl_counts.iter()) {
-				size += (a as usize) * b;
+			size += (hclen as u32 + 4) * 3;        // cl_lengths.
+			for (a, b) in cl_lengths.iter().copied().zip(cl_counts.iter().copied()) {
+				size += (a as u32) * b;
 			}
 			size += cl_counts[16] * 2; // Extra bits.
 			size += cl_counts[17] * 3;
@@ -306,7 +306,7 @@ impl<'a> TreeLd<'a> {
 ///
 /// This writes minimum-redundancy length-limited code bitlengths for tree
 /// symbols with the given counts.
-fn length_limited_code_lengths_tree(frequencies: &[usize; 19])
+fn length_limited_code_lengths_tree(frequencies: &[u32; 19])
 -> Result<[DeflateSym; 19], ZopfliError> {
 	// Convert bitlengths to a slice-of-cells so we can chop it up willynilly
 	// without losing writeability.
@@ -315,7 +315,7 @@ fn length_limited_code_lengths_tree(frequencies: &[usize; 19])
 
 	// Build up a collection of "leaves" by joining each non-zero frequency
 	// with its corresponding bitlength.
-	let mut raw_leaves = [Leaf { frequency: NonZeroUsize::MIN, bitlength: &bitcells[0] }; 19];
+	let mut raw_leaves = [Leaf { frequency: NonZeroU32::MIN, bitlength: &bitcells[0] }; 19];
 	let leaves = make_leaves(frequencies, bitcells, &mut raw_leaves);
 
 	// Sortcut: weighting only applies when there are more than two leaves.
@@ -336,7 +336,7 @@ fn length_limited_code_lengths_tree(frequencies: &[usize; 19])
 /// This writes minimum-redundancy length-limited code bitlengths for length
 /// and distance symbols.
 pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
-	frequencies: &[usize; SIZE],
+	frequencies: &[u32; SIZE],
 	bitlengths: &mut [DeflateSym; SIZE],
 ) -> Result<(), ZopfliError> {
 	// For performance reasons the bitlengths are passed by reference, but
@@ -349,7 +349,7 @@ pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 
 	// Build up a collection of "leaves" by joining each non-zero frequency
 	// with its corresponding bitlength.
-	let mut raw_leaves = [Leaf { frequency: NonZeroUsize::MIN, bitlength: &bitlengths[0] }; SIZE];
+	let mut raw_leaves = [Leaf { frequency: NonZeroU32::MIN, bitlength: &bitlengths[0] }; SIZE];
 	let leaves = make_leaves(frequencies, bitlengths, &mut raw_leaves);
 
 	// Sortcut: weighting only applies when there are more than two leaves.
@@ -373,7 +373,7 @@ pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 /// This is a simple tuple containing a non-zero frequency and its companion
 /// bitlength.
 struct Leaf<'a> {
-	frequency: NonZeroUsize,
+	frequency: NonZeroU32,
 	bitlength: &'a Cell<DeflateSym>,
 }
 
@@ -412,7 +412,7 @@ impl<'a> List<'a> {
 
 	#[inline]
 	/// # Weight Sum.
-	const fn weight_sum(&self) -> NonZeroUsize {
+	const fn weight_sum(&self) -> NonZeroU32 {
 		self.lookahead0.weight.saturating_add(self.lookahead1.weight.get())
 	}
 }
@@ -422,8 +422,8 @@ impl<'a> List<'a> {
 #[derive(Clone)]
 /// # Node.
 struct Node<'a> {
-	weight: NonZeroUsize,
-	count: NonZeroUsize,
+	weight: NonZeroU32,
+	count: NonZeroU32,
 	tail: Cell<Option<&'a Node<'a>>>,
 }
 
@@ -492,7 +492,7 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 	// We're at the beginning, which is the end since we're iterating in
 	// reverse.
 	if rest.is_empty() {
-		if let Some(last_leaf) = leaves.get(last_count.get()) {
+		if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
 			// Shift the lookahead and add a new node.
 			current.rotate();
 			current.lookahead1 = nodes.try_alloc(Node {
@@ -511,7 +511,7 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 	let weight_sum = previous.weight_sum();
 
 	// Add a leaf and increment the count.
-	if let Some(last_leaf) = leaves.get(last_count.get()) {
+	if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
 		if last_leaf.frequency < weight_sum {
 			current.lookahead1 = nodes.try_alloc(Node {
 				weight: last_leaf.frequency,
@@ -550,7 +550,7 @@ fn llcl_finish<'a>(
 	// Add one more chain or update the tail.
 	let last_count = list_z.lookahead1.count;
 	let weight_sum = list_y.weight_sum();
-	if last_count.get() < leaves.len() && leaves[last_count.get()].frequency < weight_sum {
+	if (last_count.get() as usize) < leaves.len() && leaves[last_count.get() as usize].frequency < weight_sum {
 		list_z.lookahead1 = nodes.try_alloc(Node {
 			weight: NZ1, // We'll never look at this value.
 			count: last_count.saturating_add(1),
@@ -566,16 +566,16 @@ fn llcl_finish<'a>(
 	let mut last_count = node.count;
 
 	// But make sure we counted correctly first!
-	debug_assert!(leaves.len() >= last_count.get());
+	debug_assert!(leaves.len() >= last_count.get() as usize);
 
 	// Okay, now we can write them!
-	let mut writer = leaves.iter().take(last_count.get()).rev();
+	let mut writer = leaves.iter().take(last_count.get() as usize).rev();
 	for value in DeflateSym::LIMITED {
 		// Pull the next tail, if any.
 		if let Some(tail) = node.tail.get() {
 			// Wait for a change in counts to write the values.
 			if tail.count < last_count {
-				for leaf in writer.by_ref().take(last_count.get() - tail.count.get()) {
+				for leaf in writer.by_ref().take((last_count.get() - tail.count.get()) as usize) {
 					leaf.bitlength.set(value);
 				}
 				last_count = tail.count;
@@ -596,7 +596,7 @@ fn llcl_finish<'a>(
 #[inline]
 /// # Make Leaves.
 fn make_leaves<'a, const SIZE: usize>(
-	frequencies: &'a [usize; SIZE],
+	frequencies: &'a [u32; SIZE],
 	bitlengths: &'a [Cell<DeflateSym>],
 	leaves: &'a mut [Leaf<'a>],
 ) -> &'a mut [Leaf<'a>] {
@@ -604,7 +604,7 @@ fn make_leaves<'a, const SIZE: usize>(
 	for (v, leaf) in frequencies.iter()
 		.copied()
 		.zip(bitlengths)
-		.filter_map(|(frequency, bitlength)| NonZeroUsize::new(frequency).map(
+		.filter_map(|(frequency, bitlength)| NonZeroU32::new(frequency).map(
 			|frequency| Leaf { frequency, bitlength }
 		))
 		.zip(leaves.iter_mut())

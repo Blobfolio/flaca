@@ -1024,7 +1024,7 @@ mod tests {
 		// Get the largest dbit and lbit values.
 		let d_max: u8 = DISTANCE_BITS.iter().copied().max().unwrap();
 		let l_max: u8 = LENGTH_SYMBOLS_BITS_VALUES.iter()
-			.map(|(_, a, _)| *a)
+			.map(|(_, a, _)| *a as u8)
 			.max()
 			.unwrap();
 

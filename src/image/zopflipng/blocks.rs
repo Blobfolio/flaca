@@ -272,7 +272,6 @@ pub(crate) fn deflate_part(
 			arr,
 			start,
 			end,
-			0,
 			out,
 		)?;
 	}
@@ -304,14 +303,14 @@ enum BlockType {
 /// It moots the need to collect such values into a vector in advance,
 /// reducing the number of passes required to optimize Huffman codes.
 struct GoodForRle<'a> {
-	counts: &'a [Cell<usize>],
+	counts: &'a [Cell<u32>],
 	good: usize,
 	bad: usize,
 }
 
 impl<'a> GoodForRle<'a> {
 	/// # New Instance.
-	const fn new(counts: &'a [Cell<usize>]) -> Self {
+	const fn new(counts: &'a [Cell<u32>]) -> Self {
 		Self { counts, good: 0, bad: 0 }
 	}
 }
@@ -380,7 +379,6 @@ impl<'a> ExactSizeIterator for GoodForRle<'a> {
 
 
 
-#[allow(clippy::too_many_arguments)]
 /// # Add LZ77 Block.
 ///
 /// Add a deflate block with the given LZ77 data to the output.
@@ -391,7 +389,6 @@ fn add_lz77_block(
 	arr: &[u8],
 	lstart: usize,
 	lend: usize,
-	expected_data_size: usize,
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
 	// Uncompressed blocks are easy!
@@ -429,9 +426,7 @@ fn add_lz77_block(
 
 	// Write all the data!
 	add_lz77_data(
-		store, lstart, lend, expected_data_size,
-		&ll_symbols, &ll_lengths, &d_symbols, &d_lengths,
-		out
+		store, lstart, lend, &ll_symbols, &ll_lengths, &d_symbols, &d_lengths, out
 	)?;
 
 	// Finish up by writting the end symbol.
@@ -457,7 +452,6 @@ fn add_lz77_block_auto_type(
 	arr: &[u8],
 	lstart: usize,
 	lend: usize,
-	expected_data_size: usize,
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
 	// If the block is empty, we can assume a fixed-tree layout.
@@ -476,11 +470,11 @@ fn add_lz77_block_auto_type(
 	// Fixed stores are only useful up to a point; we can skip the overhead
 	// if the store is big or the dynamic cost estimate is unimpressive.
 	if
-		(store.len() < 1000 || (fixed_cost as f64) <= (dynamic_cost as f64) * 1.1) &&
+		(store.len() < 1000 || fixed_cost * 10 <= dynamic_cost * 11) &&
 		try_lz77_expensive_fixed(
 			store, fixed_store, state, uncompressed_cost, dynamic_cost,
 			arr, lstart, lend, last_block,
-			expected_data_size, out,
+			out,
 		)?
 	{
 		return Ok(());
@@ -493,10 +487,7 @@ fn add_lz77_block_auto_type(
 		else { BlockType::Dynamic };
 
 	// Save it!
-	add_lz77_block(
-		btype, last_block, store, arr, lstart, lend,
-		expected_data_size, out,
-	)
+	add_lz77_block(btype, last_block, store, arr, lstart, lend, out)
 }
 
 #[allow(
@@ -512,14 +503,12 @@ fn add_lz77_data(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-	expected_data_size: usize,
 	ll_symbols: &[u32; ZOPFLI_NUM_LL],
 	ll_lengths: &[DeflateSym; ZOPFLI_NUM_LL],
 	d_symbols: &[u32; ZOPFLI_NUM_D],
 	d_lengths: &[DeflateSym; ZOPFLI_NUM_D],
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
-	let mut test_size = 0;
 	for e in store.entries.get(lstart..lend).ok_or(zopfli_error!())? {
 		// Length only.
 		if e.dist <= 0 {
@@ -532,7 +521,6 @@ fn add_lz77_data(
 				ll_symbols[e.litlen as usize],
 				ll_lengths[e.litlen as usize] as u32,
 			);
-			test_size += 1;
 		}
 		// Length and distance.
 		else {
@@ -543,7 +531,7 @@ fn add_lz77_data(
 				ll_symbols[symbol as usize],
 				ll_lengths[symbol as usize] as u32,
 			);
-			out.add_bits(u32::from(value), u32::from(bits));
+			out.add_bits(u32::from(value), bits);
 
 			// Now the distance bits.
 			if d_lengths[e.d_symbol as usize].is_zero() { return Err(zopfli_error!()); }
@@ -555,26 +543,24 @@ fn add_lz77_data(
 				u32::from(DISTANCE_VALUES[e.dist as usize]),
 				u32::from(DISTANCE_BITS[e.d_symbol as usize]),
 			);
-
-			test_size += e.litlen as usize;
 		}
 	}
 
-	if expected_data_size == 0 || test_size == expected_data_size { Ok(()) }
-	else { Err(zopfli_error!()) }
+	Ok(())
 }
 
+#[allow(clippy::cast_possible_truncation)] // The maximum blocksize is only 1 million.
 /// # Calculate Block Size (in Bits).
 fn calculate_block_size(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
 	btype: BlockType,
-) -> Result<usize, ZopfliError> {
+) -> Result<u32, ZopfliError> {
 	match btype {
 		BlockType::Uncompressed => {
 			let (instart, inend) = get_lz77_byte_range(store, lstart, lend)?;
-			let blocksize = inend - instart;
+			let blocksize = (inend - instart) as u32;
 
 			// Blocks larger than u16::MAX need to be split.
 			let blocks = blocksize.div_ceil(65_535);
@@ -611,7 +597,7 @@ fn calculate_block_size_auto_type(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-) -> Result<usize, ZopfliError> {
+) -> Result<u32, ZopfliError> {
 	let uncompressed_cost = calculate_block_size(store, lstart, lend, BlockType::Uncompressed)?;
 
 	// We can skip the expensive fixed-cost calculations for large blocks since
@@ -633,14 +619,14 @@ fn calculate_block_size_auto_type(
 
 /// # Calculate Block Symbol Size w/ Histogram and Counts.
 fn calculate_block_symbol_size_given_counts(
-	ll_counts: &[usize; ZOPFLI_NUM_LL],
-	d_counts: &[usize; ZOPFLI_NUM_D],
+	ll_counts: &[u32; ZOPFLI_NUM_LL],
+	d_counts: &[u32; ZOPFLI_NUM_D],
 	ll_lengths: &[DeflateSym; ZOPFLI_NUM_LL],
 	d_lengths: &[DeflateSym; ZOPFLI_NUM_D],
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-) -> usize {
+) -> u32 {
 	if lstart + ZOPFLI_NUM_LL * 3 > lend {
 		return calculate_block_symbol_size_small(
 			ll_lengths,
@@ -652,22 +638,22 @@ fn calculate_block_symbol_size_given_counts(
 	}
 
 	// The end symbol is always included.
-	let mut result = ll_lengths[256] as usize;
+	let mut result = ll_lengths[256] as u32;
 
 	// The early lengths and counts.
 	for (ll, lc) in ll_lengths.iter().copied().zip(ll_counts).take(256) {
-		result += ll as usize * lc;
+		result += (ll as u32) * lc;
 	}
 
 	// The lengths and counts with extra bits.
 	for (i, lbit) in LENGTH_EXTRA_BITS.iter().copied().enumerate() {
 		let i = i + 257;
-		result += (ll_lengths[i] as usize + usize::from(lbit)) * ll_counts[i];
+		result += (ll_lengths[i] as u32 + u32::from(lbit)) * ll_counts[i];
 	}
 
 	// The distance lengths, counts, and extra bits.
 	for (i, dbit) in DISTANCE_BITS.iter().copied().enumerate().take(30) {
-		result += (d_lengths[i] as usize + usize::from(dbit)) * d_counts[i];
+		result += (d_lengths[i] as u32 + u32::from(dbit)) * d_counts[i];
 	}
 
 	result
@@ -680,9 +666,9 @@ fn calculate_block_symbol_size_small(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-) -> usize {
+) -> u32 {
 	// The end symbol is always included.
-	let mut result = ll_lengths[256] as usize;
+	let mut result = ll_lengths[256] as u32;
 
 	// Loop the store if we have data to loop.
 	let slice = store.entries.as_slice();
@@ -690,13 +676,13 @@ fn calculate_block_symbol_size_small(
 		// Make sure the end does not exceed the store!
 		for e in &slice[lstart..lend] {
 			if e.dist <= 0 {
-				result += ll_lengths[e.litlen as usize] as usize;
+				result += ll_lengths[e.litlen as usize] as u32;
 			}
 			else {
-				result += LENGTH_SYMBOLS_BITS_VALUES[e.litlen as usize].1 as usize;
-				result += ll_lengths[e.ll_symbol as usize] as usize;
-				result += DISTANCE_BITS[e.d_symbol as usize] as usize;
-				result += d_lengths[e.d_symbol as usize] as usize;
+				result += LENGTH_SYMBOLS_BITS_VALUES[e.litlen as usize].1;
+				result += ll_lengths[e.ll_symbol as usize] as u32;
+				result += u32::from(DISTANCE_BITS[e.d_symbol as usize]);
+				result += d_lengths[e.d_symbol as usize] as u32;
 			}
 		}
 	}
@@ -744,12 +730,12 @@ fn find_minimum_cost(
 	store: &LZ77Store,
 	mut start: usize,
 	mut end: usize,
-) -> Result<(usize, usize), ZopfliError> {
+) -> Result<(usize, u32), ZopfliError> {
 	// Keep track of the original start/end points.
 	let split_start = start - 1;
 	let split_end = end;
 
-	let mut best_cost = usize::MAX;
+	let mut best_cost = u32::MAX;
 	let mut best_idx = start;
 
 	// Small chunks don't need much.
@@ -766,7 +752,7 @@ fn find_minimum_cost(
 
 	// Divide and conquer.
 	let mut p = [0_usize; MINIMUM_SPLIT_DISTANCE - 1];
-	let mut last_best_cost = usize::MAX;
+	let mut last_best_cost = u32::MAX;
 	while MINIMUM_SPLIT_DISTANCE <= end - start {
 		let mut best_p_idx = 0;
 		for (i, pp) in p.iter_mut().enumerate() {
@@ -807,7 +793,7 @@ fn get_dynamic_lengths(
 	lend: usize,
 	ll_lengths: &mut [DeflateSym; ZOPFLI_NUM_LL],
 	d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D],
-) -> Result<usize, ZopfliError> {
+) -> Result<u32, ZopfliError> {
 	// Populate some counts.
 	let (mut ll_counts, d_counts) = store.histogram(lstart, lend)?;
 	ll_counts[256] = 1;
@@ -912,7 +898,7 @@ fn lz77_optimal(
 
 	// We'll also want dummy best and last costs.
 	let mut last_cost = 0;
-	let mut best_cost = usize::MAX;
+	let mut best_cost = u32::MAX;
 
 	// Repeat statistics with the cost model from the previous
 	// stat run.
@@ -975,7 +961,7 @@ fn lz77_optimal(
 ///
 /// Return the sum of the estimated costs of the left and right sections of the
 /// data.
-fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<usize, ZopfliError> {
+fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<u32, ZopfliError> {
 	Ok(
 		calculate_block_size_auto_type(store, start, mid)? +
 		calculate_block_size_auto_type(store, mid, end)?
@@ -987,7 +973,7 @@ fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result
 ///
 /// Change the population counts to improve Huffman tree compression,
 /// particularly its RLE part.
-fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
+fn optimize_huffman_for_rle(mut counts: &mut [u32]) {
 	// Convert counts to a proper slice with trailing zeroes trimmed.
 	while let [ rest @ .., 0 ] = counts { counts = rest; }
 	if counts.is_empty() { return; }
@@ -997,9 +983,9 @@ fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 	let counts = Cell::from_mut(counts).as_slice_of_cells();
 
 	// Find collapseable ranges!
-	let mut stride = 0;
-	let mut scratch = counts[0].get();
-	let mut sum = 0;
+	let mut stride: u32 = 0;
+	let mut scratch: u32 = counts[0].get();
+	let mut sum: u32 = 0;
 	for (i, (count, good)) in counts.iter().map(Cell::get).zip(GoodForRle::new(counts)).enumerate() {
 		// Time to reset (and maybe collapse).
 		if good || count.abs_diff(scratch) >= 4 {
@@ -1009,7 +995,7 @@ fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 				let v = ((sum + stride / 2) / stride).max(1);
 				// This condition just helps the compiler understand the range
 				// won't overflow; it can't, but it doesn't know that.
-				if let Some(from) = i.checked_sub(stride) {
+				if let Some(from) = i.checked_sub(stride as usize) {
 					for c in &counts[from..i] { c.set(v); }
 				}
 			}
@@ -1036,7 +1022,7 @@ fn optimize_huffman_for_rle(mut counts: &mut [usize]) {
 		let v = ((sum + stride / 2) / stride).max(1);
 		// This condition just helps the compiler understand the range won't
 		// overflow; it can't, but it doesn't know that.
-		if let Some(from) = counts.len().checked_sub(stride) {
+		if let Some(from) = counts.len().checked_sub(stride as usize) {
 			for c in &counts[from..] { c.set(v); }
 		}
 	}
@@ -1078,13 +1064,12 @@ fn try_lz77_expensive_fixed(
 	store: &LZ77Store,
 	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
-	uncompressed_cost: usize,
-	dynamic_cost: usize,
+	uncompressed_cost: u32,
+	dynamic_cost: u32,
 	arr: &[u8],
 	lstart: usize,
 	lend: usize,
 	last_block: bool,
-	expected_data_size: usize,
 	out: &mut ZopfliOut,
 ) -> Result<bool, ZopfliError> {
 	let (instart, inend) = get_lz77_byte_range(store, lstart, lend)?;
@@ -1112,10 +1097,7 @@ fn try_lz77_expensive_fixed(
 	// If it is better than dynamic, and uncompressed isn't better than both
 	// fixed and dynamic, it's the best and worth writing!
 	if fixed_cost < dynamic_cost && (fixed_cost <= uncompressed_cost || dynamic_cost <= uncompressed_cost) {
-		add_lz77_block(
-			BlockType::Fixed, last_block, fixed_store, arr, 0, fixed_store.len(),
-			expected_data_size, out,
-		)
+		add_lz77_block(BlockType::Fixed, last_block, fixed_store, arr, 0, fixed_store.len(), out)
 			.map(|()| true)
 	}
 	else { Ok(false) }
@@ -1132,11 +1114,11 @@ fn try_optimize_huffman_for_rle(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-	ll_counts: &[usize; ZOPFLI_NUM_LL],
-	d_counts: &[usize; ZOPFLI_NUM_D],
+	ll_counts: &[u32; ZOPFLI_NUM_LL],
+	d_counts: &[u32; ZOPFLI_NUM_D],
 	ll_lengths: &mut [DeflateSym; ZOPFLI_NUM_LL],
 	d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D],
-) -> Result<usize, ZopfliError> {
+) -> Result<u32, ZopfliError> {
 	// Calculate the tree and data sizes as are.
 	let (_, treesize) = kat::TreeLd::new(ll_lengths, d_lengths)
 		.calculate_tree_size()?;

@@ -25,7 +25,7 @@ pub(crate) const DISTANCE_BITS: [u8; 32] = [
 /// litlen.
 ///
 /// This is thankfully much shorter than the distance tables!
-pub(crate) const LENGTH_SYMBOLS_BITS_VALUES: [(Lsym, u8, u8); 259] = [
+pub(crate) const LENGTH_SYMBOLS_BITS_VALUES: [(Lsym, u32, u16); 259] = [
 	(Lsym::L000, 0, 0), (Lsym::L000, 0, 0), (Lsym::L000, 0, 0),
 	(Lsym::L257, 0, 0), (Lsym::L258, 0, 0), (Lsym::L259, 0, 0), (Lsym::L260, 0, 0), (Lsym::L261, 0, 0), (Lsym::L262, 0, 0), (Lsym::L263, 0, 0), (Lsym::L264, 0, 0),
 	(Lsym::L265, 1, 0), (Lsym::L265, 1, 1), (Lsym::L266, 1, 0), (Lsym::L266, 1, 1), (Lsym::L267, 1, 0), (Lsym::L267, 1, 1), (Lsym::L268, 1, 0), (Lsym::L268, 1, 1),
