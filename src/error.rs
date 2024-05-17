@@ -54,8 +54,6 @@ pub(super) enum FlacaError {
 	Killed,
 	/// # No Images.
 	NoImages,
-	/// # No Threads.
-	NoThreads,
 	/// # Progress Passthrough.
 	Progress(ProglessError),
 	/// # Invalid Zopfli Iterations.
@@ -94,7 +92,6 @@ impl FlacaError {
 			Self::Argue(e) => e.as_str(),
 			Self::Killed => "The process was aborted early.",
 			Self::NoImages => "No images were found.",
-			Self::NoThreads => "Unable to initialize threadpool.",
 			Self::Progress(e) => e.as_str(),
 			Self::ZopfliIterations => "The number of (zopfli) lz77 iterations must be between 1..=2_147_483_647.",
 		}

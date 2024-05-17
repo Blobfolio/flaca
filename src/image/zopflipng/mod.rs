@@ -87,6 +87,8 @@ const SUBLEN_LEN: usize = ZOPFLI_MAX_MATCH + 1;
 
 
 
+#[allow(clippy::inline_always)]
+#[inline(always)]
 /// # Optimize!
 ///
 /// This will attempt to losslessly recompress the source PNG with the

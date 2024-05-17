@@ -2,12 +2,6 @@
 # Flaca: Image Kind
 */
 
-use std::ops::{
-	BitAnd,
-	BitAndAssign,
-};
-
-
 #[repr(u8)]
 #[allow(clippy::redundant_pub_crate)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -18,43 +12,34 @@ use std::ops::{
 /// they're bunk).
 pub(crate) enum ImageKind {
 	/// # All.
-	All =  0b0011,
+	All,
 
 	/// # Jpeg.
-	Jpeg = 0b0001,
+	Jpeg,
 
 	/// # Png.
-	Png =  0b0010,
-
-	/// # None.
-	None = 0b0000,
+	Png,
 }
 
-impl BitAnd for ImageKind {
-	type Output = Self;
-	fn bitand(self, rhs: Self) -> Self::Output {
-		Self::from((self as u8) & (rhs as u8))
+impl ImageKind {
+	#[allow(clippy::inline_always)]
+	#[inline(always)]
+	/// # Supports JPEG?
+	pub(crate) const fn supports_jpeg(self) -> bool {
+		matches!(self, Self::All | Self::Jpeg)
 	}
-}
 
-impl BitAndAssign<u8> for ImageKind {
-	fn bitand_assign(&mut self, rhs: u8) {
-		*self = Self::from((*self as u8) & rhs);
-	}
-}
-
-impl From<u8> for ImageKind {
-	fn from(src: u8) -> Self {
-		match src {
-			0b0011 => Self::All,
-			0b0001 => Self::Jpeg,
-			0b0010 => Self::Png,
-			_ => Self::None,
-		}
+	#[allow(clippy::inline_always)]
+	#[inline(always)]
+	/// # Supports PNG?
+	pub(crate) const fn supports_png(self) -> bool {
+		matches!(self, Self::All | Self::Png)
 	}
 }
 
 impl ImageKind {
+	#[allow(clippy::inline_always)]
+	#[inline(always)]
 	/// # Is JPEG?
 	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
 		12 < src.len() &&
@@ -67,6 +52,8 @@ impl ImageKind {
 		)
 	}
 
+	#[allow(clippy::inline_always)]
+	#[inline(always)]
 	/// # Is PNG?
 	pub(crate) fn is_png(src: &[u8]) -> bool {
 		8 < src.len() && src[..8] == [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n']

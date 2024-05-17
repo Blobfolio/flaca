@@ -12,7 +12,10 @@ mod zopflipng;
 
 use kind::ImageKind;
 use oxipng::Options as OxipngOptions;
-use std::path::Path;
+use std::{
+	path::Path,
+	sync::OnceLock,
+};
 use super::EncodingError;
 use zopflipng::{
 	deflate_part,
@@ -23,7 +26,12 @@ use zopflipng::{
 
 
 
-#[inline]
+static OXIPNG_OPTIONS: OnceLock<OxipngOptions> = OnceLock::new();
+
+
+
+#[allow(clippy::inline_always)] // This is the hottest path we've got!
+#[inline(always)]
 /// # Encode Image.
 ///
 /// This will attempt to losslessly re-encode the image, overriding the
@@ -32,7 +40,7 @@ use zopflipng::{
 /// The before and after sizes are returned, unless there's an error or the
 /// image is invalid. In cases where compression doesn't help, the before and
 /// after sizes will be identical.
-pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions)
+pub(super) fn encode(file: &Path, kinds: ImageKind)
 -> Result<(u64, u64), EncodingError> {
 	// Read the file.
 	let mut raw = std::fs::read(file).map_err(|_|
@@ -44,30 +52,26 @@ pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions)
 
 	// Do PNG stuff?
 	if ImageKind::is_png(&raw) {
-		if ImageKind::None == kinds & ImageKind::Png { return Err(EncodingError::Skipped); }
-		encode_oxipng(&mut raw, oxi);
+		if ! kinds.supports_png() { return Err(EncodingError::Skipped); }
+		encode_oxipng(&mut raw);
 		encode_zopflipng(&mut raw);
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
-		if ImageKind::None == kinds & ImageKind::Jpeg { return Err(EncodingError::Skipped); }
+		if ! kinds.supports_jpeg() { return Err(EncodingError::Skipped); }
 
 		// Mozjpeg usually panics on error, so we have to do a weird little
 		// dance to keep it from killing the whole thread.
 		if let Ok(r) = std::panic::catch_unwind(move || {
 			encode_mozjpeg(&mut raw);
 			raw
-		}) {
-			// Copy the data back.
-			raw = r;
-
-			// But make sure the copied data didn't get corrupted along the
-			// way…
-			if ! ImageKind::is_jpeg(&raw) { return Ok((before, before)); }
-		}
-		// Abort without changing anything.
+		}) { raw = r; }
+		// Abort without changing anything; raw might be tainted.
 		else { return Ok((before, before)); }
 
+		// Encoding checks this explicitly, but debug asserts are nothing if
+		// not redundant!
+		debug_assert!(ImageKind::is_jpeg(&raw));
 	}
 	// Something else entirely?
 	else { return Err(EncodingError::Format); }
@@ -82,6 +86,7 @@ pub(super) fn encode(file: &Path, kinds: ImageKind, oxi: &OxipngOptions)
 	else { Ok((before, before)) }
 }
 
+#[inline(never)]
 /// # Compress w/ `MozJPEG`.
 ///
 /// The result is comparable to running:
@@ -99,6 +104,7 @@ fn encode_mozjpeg(raw: &mut Vec<u8>) {
 	}
 }
 
+#[inline(never)]
 /// # Compress w/ `Oxipng`
 ///
 /// The result is comparable to calling:
@@ -106,14 +112,15 @@ fn encode_mozjpeg(raw: &mut Vec<u8>) {
 /// ```bash
 /// oxipng -o 3 -s -a -i 0 --fix
 /// ```
-fn encode_oxipng(raw: &mut Vec<u8>, opts: &OxipngOptions) {
-	if let Ok(mut new) = oxipng::optimize_from_memory(raw, opts) {
-		if ! new.is_empty() && new.len() < raw.len() && ImageKind::is_png(&new) {
+fn encode_oxipng(raw: &mut Vec<u8>) {
+	if let Ok(mut new) = oxipng::optimize_from_memory(raw, OXIPNG_OPTIONS.get_or_init(oxipng_options)) {
+		if new.len() < raw.len() && ImageKind::is_png(&new) {
 			std::mem::swap(raw, &mut new);
 		}
 	}
 }
 
+#[inline(never)]
 /// # Compress w/ `Zopflipng`.
 ///
 /// The result is comparable to calling:
@@ -131,7 +138,7 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 	}
 }
 
-#[inline]
+#[inline(never)]
 /// # Generate Oxipng Options.
 ///
 /// This returns the strongest possible Oxipng compression profile (minus
@@ -143,7 +150,7 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 /// * All the alpha optimizations;
 /// * Interlacing disabled;
 /// * All headers stripped;
-pub(super) fn oxipng_options() -> OxipngOptions {
+fn oxipng_options() -> OxipngOptions {
 	use oxipng::{
 		Deflaters,
 		IndexSet,

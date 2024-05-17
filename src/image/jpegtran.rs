@@ -69,7 +69,8 @@ extern "C-unwind" {
 
 
 
-#[allow(unsafe_code)]
+#[allow(unsafe_code, clippy::inline_always)]
+#[inline(always)]
 /// # Jpegtran (Memory Mode)
 ///
 /// ## Errors

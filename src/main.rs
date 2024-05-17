@@ -35,6 +35,7 @@
 
 mod error;
 mod image;
+mod jobs;
 
 pub(crate) use error::{
 	EncodingError,
@@ -49,46 +50,18 @@ use argyle::{
 	FLAG_REQUIRED,
 	FLAG_VERSION,
 };
-use dactyl::{
-	NiceElapsed,
-	NiceU64,
-	traits::{
-		BytesToSigned,
-		BytesToUnsigned,
-		NiceInflection,
-	},
+use dactyl::traits::{
+	BytesToSigned,
+	BytesToUnsigned,
 };
 use dowser::{
 	Dowser,
 	Extension,
 };
-use fyi_msg::{
-	BeforeAfter,
-	Msg,
-	MsgKind,
-	Progless,
-};
-use rayon::iter::{
-	IndexedParallelIterator,
-	IntoParallelRefIterator,
-	ParallelIterator,
-};
+use fyi_msg::Msg;
 use std::{
 	num::NonZeroUsize,
-	path::Path,
-	sync::{
-		Arc,
-		atomic::{
-			AtomicBool,
-			AtomicU64,
-			Ordering::{
-				Acquire,
-				Relaxed,
-				SeqCst,
-			},
-		},
-		OnceLock,
-	},
+	sync::OnceLock,
 };
 
 
@@ -111,12 +84,8 @@ fn main() {
 		Err(FlacaError::Argue(ArgyleError::WantsVersion)) => {
 			println!(concat!("Flaca v", env!("CARGO_PKG_VERSION")));
 		},
-		Err(FlacaError::Argue(ArgyleError::WantsHelp)) => {
-			helper();
-		},
-		Err(e) => {
-			Msg::error(e).die(1);
-		},
+		Err(FlacaError::Argue(ArgyleError::WantsHelp)) => { helper(); },
+		Err(e) => { Msg::error(e).die(1); },
 	}
 }
 
@@ -130,10 +99,12 @@ fn _main() -> Result<(), FlacaError> {
 		.with_list();
 
 	// Figure out which kinds we're doing.
-	let mut kinds = ImageKind::All;
-	if args.switch2(b"--no-jpeg", b"--no-jpg") { kinds &= ! (ImageKind::Jpeg as u8); }
-	if args.switch(b"--no-png") { kinds &= ! (ImageKind::Png as u8); }
-	if ImageKind::None == kinds { return Err(FlacaError::NoImages); }
+	let kinds = match (args.switch2(b"--no-jpeg", b"--no-jpg"), args.switch(b"--no-png")) {
+		(false, false) => ImageKind::All,
+		(true, false) => ImageKind::Png,
+		(false, true) => ImageKind::Jpeg,
+		(true, true) => return Err(FlacaError::NoImages),
+	};
 
 	// Zopfli iterations.
 	if let Some(n) = args.option(b"-z") {
@@ -143,104 +114,34 @@ fn _main() -> Result<(), FlacaError> {
 		let _res = ZOPFLI_ITERATIONS.set(n);
 	}
 
-	let paths = Dowser::default()
+	// Figure out the maximum number of threads to use…
+	let mut threads = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+	if let Some(t) = args.option(b"-j") {
+		if let Some(t) = t.strip_prefix(b"-").and_then(NonZeroUsize::btou) {
+			threads = threads.get().checked_sub(t.get())
+				.and_then(NonZeroUsize::new)
+				.unwrap_or(NonZeroUsize::MIN);
+		}
+		else if let Some(t) = NonZeroUsize::btou(t) {
+			if t < threads { threads = t; }
+		}
+	}
+
+	// Find and sort the images!
+	let mut paths = Dowser::default()
 		.with_paths(args.args_os())
 		.into_vec_filtered(|p| Extension::try_from3(p).map_or_else(
 			|| Some(E_JPEG) == Extension::try_from4(p),
 			|e| e == E_JPG || e == E_PNG
 		));
-
-	let total = paths.len() as u64;
-	if total == 0 {
-		return Err(FlacaError::NoImages);
-	}
-
-	// Watch for SIGINT so we can shut down cleanly.
-	let killed = Arc::from(AtomicBool::new(false));
-
-	// Initialize the oxipng compression options. Doing that here is a bit
-	// strange, but it is less contentious to use a shared reference to this
-	// object than to try to leverage a Lazy Static in a more appropriate
-	// location.
-	let oxi = image::oxipng_options();
-
-	// Set up a threadpool for our workload.
-	let threads =
-		if total == 1 { NonZeroUsize::MIN }
-		else { num_threads(&args) };
-	let pool = rayon::ThreadPoolBuilder::new()
-		.num_threads(threads.get())
-		.build()
-		.map_err(|_| FlacaError::NoThreads)?;
+	paths.sort();
 
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
-		// Boot up a progress bar.
-		let progress = Progless::try_from(total)?.with_reticulating_splines("Flaca");
-
-		// Keep track of the before and after file sizes as we go.
-		let skipped: AtomicU64 = AtomicU64::new(0);
-		let before: AtomicU64 = AtomicU64::new(0);
-		let after: AtomicU64 = AtomicU64::new(0);
-
-		// Process!
-		sigint(Arc::clone(&killed), Some(progress.clone()));
-		pool.install(#[inline(never)] || paths.par_iter().with_max_len(1).for_each(#[inline(always)] |x|
-			if ! killed.load(Acquire) {
-				let tmp = x.to_string_lossy();
-				progress.add(&tmp);
-
-				match image::encode(x, kinds, &oxi) {
-					// Happy.
-					Ok((b, a)) => {
-						before.fetch_add(b, Relaxed);
-						after.fetch_add(a, Relaxed);
-					},
-					// Skipped.
-					Err(e) => {
-						skipped.fetch_add(1, Relaxed);
-						if ! matches!(e, EncodingError::Skipped) {
-							skip_warn(x, kinds, e, &progress);
-						}
-					},
-				}
-
-				progress.remove(&tmp);
-			}
-		));
-
-		// Print a summary.
-		let elapsed = progress.finish();
-		let skipped = skipped.load(Acquire);
-		if skipped == 0 {
-			progress.summary(MsgKind::Crunched, "image", "images")
-		}
-		else {
-			// And summarize what we did do.
-			Msg::crunched(format!(
-				"{}\x1b[2m/\x1b[0m{} in {}.",
-				NiceU64::from(total - skipped),
-				total.nice_inflect("image", "images"),
-				NiceElapsed::from(elapsed),
-			))
-		}
-			.with_bytes_saved(BeforeAfter::from((
-				before.into_inner(),
-				after.into_inner(),
-			)))
-			.eprint();
+		jobs::exec_pretty(threads, kinds, paths)
 	}
 	// Silent run-through.
-	else {
-		sigint(Arc::clone(&killed), None);
-		pool.install(#[inline(never)] || paths.par_iter().for_each(#[inline(always)] |x| if ! killed.load(Acquire) {
-			let _res = image::encode(x, kinds, &oxi);
-		}));
-	}
-
-	// Early abort?
-	if killed.load(Acquire) { Err(FlacaError::Killed) }
-	else { Ok(()) }
+	else { jobs::exec(threads, kinds, paths) }
 }
 
 #[cold]
@@ -308,51 +209,4 @@ OPTIMIZERS USED:
     Zopflipng <https://github.com/google/zopfli>
 "
 	));
-}
-
-/// # Number of Threads.
-fn num_threads(args: &Argue) -> NonZeroUsize {
-	let mut threads = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
-	if let Some(t) = args.option(b"-j") {
-		if let Some(t) = t.strip_prefix(b"-").and_then(NonZeroUsize::btou) {
-			threads = threads.get().checked_sub(t.get())
-				.and_then(NonZeroUsize::new)
-				.unwrap_or(NonZeroUsize::MIN);
-		}
-		else if let Some(t) = NonZeroUsize::btou(t) {
-			if t < threads { threads = t; }
-		}
-	}
-	threads
-}
-
-/// # Hook Up CTRL+C.
-///
-/// Once stops processing new items, twice forces immediate shutdown.
-fn sigint(killed: Arc<AtomicBool>, progress: Option<Progless>) {
-	let _res = ctrlc::set_handler(move ||
-		if killed.compare_exchange(false, true, SeqCst, Relaxed).is_ok() {
-			if let Some(p) = &progress { p.sigint(); }
-		}
-		else { std::process::exit(1); }
-	);
-}
-
-#[cold]
-/// # Maybe Warn About a Skip.
-fn skip_warn(file: &Path, kinds: ImageKind, err: EncodingError, progress: &Progless) {
-	// If we're only compressing one or the other kind of image, make sure the
-	// file extension belongs to that kind before complaining about it.
-	if kinds != ImageKind::All {
-		let file_kind =
-			if Some(E_PNG) == Extension::try_from3(file) { ImageKind::Png }
-			else { ImageKind::Jpeg };
-		if ImageKind::None == kinds & file_kind { return; }
-	}
-
-	progress.push_msg(Msg::custom("Skipped", 11, &format!(
-		"{} \x1b[2m({})\x1b[0m",
-		file.to_string_lossy(),
-		err.as_str(),
-	)), true);
 }
