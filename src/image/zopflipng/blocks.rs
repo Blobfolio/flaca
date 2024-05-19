@@ -231,7 +231,8 @@ impl SplitPoints {
 
 
 
-#[inline]
+#[allow(clippy::inline_always)]
+#[inline(always)]
 /// # Deflate a Part.
 ///
 /// Image compression is done in chunks of a million bytes. This does all the
@@ -367,6 +368,7 @@ impl<'a> Iterator for GoodForRle<'a> {
 		}
 	}
 
+	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len = self.len();
 		(len, Some(len))
@@ -374,6 +376,7 @@ impl<'a> Iterator for GoodForRle<'a> {
 }
 
 impl<'a> ExactSizeIterator for GoodForRle<'a> {
+	#[inline]
 	fn len(&self) -> usize { self.good + self.bad + self.counts.len() }
 }
 
@@ -781,6 +784,7 @@ fn find_minimum_cost(
 	Ok((best_idx, last_best_cost))
 }
 
+#[inline(never)]
 /// # Calculate the Bit Lengths for Dynamic Block Symbols.
 ///
 /// This chooses lengths that lead to the smallest tree/symbol encoding.

@@ -366,8 +366,10 @@ impl ZopfliHash {
 	#[allow(
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
+		clippy::inline_always,
 		clippy::similar_names,
 	)]
+	#[inline(always)]
 	/// # Update Hash.
 	///
 	/// This updates the hash tables using the data from `arr`. The `pos` value
@@ -397,6 +399,7 @@ impl ZopfliHash {
 		self.chain2.update_hash(pos);
 	}
 
+	#[inline]
 	/// # Update Hash Value.
 	///
 	/// This updates the rotating (chain1) hash value.
@@ -685,6 +688,7 @@ impl ZopfliHash {
 
 impl ZopfliHash {
 	#[allow(clippy::too_many_arguments)]
+	#[inline(never)]
 	/// # Find Longest Match.
 	///
 	/// This finds the longest match in `arr` (and/or the cache), setting the
@@ -955,6 +959,7 @@ impl ZopfliHashChain {
 		clippy::cast_sign_loss,
 		clippy::similar_names,
 	)]
+	#[inline]
 	/// # Update Hash.
 	///
 	/// This updates the index-related data for `pos`. (The hash value will

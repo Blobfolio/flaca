@@ -42,6 +42,7 @@ impl Deref for EncodedImage<c_ulong> {
 	type Target = [u8];
 
 	#[allow(clippy::cast_possible_truncation, unsafe_code)]
+	#[inline]
 	fn deref(&self) -> &Self::Target {
 		if self.is_empty() { &[] }
 		else {
@@ -54,6 +55,7 @@ impl Deref for EncodedImage<usize> {
 	type Target = [u8];
 
 	#[allow(unsafe_code)]
+	#[inline]
 	fn deref(&self) -> &Self::Target {
 		if self.is_empty() { &[] }
 		else {

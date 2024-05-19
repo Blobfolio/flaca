@@ -75,7 +75,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 			else { (false, ZOPFLI_MASTER_BLOCK_SIZE) };
 
 		// Crunch the part!
-		let res = STATES.with_borrow_mut(#[inline] |(state, splits)| deflate_part(
+		let res = STATES.with_borrow_mut(#[inline(always)] |(state, splits)| deflate_part(
 			state,
 			splits,
 			numiterations,
@@ -230,6 +230,7 @@ impl LodePNGColorType {
 
 impl Default for LodePNGState {
 	#[allow(unsafe_code)]
+	#[inline]
 	fn default() -> Self {
 		let mut out = MaybeUninit::<Self>::zeroed();
 		unsafe {
@@ -247,6 +248,7 @@ impl Drop for LodePNGState {
 
 impl LodePNGState {
 	#[allow(unsafe_code)]
+	#[inline]
 	/// # Decode!
 	pub(super) fn decode(&mut self, src: &[u8]) -> Option<DecodedImage> {
 		let mut buf = std::ptr::null_mut();
@@ -266,6 +268,7 @@ impl LodePNGState {
 	}
 
 	#[allow(unsafe_code)]
+	#[inline]
 	/// # Encode!
 	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedImage<usize>> {
 		// Safety: a non-zero response is an error.
@@ -280,6 +283,7 @@ impl LodePNGState {
 	}
 
 	#[allow(unsafe_code)]
+	#[inline]
 	/// # Set Up Encoder.
 	///
 	/// This configures and returns a new state for encoding purposes.

@@ -53,7 +53,9 @@ impl LZ77Store {
 
 	/// # Push Values.
 	pub(crate) fn push(&mut self, litlen: u16, dist: u16, pos: usize) -> Result<(), ZopfliError> {
-		LZ77StoreEntry::new(litlen, dist, pos).map(|e| self.push_entry(e))
+		let e = LZ77StoreEntry::new(litlen, dist, pos)?;
+		self.push_entry(e);
+		Ok(())
 	}
 
 	/// # Push Entry.
@@ -112,6 +114,8 @@ impl LZ77Store {
 }
 
 impl LZ77Store {
+	#[allow(clippy::inline_always)]
+	#[inline(always)]
 	/// # Length.
 	pub(crate) fn len(&self) -> usize { self.entries.len() }
 
@@ -254,6 +258,8 @@ impl LZ77StoreEntry {
 		else { Err(zopfli_error!()) }
 	}
 
+	#[allow(clippy::inline_always)]
+	#[inline(always)]
 	/// # Length.
 	///
 	/// If the distance is zero, 1, otherwise the litlen.

@@ -112,6 +112,8 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
 
 
 
+#[allow(clippy::inline_always)]
+#[inline(always)]
 /// # Best Strategy.
 ///
 /// This attempts to find the best filtering strategy for the image by trying
@@ -134,6 +136,7 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrateg
 		.map_or(LodePNGFilterStrategy::LFS_ZERO, |(_, s)| s)
 }
 
+#[inline(never)]
 /// # Apply Optimizations.
 ///
 /// This attempts to re-encode an image using the provided filter strategy,

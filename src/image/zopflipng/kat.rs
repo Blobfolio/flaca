@@ -90,6 +90,7 @@ impl<'a> TreeLd<'a> {
 		}
 	}
 
+	#[inline]
 	/// # Total Entries.
 	///
 	/// Return the combined length and distance lengths that can be
