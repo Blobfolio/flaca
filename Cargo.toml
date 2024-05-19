@@ -127,6 +127,7 @@ features = [ "jpegtran" ]
 [dependencies.oxipng]
 version = "=9.1.1"
 default-features = false
+features = [ "freestanding" ]
 
 [build-dependencies]
 bindgen = "0.69.*"
