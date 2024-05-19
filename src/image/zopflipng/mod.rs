@@ -167,3 +167,22 @@ fn encode(
 
 	Some(out)
 }
+
+#[inline]
+#[allow(unsafe_code)]
+/// # Split Array.
+///
+/// Take a sized slice out of the collection, or die trying.
+///
+/// This is equivalent to `slice.get(rng).and_then(TryInto::try_into)`, but
+/// less ugly!
+const fn sized_slice<T, const N: usize>(slice: &[T], idx: usize)
+-> Result<&[T; N], ZopfliError> {
+	if idx + N <= slice.len() {
+		unsafe {
+			// Safety: the subslice is in range.
+			Ok(&*(slice.as_ptr().add(idx).cast()))
+		}
+	}
+	else { Err(zopfli_error!()) }
+}

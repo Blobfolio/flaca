@@ -10,6 +10,7 @@ use super::{
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LitLen,
 	Lsym,
+	sized_slice,
 	zopfli_error,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
@@ -127,7 +128,8 @@ impl LZ77Store {
 			let mut ll_counts = [0_u32; ZOPFLI_NUM_LL];
 			let mut d_counts = [0_u32; ZOPFLI_NUM_D];
 
-			for e in &self.entries[lstart..lend] {
+			let entries = self.entries.get(lstart..lend).ok_or(zopfli_error!())?;
+			for e in entries {
 				ll_counts[e.ll_symbol as usize] += 1;
 				if 0 < e.dist {
 					d_counts[e.d_symbol as usize] += 1;
@@ -141,7 +143,7 @@ impl LZ77Store {
 		else {
 			let (mut ll_counts, mut d_counts) = self._histogram(lend - 1)?;
 			if 0 < lstart {
-				self._histogram_sub(lstart - 1, &mut ll_counts, &mut d_counts);
+				self._histogram_sub(lstart - 1, &mut ll_counts, &mut d_counts)?;
 			}
 
 			Ok((ll_counts, d_counts))
@@ -158,12 +160,8 @@ impl LZ77Store {
 		let d_end = d_start + ZOPFLI_NUM_D;
 
 		// Start by copying the counts directly from the nearest chunk.
-		let mut ll_counts: [u32; ZOPFLI_NUM_LL] = self.ll_counts.get(ll_start..ll_end)
-			.and_then(|c| c.try_into().ok())
-			.ok_or(zopfli_error!())?;
-		let mut d_counts: [u32; ZOPFLI_NUM_D] = self.d_counts.get(d_start..d_end)
-			.and_then(|c| c.try_into().ok())
-			.ok_or(zopfli_error!())?;
+		let mut ll_counts: [u32; ZOPFLI_NUM_LL] = *sized_slice(&self.ll_counts, ll_start)?;
+		let mut d_counts: [u32; ZOPFLI_NUM_D] = *sized_slice(&self.d_counts, d_start)?;
 
 		// Subtract the symbol occurences between (pos+1) and the end of the
 		// available data for the chunk.
@@ -184,17 +182,15 @@ impl LZ77Store {
 		pos: usize,
 		ll_counts: &mut [u32; ZOPFLI_NUM_LL],
 		d_counts: &mut [u32; ZOPFLI_NUM_D],
-	) {
+	) -> Result<(), ZopfliError> {
 		// The relative chunked positions.
 		let ll_start = ZOPFLI_NUM_LL * pos.wrapping_div(ZOPFLI_NUM_LL);
 		let d_start = ZOPFLI_NUM_D * pos.wrapping_div(ZOPFLI_NUM_D);
 		let ll_end = ll_start + ZOPFLI_NUM_LL;
 		let d_end = d_start + ZOPFLI_NUM_D;
 
-		// We ultimately need to subtract (start_counts - start_symbols) from
-		// the end_counts. We can avoid intermediate storage by rearranging
-		// the formula so that the start_symbols get _added_ to the end_counts
-		// directly.
+		// We're ultimately looking for `a -= (b_count - b_sym)`. Let's start
+		// by adding — minus-minus is plus — the symbols.
 		for (i, e) in self.entries.iter().enumerate().take(ll_end).skip(pos + 1) {
 			ll_counts[e.ll_symbol as usize] += 1;
 			if i < d_end && 0 < e.dist {
@@ -202,14 +198,19 @@ impl LZ77Store {
 			}
 		}
 
-		// Now we just need to subtract the start_counts, et voilà, we have our
-		// desired middle stats!
-		for (a, b) in ll_counts.iter_mut().zip(self.ll_counts.iter().skip(ll_start)) {
+		// To finish it off, we just need to subtract the counts. Slicing the
+		// store side serves as both a sanity check and a potential compiler
+		// size hint.
+		let old = sized_slice::<_, ZOPFLI_NUM_LL>(&self.ll_counts, ll_start)?;
+		for (a, b) in ll_counts.iter_mut().zip(old) {
 			*a -= b;
 		}
-		for (a, b) in d_counts.iter_mut().zip(self.d_counts.iter().skip(d_start)) {
+		let old = sized_slice::<_, ZOPFLI_NUM_D>(&self.d_counts, d_start)?;
+		for (a, b) in d_counts.iter_mut().zip(old) {
 			*a -= b;
 		}
+
+		Ok(())
 	}
 }
 

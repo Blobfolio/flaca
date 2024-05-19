@@ -6,6 +6,7 @@ the thread-local LMC static.
 */
 
 use super::{
+	sized_slice,
 	SUBLEN_LEN,
 	zopfli_error,
 	ZOPFLI_MAX_MATCH,
@@ -97,9 +98,7 @@ impl MatchCache {
 	) -> Result<bool, ZopfliError> {
 		// One sanity check to rule them all.
 		if pos >= self.ld.len() { return Err(zopfli_error!()); }
-		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = self.sublen.get(SUBLEN_CACHED_LEN * pos..SUBLEN_CACHED_LEN * pos + SUBLEN_CACHED_LEN)
-			.and_then(|s| s.try_into().ok())
-			.ok_or(zopfli_error!())?;
+		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = sized_slice(&self.sublen, SUBLEN_CACHED_LEN * pos)?;
 
 		// If we have no distance, we have no cache.
 		let (cache_len, cache_dist) = ld_split(self.ld[pos]);
