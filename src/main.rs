@@ -138,10 +138,10 @@ fn _main() -> Result<(), FlacaError> {
 
 	// Sexy run-through.
 	if args.switch2(b"-p", b"--progress") {
-		jobs::exec_pretty(threads, kinds, paths)
+		jobs::exec_pretty(threads, kinds, &paths)
 	}
 	// Silent run-through.
-	else { jobs::exec(threads, kinds, paths) }
+	else { jobs::exec(threads, kinds, &paths) }
 }
 
 #[cold]

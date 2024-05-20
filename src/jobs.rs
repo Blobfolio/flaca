@@ -8,6 +8,7 @@ use crate::{
 	FlacaError,
 	ImageKind,
 };
+use crossbeam_channel::Receiver;
 use dactyl::{
 	NiceElapsed,
 	NiceU64,
@@ -55,11 +56,8 @@ static AFTER: AtomicU64 = AtomicU64::new(0);
 ///
 /// This processes each image in `files` in parallel using up to `threads`
 /// threads.
-pub(super) fn exec(
-	mut threads: NonZeroUsize,
-	kinds: ImageKind,
-	files: Vec<PathBuf>,
-) -> Result<(), FlacaError> {
+pub(super) fn exec(mut threads: NonZeroUsize, kinds: ImageKind, files: &[PathBuf])
+-> Result<(), FlacaError> {
 	// Sort out the threads and job server.
 	let total = NonZeroUsize::new(files.len()).ok_or(FlacaError::NoImages)?;
 	if total < threads { threads = total; }
@@ -69,14 +67,14 @@ pub(super) fn exec(
 	sigint(Arc::clone(&killed), None);
 
 	// Thread business!
-	let (tx, rx) = crossbeam_channel::bounded::<PathBuf>(threads.get());
+	let (tx, rx) = crossbeam_channel::bounded::<&Path>(threads.get());
 	thread::scope(#[inline(always)] |s| {
 		// Set up the worker threads.
 		let mut workers = Vec::with_capacity(threads.get());
 		for _ in 0..threads.get() {
 			workers.push(s.spawn(#[inline(always)] ||
 				while let Ok(p) = rx.recv() {
-					let _res = crate::image::encode(&p, kinds);
+					let _res = crate::image::encode(p, kinds);
 				}
 			));
 		}
@@ -101,26 +99,19 @@ pub(super) fn exec(
 /// # Crunch Everything (with Progress)!
 ///
 /// This is the same as `exec`, but includes a progress bar and summary.
-pub(super) fn exec_pretty(
-	mut threads: NonZeroUsize,
-	kinds: ImageKind,
-	files: Vec<PathBuf>,
-) -> Result<(), FlacaError> {
+pub(super) fn exec_pretty(mut threads: NonZeroUsize, kinds: ImageKind, files: &[PathBuf])
+-> Result<(), FlacaError> {
 	#[inline(never)]
 	/// # Worker Business.
 	///
 	/// This is the worker callback; it listens for image paths, processing
 	/// them as they come in.
-	fn work(
-		rx: &crossbeam_channel::Receiver::<PathBuf>,
-		progress: &Progless,
-		kinds: ImageKind,
-	) {
+	fn work(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) {
 		while let Ok(p) = rx.recv() {
 			let name = p.to_string_lossy();
 			progress.add(&name);
 
-			match crate::image::encode(&p, kinds) {
+			match crate::image::encode(p, kinds) {
 				// Happy.
 				Ok((b, a)) => {
 					BEFORE.fetch_add(b, Relaxed);
@@ -130,7 +121,7 @@ pub(super) fn exec_pretty(
 				Err(e) => {
 					SKIPPED.fetch_add(1, Relaxed);
 					if ! matches!(e, EncodingError::Skipped) {
-						skip_warn(&p, kinds, e, progress);
+						skip_warn(p, kinds, e, progress);
 					}
 				},
 			}
@@ -150,7 +141,7 @@ pub(super) fn exec_pretty(
 	sigint(Arc::clone(&killed), Some(progress.clone()));
 
 	// Thread business!
-	let (tx, rx) = crossbeam_channel::bounded::<PathBuf>(threads.get());
+	let (tx, rx) = crossbeam_channel::bounded::<&Path>(threads.get());
 	thread::scope(#[inline(always)] |s| {
 		// Set up the worker threads.
 		let mut workers = Vec::with_capacity(threads.get());
