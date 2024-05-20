@@ -35,7 +35,6 @@
 
 mod error;
 mod image;
-mod jobs;
 
 pub(crate) use error::{
 	EncodingError,
@@ -50,18 +49,43 @@ use argyle::{
 	FLAG_REQUIRED,
 	FLAG_VERSION,
 };
-use dactyl::traits::{
-	BytesToSigned,
-	BytesToUnsigned,
+use crossbeam_channel::Receiver;
+use dactyl::{
+	NiceElapsed,
+	NiceU64,
+	traits::{
+		BytesToSigned,
+		BytesToUnsigned,
+		NiceInflection,
+	},
 };
 use dowser::{
 	Dowser,
 	Extension,
 };
-use fyi_msg::Msg;
+use fyi_msg::{
+	BeforeAfter,
+	Msg,
+	MsgKind,
+	Progless,
+};
 use std::{
 	num::NonZeroUsize,
-	sync::OnceLock,
+	path::Path,
+	sync::{
+		Arc,
+		atomic::{
+			AtomicBool,
+			AtomicI32,
+			AtomicU64,
+			Ordering::{
+				Acquire,
+				Relaxed,
+				SeqCst,
+			},
+		},
+	},
+	thread,
 };
 
 
@@ -70,7 +94,12 @@ use std::{
 include!(concat!(env!("OUT_DIR"), "/flaca-extensions.rs"));
 
 /// # Number of Zopfli Iterations.
-pub(crate) static ZOPFLI_ITERATIONS: OnceLock<i32> = OnceLock::new();
+pub(crate) static ZOPFLI_ITERATIONS: AtomicI32 = AtomicI32::new(0);
+
+/// # Progress Counters.
+static SKIPPED: AtomicU64 = AtomicU64::new(0);
+static BEFORE: AtomicU64 = AtomicU64::new(0);
+static AFTER: AtomicU64 = AtomicU64::new(0);
 
 
 
@@ -89,7 +118,7 @@ fn main() {
 	}
 }
 
-#[inline]
+#[inline(never)]
 /// # Actual Main.
 ///
 /// This is the actual main, allowing us to easily bubble errors.
@@ -109,9 +138,9 @@ fn _main() -> Result<(), FlacaError> {
 	// Zopfli iterations.
 	if let Some(n) = args.option(b"-z") {
 		let n = i32::btoi(n)
-			.filter(|n| 0 < *n)
+			.filter(|n| n.is_positive())
 			.ok_or(FlacaError::ZopfliIterations)?;
-		let _res = ZOPFLI_ITERATIONS.set(n);
+		ZOPFLI_ITERATIONS.store(n, Relaxed);
 	}
 
 	// Figure out the maximum number of threads to use…
@@ -134,17 +163,119 @@ fn _main() -> Result<(), FlacaError> {
 			|| Some(E_JPEG) == Extension::try_from4(p),
 			|e| e == E_JPG || e == E_PNG
 		));
+
+	// Make sure we have paths, and if we only have a few, reduce the
+	// number of threads accordingly.
+	let total = NonZeroUsize::new(paths.len()).ok_or(FlacaError::NoImages)?;
+	if total < threads { threads = total; }
+
+	// Sort the paths for reproduceability.
 	paths.sort();
 
-	// Sexy run-through.
-	if args.switch2(b"-p", b"--progress") {
-		jobs::exec_pretty(threads, kinds, &paths)
+	// Boot up a progress bar, if desired.
+	let progress =
+		if args.switch2(b"-p", b"--progress") {
+			Progless::try_from(total.get()).ok().map(|p| p.with_reticulating_splines("Flaca"))
+		}
+		else { None };
+
+	// Set up the killswitch.
+	let killed = Arc::new(AtomicBool::new(false));
+	sigint(Arc::clone(&killed), progress.clone());
+
+	// Now onto the thread business!
+	let (tx, rx) = crossbeam_channel::bounded::<&Path>(threads.get());
+	thread::scope(#[inline(always)] |s| {
+		// Set up the worker threads, either with or without progress.
+		let mut workers = Vec::with_capacity(threads.get());
+		if let Some(p) = progress.as_ref() {
+			for _ in 0..threads.get() {
+				workers.push(
+					s.spawn(#[inline(always)] || crunch_pretty(&rx, p, kinds))
+				);
+			}
+		}
+		else {
+			for _ in 0..threads.get() {
+				workers.push(
+					s.spawn(#[inline(always)] || crunch_quiet(&rx, kinds))
+				);
+			}
+		}
+
+		// Queue up all the image paths, unless CTRL+C is pressed.
+		for path in &paths {
+			if killed.load(Acquire) || tx.send(path).is_err() { break; }
+		}
+
+		// Disconnect and wait for the threads to finish!
+		drop(tx);
+		for worker in workers { let _res = worker.join(); }
+	});
+
+	// Summarize!
+	if let Some(progress) = progress {
+		summarize(&progress, total.get() as u64);
 	}
-	// Silent run-through.
-	else { jobs::exec(threads, kinds, &paths) }
+
+	// Early abort?
+	if killed.load(Acquire) { Err(FlacaError::Killed) }
+	else { Ok(()) }
+}
+
+#[inline(never)]
+/// # Worker Callback (Pretty).
+///
+/// This is the worker callback for pretty crunching. It listens for "new"
+/// image paths and crunches them — and updates the progress bar, etc. —
+/// then quits when the work has dried up.
+fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) {
+	#[allow(clippy::inline_always)]
+	#[inline(always)]
+	fn noteworthy(kinds: ImageKind, p: &Path) -> bool {
+		if matches!(kinds, ImageKind::All) { true }
+		else if Some(E_PNG) == Extension::try_from3(p) { kinds.supports_png() }
+		else { kinds.supports_jpeg() }
+	}
+
+	while let Ok(p) = rx.recv() {
+		let name = p.to_string_lossy();
+		progress.add(&name);
+
+		match crate::image::encode(p, kinds) {
+			// Happy.
+			Ok((b, a)) => {
+				BEFORE.fetch_add(b, Relaxed);
+				AFTER.fetch_add(a, Relaxed);
+			},
+			// Skipped.
+			Err(e) => {
+				SKIPPED.fetch_add(1, Relaxed);
+
+				if ! matches!(e, EncodingError::Skipped) && noteworthy(kinds, p) {
+					progress.push_msg(Msg::custom("Skipped", 11, &format!(
+						"{name} \x1b[2m({})\x1b[0m",
+						e.as_str(),
+					)), true);
+				}
+			}
+		}
+
+		progress.remove(&name);
+	}
+}
+
+#[inline(never)]
+/// # Worker Callback (Quiet).
+///
+/// This is the worker callback for quiet crunching. It listens for "new" image
+/// paths and crunches them, then quits when the work has dried up.
+fn crunch_quiet(rx: &Receiver::<&Path>, kinds: ImageKind) {
+	while let Ok(p) = rx.recv() { let _res = crate::image::encode(p, kinds); }
 }
 
 #[cold]
+#[inline(never)]
 /// # Print Help.
 fn helper() {
 	println!(concat!(
@@ -209,4 +340,39 @@ OPTIMIZERS USED:
     Zopflipng <https://github.com/google/zopfli>
 "
 	));
+}
+
+/// # Hook Up CTRL+C.
+///
+/// Once stops processing new items, twice forces immediate shutdown.
+fn sigint(killed: Arc<AtomicBool>, progress: Option<Progless>) {
+	let _res = ctrlc::set_handler(move ||
+		if killed.compare_exchange(false, true, SeqCst, Relaxed).is_ok() {
+			if let Some(p) = &progress { p.sigint(); }
+		}
+		else { std::process::exit(1); }
+	);
+}
+
+/// # Summarize Results.
+fn summarize(progress: &Progless, total: u64) {
+	let elapsed = progress.finish();
+	let skipped = SKIPPED.load(Acquire);
+	if skipped == 0 {
+		progress.summary(MsgKind::Crunched, "image", "images")
+	}
+	else {
+		// And summarize what we did do.
+		Msg::crunched(format!(
+			"{}\x1b[2m/\x1b[0m{} in {}.",
+			NiceU64::from(total - skipped),
+			total.nice_inflect("image", "images"),
+			NiceElapsed::from(elapsed),
+		))
+	}
+		.with_bytes_saved(BeforeAfter::from((
+			BEFORE.load(Acquire),
+			AFTER.load(Acquire),
+		)))
+		.eprint();
 }

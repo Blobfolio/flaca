@@ -16,6 +16,7 @@ use std::{
 		c_void,
 	},
 	mem::MaybeUninit,
+	sync::atomic::Ordering::Relaxed,
 };
 use super::{
 	deflate_part,
@@ -53,7 +54,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	_settings: *const LodePNGCompressSettings,
 ) -> c_uint {
 	// Figure out how many iterations to use.
-	let mut numiterations = *ZOPFLI_ITERATIONS.get_or_init(|| 0);
+	let mut numiterations = ZOPFLI_ITERATIONS.load(Relaxed);
 	if numiterations <= 0 {
 		numiterations = if insize < 200_000 { 60 } else { 20 };
 	}
