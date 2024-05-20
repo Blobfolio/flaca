@@ -16,8 +16,9 @@ looked at to bring this all together were:
 */
 
 use mozjpeg_sys::{
-	j_compress_ptr,
-	j_decompress_ptr,
+	jcopy_markers_execute,
+	jcopy_markers_setup,
+	JCOPY_OPTION_JCOPYOPT_NONE,
 	JCROP_CODE_JCROP_UNSET,
 	jpeg_common_struct,
 	jpeg_compress_struct,
@@ -47,25 +48,11 @@ use mozjpeg_sys::{
 use std::{
 	ffi::{
 		c_int,
-		c_uint,
 		c_ulong,
 	},
 	marker::PhantomPinned,
 };
 use super::ffi::EncodedImage;
-
-
-
-// We need a couple more things from jpegtran. Mozjpeg-sys includes the right
-// sources but doesn't export these definitions for whatever reason.
-extern "C-unwind" {
-	fn jcopy_markers_setup(srcinfo: j_decompress_ptr, option: c_uint);
-	fn jcopy_markers_execute(
-		srcinfo: j_decompress_ptr,
-		dstinfo: j_compress_ptr,
-		option: c_uint,
-	);
-}
 
 
 
@@ -119,7 +106,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<c_ulong>> {
 		jpeg_mem_src(&mut srcinfo.cinfo, srcinfo.raw.as_ptr(), src_size);
 
 		// Ignore markers.
-		jcopy_markers_setup(&mut srcinfo.cinfo, 0);
+		jcopy_markers_setup(&mut srcinfo.cinfo, JCOPY_OPTION_JCOPYOPT_NONE);
 
 		// Read the file header to get to the goods.
 		jpeg_read_header(&mut srcinfo.cinfo, 1);
@@ -165,7 +152,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<c_ulong>> {
 		jpeg_write_coefficients(&mut dstinfo.cinfo, dst_coef_arrays);
 
 		// Make sure we aren't copying any markers.
-		jcopy_markers_execute(&mut srcinfo.cinfo, &mut dstinfo.cinfo, 0);
+		jcopy_markers_execute(&mut srcinfo.cinfo, &mut dstinfo.cinfo, JCOPY_OPTION_JCOPYOPT_NONE);
 
 		// Execute and write the transformation, if any.
 		jtransform_execute_transform(

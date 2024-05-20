@@ -121,7 +121,7 @@ version = "0.13.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
-version = "=2.1.0"
+version = "=2.2.0"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
