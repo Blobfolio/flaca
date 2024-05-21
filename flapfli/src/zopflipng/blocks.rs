@@ -73,7 +73,6 @@ impl SplitPoints {
 }
 
 impl SplitPoints {
-	#[inline]
 	/// # Uncompressed Split Pass.
 	///
 	/// This sets the uncompressed split points, by way of first setting the
@@ -108,7 +107,7 @@ impl SplitPoints {
 		else { Ok(len) }
 	}
 
-	#[inline]
+	#[inline(never)]
 	/// # LZ77 Split Pass.
 	///
 	/// This sets the LZ77 split points according to convoluted cost
@@ -161,7 +160,7 @@ impl SplitPoints {
 		Ok(len)
 	}
 
-	#[inline]
+	#[inline(never)]
 	/// # Split Best.
 	///
 	/// Compare the optimal raw split points with a dedicated lz77 pass and
@@ -368,7 +367,6 @@ impl<'a> Iterator for GoodForRle<'a> {
 		}
 	}
 
-	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len = self.len();
 		(len, Some(len))
@@ -376,7 +374,6 @@ impl<'a> Iterator for GoodForRle<'a> {
 }
 
 impl<'a> ExactSizeIterator for GoodForRle<'a> {
-	#[inline]
 	fn len(&self) -> usize { self.good + self.bad + self.counts.len() }
 }
 
@@ -442,7 +439,6 @@ fn add_lz77_block(
 	clippy::cast_sign_loss,
 	clippy::too_many_arguments,
 )]
-#[inline]
 /// # Add LZ77 Block (Automatic Type).
 ///
 /// This calculates the expected output sizes for all three block types, then
@@ -497,7 +493,6 @@ fn add_lz77_block_auto_type(
 	clippy::cast_sign_loss,
 	clippy::too_many_arguments,
 )]
-#[inline]
 /// # Add LZ77 Data.
 ///
 /// This adds all lit/len/dist codes from the lists as huffman symbols, but not
@@ -868,6 +863,7 @@ fn lengths_to_symbols<const SIZE: usize>(lengths: &[DeflateSym; SIZE])
 	Ok(symbols)
 }
 
+#[inline(never)]
 /// # Optimal LZ77.
 ///
 /// Calculate lit/len and dist pairs for the dataset.
@@ -966,10 +962,9 @@ fn lz77_optimal(
 /// Return the sum of the estimated costs of the left and right sections of the
 /// data.
 fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<u32, ZopfliError> {
-	Ok(
-		calculate_block_size_auto_type(store, start, mid)? +
-		calculate_block_size_auto_type(store, mid, end)?
-	)
+	let a = calculate_block_size_auto_type(store, start, mid)?;
+	let b = calculate_block_size_auto_type(store, mid, end)?;
+	Ok(a + b)
 }
 
 #[allow(clippy::integer_division)]
@@ -1057,7 +1052,6 @@ fn patch_distance_codes(d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D]) {
 }
 
 #[allow(clippy::too_many_arguments)]
-#[inline]
 /// # (Maybe) Add LZ77 Expensive Fixed Block.
 ///
 /// This runs the full suite of fixed-tree tests on the data and writes it to

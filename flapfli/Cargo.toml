@@ -1,0 +1,30 @@
+[package]
+name = "flapfli"
+version = "3.0.3"
+license = "WTFPL"
+authors = ["Josh Stoik <josh@blobfolio.com>"]
+edition = "2021"
+description = "An opinionated Rust rewrite of Zopfli."
+readme = ""
+publish = false
+exclude = [
+	".gitignore",
+	".righteous-sandbox.json",
+	"doc",
+	"justfile",
+	"release",
+]
+
+[dependencies]
+bumpalo = "=3.16.0"
+crc32fast = "=1.4.*"
+dactyl = "0.7.*"
+libc = "0.2.*"
+
+[build-dependencies]
+bindgen = "0.69.*"
+cc = "1.0.*"
+
+[lib]
+name = "flapfli"
+crate-type = ["staticlib", "lib"]

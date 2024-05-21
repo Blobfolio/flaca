@@ -21,9 +21,12 @@ use std::{
 /// This holds a buffer pointer and size for an image allocated in C-land. It
 /// exists primarily to enforce cleanup at destruction, but also makes it easy
 /// to view the data as a slice.
-pub(super) struct EncodedImage<T> {
-	pub(super) buf: *mut c_uchar,
-	pub(super) size: T,
+pub struct EncodedImage<T> {
+	/// # Buffer.
+	pub buf: *mut c_uchar,
+
+	/// # Buffer Size.
+	pub size: T,
 }
 
 macro_rules! default {
@@ -42,7 +45,6 @@ impl Deref for EncodedImage<c_ulong> {
 	type Target = [u8];
 
 	#[allow(clippy::cast_possible_truncation, unsafe_code)]
-	#[inline]
 	fn deref(&self) -> &Self::Target {
 		if self.is_empty() { &[] }
 		else {
@@ -55,7 +57,6 @@ impl Deref for EncodedImage<usize> {
 	type Target = [u8];
 
 	#[allow(unsafe_code)]
-	#[inline]
 	fn deref(&self) -> &Self::Target {
 		if self.is_empty() { &[] }
 		else {
@@ -77,8 +78,11 @@ impl<T> Drop for EncodedImage<T> {
 macro_rules! is_empty {
 	($($ty:ty),+) => ($(
 		impl EncodedImage<$ty> {
-			#[inline]
-			pub(super) fn is_empty(&self) -> bool { self.size == 0 || self.buf.is_null() }
+			#[must_use]
+			/// # Is Empty?
+			///
+			/// Returns true if the instance is empty.
+			fn is_empty(&self) -> bool { self.size == 0 || self.buf.is_null() }
 		}
 	)+);
 }

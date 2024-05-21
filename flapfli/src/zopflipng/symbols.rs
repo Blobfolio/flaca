@@ -81,7 +81,6 @@ impl DeflateSym {
 		Self::D11, Self::D12, Self::D13, Self::D14, Self::D15,
 	];
 
-	#[inline]
 	/// # Is Zero?
 	///
 	/// We check this a lot.

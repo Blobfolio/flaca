@@ -202,6 +202,7 @@ impl ZopfliState {
 		Ok(())
 	}
 
+	#[inline(never)]
 	/// # Optimal Run.
 	///
 	/// This performs backward/forward squeeze passes on the data, optionally
@@ -244,7 +245,6 @@ impl ZopfliState {
 
 impl ZopfliState {
 	#[allow(clippy::cast_possible_truncation)]
-	#[inline]
 	/// # Trace Paths.
 	///
 	/// Calculate the optimal path of lz77 lengths to use, from the
@@ -366,10 +366,8 @@ impl ZopfliHash {
 	#[allow(
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
-		clippy::inline_always,
 		clippy::similar_names,
 	)]
-	#[inline(always)]
 	/// # Update Hash.
 	///
 	/// This updates the hash tables using the data from `arr`. The `pos` value
@@ -399,7 +397,6 @@ impl ZopfliHash {
 		self.chain2.update_hash(pos);
 	}
 
-	#[inline]
 	/// # Update Hash Value.
 	///
 	/// This updates the rotating (chain1) hash value.
@@ -410,6 +407,7 @@ impl ZopfliHash {
 
 impl ZopfliHash {
 	#[allow(clippy::cast_possible_truncation)]
+	#[inline(never)]
 	/// # Get Best Lengths.
 	///
 	/// This method performs the forward pass for "squeeze", calculating the
@@ -556,7 +554,6 @@ impl ZopfliHash {
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
-	#[inline]
 	/// # Best Length Max Match.
 	///
 	/// This fast-forwards through long repetitions in the middle of a
@@ -618,7 +615,6 @@ impl ZopfliHash {
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
-	#[inline]
 	/// # Follow Paths.
 	///
 	/// This method repopulates the hash tables by following the provided
@@ -688,7 +684,6 @@ impl ZopfliHash {
 
 impl ZopfliHash {
 	#[allow(clippy::too_many_arguments)]
-	#[inline(never)]
 	/// # Find Longest Match.
 	///
 	/// This finds the longest match in `arr` (and/or the cache), setting the
@@ -959,7 +954,6 @@ impl ZopfliHashChain {
 		clippy::cast_sign_loss,
 		clippy::similar_names,
 	)]
-	#[inline]
 	/// # Update Hash.
 	///
 	/// This updates the index-related data for `pos`. (The hash value will

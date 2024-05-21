@@ -10,7 +10,6 @@ use super::{
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LitLen,
 	Lsym,
-	sized_slice,
 	zopfli_error,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
@@ -23,8 +22,8 @@ use super::{
 /// # LZ77 Data Store.
 pub(crate) struct LZ77Store {
 	pub(crate) entries: Vec<LZ77StoreEntry>,
-	pub(crate) ll_counts: Vec<u32>,
-	pub(crate) d_counts: Vec<u32>,
+	pub(crate) ll_counts: Vec<[u32; ZOPFLI_NUM_LL]>,
+	pub(crate) d_counts: Vec<[u32; ZOPFLI_NUM_D]>,
 }
 
 impl LZ77Store {
@@ -37,10 +36,11 @@ impl LZ77Store {
 		}
 	}
 
-	/// # Append Values.
+	/// # Append Entries.
+	///
+	/// This appends the entries from `other` to `self` en masse, kind of like
+	/// a push-many.
 	pub(crate) fn append(&mut self, other: &Self) {
-		// The count counts are weird, but we can go ahead and reserve space
-		// for the entries.
 		self.entries.reserve_exact(other.entries.len());
 		for &entry in &other.entries { self.push_entry(entry); }
 	}
@@ -59,43 +59,47 @@ impl LZ77Store {
 		Ok(())
 	}
 
+	#[allow(unsafe_code)]
+	/// # Last Counts.
+	///
+	/// Return the last (current) length and distance count chunks, resizing as
+	/// needed.
+	fn last_counts(&mut self) -> (&mut [u32; ZOPFLI_NUM_LL], &mut [u32; ZOPFLI_NUM_D]) {
+		let len = self.entries.len();
+
+		// Distance.
+		let mut d_len = self.d_counts.len();
+		if d_len == 0 {
+			self.d_counts.push([0; ZOPFLI_NUM_D]);
+			d_len += 1;
+		}
+		else if len % ZOPFLI_NUM_D == 0 {
+			self.d_counts.push(self.d_counts[d_len - 1]);
+			d_len += 1;
+		}
+
+		// Length.
+		let mut ll_len = self.ll_counts.len();
+		if ll_len == 0 {
+			self.ll_counts.push([0; ZOPFLI_NUM_LL]);
+			ll_len += 1;
+		}
+		else if len % ZOPFLI_NUM_LL == 0 {
+			self.ll_counts.push(self.ll_counts[ll_len - 1]);
+			ll_len += 1;
+		}
+
+		// Safety: neither can be empty at this point.
+		unsafe {(
+			self.ll_counts.get_unchecked_mut(ll_len - 1),
+			self.d_counts.get_unchecked_mut(d_len - 1),
+		)}
+	}
+
 	/// # Push Entry.
 	fn push_entry(&mut self, entry: LZ77StoreEntry) {
-		let old_len = self.entries.len();
-
-		// The histograms are wrapping and cumulative, and need to be extended
-		// any time we reach a new ZOPFLI_NUM_* bucket level. The first time
-		// around, we just need to zero-pad.
-		if old_len == 0 {
-			self.ll_counts.resize(ZOPFLI_NUM_LL, 0);
-			self.d_counts.resize(ZOPFLI_NUM_D, 0);
-		}
-		// New chunks start with the previous chunk's totals.
-		else if old_len % ZOPFLI_NUM_D == 0 {
-			self.d_counts.extend_from_within((old_len - ZOPFLI_NUM_D)..old_len);
-
-			// 288 (LL) is evenly divisible by 32 (D), so would only ever wrap
-			// in cases where D wrapped too.
-			if old_len % ZOPFLI_NUM_LL == 0 {
-				self.ll_counts.extend_from_within((old_len - ZOPFLI_NUM_LL)..old_len);
-			}
-		}
-
-		// If the distance is zero, we just need to bump the litlen count.
-		let ll_counts = self.ll_counts.as_mut_slice();
-		if entry.dist <= 0 {
-			ll_counts[ll_counts.len() - ZOPFLI_NUM_LL + entry.litlen as usize] += 1;
-		}
-		// If it is non-zero, we need to set the correct symbols and bump both
-		// counts.
-		else {
-			ll_counts[ll_counts.len() - ZOPFLI_NUM_LL + entry.ll_symbol as usize] += 1;
-
-			let d_counts = self.d_counts.as_mut_slice();
-			d_counts[d_counts.len() - ZOPFLI_NUM_D + entry.d_symbol as usize] += 1;
-		}
-
-		// Don't forget to push the entry!
+		let (ll_counts, d_counts) = self.last_counts();
+		entry.add_counts(ll_counts, d_counts);
 		self.entries.push(entry);
 	}
 
@@ -115,8 +119,6 @@ impl LZ77Store {
 }
 
 impl LZ77Store {
-	#[allow(clippy::inline_always)]
-	#[inline(always)]
 	/// # Length.
 	pub(crate) fn len(&self) -> usize { self.entries.len() }
 
@@ -130,10 +132,7 @@ impl LZ77Store {
 
 			let entries = self.entries.get(lstart..lend).ok_or(zopfli_error!())?;
 			for e in entries {
-				ll_counts[e.ll_symbol as usize] += 1;
-				if 0 < e.dist {
-					d_counts[e.d_symbol as usize] += 1;
-				}
+				e.add_counts(&mut ll_counts, &mut d_counts);
 			}
 
 			Ok((ll_counts, d_counts))
@@ -154,14 +153,17 @@ impl LZ77Store {
 	fn _histogram(&self, pos: usize)
 	-> Result<([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]), ZopfliError> {
 		// The relative chunked positions.
-		let ll_start = ZOPFLI_NUM_LL * pos.wrapping_div(ZOPFLI_NUM_LL);
-		let d_start = ZOPFLI_NUM_D * pos.wrapping_div(ZOPFLI_NUM_D);
-		let ll_end = ll_start + ZOPFLI_NUM_LL;
-		let d_end = d_start + ZOPFLI_NUM_D;
+		let ll_idx = pos.wrapping_div(ZOPFLI_NUM_LL);
+		let d_idx = pos.wrapping_div(ZOPFLI_NUM_D);
+		let ll_end = (ll_idx + 1) * ZOPFLI_NUM_LL;
+		let d_end = (d_idx + 1) * ZOPFLI_NUM_D;
 
 		// Start by copying the counts directly from the nearest chunk.
-		let mut ll_counts: [u32; ZOPFLI_NUM_LL] = *sized_slice(&self.ll_counts, ll_start)?;
-		let mut d_counts: [u32; ZOPFLI_NUM_D] = *sized_slice(&self.d_counts, d_start)?;
+		if self.ll_counts.len() <= ll_idx || self.d_counts.len() <= d_idx {
+			return Err(zopfli_error!());
+		}
+		let mut ll_counts: [u32; ZOPFLI_NUM_LL] = self.ll_counts[ll_idx];
+		let mut d_counts: [u32; ZOPFLI_NUM_D] = self.d_counts[d_idx];
 
 		// Subtract the symbol occurences between (pos+1) and the end of the
 		// available data for the chunk.
@@ -184,13 +186,18 @@ impl LZ77Store {
 		d_counts: &mut [u32; ZOPFLI_NUM_D],
 	) -> Result<(), ZopfliError> {
 		// The relative chunked positions.
-		let ll_start = ZOPFLI_NUM_LL * pos.wrapping_div(ZOPFLI_NUM_LL);
-		let d_start = ZOPFLI_NUM_D * pos.wrapping_div(ZOPFLI_NUM_D);
-		let ll_end = ll_start + ZOPFLI_NUM_LL;
-		let d_end = d_start + ZOPFLI_NUM_D;
+		let ll_idx = pos.wrapping_div(ZOPFLI_NUM_LL);
+		let d_idx = pos.wrapping_div(ZOPFLI_NUM_D);
+
+		// Start by copying the counts directly from the nearest chunk.
+		let (ll_old, d_old) = self.ll_counts.get(ll_idx)
+			.zip(self.d_counts.get(d_idx))
+			.ok_or(zopfli_error!())?;
 
 		// We're ultimately looking for `a -= (b_count - b_sym)`. Let's start
 		// by adding — minus-minus is plus — the symbols.
+		let ll_end = (ll_idx + 1) * ZOPFLI_NUM_LL;
+		let d_end = (d_idx + 1) * ZOPFLI_NUM_D;
 		for (i, e) in self.entries.iter().enumerate().take(ll_end).skip(pos + 1) {
 			ll_counts[e.ll_symbol as usize] += 1;
 			if i < d_end && 0 < e.dist {
@@ -201,14 +208,8 @@ impl LZ77Store {
 		// To finish it off, we just need to subtract the counts. Slicing the
 		// store side serves as both a sanity check and a potential compiler
 		// size hint.
-		let old = sized_slice::<_, ZOPFLI_NUM_LL>(&self.ll_counts, ll_start)?;
-		for (a, b) in ll_counts.iter_mut().zip(old) {
-			*a -= b;
-		}
-		let old = sized_slice::<_, ZOPFLI_NUM_D>(&self.d_counts, d_start)?;
-		for (a, b) in d_counts.iter_mut().zip(old) {
-			*a -= b;
-		}
+		for (a, b) in ll_counts.iter_mut().zip(ll_old) { *a -= b; }
+		for (a, b) in d_counts.iter_mut().zip(d_old) { *a -= b; }
 
 		Ok(())
 	}
@@ -232,6 +233,7 @@ impl LZ77StoreEntry {
 		clippy::cast_possible_wrap,
 		clippy::cast_sign_loss,
 	)]
+	#[inline(never)]
 	/// # New.
 	const fn new(litlen: u16, dist: u16, pos: usize) -> Result<Self, ZopfliError> {
 		if litlen < 259 && dist < 32_768 {
@@ -259,14 +261,24 @@ impl LZ77StoreEntry {
 		else { Err(zopfli_error!()) }
 	}
 
-	#[allow(clippy::inline_always)]
-	#[inline(always)]
 	/// # Length.
 	///
 	/// If the distance is zero, 1, otherwise the litlen.
 	pub(crate) const fn length(&self) -> LitLen {
 		if self.dist <= 0 { LitLen::L001 }
 		else { self.litlen }
+	}
+
+	/// # Add Symbol Counts.
+	fn add_counts(
+		&self,
+		ll_counts: &mut [u32; ZOPFLI_NUM_LL],
+		d_counts: &mut [u32; ZOPFLI_NUM_D],
+	) {
+		ll_counts[self.ll_symbol as usize] += 1;
+		if 0 < self.dist {
+			d_counts[self.d_symbol as usize] += 1;
+		}
 	}
 }
 

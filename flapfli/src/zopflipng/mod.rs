@@ -87,8 +87,7 @@ const SUBLEN_LEN: usize = ZOPFLI_MAX_MATCH + 1;
 
 
 
-#[allow(clippy::inline_always)]
-#[inline(always)]
+#[must_use]
 /// # Optimize!
 ///
 /// This will attempt to losslessly recompress the source PNG with the
@@ -97,7 +96,7 @@ const SUBLEN_LEN: usize = ZOPFLI_MAX_MATCH + 1;
 ///
 /// Note: 16-bit transformations are not lossless; such images will have their
 /// bit depths reduced to a more typical 8 bits.
-pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
+pub fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
 	let mut dec = LodePNGState::default();
 	let img = dec.decode(src)?;
 
@@ -112,8 +111,6 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
 
 
 
-#[allow(clippy::inline_always)]
-#[inline(always)]
 /// # Best Strategy.
 ///
 /// This attempts to find the best filtering strategy for the image by trying
@@ -136,7 +133,6 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrateg
 		.map_or(LodePNGFilterStrategy::LFS_ZERO, |(_, s)| s)
 }
 
-#[inline(never)]
 /// # Apply Optimizations.
 ///
 /// This attempts to re-encode an image using the provided filter strategy,
@@ -168,7 +164,6 @@ fn encode(
 	Some(out)
 }
 
-#[inline]
 #[allow(unsafe_code)]
 /// # Split Array.
 ///

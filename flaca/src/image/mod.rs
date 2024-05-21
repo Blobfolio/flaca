@@ -3,10 +3,7 @@
 */
 
 mod jpegtran;
-mod ffi;
 pub(super) mod kind;
-mod lodepng;
-mod zopflipng;
 
 
 
@@ -17,12 +14,6 @@ use std::{
 	sync::OnceLock,
 };
 use super::EncodingError;
-use zopflipng::{
-	deflate_part,
-	SplitPoints,
-	ZopfliState,
-	ZOPFLI_MASTER_BLOCK_SIZE,
-};
 
 
 
@@ -129,7 +120,7 @@ fn encode_oxipng(raw: &mut Vec<u8>) {
 /// zopflipng -m
 /// ```
 fn encode_zopflipng(raw: &mut Vec<u8>) {
-	if let Some(new) = zopflipng::optimize(raw) {
+	if let Some(new) = flapfli::optimize(raw) {
 		let slice: &[u8] = &new;
 		if slice.len() < raw.len() && ImageKind::is_png(slice) {
 			raw.truncate(slice.len());

@@ -52,7 +52,7 @@ use std::{
 	},
 	marker::PhantomPinned,
 };
-use super::ffi::EncodedImage;
+use flapfli::EncodedImage;
 
 
 

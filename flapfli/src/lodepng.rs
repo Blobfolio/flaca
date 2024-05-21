@@ -41,7 +41,7 @@ thread_local!(
 
 
 #[no_mangle]
-#[inline]
+#[inline(never)]
 #[allow(unsafe_code)]
 /// # Custom PNG Deflate.
 ///
@@ -148,7 +148,6 @@ pub(super) struct ZopfliOut {
 
 impl ZopfliOut {
 	#[allow(unsafe_code)]
-	#[inline]
 	/// # Add Bit.
 	pub(crate) fn add_bit(&mut self, bit: i32) {
 		unsafe {
@@ -158,7 +157,6 @@ impl ZopfliOut {
 	}
 
 	#[allow(unsafe_code)]
-	#[inline]
 	/// # Add Multiple Bits.
 	pub(crate) fn add_bits(&mut self, symbol: u32, length: u32) {
 		unsafe {
@@ -168,7 +166,6 @@ impl ZopfliOut {
 	}
 
 	#[allow(unsafe_code)]
-	#[inline]
 	/// # Add Huffman Bits.
 	pub(crate) fn add_huffman_bits(&mut self, symbol: u32, length: u32) {
 		unsafe {
@@ -178,7 +175,6 @@ impl ZopfliOut {
 	}
 
 	#[allow(unsafe_code)]
-	#[inline]
 	/// # Add Non-Compressed Block.
 	pub(crate) fn add_uncompressed_block(
 		&mut self,
@@ -231,7 +227,6 @@ impl LodePNGColorType {
 
 impl Default for LodePNGState {
 	#[allow(unsafe_code)]
-	#[inline]
 	fn default() -> Self {
 		let mut out = MaybeUninit::<Self>::zeroed();
 		unsafe {
@@ -249,7 +244,6 @@ impl Drop for LodePNGState {
 
 impl LodePNGState {
 	#[allow(unsafe_code)]
-	#[inline]
 	/// # Decode!
 	pub(super) fn decode(&mut self, src: &[u8]) -> Option<DecodedImage> {
 		let mut buf = std::ptr::null_mut();
@@ -269,7 +263,6 @@ impl LodePNGState {
 	}
 
 	#[allow(unsafe_code)]
-	#[inline]
 	/// # Encode!
 	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedImage<usize>> {
 		// Safety: a non-zero response is an error.
@@ -284,7 +277,6 @@ impl LodePNGState {
 	}
 
 	#[allow(unsafe_code)]
-	#[inline]
 	/// # Set Up Encoder.
 	///
 	/// This configures and returns a new state for encoding purposes.
@@ -369,10 +361,10 @@ mod tests {
 	#[test]
 	fn t_color_type_is_match() {
 		for (p, t) in [
-			("skel/assets/png/01.png", LodePNGColorType::LCT_RGB),
-			("skel/assets/png/02.png", LodePNGColorType::LCT_RGBA),
-			("skel/assets/png/04.png", LodePNGColorType::LCT_GREY),
-			("skel/assets/png/small-bwa.png", LodePNGColorType::LCT_GREY_ALPHA),
+			("../skel/assets/png/01.png", LodePNGColorType::LCT_RGB),
+			("../skel/assets/png/02.png", LodePNGColorType::LCT_RGBA),
+			("../skel/assets/png/04.png", LodePNGColorType::LCT_GREY),
+			("../skel/assets/png/small-bwa.png", LodePNGColorType::LCT_GREY_ALPHA),
 		] {
 			let raw = match std::fs::read(p) {
 				Ok(x) => x,
@@ -382,7 +374,7 @@ mod tests {
 		}
 
 		// Let's test a negative to make sure we aren't doing something silly.
-		let raw = std::fs::read("skel/assets/png/01.png").unwrap();
+		let raw = std::fs::read("../skel/assets/png/01.png").unwrap();
 		assert!(! LodePNGColorType::LCT_GREY.is_match(&raw));
 	}
 
