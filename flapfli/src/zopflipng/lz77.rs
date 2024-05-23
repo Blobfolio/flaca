@@ -65,29 +65,30 @@ impl LZ77Store {
 	/// Return the last (current) length and distance count chunks, resizing as
 	/// needed.
 	fn last_counts(&mut self) -> (&mut [u32; ZOPFLI_NUM_LL], &mut [u32; ZOPFLI_NUM_D]) {
-		let len = self.entries.len();
+		/// # (Maybe) Wrap Count Chunks.
+		///
+		/// Resize the chunks if needed and return the final length.
+		fn wrap_chunk<const SIZE: usize>(set: &mut Vec<[u32; SIZE]>, pos: usize) -> usize {
+			let len = set.len();
 
-		// Distance.
-		let mut d_len = self.d_counts.len();
-		if d_len == 0 {
-			self.d_counts.push([0; ZOPFLI_NUM_D]);
-			d_len += 1;
-		}
-		else if len % ZOPFLI_NUM_D == 0 {
-			self.d_counts.push(self.d_counts[d_len - 1]);
-			d_len += 1;
+			// If the set is empty, set it up with a zeroed count chunk.
+			if len == 0 {
+				set.push([0; SIZE]);
+				1
+			}
+			// If the position has wrapped back around SIZE, it's time for a
+			// new chunk, initialized with the previous chunk's tallies.
+			else if pos % SIZE == 0 {
+				set.push(set[len - 1]);
+				len + 1
+			}
+			// Otherwise we're good.
+			else { len }
 		}
 
-		// Length.
-		let mut ll_len = self.ll_counts.len();
-		if ll_len == 0 {
-			self.ll_counts.push([0; ZOPFLI_NUM_LL]);
-			ll_len += 1;
-		}
-		else if len % ZOPFLI_NUM_LL == 0 {
-			self.ll_counts.push(self.ll_counts[ll_len - 1]);
-			ll_len += 1;
-		}
+		let pos = self.entries.len();
+		let d_len = wrap_chunk(&mut self.d_counts, pos);
+		let ll_len = wrap_chunk(&mut self.ll_counts, pos);
 
 		// Safety: neither can be empty at this point.
 		unsafe {(
