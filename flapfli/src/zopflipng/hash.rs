@@ -482,63 +482,13 @@ impl ZopfliHash {
 			// all that effort.
 			let limit = usize::from(length).min(costs.len().saturating_sub(j + 1));
 			if (ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH).contains(&limit) {
-				let min_cost_add = min_cost + cost_j;
-				let mut k = ZOPFLI_MIN_MATCH;
-				let iter = sublen[k..=limit].iter()
-					.copied()
-					.zip(costs.iter_mut().skip(j + k));
-
-				// Stat-based cost calculations.
+				let sublen2 = &sublen[ZOPFLI_MIN_MATCH..=limit];
+				let costs2 = &mut costs[j + ZOPFLI_MIN_MATCH..];
 				if let Some(s) = stats {
-					for (dist, c) in iter {
-						if min_cost_add < f64::from(c.0) {
-							let mut new_cost = cost_j;
-							if dist == 0 {
-								new_cost += s.ll_symbols[k];
-							}
-							else {
-								let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
-								new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
-								new_cost += s.d_symbols[dsym as usize];
-								new_cost += s.ll_symbols[LENGTH_SYMBOLS_BITS_VALUES[k].0 as usize];
-								new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k].1);
-							}
-
-							// Update it if lower.
-							if (0.0..f64::from(c.0)).contains(&new_cost) {
-								c.0 = new_cost as f32;
-								c.1 = k as u16;
-							}
-						}
-						k += 1;
-					}
+					peek_ahead_stats(cost_j, min_cost, sublen2, costs2, s);
 				}
-				// Fixed cost calculations.
 				else {
-					for (dist, c) in iter {
-						if min_cost_add < f64::from(c.0) {
-							let mut new_cost = cost_j;
-							if dist == 0 {
-								if k <= 143 { new_cost += 8.0; }
-								else { new_cost += 9.0; }
-							}
-							else {
-								if 114 < k { new_cost += 13.0; }
-								else { new_cost += 12.0; }
-
-								let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
-								new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
-								new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k].1);
-							}
-
-							// Update it if lower.
-							if (0.0..f64::from(c.0)).contains(&new_cost) {
-								c.0 = new_cost as f32;
-								c.1 = k as u16;
-							}
-						}
-						k += 1;
-					}
+					peek_ahead_fixed(cost_j, min_cost, sublen2, costs2);
 				}
 			}
 
@@ -804,7 +754,6 @@ impl ZopfliHash {
 		let same0 = usize::from(self.same[hpos]);
 		let same1 = usize::min(same0, limit);
 		while p < ZOPFLI_WINDOW_SIZE && dist < ZOPFLI_WINDOW_SIZE && hits < ZOPFLI_MAX_CHAIN_HITS {
-
 			// These are simple sanity assertions; the values are only ever
 			// altered via ZopfliHashChain::update_hash so there isn't much
 			// room for mistake.
@@ -1008,6 +957,77 @@ fn get_minimum_cost(stats: &SymbolStats) -> f64 {
 
 	// Add them together and we have our minimum.
 	length_cost + dist_cost
+}
+
+#[allow(clippy::cast_possible_truncation)]
+/// # Get Best Lengths Peek Ahead (Fixed).
+fn peek_ahead_fixed(
+	cost_j: f64,
+	min_cost: f64,
+	sublen: &[u16],
+	costs: &mut [(f32, u16)],
+) {
+	let min_cost_add = min_cost + cost_j;
+	let mut k = ZOPFLI_MIN_MATCH;
+	for (dist, c) in sublen.iter().copied().zip(costs) {
+		if min_cost_add < f64::from(c.0) {
+			let mut new_cost = cost_j;
+			if dist == 0 {
+				if k <= 143 { new_cost += 8.0; }
+				else { new_cost += 9.0; }
+			}
+			else {
+				if 114 < k { new_cost += 13.0; }
+				else { new_cost += 12.0; }
+
+				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
+				new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
+				new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k].1);
+			}
+
+			// Update it if lower.
+			if (0.0..f64::from(c.0)).contains(&new_cost) {
+				c.0 = new_cost as f32;
+				c.1 = k as u16;
+			}
+		}
+		k += 1;
+	}
+}
+
+#[allow(clippy::cast_possible_truncation)]
+/// # Get Best Lengths Peek Ahead (Dynamic).
+fn peek_ahead_stats(
+	cost_j: f64,
+	min_cost: f64,
+	sublen: &[u16],
+	costs: &mut [(f32, u16)],
+	stats: &SymbolStats,
+) {
+	let min_cost_add = min_cost + cost_j;
+	let mut k = ZOPFLI_MIN_MATCH;
+	for (dist, c) in sublen.iter().copied().zip(costs) {
+		if min_cost_add < f64::from(c.0) {
+			let mut new_cost = cost_j;
+			if dist == 0 {
+				new_cost += stats.ll_symbols[k];
+			}
+			else {
+				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
+				new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
+				new_cost += stats.d_symbols[dsym as usize];
+				new_cost += stats.ll_symbols[LENGTH_SYMBOLS_BITS_VALUES[k].0 as usize];
+				new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k].1);
+			}
+
+			// Update it if lower.
+			if (0.0..f64::from(c.0)).contains(&new_cost) {
+				c.0 = new_cost as f32;
+				c.1 = k as u16;
+			}
+		}
+		k += 1;
+	}
 }
 
 
