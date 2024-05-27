@@ -458,9 +458,9 @@ fn add_lz77_block_auto_type(
 	}
 
 	// Calculate the three costs.
-	let uncompressed_cost = calculate_block_size(store, lstart, lend, BlockType::Uncompressed)?;
-	let fixed_cost = calculate_block_size(store, lstart, lend, BlockType::Fixed)?;
-	let dynamic_cost = calculate_block_size(store, lstart, lend, BlockType::Dynamic)?;
+	let uncompressed_cost = calculate_block_size_uncompressed(store, lstart, lend)?;
+	let fixed_cost = calculate_block_size_fixed(store, lstart, lend)?;
+	let dynamic_cost = calculate_block_size_dynamic(store, lstart, lend)?;
 
 	// Fixed stores are only useful up to a point; we can skip the overhead
 	// if the store is big or the dynamic cost estimate is unimpressive.
@@ -544,46 +544,53 @@ fn add_lz77_data(
 }
 
 #[allow(clippy::cast_possible_truncation)] // The maximum blocksize is only 1 million.
-/// # Calculate Block Size (in Bits).
-fn calculate_block_size(
+/// # Calculate Block Size (Uncompressed).
+fn calculate_block_size_uncompressed(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-	btype: BlockType,
 ) -> Result<u32, ZopfliError> {
-	match btype {
-		BlockType::Uncompressed => {
-			let (instart, inend) = store.byte_range(lstart, lend)?;
-			let blocksize = (inend - instart) as u32;
+	let (instart, inend) = store.byte_range(lstart, lend)?;
+	let blocksize = (inend - instart) as u32;
 
-			// Blocks larger than u16::MAX need to be split.
-			let blocks = blocksize.div_ceil(65_535);
-			Ok(blocks * 40 + blocksize * 8)
-		},
-		BlockType::Fixed => {
-			let (ll_counts, d_counts) = store.histogram(lstart, lend)?;
-			Ok(calculate_block_symbol_size_given_counts(
-				&ll_counts,
-				&d_counts,
-				&FIXED_TREE_LL,
-				&FIXED_TREE_D,
-				store,
-				lstart,
-				lend,
-			) + 3)
-		},
-		BlockType::Dynamic => {
-			let mut ll_lengths = [DeflateSym::D00; ZOPFLI_NUM_LL];
-			let mut d_lengths = [DeflateSym::D00; ZOPFLI_NUM_D];
-			get_dynamic_lengths(
-				store,
-				lstart,
-				lend,
-				&mut ll_lengths,
-				&mut d_lengths,
-			)
-		},
-	}
+	// Blocks larger than u16::MAX need to be split.
+	let blocks = blocksize.div_ceil(65_535);
+	Ok(blocks * 40 + blocksize * 8)
+}
+
+/// # Calculate Block Size (Fixed).
+fn calculate_block_size_fixed(
+	store: &LZ77Store,
+	lstart: usize,
+	lend: usize,
+) -> Result<u32, ZopfliError> {
+	let (ll_counts, d_counts) = store.histogram(lstart, lend)?;
+	Ok(calculate_block_symbol_size_given_counts(
+		&ll_counts,
+		&d_counts,
+		&FIXED_TREE_LL,
+		&FIXED_TREE_D,
+		store,
+		lstart,
+		lend,
+	) + 3)
+}
+
+/// # Calculate Block Size (Dynamic).
+fn calculate_block_size_dynamic(
+	store: &LZ77Store,
+	lstart: usize,
+	lend: usize,
+) -> Result<u32, ZopfliError> {
+	let mut ll_lengths = [DeflateSym::D00; ZOPFLI_NUM_LL];
+	let mut d_lengths = [DeflateSym::D00; ZOPFLI_NUM_D];
+	get_dynamic_lengths(
+		store,
+		lstart,
+		lend,
+		&mut ll_lengths,
+		&mut d_lengths,
+	)
 }
 
 /// # Calculate Best Block Size (in Bits).
@@ -592,15 +599,15 @@ fn calculate_block_size_auto_type(
 	lstart: usize,
 	lend: usize,
 ) -> Result<u32, ZopfliError> {
-	let uncompressed_cost = calculate_block_size(store, lstart, lend, BlockType::Uncompressed)?;
+	let uncompressed_cost = calculate_block_size_uncompressed(store, lstart, lend)?;
 
 	// We can skip the expensive fixed-cost calculations for large blocks since
 	// they're unlikely ever to use it.
 	let fixed_cost =
 		if 1000 < store.len() { uncompressed_cost }
-		else { calculate_block_size(store, lstart, lend, BlockType::Fixed)? };
+		else { calculate_block_size_fixed(store, lstart, lend)? };
 
-	let dynamic_cost = calculate_block_size(store, lstart, lend, BlockType::Dynamic)?;
+	let dynamic_cost = calculate_block_size_dynamic(store, lstart, lend)?;
 
 	// If uncompressed is better than everything, return it.
 	if uncompressed_cost < fixed_cost && uncompressed_cost < dynamic_cost {
@@ -893,11 +900,10 @@ fn lz77_optimal(
 		)?;
 
 		// This is the cost we actually care about.
-		let current_cost = calculate_block_size(
+		let current_cost = calculate_block_size_dynamic(
 			scratch_store,
 			0,
 			scratch_store.len(),
-			BlockType::Dynamic,
 		)?;
 
 		// We have a new best!
@@ -1062,11 +1068,10 @@ fn try_lz77_expensive_fixed(
 	)?;
 
 	// Find the resulting cost.
-	let fixed_cost = calculate_block_size(
+	let fixed_cost = calculate_block_size_fixed(
 		&fixed_store,
 		0,
 		fixed_store.len(),
-		BlockType::Fixed,
 	)?;
 
 	// If it is better than dynamic, and uncompressed isn't better than both
