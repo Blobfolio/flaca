@@ -171,12 +171,14 @@ impl SplitPoints {
 		arr: &[u8],
 		instart: usize,
 		store: &mut LZ77Store,
-		store2: &mut LZ77Store,
 		state: &mut ZopfliState,
 	) -> Result<&[usize], ZopfliError> {
 		// Start by splitting uncompressed.
-		let limit = self.split_raw(arr, instart, state, store2)?.min(MAX_SPLIT_POINTS);
+		let mut store2 = LZ77Store::new();
+		store2.clear();
+		let limit = self.split_raw(arr, instart, state, &mut store2)?.min(MAX_SPLIT_POINTS);
 
+		// Now some LZ77 funny business.
 		let mut cost1 = 0;
 		let mut store3 = LZ77Store::new();
 		for i in 0..=limit {
@@ -193,18 +195,19 @@ impl SplitPoints {
 				arr.get(..end).ok_or(zopfli_error!())?,
 				start,
 				numiterations,
-				store2,
+				&mut store2,
 				&mut store3,
 				state,
 			)?;
-			cost1 += calculate_block_size_auto_type(store2, 0, store2.len())?;
+			cost1 += calculate_block_size_auto_type(&store2, 0, store2.len())?;
 
 			// Append its data to our main store.
-			store.append(store2);
+			store.append(&store2);
 
 			// Save the chunk size to our best.
 			if i < limit { self.slice2[i] = store.len(); }
 		}
+		drop(store3);
 
 		// Try a second pass, recalculating the LZ77 splits with the updated
 		// store details.
@@ -248,15 +251,15 @@ pub(crate) fn deflate_part(
 	instart: usize,
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
-	// Find the split points.
 	let mut store = LZ77Store::new();
-	let mut store2 = LZ77Store::new();
+	store.clear();
+
+	// Find the split points.
 	let best = splits.split(
 		numiterations,
 		arr,
 		instart,
 		&mut store,
-		&mut store2,
 		state,
 	)?;
 
@@ -267,7 +270,6 @@ pub(crate) fn deflate_part(
 		add_lz77_block_auto_type(
 			i == best.len() && last_block,
 			&store,
-			&mut store2,
 			state,
 			arr,
 			start,
@@ -437,7 +439,6 @@ fn add_lz77_block(
 #[allow(
 	clippy::cast_precision_loss,
 	clippy::cast_sign_loss,
-	clippy::too_many_arguments,
 )]
 /// # Add LZ77 Block (Automatic Type).
 ///
@@ -446,7 +447,6 @@ fn add_lz77_block(
 fn add_lz77_block_auto_type(
 	last_block: bool,
 	store: &LZ77Store,
-	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
 	arr: &[u8],
 	lstart: usize,
@@ -471,7 +471,7 @@ fn add_lz77_block_auto_type(
 	if
 		(store.len() < 1000 || fixed_cost * 10 <= dynamic_cost * 11) &&
 		try_lz77_expensive_fixed(
-			store, fixed_store, state, uncompressed_cost, dynamic_cost,
+			store, state, uncompressed_cost, dynamic_cost,
 			arr, lstart, lend, last_block,
 			out,
 		)?
@@ -1060,7 +1060,6 @@ fn patch_distance_codes(d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D]) {
 /// Returns `true` if data was written.
 fn try_lz77_expensive_fixed(
 	store: &LZ77Store,
-	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
 	uncompressed_cost: u32,
 	dynamic_cost: u32,
@@ -1076,17 +1075,18 @@ fn try_lz77_expensive_fixed(
 	state.init_lmc(inend - instart);
 
 	// Pull the hasher.
+	let mut fixed_store = LZ77Store::new();
 	fixed_store.clear();
 	state.optimal_run(
 		arr.get(..inend).ok_or(zopfli_error!())?,
 		instart,
 		None,
-		fixed_store,
+		&mut fixed_store,
 	)?;
 
 	// Find the resulting cost.
 	let fixed_cost = calculate_block_size(
-		fixed_store,
+		&fixed_store,
 		0,
 		fixed_store.len(),
 		BlockType::Fixed,
@@ -1095,7 +1095,7 @@ fn try_lz77_expensive_fixed(
 	// If it is better than dynamic, and uncompressed isn't better than both
 	// fixed and dynamic, it's the best and worth writing!
 	if fixed_cost < dynamic_cost && (fixed_cost <= uncompressed_cost || dynamic_cost <= uncompressed_cost) {
-		add_lz77_block(BlockType::Fixed, last_block, fixed_store, arr, 0, fixed_store.len(), out)
+		add_lz77_block(BlockType::Fixed, last_block, &fixed_store, arr, 0, fixed_store.len(), out)
 			.map(|()| true)
 	}
 	else { Ok(false) }

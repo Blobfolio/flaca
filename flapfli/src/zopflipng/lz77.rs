@@ -4,6 +4,14 @@
 This module defines the LZ77 store structure.
 */
 
+use std::{
+	mem::ManuallyDrop,
+	ops::{
+		Deref,
+		DerefMut,
+	},
+	sync::Mutex,
+};
 use super::{
 	DISTANCE_SYMBOLS,
 	Dsym,
@@ -18,6 +26,14 @@ use super::{
 
 
 
+/// # Shared `LZ77Store` Pool.
+///
+/// Each `deflate_part` run can use as many as three of these; we might as well
+/// reuse the objects to cut down on the number of allocations being made.
+static POOL: Pool = Pool::new();
+
+
+
 #[derive(Clone)]
 /// # LZ77 Data Store.
 pub(crate) struct LZ77Store {
@@ -27,8 +43,12 @@ pub(crate) struct LZ77Store {
 }
 
 impl LZ77Store {
+	#[allow(clippy::new_ret_no_self)]
 	/// # New.
-	pub(crate) const fn new() -> Self {
+	pub(crate) fn new() -> Swimmer { POOL.get() }
+
+	/// # Internal New.
+	const fn _new() -> Self {
 		Self {
 			entries: Vec::new(),
 			ll_counts: Vec::new(),
@@ -279,6 +299,65 @@ impl LZ77StoreEntry {
 		ll_counts[self.ll_symbol as usize] += 1;
 		if 0 < self.dist {
 			d_counts[self.d_symbol as usize] += 1;
+		}
+	}
+}
+
+
+
+/// # Cheap Object Pool.
+///
+/// This is an extremely simple pop/push object pool.
+struct Pool {
+	inner: Mutex<Vec<LZ77Store>>,
+}
+
+impl Pool {
+	/// # New!
+	const fn new() -> Self {
+		Self { inner: Mutex::new(Vec::new()) }
+	}
+
+	/// # Get!
+	///
+	/// Return a store from the cache if possible, or create one if not.
+	fn get(&self) -> Swimmer {
+		let store = self.inner.lock()
+			.ok()
+			.and_then(|mut v| v.pop())
+			.unwrap_or_else(LZ77Store::_new);
+		Swimmer(ManuallyDrop::new(store))
+	}
+}
+
+
+
+#[repr(transparent)]
+/// # Object Pool Member.
+///
+/// This wrapper ensures stores fetched from the pool will be automatically
+/// returned when dropped (so they can be fetched again).
+///
+/// Note that no reset-type action is performed; it is left to the caller to
+/// handle that if and when necessary.
+pub(crate) struct Swimmer(ManuallyDrop<LZ77Store>);
+
+impl Deref for Swimmer {
+	type Target = LZ77Store;
+	#[inline]
+	fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl DerefMut for Swimmer {
+	#[inline]
+	fn deref_mut(&mut self) -> &mut Self::Target { &mut self.0 }
+}
+
+impl Drop for Swimmer {
+	#[allow(unsafe_code)]
+	fn drop(&mut self) {
+		if let Ok(mut ptr) = POOL.inner.lock() {
+			ptr.push(unsafe { ManuallyDrop::take(&mut self.0) });
 		}
 	}
 }
