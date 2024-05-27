@@ -14,6 +14,8 @@ use super::{
 	DeflateSym,
 	DISTANCE_BITS,
 	DISTANCE_VALUES,
+	FIXED_SYMBOLS_D,
+	FIXED_SYMBOLS_LL,
 	FIXED_TREE_D,
 	FIXED_TREE_LL,
 	kat,
@@ -423,14 +425,19 @@ fn add_lz77_block(
 	out.add_bit((btype as i32) & 1);
 	out.add_bit(((btype as i32) & 2) >> 1);
 
-	// Sort out the lengths, fixed or dynamic.
-	let (ll_lengths, d_lengths) =
-		if matches!(btype, BlockType::Fixed) { (FIXED_TREE_LL, FIXED_TREE_D) }
-		else { add_dynamic_tree(store, lstart, lend, out)? };
-
-	// Now sort out the symbols.
-	let ll_symbols = lengths_to_symbols(&ll_lengths)?;
-	let d_symbols = lengths_to_symbols(&d_lengths)?;
+	// Sort out the lengths and symbols.
+	let (ll_lengths, d_lengths, ll_symbols, d_symbols) =
+		// The fixed ones are… fixed!
+		if matches!(btype, BlockType::Fixed) {
+			(FIXED_TREE_LL, FIXED_TREE_D, FIXED_SYMBOLS_LL, FIXED_SYMBOLS_D)
+		}
+		// The dynamic ones require a whole bunch of shit to work out.
+		else {
+			let (ll_lengths, d_lengths) = add_dynamic_tree(store, lstart, lend, out)?;
+			let ll_symbols = lengths_to_symbols(&ll_lengths)?;
+			let d_symbols = lengths_to_symbols(&d_lengths)?;
+			(ll_lengths, d_lengths, ll_symbols, d_symbols)
+		};
 
 	// Write all the data!
 	add_lz77_data(
@@ -1162,6 +1169,18 @@ fn try_optimize_huffman_for_rle(
 #[cfg(test)]
 mod test {
 	use super::*;
+
+	#[test]
+	fn t_fixed_symbols() {
+		assert_eq!(
+			lengths_to_symbols(&FIXED_TREE_LL),
+			Ok(FIXED_SYMBOLS_LL),
+		);
+		assert_eq!(
+			lengths_to_symbols(&FIXED_TREE_D),
+			Ok(FIXED_SYMBOLS_D),
+		);
+	}
 
 	#[test]
 	fn t_good_for_rle() {
