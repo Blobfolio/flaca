@@ -1158,8 +1158,8 @@ fn try_optimize_huffman_for_rle(
 	let sum2 = treesize2 + datasize2;
 	if sum <= sum2 { Ok(sum) }
 	else {
-		ll_lengths.copy_from_slice(ll_lengths2.as_slice());
-		d_lengths.copy_from_slice(d_lengths2.as_slice());
+		*ll_lengths = ll_lengths2;
+		*d_lengths = d_lengths2;
 		Ok(sum2)
 	}
 }

@@ -96,11 +96,10 @@ impl SymbolStats {
 	///
 	/// Set all `ll_counts` and `d_counts` to zero and return the originals.
 	pub(crate) fn clear(&mut self) -> ([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]) {
-		let mut last_ll = ZEROED_COUNTS_LL;
-		let mut last_d = ZEROED_COUNTS_D;
-		std::mem::swap(&mut self.ll_counts, &mut last_ll);
-		std::mem::swap(&mut self.d_counts, &mut last_d);
-		(last_ll, last_d)
+		(
+			std::mem::replace(&mut self.ll_counts, ZEROED_COUNTS_LL),
+			std::mem::replace(&mut self.d_counts, ZEROED_COUNTS_D),
+		)
 	}
 
 	/// # Calculate/Set Statistics.
