@@ -6,6 +6,8 @@ This module defines the squeeze stats structure and its companion PRNG.
 
 use super::{
 	LZ77Store,
+	ZEROED_COUNTS_D,
+	ZEROED_COUNTS_LL,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
 };
@@ -49,8 +51,8 @@ impl RanState {
 /// This holds the length and distance symbols and costs for a given block,
 /// data that can be used to improve compression on subsequent passes.
 pub(crate) struct SymbolStats {
-	ll_counts: [usize; ZOPFLI_NUM_LL],
-	d_counts:  [usize; ZOPFLI_NUM_D],
+	ll_counts: [u32; ZOPFLI_NUM_LL],
+	d_counts:  [u32; ZOPFLI_NUM_D],
 
 	pub(crate) ll_symbols: [f64; ZOPFLI_NUM_LL],
 	pub(crate) d_symbols:  [f64; ZOPFLI_NUM_D],
@@ -60,8 +62,8 @@ impl SymbolStats {
 	/// # New Instance.
 	pub(crate) const fn new() -> Self {
 		Self {
-			ll_counts:  [0; ZOPFLI_NUM_LL],
-			d_counts:   [0; ZOPFLI_NUM_D],
+			ll_counts:  ZEROED_COUNTS_LL,
+			d_counts:   ZEROED_COUNTS_D,
 
 			ll_symbols: [0.0; ZOPFLI_NUM_LL],
 			d_symbols:  [0.0; ZOPFLI_NUM_D],
@@ -76,8 +78,8 @@ impl SymbolStats {
 	/// previous value is halved and added to the corresponding current value.
 	pub(crate) fn add_last(
 		&mut self,
-		ll_counts: &[usize; ZOPFLI_NUM_LL],
-		d_counts: &[usize; ZOPFLI_NUM_D],
+		ll_counts: &[u32; ZOPFLI_NUM_LL],
+		d_counts: &[u32; ZOPFLI_NUM_D],
 	) {
 		for (l, r) in self.ll_counts.iter_mut().zip(ll_counts.iter().copied()) {
 			*l += r.wrapping_div(2);
@@ -93,9 +95,9 @@ impl SymbolStats {
 	/// # Clear Frequencies.
 	///
 	/// Set all `ll_counts` and `d_counts` to zero and return the originals.
-	pub(crate) fn clear(&mut self) -> ([usize; ZOPFLI_NUM_LL], [usize; ZOPFLI_NUM_D]) {
-		let mut last_ll = [0; ZOPFLI_NUM_LL];
-		let mut last_d = [0; ZOPFLI_NUM_D];
+	pub(crate) fn clear(&mut self) -> ([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]) {
+		let mut last_ll = ZEROED_COUNTS_LL;
+		let mut last_d = ZEROED_COUNTS_D;
 		std::mem::swap(&mut self.ll_counts, &mut last_ll);
 		std::mem::swap(&mut self.d_counts, &mut last_d);
 		(last_ll, last_d)
@@ -107,20 +109,20 @@ impl SymbolStats {
 	/// results in the corresponding symbols arrays.
 	pub(crate) fn crunch(&mut self) {
 		#[allow(clippy::cast_precision_loss)]
-		fn calculate_entropy<const S: usize>(count: &[usize; S], bitlengths: &mut [f64; S]) {
-			let sum = count.iter().sum::<usize>();
+		fn calculate_entropy<const S: usize>(count: &[u32; S], bitlengths: &mut [f64; S]) {
+			let sum = count.iter().sum::<u32>();
 
 			if sum == 0 {
 				let log2sum = (S as f64).log2();
 				bitlengths.fill(log2sum);
 			}
 			else {
-				let log2sum = (sum as f64).log2();
+				let log2sum = f64::from(sum).log2();
 
-				for (&c, b) in count.iter().zip(bitlengths.iter_mut()) {
+				for (c, b) in count.iter().copied().zip(bitlengths.iter_mut()) {
 					if c == 0 { *b = log2sum; }
 					else {
-						*b = log2sum - (c as f64).log2();
+						*b = log2sum - f64::from(c).log2();
 						if b.is_sign_negative() { *b = 0.0; }
 					}
 				}
@@ -156,7 +158,7 @@ impl SymbolStats {
 	/// This randomizes the stat frequencies to allow things to maybe turn out
 	/// different on subsequent squeeze passes.
 	pub(crate) fn randomize(&mut self, state: &mut RanState) {
-		fn randomize_freqs<const S: usize>(freqs: &mut [usize; S], state: &mut RanState) {
+		fn randomize_freqs<const S: usize>(freqs: &mut [u32; S], state: &mut RanState) {
 			for i in 0..S {
 				if (state.randomize() >> 4) % 3 == 0 {
 					let index = state.randomize() as usize % S;

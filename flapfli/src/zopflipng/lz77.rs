@@ -18,6 +18,8 @@ use super::{
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LitLen,
 	Lsym,
+	ZEROED_COUNTS_D,
+	ZEROED_COUNTS_LL,
 	zopfli_error,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
@@ -165,8 +167,8 @@ impl LZ77Store {
 	-> Result<([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]), ZopfliError> {
 		// Count the symbols directly.
 		if lstart + ZOPFLI_NUM_LL * 3 > lend {
-			let mut ll_counts = [0_u32; ZOPFLI_NUM_LL];
-			let mut d_counts = [0_u32; ZOPFLI_NUM_D];
+			let mut ll_counts = ZEROED_COUNTS_LL;
+			let mut d_counts = ZEROED_COUNTS_D;
 
 			let entries = self.entries.get(lstart..lend).ok_or(zopfli_error!())?;
 			for e in entries {

@@ -57,11 +57,19 @@ use symbols::{
 
 
 
-// Common Lengths.
+/// # Size of Litlen Collections.
 const ZOPFLI_NUM_LL: usize = 288;
+
+/// # Size of Distance Collections.
 const ZOPFLI_NUM_D: usize = 32;
 
-/// # Fixed Trees (for extern).
+/// # Zero-Filled Distance Counts.
+const ZEROED_COUNTS_D: [u32; ZOPFLI_NUM_D] = [0; ZOPFLI_NUM_D];
+
+/// # Zero-Filled Litlen Counts.
+const ZEROED_COUNTS_LL: [u32; ZOPFLI_NUM_LL] = [0; ZOPFLI_NUM_LL];
+
+/// # Fixed Litlen Tree.
 const FIXED_TREE_LL: [DeflateSym; ZOPFLI_NUM_LL] = [
 	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
 	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
@@ -73,6 +81,8 @@ const FIXED_TREE_LL: [DeflateSym; ZOPFLI_NUM_LL] = [
 	DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09, DeflateSym::D09,
 	DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D07, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
 ];
+
+/// # Fixed Litlen Symbols.
 const FIXED_SYMBOLS_LL: [u32; ZOPFLI_NUM_LL] = [
 	48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
 	72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
@@ -88,7 +98,10 @@ const FIXED_SYMBOLS_LL: [u32; ZOPFLI_NUM_LL] = [
 	8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 192, 193, 194, 195, 196, 197, 198, 199
 ];
 
+/// # Fixed Distance Tree.
 const FIXED_TREE_D: [DeflateSym; ZOPFLI_NUM_D] = [DeflateSym::D05; ZOPFLI_NUM_D];
+
+/// # Fixed Distance Symbols.
 const FIXED_SYMBOLS_D: [u32; ZOPFLI_NUM_D] = [
 	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 	16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
@@ -97,7 +110,7 @@ const FIXED_SYMBOLS_D: [u32; ZOPFLI_NUM_D] = [
 // This is the biggest chunk-o-data that can be passed to deflate.
 pub(super) const ZOPFLI_MASTER_BLOCK_SIZE: usize = 1_000_000;
 
-// The matchable range.
+// The matchable hash cache range.
 const ZOPFLI_MIN_MATCH: usize = 3;
 const ZOPFLI_MAX_MATCH: usize = 258;
 
