@@ -377,6 +377,28 @@ impl<'a> ExactSizeIterator for GoodForRle<'a> {
 
 
 
+/// # Add Dynamic Tree.
+///
+/// Get, write, and return the dynamic lengths.
+fn add_dynamic_tree(
+	store: &LZ77Store,
+	lstart: usize,
+	lend: usize,
+	out: &mut ZopfliOut,
+) -> Result<([DeflateSym; ZOPFLI_NUM_LL], [DeflateSym; ZOPFLI_NUM_D]), ZopfliError> {
+	let mut ll_lengths = [DeflateSym::D00; ZOPFLI_NUM_LL];
+	let mut d_lengths = [DeflateSym::D00; ZOPFLI_NUM_D];
+	get_dynamic_lengths(
+		store,
+		lstart,
+		lend,
+		&mut ll_lengths,
+		&mut d_lengths,
+	)?;
+	kat::TreeLd::new(&ll_lengths, &d_lengths).encode_tree(out)?;
+	Ok((ll_lengths, d_lengths))
+}
+
 /// # Add LZ77 Block.
 ///
 /// Add a deflate block with the given LZ77 data to the output.
@@ -404,19 +426,7 @@ fn add_lz77_block(
 	// Sort out the lengths, fixed or dynamic.
 	let (ll_lengths, d_lengths) =
 		if matches!(btype, BlockType::Fixed) { (FIXED_TREE_LL, FIXED_TREE_D) }
-		else {
-			let mut ll_lengths = [DeflateSym::D00; ZOPFLI_NUM_LL];
-			let mut d_lengths = [DeflateSym::D00; ZOPFLI_NUM_D];
-			get_dynamic_lengths(
-				store,
-				lstart,
-				lend,
-				&mut ll_lengths,
-				&mut d_lengths,
-			)?;
-			kat::TreeLd::new(&ll_lengths, &d_lengths).encode_tree(out)?;
-			(ll_lengths, d_lengths)
-		};
+		else { add_dynamic_tree(store, lstart, lend, out)? };
 
 	// Now sort out the symbols.
 	let ll_symbols = lengths_to_symbols(&ll_lengths)?;
