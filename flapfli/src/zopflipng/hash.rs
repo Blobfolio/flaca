@@ -202,7 +202,6 @@ impl ZopfliState {
 		Ok(())
 	}
 
-	#[inline(never)]
 	/// # Optimal Run.
 	///
 	/// This performs backward/forward squeeze passes on the data, optionally
@@ -407,7 +406,6 @@ impl ZopfliHash {
 
 impl ZopfliHash {
 	#[allow(clippy::cast_possible_truncation)]
-	#[inline(never)]
 	/// # Get Best Lengths.
 	///
 	/// This method performs the forward pass for "squeeze", calculating the

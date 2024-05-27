@@ -254,7 +254,6 @@ impl LZ77StoreEntry {
 		clippy::cast_possible_wrap,
 		clippy::cast_sign_loss,
 	)]
-	#[inline(never)]
 	/// # New.
 	const fn new(litlen: u16, dist: u16, pos: usize) -> Result<Self, ZopfliError> {
 		if litlen < 259 && dist < 32_768 {

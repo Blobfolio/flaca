@@ -41,7 +41,6 @@ thread_local!(
 
 
 #[no_mangle]
-#[inline(never)]
 #[allow(unsafe_code)]
 /// # Custom PNG Deflate.
 ///
@@ -76,7 +75,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 			else { (false, ZOPFLI_MASTER_BLOCK_SIZE) };
 
 		// Crunch the part!
-		let res = STATES.with_borrow_mut(#[inline(always)] |(state, splits)| deflate_part(
+		let res = STATES.with_borrow_mut(|(state, splits)| deflate_part(
 			state,
 			splits,
 			numiterations,

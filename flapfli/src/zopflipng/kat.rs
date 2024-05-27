@@ -123,7 +123,6 @@ impl<'a> TreeLd<'a> {
 }
 
 impl<'a> TreeLd<'a> {
-	#[inline(never)]
 	/// # Calculate the Exact Tree Size (in Bits).
 	///
 	/// This returns the index (0..8) that produced the smallest size, along
@@ -145,7 +144,6 @@ impl<'a> TreeLd<'a> {
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
-	#[inline(never)]
 	/// # Encode Tree.
 	///
 	/// This finds the index that produces the smallest tree size, then writes
@@ -156,8 +154,7 @@ impl<'a> TreeLd<'a> {
 		Ok(())
 	}
 
-	#[allow(clippy::cast_possible_truncation, clippy::inline_always)]
-	#[inline(always)]
+	#[allow(clippy::cast_possible_truncation)]
 	/// # Crunch the Tree.
 	///
 	/// This crunches the data for the given index, either returning the size
@@ -304,7 +301,6 @@ impl<'a> TreeLd<'a> {
 
 
 
-#[inline(never)]
 /// # Length Limited Code Lengths.
 ///
 /// This writes minimum-redundancy length-limited code bitlengths for tree
@@ -334,7 +330,6 @@ fn length_limited_code_lengths_tree(frequencies: &[u32; 19])
 	BUMP.with_borrow_mut(|nodes| llcl::<7>(leaves, nodes)).map(|()| bitlengths)
 }
 
-#[inline(never)]
 /// # Length Limited Code Lengths.
 ///
 /// This writes minimum-redundancy length-limited code bitlengths for length
@@ -410,13 +405,9 @@ struct List<'a> {
 }
 
 impl<'a> List<'a> {
-	#[allow(clippy::inline_always)]
-	#[inline(always)]
 	/// # Rotate.
 	fn rotate(&mut self) { self.lookahead0 = self.lookahead1; }
 
-	#[allow(clippy::inline_always)]
-	#[inline(always)]
 	/// # Weight Sum.
 	const fn weight_sum(&self) -> NonZeroU32 {
 		self.lookahead0.weight.saturating_add(self.lookahead1.weight.get())
@@ -435,8 +426,7 @@ struct Node<'a> {
 
 
 
-#[allow(clippy::inline_always, clippy::similar_names)]
-#[inline(always)]
+#[allow(clippy::similar_names)]
 /// # Crunch the Code Lengths.
 ///
 /// This method serves as the closure for the exported method's
@@ -540,8 +530,6 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 	llcl_boundary_pm(leaves, rest, nodes)
 }
 
-#[allow(clippy::inline_always)]
-#[inline(always)]
 /// # Finish and Write Code Lengths!
 ///
 /// Add the final chain to the list, then write the weighted counts to the
@@ -600,8 +588,6 @@ fn llcl_finish<'a>(
 	Err(zopfli_error!())
 }
 
-#[allow(clippy::inline_always)]
-#[inline(always)]
 /// # Make Leaves.
 fn make_leaves<'a, const SIZE: usize>(
 	frequencies: &'a [u32; SIZE],

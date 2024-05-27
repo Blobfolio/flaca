@@ -107,7 +107,6 @@ impl SplitPoints {
 		else { Ok(len) }
 	}
 
-	#[inline(never)]
 	/// # LZ77 Split Pass.
 	///
 	/// This sets the LZ77 split points according to convoluted cost
@@ -160,7 +159,6 @@ impl SplitPoints {
 		Ok(len)
 	}
 
-	#[inline(never)]
 	/// # Split Best.
 	///
 	/// Compare the optimal raw split points with a dedicated lz77 pass and
@@ -233,8 +231,6 @@ impl SplitPoints {
 
 
 
-#[allow(clippy::inline_always)]
-#[inline(always)]
 /// # Deflate a Part.
 ///
 /// Image compression is done in chunks of a million bytes. This does all the
@@ -779,7 +775,6 @@ fn find_minimum_cost(
 	Ok((best_idx, last_best_cost))
 }
 
-#[inline(never)]
 /// # Calculate the Bit Lengths for Dynamic Block Symbols.
 ///
 /// This chooses lengths that lead to the smallest tree/symbol encoding.
@@ -863,7 +858,6 @@ fn lengths_to_symbols<const SIZE: usize>(lengths: &[DeflateSym; SIZE])
 	Ok(symbols)
 }
 
-#[inline(never)]
 /// # Optimal LZ77.
 ///
 /// Calculate lit/len and dist pairs for the dataset.
