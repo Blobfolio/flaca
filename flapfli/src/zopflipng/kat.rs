@@ -426,10 +426,8 @@ struct Node<'a> {
 /// This method serves as the closure for the exported method's
 /// `BUMP.with_borrow_mut()` call, abstracted here mainly just to improve
 /// readability.
-fn llcl<'a, const MAXBITS: usize>(
-	leaves: &[Leaf<'a>],
-	nodes: &'a mut Bump,
-) -> Result<(), ZopfliError> {
+fn llcl<const MAXBITS: usize>(leaves: &[Leaf<'_>], nodes: &mut Bump)
+-> Result<(), ZopfliError> {
 	// This can't happen; it is just a reminder for the compiler.
 	if leaves.len() < 3 || (1 << MAXBITS) < leaves.len() {
 		return Err(zopfli_error!());
@@ -448,8 +446,8 @@ fn llcl<'a, const MAXBITS: usize>(
 		tail: None,
 	};
 
-	// The max MAXBITS is only 15, so we might as well just (slightly)
-	// over-allocate an array to hold our lists.
+	// The max MAXBITS is only 15, so it's no big deal if we over-allocate
+	// slightly.
 	let mut raw_lists = [List { lookahead0: &node0, lookahead1: &node1 }; MAXBITS];
 	let lists = &mut raw_lists[..MAXBITS.min(leaves.len() - 1)];
 
@@ -461,11 +459,7 @@ fn llcl<'a, const MAXBITS: usize>(
 	}
 
 	// Add the last chain and write the results!
-	let node = llcl_finish(
-		&lists[lists.len() - 2],
-		&lists[lists.len() - 1],
-		leaves,
-	);
+	let node = llcl_finish(&lists[lists.len() - 2], &lists[lists.len() - 1], leaves);
 	llcl_write(node, leaves)?;
 
 	// Please be kind, rewind!
@@ -478,7 +472,7 @@ fn llcl<'a, const MAXBITS: usize>(
 ///
 /// Add a new chain to the list, using either a leaf or combination of two
 /// chains from the previous list.
-fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a Bump)
+fn llcl_boundary_pm<'a>(leaves: &[Leaf<'_>], lists: &mut [List<'a>], nodes: &'a Bump)
 -> Result<(), ZopfliError> {
 	// This method should never be called with an empty list.
 	let [rest @ .., current] = lists else { return Err(zopfli_error!()); };
@@ -530,11 +524,7 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 }
 
 /// # Finish Last Node!
-fn llcl_finish<'a>(
-	list_y: &List<'a>,
-	list_z: &List<'a>,
-	leaves: &[Leaf<'a>],
-) -> Node<'a> {
+fn llcl_finish<'a>(list_y: &List<'a>, list_z: &List<'a>, leaves: &[Leaf<'_>]) -> Node<'a> {
 	// Figure out the final node!
 	let last_count = list_z.lookahead1.count;
 	let weight_sum = list_y.weight_sum();
@@ -555,10 +545,7 @@ fn llcl_finish<'a>(
 }
 
 /// # Write Code Lengths!
-fn llcl_write<'a>(
-	mut node: Node<'a>,
-	leaves: &[Leaf<'a>],
-) -> Result<(), ZopfliError> {
+fn llcl_write(mut node: Node<'_>, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
 	// Make sure we counted correctly before doing anything else.
 	let mut last_count = node.count;
 	debug_assert!(leaves.len() >= last_count.get() as usize);
