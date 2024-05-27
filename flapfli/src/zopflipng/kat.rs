@@ -323,9 +323,6 @@ fn length_limited_code_lengths_tree(frequencies: &[u32; 19])
 		return Ok(bitlengths);
 	}
 
-	// Sort the leaves by frequency.
-	leaves.sort();
-
 	// Crunch!
 	BUMP.with_borrow_mut(|nodes| llcl::<7>(leaves, nodes)).map(|()| bitlengths)
 }
@@ -356,9 +353,6 @@ pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 		for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
 		return Ok(());
 	}
-
-	// Sort the leaves by frequency.
-	leaves.sort();
 
 	// Crunch!
 	BUMP.with_borrow_mut(|nodes| llcl::<15>(leaves, nodes))
@@ -416,12 +410,12 @@ impl<'a> List<'a> {
 
 
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 /// # Node.
 struct Node<'a> {
 	weight: NonZeroU32,
 	count: NonZeroU32,
-	tail: Cell<Option<&'a Node<'a>>>,
+	tail: Option<&'a Node<'a>>,
 }
 
 
@@ -445,13 +439,13 @@ fn llcl<'a, const MAXBITS: usize>(
 	let node0 = Node {
 		weight: leaves[0].frequency,
 		count: NZ1,
-		tail: Cell::new(None),
+		tail: None,
 	};
 
 	let node1 = Node {
 		weight: leaves[1].frequency,
 		count: NZ2,
-		tail: Cell::new(None),
+		tail: None,
 	};
 
 	// The max MAXBITS is only 15, so we might as well just (slightly)
@@ -467,7 +461,12 @@ fn llcl<'a, const MAXBITS: usize>(
 	}
 
 	// Add the last chain and write the results!
-	llcl_finish(leaves, lists, nodes)?;
+	let node = llcl_finish(
+		&lists[lists.len() - 2],
+		&lists[lists.len() - 1],
+		leaves,
+	);
+	llcl_write(node, leaves)?;
 
 	// Please be kind, rewind!
 	nodes.reset();
@@ -494,7 +493,7 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 			current.lookahead1 = nodes.try_alloc(Node {
 				weight: last_leaf.frequency,
 				count: last_count.saturating_add(1),
-				tail: current.lookahead0.tail.clone(),
+				tail: current.lookahead0.tail,
 			}).map_err(|_| zopfli_error!())?;
 		}
 		return Ok(());
@@ -512,7 +511,7 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 			current.lookahead1 = nodes.try_alloc(Node {
 				weight: last_leaf.frequency,
 				count: last_count.saturating_add(1),
-				tail: current.lookahead0.tail.clone(),
+				tail: current.lookahead0.tail,
 			}).map_err(|_| zopfli_error!())?;
 			return Ok(());
 		}
@@ -522,7 +521,7 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 	current.lookahead1 = nodes.try_alloc(Node {
 		weight: weight_sum,
 		count: last_count,
-		tail: Cell::new(Some(previous.lookahead1)),
+		tail: Some(previous.lookahead1),
 	}).map_err(|_| zopfli_error!())?;
 
 	// Replace the used-up lookahead chains by recursing twice.
@@ -530,44 +529,45 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'a>], lists: &mut [List<'a>], nodes: &'a 
 	llcl_boundary_pm(leaves, rest, nodes)
 }
 
-/// # Finish and Write Code Lengths!
-///
-/// Add the final chain to the list, then write the weighted counts to the
-/// bitlengths.
+/// # Finish Last Node!
 fn llcl_finish<'a>(
+	list_y: &List<'a>,
+	list_z: &List<'a>,
 	leaves: &[Leaf<'a>],
-	lists: &mut [List<'a>],
-	nodes: &'a Bump,
-) -> Result<(), ZopfliError> {
-	// This won't fail; we'll always have at least two lists.
-	let [_rest @ .., list_y, list_z] = lists else { return Err(zopfli_error!()); };
-
-	// Add one more chain or update the tail.
+) -> Node<'a> {
+	// Figure out the final node!
 	let last_count = list_z.lookahead1.count;
 	let weight_sum = list_y.weight_sum();
 	if (last_count.get() as usize) < leaves.len() && leaves[last_count.get() as usize].frequency < weight_sum {
-		list_z.lookahead1 = nodes.try_alloc(Node {
+		Node {
 			weight: NZ1, // We'll never look at this value.
 			count: last_count.saturating_add(1),
-			tail: list_z.lookahead1.tail.clone(),
-		}).map_err(|_| zopfli_error!())?;
+			tail: list_z.lookahead1.tail,
+		}
 	}
 	else {
-		list_z.lookahead1.tail.set(Some(list_y.lookahead1));
+		Node {
+			weight: NZ1, // We'll never look at this value.
+			count: last_count,
+			tail: Some(list_y.lookahead1),
+		}
 	}
+}
 
-	// Write the changes!
-	let mut node = list_z.lookahead1;
+/// # Write Code Lengths!
+fn llcl_write<'a>(
+	mut node: Node<'a>,
+	leaves: &[Leaf<'a>],
+) -> Result<(), ZopfliError> {
+	// Make sure we counted correctly before doing anything else.
 	let mut last_count = node.count;
-
-	// But make sure we counted correctly first!
 	debug_assert!(leaves.len() >= last_count.get() as usize);
 
-	// Okay, now we can write them!
+	// Write the changes!
 	let mut writer = leaves.iter().take(last_count.get() as usize).rev();
 	for value in DeflateSym::LIMITED {
 		// Pull the next tail, if any.
-		if let Some(tail) = node.tail.get() {
+		if let Some(tail) = node.tail {
 			// Wait for a change in counts to write the values.
 			if tail.count < last_count {
 				for leaf in writer.by_ref().take((last_count.get() - tail.count.get()) as usize) {
@@ -575,7 +575,7 @@ fn llcl_finish<'a>(
 				}
 				last_count = tail.count;
 			}
-			node = tail;
+			node = *tail;
 		}
 		// Write the remaining entries and quit!
 		else {
@@ -588,27 +588,28 @@ fn llcl_finish<'a>(
 	Err(zopfli_error!())
 }
 
+#[allow(unsafe_code)]
 /// # Make Leaves.
 fn make_leaves<'a, const SIZE: usize>(
 	frequencies: &'a [u32; SIZE],
 	bitlengths: &'a [Cell<DeflateSym>],
-	leaves: &'a mut [Leaf<'a>],
-) -> &'a mut [Leaf<'a>] {
-	let mut len_leaves = 0;
-	for (v, leaf) in frequencies.iter()
-		.copied()
-		.zip(bitlengths)
-		.filter_map(|(frequency, bitlength)| NonZeroU32::new(frequency).map(
-			|frequency| Leaf { frequency, bitlength }
-		))
-		.zip(leaves.iter_mut())
-	{
-		*leaf = v;
-		len_leaves += 1;
+	leaves: &'a mut [Leaf<'a>; SIZE],
+) -> &'a [Leaf<'a>] {
+	// Safety: this was a matching array before cellification.
+	let bitlengths: &[Cell<DeflateSym>; SIZE] = unsafe { &*bitlengths.as_ptr().cast() };
+
+	let mut written = 0;
+	for i in 0..SIZE {
+		if let Some(frequency) = NonZeroU32::new(frequencies[i]) {
+			leaves[written].frequency = frequency;
+			leaves[written].bitlength = &bitlengths[i];
+			written += 1;
+		}
 	}
 
 	// Reslice to the leaves we're actually using.
-	&mut leaves[..len_leaves]
+	if 2 < written { leaves[..written].sort(); }
+	&leaves[..written]
 }
 
 #[allow(unsafe_code)]
