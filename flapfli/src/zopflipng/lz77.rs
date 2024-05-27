@@ -65,6 +65,23 @@ impl LZ77Store {
 		for &entry in &other.entries { self.push_entry(entry); }
 	}
 
+	/// # Symbol Span Range.
+	///
+	/// Convert an LZ77 range to the start/end positions of the block.
+	pub(crate) fn byte_range(
+		&self,
+		lstart: usize,
+		lend: usize,
+	) -> Result<(usize, usize), ZopfliError> {
+		let slice = self.entries.as_slice();
+		if lstart < lend && lend <= slice.len() {
+			let instart = slice[lstart].pos;
+			let e = slice[lend - 1];
+			Ok((instart, e.length() as usize + e.pos))
+		}
+		else { Err(zopfli_error!()) }
+	}
+
 	/// # Clear.
 	pub(crate) fn clear(&mut self) {
 		self.entries.truncate(0);

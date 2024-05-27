@@ -391,7 +391,7 @@ fn add_lz77_block(
 ) -> Result<(), ZopfliError> {
 	// Uncompressed blocks are easy!
 	if matches!(btype, BlockType::Uncompressed) {
-		let (instart, inend) = get_lz77_byte_range(store, lstart, lend)?;
+		let (instart, inend) = store.byte_range(lstart, lend)?;
 		out.add_uncompressed_block(last_block, arr.as_ptr(), instart, inend);
 		return Ok(());
 	}
@@ -553,7 +553,7 @@ fn calculate_block_size(
 ) -> Result<u32, ZopfliError> {
 	match btype {
 		BlockType::Uncompressed => {
-			let (instart, inend) = get_lz77_byte_range(store, lstart, lend)?;
+			let (instart, inend) = store.byte_range(lstart, lend)?;
 			let blocksize = (inend - instart) as u32;
 
 			// Blocks larger than u16::MAX need to be split.
@@ -807,23 +807,6 @@ fn get_dynamic_lengths(
 	)
 }
 
-/// # Symbol Span Range.
-///
-/// Convert an LZ77 range to the start/end positions of the block.
-fn get_lz77_byte_range(
-	store: &LZ77Store,
-	lstart: usize,
-	lend: usize,
-) -> Result<(usize, usize), ZopfliError> {
-	let slice = store.entries.as_slice();
-	if lstart < lend && lend <= slice.len() {
-		let instart = slice[lstart].pos;
-		let e = slice[lend - 1];
-		Ok((instart, e.length() as usize + e.pos))
-	}
-	else { Err(zopfli_error!()) }
-}
-
 #[allow(unsafe_code)]
 /// # Zopfli Lengths to Symbols.
 ///
@@ -1063,7 +1046,7 @@ fn try_lz77_expensive_fixed(
 	last_block: bool,
 	out: &mut ZopfliOut,
 ) -> Result<bool, ZopfliError> {
-	let (instart, inend) = get_lz77_byte_range(store, lstart, lend)?;
+	let (instart, inend) = store.byte_range(lstart, lend)?;
 
 	// Run all the expensive fixed-cost checks.
 	state.init_lmc(inend - instart);
