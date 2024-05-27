@@ -43,10 +43,10 @@ thread_local!(
 	/// This shared storage helps take some of the sting out of the ridiculous
 	/// allocation overhead, at least on a per-thread basis.
 	///
-	/// Note: the initial capacity is set to about 10% of the theoretical
-	/// maximum; bumpalo will bump as needed.
+	/// Note: the initial capacity _should_ be sufficient to avoid
+	/// reallocation, but `bumpalo` will bump if it needs to.
 	static BUMP: RefCell<Bump> = RefCell::new(Bump::with_capacity(
-		(2 * ZOPFLI_NUM_D - 2) * 15 * std::mem::size_of::<Node<'_>>()
+		(2 * ZOPFLI_NUM_LL - 2) * 15 * std::mem::size_of::<Node<'_>>()
 	))
 );
 
@@ -314,8 +314,7 @@ fn length_limited_code_lengths_tree(frequencies: &[u32; 19])
 
 	// Build up a collection of "leaves" by joining each non-zero frequency
 	// with its corresponding bitlength.
-	let mut raw_leaves = [Leaf { frequency: NonZeroU32::MIN, bitlength: &bitcells[0] }; 19];
-	let leaves = make_leaves(frequencies, bitcells, &mut raw_leaves);
+	let leaves = make_leaves(frequencies, bitcells);
 
 	// Sortcut: weighting only applies when there are more than two leaves.
 	if leaves.len() <= 2 {
@@ -324,7 +323,7 @@ fn length_limited_code_lengths_tree(frequencies: &[u32; 19])
 	}
 
 	// Crunch!
-	BUMP.with_borrow_mut(|nodes| llcl::<7>(leaves, nodes)).map(|()| bitlengths)
+	BUMP.with_borrow_mut(|nodes| llcl::<7>(&leaves, nodes)).map(|()| bitlengths)
 }
 
 /// # Length Limited Code Lengths.
@@ -345,8 +344,7 @@ pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 
 	// Build up a collection of "leaves" by joining each non-zero frequency
 	// with its corresponding bitlength.
-	let mut raw_leaves = [Leaf { frequency: NonZeroU32::MIN, bitlength: &bitlengths[0] }; SIZE];
-	let leaves = make_leaves(frequencies, bitlengths, &mut raw_leaves);
+	let leaves = make_leaves(frequencies, bitlengths);
 
 	// Sortcut: weighting only applies when there are more than two leaves.
 	if leaves.len() <= 2 {
@@ -355,7 +353,7 @@ pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 	}
 
 	// Crunch!
-	BUMP.with_borrow_mut(|nodes| llcl::<15>(leaves, nodes))
+	BUMP.with_borrow_mut(|nodes| llcl::<15>(&leaves, nodes))
 }
 
 
@@ -554,7 +552,7 @@ fn llcl_write(mut node: Node<'_>, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError
 	let mut writer = leaves.iter().take(last_count.get() as usize).rev();
 	for value in DeflateSym::LIMITED {
 		// Pull the next tail, if any.
-		if let Some(tail) = node.tail {
+		if let Some(tail) = node.tail.copied() {
 			// Wait for a change in counts to write the values.
 			if tail.count < last_count {
 				for leaf in writer.by_ref().take((last_count.get() - tail.count.get()) as usize) {
@@ -562,7 +560,7 @@ fn llcl_write(mut node: Node<'_>, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError
 				}
 				last_count = tail.count;
 			}
-			node = *tail;
+			node = tail;
 		}
 		// Write the remaining entries and quit!
 		else {
@@ -575,28 +573,20 @@ fn llcl_write(mut node: Node<'_>, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError
 	Err(zopfli_error!())
 }
 
-#[allow(unsafe_code)]
 /// # Make Leaves.
 fn make_leaves<'a, const SIZE: usize>(
 	frequencies: &'a [u32; SIZE],
 	bitlengths: &'a [Cell<DeflateSym>],
-	leaves: &'a mut [Leaf<'a>; SIZE],
-) -> &'a [Leaf<'a>] {
-	// Safety: this was a matching array before cellification.
-	let bitlengths: &[Cell<DeflateSym>; SIZE] = unsafe { &*bitlengths.as_ptr().cast() };
-
-	let mut written = 0;
-	for i in 0..SIZE {
-		if let Some(frequency) = NonZeroU32::new(frequencies[i]) {
-			leaves[written].frequency = frequency;
-			leaves[written].bitlength = &bitlengths[i];
-			written += 1;
-		}
-	}
-
-	// Reslice to the leaves we're actually using.
-	if 2 < written { leaves[..written].sort(); }
-	&leaves[..written]
+) -> Vec<Leaf<'a>> {
+	let mut out: Vec<_> = frequencies.iter()
+		.copied()
+		.zip(bitlengths)
+		.filter_map(|(frequency, bitlength)|
+			NonZeroU32::new(frequency).map(|frequency| Leaf { frequency, bitlength })
+		)
+		.collect();
+	out.sort();
+	out
 }
 
 #[allow(unsafe_code)]
