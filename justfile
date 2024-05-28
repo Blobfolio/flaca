@@ -63,11 +63,14 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 
 # Bench PNG Compression.
 [no-cd]
-@bench-png BIN:
+@bench-png BIN EXTRA="":
 	[ -f "{{ BIN }}" ] || exit 1
-	just _bench-reset
+	just _bench-reset "{{ EXTRA }}"
 	"{{ absolute_path(BIN) }}" -p --no-jpeg "{{ bench_dir }}"
+
+	# Checksum checks.
 	cd "{{ bench_dir }}" && b3sum -c png.b3 --quiet
+	[ -z "{{ EXTRA }}" ] || ( cd "{{ bench_dir }}" && b3sum -c pgo.b3 --quiet )
 
 
 @clean:
@@ -163,9 +166,10 @@ version:
 
 
 # Reset bench.
-@_bench-reset:
+@_bench-reset EXTRA="":
 	[ ! -d "{{ bench_dir }}" ] || rm -rf "{{ bench_dir }}"
 	cp -aR "{{ skel_dir }}/assets" "{{ bench_dir }}"
+	[ -z "{{ EXTRA }}" ] || cp -aR "{{ skel_dir }}/pgo" "{{ bench_dir }}"
 
 
 # Init dependencies.
