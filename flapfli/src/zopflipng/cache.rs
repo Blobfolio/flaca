@@ -198,7 +198,7 @@ impl MatchCache {
 			.take(ZOPFLI_CACHE_LENGTH);
 
 		// Start by writing all mismatched pairs, up to the limit.
-		for (i, pair) in (0_u8..).zip(slice.windows(2)) {
+		for (i, pair) in (0_u8..=u8::MAX).zip(slice.windows(2)) {
 			if pair[0] != pair[1] {
 				let Some([d0, d1, d2]) = dst.next() else { return Ok(()); };
 				*d0 = i;

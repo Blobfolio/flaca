@@ -392,7 +392,7 @@ impl ZopfliHash {
 		self.same[hpos] = amount;
 
 		// Cycle the second hash.
-		self.chain2.val = (((amount - ZOPFLI_MIN_MATCH as u16) & 255) as i16) ^ self.chain1.val;
+		self.chain2.val = ((amount.wrapping_sub(ZOPFLI_MIN_MATCH as u16) & 255) as i16) ^ self.chain1.val;
 		self.chain2.update_hash(pos);
 	}
 
