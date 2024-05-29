@@ -15,22 +15,20 @@
 # recipes.
 ##
 
-pkg_id      := "flaca"
+pkg_id1     := "flaca"
+pkg_id2     := "flapfli"
 pkg_name    := "Flaca"
-pkg_dir1    := justfile_directory() + "/src"
+pkg_dir1    := justfile_directory() + "/" + pkg_id1
+pkg_dir2    := justfile_directory() + "/" + pkg_id2
 
 bench_dir   := "/tmp/bench-data"
-cargo_dir   := "/tmp/" + pkg_id + "-cargo"
-cargo_bin   := cargo_dir + "/release/" + pkg_id
+cargo_dir   := "/tmp/" + pkg_id1 + "-cargo"
+cargo_bin   := cargo_dir + "/release/" + pkg_id1
 doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
-export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Cllvm-args=--cost-kind=throughput -Clinker-plugin-lto -Clink-arg=-fuse-ld=lld"
-export CC := "clang"
-export CXX := "clang++"
-export CFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
-export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
+export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3"
 
 
 
@@ -38,7 +36,7 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 @build:
 	# First let's build the Rust bit.
 	cargo build \
-		--bin "{{ pkg_id }}" \
+		--bin "{{ pkg_id1 }}" \
 		--release \
 		--target-dir "{{ cargo_dir }}"
 
@@ -52,7 +50,7 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 	# Build the deb.
 	cargo-deb \
 		--no-build \
-		-p {{ pkg_id }} \
+		-p {{ pkg_id1 }} \
 		-o "{{ release_dir }}"
 
 	just _fix-chown "{{ release_dir }}"
@@ -61,11 +59,14 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 
 # Bench PNG Compression.
 [no-cd]
-@bench-png BIN:
+@bench-png BIN EXTRA="":
 	[ -f "{{ BIN }}" ] || exit 1
-	just _bench-reset
+	just _bench-reset "{{ EXTRA }}"
 	"{{ absolute_path(BIN) }}" -p --no-jpeg "{{ bench_dir }}"
+
+	# Checksum checks.
 	cd "{{ bench_dir }}" && b3sum -c png.b3 --quiet
+	[ -z "{{ EXTRA }}" ] || ( cd "{{ bench_dir }}" && b3sum -c pgo.b3 --quiet )
 
 
 @clean:
@@ -90,9 +91,9 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 
 # Generate CREDITS.
 @credits:
-	cargo bashman -m "{{ justfile_directory() }}/Cargo.toml"
-	echo '| [zopflipng](https://github.com/google/zopfli) | | Google | Apache-2.0 |' >> "{{ justfile_directory() }}/CREDITS.md"
+	cargo bashman -m "{{ pkg_dir1 }}/Cargo.toml"
 	just _fix-chown "{{ justfile_directory() }}/CREDITS.md"
+	just _fix-chown "{{ justfile_directory() }}/release"
 
 
 # Build Docs.
@@ -111,7 +112,7 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 # Test Run.
 @run +ARGS:
 	cargo run \
-		--bin "{{ pkg_id }}" \
+		--bin "{{ pkg_id1 }}" \
 		--release \
 		--target-dir "{{ cargo_dir }}" \
 		-- {{ ARGS }}
@@ -132,7 +133,7 @@ version:
 	#!/usr/bin/env bash
 
 	# Current version.
-	_ver1="$( toml get "{{ justfile_directory() }}/Cargo.toml" package.version | \
+	_ver1="$( toml get "{{ pkg_dir1 }}/Cargo.toml" package.version | \
 		sed 's/"//g' )"
 
 	# Find out if we want to bump it.
@@ -146,7 +147,8 @@ version:
 	fyi success "Setting version to $_ver2."
 
 	# Set the release version!
-	just _version "{{ justfile_directory() }}" "$_ver2"
+	just _version "{{ pkg_dir1 }}" "$_ver2"
+	just _version "{{ pkg_dir2 }}" "$_ver2"
 
 
 # Set version for real.
@@ -160,9 +162,10 @@ version:
 
 
 # Reset bench.
-@_bench-reset:
+@_bench-reset EXTRA="":
 	[ ! -d "{{ bench_dir }}" ] || rm -rf "{{ bench_dir }}"
 	cp -aR "{{ skel_dir }}/assets" "{{ bench_dir }}"
+	[ -z "{{ EXTRA }}" ] || cp -aR "{{ skel_dir }}/pgo" "{{ bench_dir }}"
 
 
 # Init dependencies.
