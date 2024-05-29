@@ -75,6 +75,12 @@ description = "Read (absolute) image and/or directory paths from this text file 
 path = true
 
 [[package.metadata.bashman.options]]
+long = "--max-resolution"
+label = "<NUM>"
+description = "Skip images containing more than <NUM> total pixels to avoid potential OOM errors during decompression. [default: ~4.29 billion]"
+path = false
+
+[[package.metadata.bashman.options]]
 short = "-z"
 label = "<NUM>"
 description = "Run NUM lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. In practice, values beyond 500 are unlikely to save more than a few bytes, and could take *days* to complete! Haha. [default: 20 or 60, depending on the file size]"

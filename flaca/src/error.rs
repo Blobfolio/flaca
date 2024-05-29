@@ -20,6 +20,8 @@ pub(super) enum EncodingError {
 	Format,
 	/// # Read Error.
 	Read,
+	/// # Resolution.
+	Resolution,
 	/// # Intentionally Skipped.
 	Skipped,
 	/// # Vanished.
@@ -36,6 +38,7 @@ impl EncodingError {
 			Self::Empty => "empty file",
 			Self::Format => "invalid format",
 			Self::Read => "read error",
+			Self::Resolution => "too big",
 			Self::Skipped => "",
 			Self::Vanished => "vanished!",
 			Self::Write => "write error",
@@ -54,6 +57,8 @@ pub(super) enum FlacaError {
 	Killed,
 	/// # No Images.
 	NoImages,
+	/// # Max Resolution.
+	MaxResolution,
 	/// # Progress Passthrough.
 	Progress(ProglessError),
 	/// # Invalid Zopfli Iterations.
@@ -92,6 +97,7 @@ impl FlacaError {
 			Self::Argue(e) => e.as_str(),
 			Self::Killed => "The process was aborted early.",
 			Self::NoImages => "No images were found.",
+			Self::MaxResolution => "Pixel limits must be between 1..=4_294_967_295.",
 			Self::Progress(e) => e.as_str(),
 			Self::ZopfliIterations => "The number of (zopfli) lz77 iterations must be between 1..=2_147_483_647.",
 		}

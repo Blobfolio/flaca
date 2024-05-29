@@ -61,6 +61,7 @@ The following flags and options are available:
 | `-h` | `--help` | | Print help information and exit. |
 | `-j` | | `<NUM>` | Limit parallelization to this many threads (instead of using all logical cores). |
 | `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file — or STDIN if "-" — one entry per line, instead of or in addition to the trailing `<PATH(S)>`. |
+| | `--max-resolution` | `<NUM>` | Skip images containing more than `<NUM>` total pixels. |
 | | `--no-jpeg` | | Skip JPEG images. |
 | | `--no-png` | | Skip PNG Images. |
 | `-z` | `--zopfli-iterations` | `<NUM>` | Override the number of zopfli iterations when compressing PNGs. |

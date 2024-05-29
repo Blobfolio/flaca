@@ -7,11 +7,15 @@ pub(super) mod kind;
 
 
 
+use crate::MAX_RESOLUTION;
 use kind::ImageKind;
 use oxipng::Options as OxipngOptions;
 use std::{
 	path::Path,
-	sync::OnceLock,
+	sync::{
+		atomic::Ordering::Relaxed,
+		OnceLock,
+	},
 };
 use super::EncodingError;
 
@@ -44,12 +48,15 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 	// Do PNG stuff?
 	if ImageKind::is_png(&raw) {
 		if ! kinds.supports_png() { return Err(EncodingError::Skipped); }
+		check_resolution(ImageKind::Png, &raw)?;
+
 		encode_oxipng(&mut raw);
 		encode_zopflipng(&mut raw);
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
 		if ! kinds.supports_jpeg() { return Err(EncodingError::Skipped); }
+		check_resolution(ImageKind::Jpeg, &raw)?;
 
 		// Mozjpeg usually panics on error, so we have to do a weird little
 		// dance to keep it from killing the whole thread.
@@ -75,6 +82,26 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 			.map_err(|_| EncodingError::Write)
 	}
 	else { Ok((before, before)) }
+}
+
+#[inline(never)]
+/// # Check Resolution.
+fn check_resolution(kind: ImageKind, src: &[u8]) -> Result<(), EncodingError> {
+	// Get the width and height.
+	let (w, h) = match kind {
+		ImageKind::Jpeg => ImageKind::jpeg_dimensions(src),
+		ImageKind::Png => ImageKind::png_dimensions(src),
+		ImageKind::All => None,
+	}
+		.ok_or(EncodingError::Format)?;
+
+	// Make sure the resolution fits u32.
+	let res = w.checked_mul(h).ok_or(EncodingError::Resolution)?;
+
+	// And finally check the limit.
+	let max = MAX_RESOLUTION.load(Relaxed);
+	if max == 0 || res.get() <= max { Ok(()) }
+	else { Err(EncodingError::Resolution) }
 }
 
 #[inline(never)]
