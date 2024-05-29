@@ -63,7 +63,7 @@ The following flags and options are available:
 | `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file — or STDIN if "-" — one entry per line, instead of or in addition to the trailing `<PATH(S)>`. |
 | | `--no-jpeg` | | Skip JPEG images. |
 | | `--no-png` | | Skip PNG Images. |
-| `-z` | `--zopfli-iterations` | Override the number of zopfli iterations when compressing PNGs. |
+| `-z` | `--zopfli-iterations` | `<NUM>` | Override the number of zopfli iterations when compressing PNGs. |
 | `-p` | `--progress` | | Show pretty progress while minifying. |
 | `-V` | `--version` | | Print version information and exit. |
 
