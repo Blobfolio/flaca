@@ -23,6 +23,7 @@ _basher___flaca() {
 		opts+=("-l")
 		opts+=("--list")
 	fi
+	[[ " ${COMP_LINE} " =~ " --max-resolution " ]] || opts+=("--max-resolution")
 	[[ " ${COMP_LINE} " =~ " -z " ]] || opts+=("-z")
 	opts=" ${opts[@]} "
 	if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then

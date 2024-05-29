@@ -18,7 +18,7 @@ exclude = [
 [package.metadata.deb]
 maintainer = "Josh Stoik <hello@blobfolio.com>"
 copyright = "2024, Blobfolio, LLC <hello@blobfolio.com>"
-license-file = ["./LICENSE", "0"]
+license-file = ["../LICENSE", "0"]
 extended-description = """\n\
 Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of losslessly compressing JPEG and PNG images for use on the web.\n\
 .\n\
