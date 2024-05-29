@@ -1,7 +1,7 @@
 /*!
-# Flaca: Zopflipng LZ77 Store.
+# Flapfli: LZ77 Store.
 
-This module defines the LZ77 store structure.
+This module defines the LZ77 store structures.
 */
 
 use std::{

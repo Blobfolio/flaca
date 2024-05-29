@@ -1,5 +1,8 @@
 /*!
-# Flaca
+# Flapfli.
+
+This library contains a (mostly) Rust port of [`zopflipng`](https://github.com/google/zopfli/),
+heavily optimized flaca's specific use cases (hence "fla" + "pfli").
 */
 
 #![deny(unsafe_code)]

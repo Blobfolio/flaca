@@ -1,5 +1,5 @@
 /*!
-# Flaca: Zopflipng Errors.
+# Flapfli: Errors.
 */
 
 use std::fmt;

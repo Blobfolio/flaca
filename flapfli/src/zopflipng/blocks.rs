@@ -1,5 +1,5 @@
 /*!
-# Flaca: Zopflipng Blocks.
+# Flapfli: Blocks.
 
 This module contains the deflate entrypoint and all of the block-related odds
 and ends that didn't make it into other modules.

@@ -1,8 +1,7 @@
 /*!
-# Flaca: Lodepng
+# Flapfli: Lodepng.
 
-These are FFI bindings to the upstream `lodepng.c` library functionality
-required to recreate the `zopflipng` behaviors in Rust.
+This module contains FFI bindings to `lodepng.c`.
 */
 
 #![allow(non_camel_case_types, non_upper_case_globals)]

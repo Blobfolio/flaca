@@ -1,7 +1,5 @@
 /*!
-# Flaca: FFI
-
-This module contains some general-purpose FFI helpers.
+# Flapfli: FFI Image Wrapper.
 */
 
 use std::{

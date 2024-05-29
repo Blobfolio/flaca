@@ -1,8 +1,9 @@
 /*!
-# Flaca: Zopfli Katajainen.
+# Flapfli: Katajainen and Tree-Related Business.
 
 This module contains the Katajainen minimum-redundancy length-limited
-code-writing logic, which is just as messy as it sounds. Haha.
+code-writing logic — just as messy as it sounds! — as well as helpers related
+to DEFLATE tree construction.
 */
 
 use bumpalo::Bump;

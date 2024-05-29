@@ -1,8 +1,8 @@
 /*!
-# Flaca: Zopflipng Caches.
+# Flapfli: Longest Match Cache.
 
-This module defines the longest match and squeeze cache structures, and hosts
-the thread-local LMC static.
+The LMC is used to eleviate some of the burden that would otherwise result from
+calling `ZopfliHash::find` a hundred million times in a row. Haha.
 */
 
 use super::{

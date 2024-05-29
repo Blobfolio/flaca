@@ -1,5 +1,5 @@
 /*!
-# Flaca: Zopflipng!
+# Flapfli: Zopflipng!
 
 The `optimize` method in this module emulates the behaviors of the zopflipng
 CLI tool when called with:

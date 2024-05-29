@@ -1,5 +1,5 @@
 /*!
-# Flaca: Zopflipng Squeeze Stats.
+# Flapfli: Squeeze Stats.
 
 This module defines the squeeze stats structure and its companion PRNG.
 */
