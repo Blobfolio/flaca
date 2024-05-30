@@ -19,7 +19,6 @@ Author: jyrki.alakuijala@gmail.com (Jyrki Alakuijala)
 
 #include "zopfli.h"
 
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 
