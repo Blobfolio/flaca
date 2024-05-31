@@ -146,52 +146,96 @@ pub(super) struct ZopfliOut {
 
 impl ZopfliOut {
 	#[allow(unsafe_code)]
-	/// # Add Bit.
-	pub(crate) fn add_bit(&mut self, bit: i32) {
+	/// # Append Data.
+	fn append_data(&mut self, value: u8) {
+		use libc::{malloc, realloc};
+
 		unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliAddBit(bit, &mut self.bp, self.out, self.outsize);
+			// Dereferencing this size gets annoying quick! Haha.
+			let size = *self.outsize;
+
+			// Reallocate if size is a power of two.
+			if 0 == (size & size.wrapping_sub(1)) {
+				*self.out =
+					if 0 == size { malloc(1).cast::<u8>() }
+					else {
+						realloc((*self.out).cast(), size * 2).cast::<u8>()
+					};
+			}
+
+			(*self.out).add(size).write(value);
+			self.outsize.write(size + 1);
 		}
 	}
+}
 
+impl ZopfliOut {
 	#[allow(unsafe_code)]
+	/// # Add Bit.
+	pub(crate) fn add_bit(&mut self, bit: u8) {
+		if self.bp == 0 { self.append_data(0); }
+		unsafe {
+			// Safety: `append_data` writes a byte to `outsize` and then
+			// increments it, so to reach and modify that same position we need
+			// to use `outsize - 1` instead.
+			*(*self.out).add(*self.outsize - 1) |= bit << self.bp;
+		}
+		self.bp = self.bp.wrapping_add(1) & 7;
+	}
+
 	/// # Add Multiple Bits.
 	pub(crate) fn add_bits(&mut self, symbol: u32, length: u32) {
-		unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliAddBits(symbol, length,&mut self.bp, self.out, self.outsize);
+		for i in 0..length {
+			let bit = (symbol >> i) & 1;
+			self.add_bit(bit as u8);
 		}
 	}
 
-	#[allow(unsafe_code)]
 	/// # Add Huffman Bits.
 	pub(crate) fn add_huffman_bits(&mut self, symbol: u32, length: u32) {
-		unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliAddHuffmanBits(symbol, length,&mut self.bp, self.out, self.outsize);
+		// Same as add_bits, except we're doing it backwards.
+		for i in (0..length).rev() {
+			let bit = (symbol >> i) & 1;
+			self.add_bit(bit as u8);
 		}
 	}
 
-	#[allow(unsafe_code)]
+	#[allow(clippy::cast_possible_truncation)]
 	/// # Add Non-Compressed Block.
 	pub(crate) fn add_uncompressed_block(
 		&mut self,
 		last_block: bool,
-		arr: *const u8,
+		arr: &[u8],
 		start: usize,
 		end: usize,
 	) {
-		unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliAddNonCompressedBlock(
-				i32::from(last_block),
-				arr,
-				start,
-				end,
-				&mut self.bp,
-				self.out,
-				self.outsize,
-			);
+		let mut pos = start;
+		loop {
+			let mut blocksize = usize::from(u16::MAX);
+			if pos + blocksize > end { blocksize = end - pos; }
+			let really_last_block = pos + blocksize >= end;
+			let nlen = ! blocksize;
+
+			self.add_bit(u8::from(last_block && really_last_block));
+
+			// BTYPE 00.
+			self.add_bit(0);
+			self.add_bit(0);
+
+			// Ignore bits of input up to th enext byte boundary.
+			self.bp = 0;
+
+			self.append_data((blocksize % 256) as u8);
+			self.append_data((blocksize.wrapping_div(256) % 256) as u8);
+			self.append_data((nlen % 256) as u8);
+			self.append_data((nlen.wrapping_div(256) % 256) as u8);
+
+			for bit in arr.iter().copied().skip(pos).take(blocksize) {
+				self.append_data(bit);
+			}
+
+			if really_last_block { break; }
+			pos += blocksize;
 		}
 	}
 }

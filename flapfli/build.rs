@@ -35,25 +35,19 @@ pub fn main() {
 	build_symbols();
 }
 
-/// # Build `zopfli`/`lodepng`.
+/// # Build `lodepng`.
 ///
-/// The Rust ports of these libraries are missing features that noticeably
-/// affect PNG compression, and are quite a bit slower than the original C
-/// libraries as well. Unless/until that changes, we'll have to work with the
-/// originals.
-///
-/// The relevant `zopflipng` bits, though, were easily ported to the Flaca
-/// library proper, so we can at least avoid the headaches associated with C++
-/// interop!
+/// The Rust port of `lodepng` is missing some functionality that is required
+/// to fully emulate `zopflipng`, so we're stuck with the C version until I
+/// decide to completely rewrite that too. Haha.
 fn build_ffi() {
 	// Define some paths.
 	let repo = Path::new("../skel/vendor");
-	let zopfli_src = repo.join("zopfli");
 	let lodepng_src = repo.join("lodepng");
 
 	// Build Zopfli first.
 	let mut c = cc::Build::new();
-	c.includes([repo, &lodepng_src, &zopfli_src])
+	c.includes([repo, &lodepng_src])
 		.cpp(false)
 		.flag_if_supported("-W")
 		.flag_if_supported("-ansi")
@@ -61,16 +55,15 @@ fn build_ffi() {
 		.pic(true)
 		.static_flag(true)
 		.files([
-			zopfli_src.join("zopfli.c"),
 			lodepng_src.join("lodepng.c"),
 		])
 		.define("LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS", None)
 		.define("LODEPNG_NO_COMPILE_CPP", None)
 		.define("LODEPNG_NO_COMPILE_CRC", None)
 		.define("LODEPNG_NO_COMPILE_DISK", None)
-		.compile("zopflipng");
+		.compile("lodepng");
 
-	bindings(repo, &lodepng_src, &zopfli_src);
+	bindings(&lodepng_src);
 }
 
 /// # Build Symbols.
@@ -177,7 +170,7 @@ pub(crate) const DISTANCE_VALUES: &[u16; 32_768] = &[");
 ///
 /// These have been manually transcribed into the Rust sources, but this
 /// commented-out code can be re-enabled if they ever need to be updated.
-fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
+fn bindings(lodepng_src: &Path) {
 	let bindings = bindgen::Builder::default()
 		.clang_args([
 			"-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS",
@@ -186,8 +179,6 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 			"-DLODEPNG_NO_COMPILE_DISK",
 		])
 		.header(lodepng_src.join("lodepng.h").to_string_lossy())
-		.header(repo.join("rust.h").to_string_lossy())
-		.header(zopfli_src.join("zopfli.h").to_string_lossy())
 		.allowlist_function("lodepng_color_mode_copy")
 		.allowlist_function("lodepng_color_stats_init")
 		.allowlist_function("lodepng_compute_color_stats")
@@ -195,10 +186,6 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 		.allowlist_function("lodepng_encode")
 		.allowlist_function("lodepng_state_cleanup")
 		.allowlist_function("lodepng_state_init")
-		.allowlist_function("ZopfliAddBit")
-		.allowlist_function("ZopfliAddBits")
-		.allowlist_function("ZopfliAddHuffmanBits")
-		.allowlist_function("ZopfliAddNonCompressedBlock")
 		.allowlist_type("LodePNGColorStats")
 		.allowlist_type("LodePNGCompressSettings")
 		.allowlist_type("LodePNGState")

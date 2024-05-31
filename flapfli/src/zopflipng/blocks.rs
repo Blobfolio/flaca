@@ -394,14 +394,14 @@ fn add_lz77_block(
 	// Uncompressed blocks are easy!
 	if matches!(btype, BlockType::Uncompressed) {
 		let (instart, inend) = store.byte_range(lstart, lend)?;
-		out.add_uncompressed_block(last_block, arr.as_ptr(), instart, inend);
+		out.add_uncompressed_block(last_block, arr, instart, inend);
 		return Ok(());
 	}
 
 	// Add some bits.
-	out.add_bit(i32::from(last_block));
-	out.add_bit((btype as i32) & 1);
-	out.add_bit(((btype as i32) & 2) >> 1);
+	out.add_bit(u8::from(last_block));
+	out.add_bit((btype as u8) & 1);
+	out.add_bit(((btype as u8) & 2) >> 1);
 
 	// Write the rest according to the block type!
 	if matches!(btype, BlockType::Fixed) {
