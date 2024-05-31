@@ -117,6 +117,7 @@ crossbeam-channel = "=0.5.*"
 ctrlc = "=3.4.4"
 dactyl = "0.7.*"
 dowser = "0.9.*"
+libc = "0.2.*"
 write_atomic = "0.5.*"
 
 [dependencies.flapfli]

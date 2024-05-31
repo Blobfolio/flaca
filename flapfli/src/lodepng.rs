@@ -19,7 +19,7 @@ use std::{
 };
 use super::{
 	deflate_part,
-	ffi::EncodedImage,
+	EncodedPNG,
 	SplitPoints,
 	ZopfliState,
 	ZOPFLI_MASTER_BLOCK_SIZE,
@@ -306,9 +306,9 @@ impl LodePNGState {
 
 	#[allow(unsafe_code)]
 	/// # Encode!
-	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedImage<usize>> {
+	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedPNG> {
 		// Safety: a non-zero response is an error.
-		let mut out = EncodedImage::default();
+		let mut out = EncodedPNG::new();
 		let res = unsafe {
 			lodepng_encode(&mut out.buf, &mut out.size, img.buf, img.w, img.h, self)
 		};

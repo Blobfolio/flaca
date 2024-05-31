@@ -3,11 +3,7 @@
 */
 
 use std::{
-	ffi::{
-		c_uchar,
-		c_ulong,
-		c_void,
-	},
+	ffi::c_void,
 	ops::Deref,
 };
 
@@ -19,39 +15,15 @@ use std::{
 /// This holds a buffer pointer and size for an image allocated in C-land. It
 /// exists primarily to enforce cleanup at destruction, but also makes it easy
 /// to view the data as a slice.
-pub struct EncodedImage<T> {
+pub struct EncodedPNG {
 	/// # Buffer.
-	pub buf: *mut c_uchar,
+	pub(crate) buf: *mut u8,
 
 	/// # Buffer Size.
-	pub size: T,
+	pub(crate) size: usize,
 }
 
-macro_rules! default {
-	($($ty:ty),+) => ($(
-		impl Default for EncodedImage<$ty> {
-			#[inline]
-			fn default() -> Self {
-				Self { buf: std::ptr::null_mut(), size: 0 }
-			}
-		}
-	)+);
-}
-default!(c_ulong, usize);
-
-impl Deref for EncodedImage<c_ulong> {
-	type Target = [u8];
-
-	#[allow(clippy::cast_possible_truncation, unsafe_code)]
-	fn deref(&self) -> &Self::Target {
-		if self.is_empty() { &[] }
-		else {
-			unsafe { std::slice::from_raw_parts(self.buf, self.size as usize) }
-		}
-	}
-}
-
-impl Deref for EncodedImage<usize> {
+impl Deref for EncodedPNG {
 	type Target = [u8];
 
 	#[allow(unsafe_code)]
@@ -63,25 +35,27 @@ impl Deref for EncodedImage<usize> {
 	}
 }
 
-impl<T> Drop for EncodedImage<T> {
+impl Drop for EncodedPNG {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		if ! self.buf.is_null() {
+		if ! self.is_empty() {
 			unsafe { libc::free(self.buf.cast::<c_void>()); }
 			self.buf = std::ptr::null_mut();
 		}
 	}
 }
 
-macro_rules! is_empty {
-	($($ty:ty),+) => ($(
-		impl EncodedImage<$ty> {
-			#[must_use]
-			/// # Is Empty?
-			///
-			/// Returns true if the instance is empty.
-			fn is_empty(&self) -> bool { self.size == 0 || self.buf.is_null() }
+impl EncodedPNG {
+	/// # New.
+	pub(crate) const fn new() -> Self {
+		Self {
+			buf: std::ptr::null_mut(),
+			size: 0,
 		}
-	)+);
+	}
+
+	/// # Is Empty?
+	///
+	/// Returns true if the instance is empty.
+	fn is_empty(&self) -> bool { self.size == 0 || self.buf.is_null() }
 }
-is_empty!(c_ulong, usize);

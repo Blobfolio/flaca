@@ -35,7 +35,7 @@ use error::{
 pub(crate) use hash::ZopfliState;
 pub(crate) use lz77::LZ77Store;
 use super::{
-	ffi::EncodedImage,
+	EncodedPNG,
 	lodepng::{
 		DecodedImage,
 		LodePNGColorType,
@@ -130,7 +130,7 @@ const SUBLEN_LEN: usize = ZOPFLI_MAX_MATCH + 1;
 ///
 /// Note: 16-bit transformations are not lossless; such images will have their
 /// bit depths reduced to a more typical 8 bits.
-pub fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
+pub fn optimize(src: &[u8]) -> Option<EncodedPNG> {
 	let mut dec = LodePNGState::default();
 	let img = dec.decode(src)?;
 
@@ -170,13 +170,13 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrateg
 /// # Apply Optimizations.
 ///
 /// This attempts to re-encode an image using the provided filter strategy,
-/// returning an `EncodedImage` object if it all works out.
+/// returning an `EncodedPNG` object if it all works out.
 fn encode(
 	dec: &LodePNGState,
 	img: &DecodedImage,
 	strategy: LodePNGFilterStrategy,
 	slow: bool,
-) -> Option<EncodedImage<usize>> {
+) -> Option<EncodedPNG> {
 	// Encode and write to the buffer if it worked.
 	let mut enc = LodePNGState::encoder(dec, strategy, slow)?;
 	let out = enc.encode(img)?;

@@ -38,7 +38,7 @@ mod ffi;
 mod lodepng;
 mod zopflipng;
 
-pub use ffi::EncodedImage;
+use ffi::EncodedPNG;
 pub use zopflipng::optimize;
 
 use std::sync::atomic::AtomicI32;
