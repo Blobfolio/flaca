@@ -57,6 +57,7 @@ fn build_ffi() {
 		.files([
 			lodepng_src.join("lodepng.c"),
 		])
+		.define("LODEPNG_NO_COMPILE_ALLOCATORS", None)
 		.define("LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS", None)
 		.define("LODEPNG_NO_COMPILE_CPP", None)
 		.define("LODEPNG_NO_COMPILE_CRC", None)
@@ -173,6 +174,7 @@ pub(crate) const DISTANCE_VALUES: &[u16; 32_768] = &[");
 fn bindings(lodepng_src: &Path) {
 	let bindings = bindgen::Builder::default()
 		.clang_args([
+			"-DLODEPNG_NO_COMPILE_ALLOCATORS",
 			"-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS",
 			"-DLODEPNG_NO_COMPILE_CPP",
 			"-DLODEPNG_NO_COMPILE_CRC",

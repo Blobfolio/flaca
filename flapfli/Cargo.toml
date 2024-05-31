@@ -19,7 +19,6 @@ exclude = [
 bumpalo = "=3.16.0"
 crc32fast = "=1.4.*"
 dactyl = "0.7.*"
-libc = "0.2.*"
 
 [build-dependencies]
 bindgen = "0.69.*"

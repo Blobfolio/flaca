@@ -6,13 +6,18 @@ This module contains FFI bindings to `lodepng.c`.
 
 #![allow(non_camel_case_types, non_upper_case_globals)]
 
-use crate::ZOPFLI_ITERATIONS;
+use crate::{
+	ffi::{
+		flapfli_allocate,
+		flapfli_free,
+	},
+	ZOPFLI_ITERATIONS,
+};
 use std::{
 	cell::RefCell,
 	ffi::{
 		c_uchar,
 		c_uint,
-		c_void,
 	},
 	mem::MaybeUninit,
 	sync::atomic::Ordering::Relaxed,
@@ -124,10 +129,8 @@ pub(super) struct DecodedImage {
 impl Drop for DecodedImage {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		if ! self.buf.is_null() {
-			unsafe { libc::free(self.buf.cast::<c_void>()); }
-			self.buf = std::ptr::null_mut();
-		}
+		unsafe { flapfli_free(self.buf); }
+		self.buf = std::ptr::null_mut();
 	}
 }
 
@@ -146,21 +149,16 @@ pub(super) struct ZopfliOut {
 
 impl ZopfliOut {
 	#[allow(unsafe_code)]
+	#[inline(never)]
 	/// # Append Data.
 	fn append_data(&mut self, value: u8) {
-		use libc::{malloc, realloc};
-
 		unsafe {
 			// Dereferencing this size gets annoying quick! Haha.
 			let size = *self.outsize;
 
-			// Reallocate if size is a power of two.
+			// (Re)allocate if size is a power of two, or empty.
 			if 0 == (size & size.wrapping_sub(1)) {
-				*self.out =
-					if 0 == size { malloc(1).cast::<u8>() }
-					else {
-						realloc((*self.out).cast(), size * 2).cast::<u8>()
-					};
+				*self.out = flapfli_allocate(*self.out, (size * 2).max(1));
 			}
 
 			(*self.out).add(size).write(value);
