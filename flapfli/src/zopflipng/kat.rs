@@ -6,14 +6,16 @@ code-writing logic — just as messy as it sounds! — as well as helpers relate
 to DEFLATE tree construction.
 */
 
-use bumpalo::Bump;
 use std::{
-	cell::{
-		Cell,
-		RefCell,
+	alloc::{
+		alloc,
+		handle_alloc_error,
+		Layout,
 	},
+	cell::Cell,
 	cmp::Ordering,
 	num::NonZeroU32,
+	ptr::NonNull,
 };
 use super::{
 	DeflateSym,
@@ -35,20 +37,12 @@ const NZ2: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
 
 
 thread_local!(
-	/// # Node Arena.
+	/// # Shared Node Scratch.
 	///
-	/// Each and every call to the (two) length-limited-code-length methods has
-	/// the potential to generate _thousands_ of self-referential `Node` chains,
-	/// only to throw them away at the end of the function call. Haha.
-	///
-	/// This shared storage helps take some of the sting out of the ridiculous
-	/// allocation overhead, at least on a per-thread basis.
-	///
-	/// Note: the initial capacity _should_ be sufficient to avoid
-	/// reallocation, but `bumpalo` will bump if it needs to.
-	static BUMP: RefCell<Bump> = RefCell::new(Bump::with_capacity(
-		(2 * ZOPFLI_NUM_LL - 2) * 15 * std::mem::size_of::<Node<'_>>()
-	))
+	/// The length-limited-code-length methods need to temporarily store
+	/// thousands of `Node` objects. Using a thread-local share for that cuts
+	/// way down on the number of allocations we'd otherwise have to make!
+	static SCRATCH: KatScratch = KatScratch::new()
 );
 
 
@@ -324,7 +318,7 @@ fn length_limited_code_lengths_tree(frequencies: &[u32; 19])
 	}
 
 	// Crunch!
-	BUMP.with_borrow_mut(|nodes| llcl::<7>(&leaves, nodes)).map(|()| bitlengths)
+	SCRATCH.with(|nodes| llcl::<7>(&leaves, nodes)).map(|()| bitlengths)
 }
 
 /// # Length Limited Code Lengths.
@@ -354,7 +348,108 @@ pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 	}
 
 	// Crunch!
-	BUMP.with_borrow_mut(|nodes| llcl::<15>(&leaves, nodes))
+	SCRATCH.with(|nodes| llcl::<15>(&leaves, nodes))
+}
+
+
+
+/// # Node Scratch.
+///
+/// This is a super-cheap arena-like structure for holding the thousands of
+/// `Node` objects required for length-limited-code-length calculations.
+///
+/// The actual number of nodes will vary wildly from run-to-run, but this has
+/// room enough for all eventualities.
+struct KatScratch {
+	data: NonNull<u8>,
+	len: Cell<usize>,
+}
+
+impl Drop for KatScratch {
+	#[allow(unsafe_code)]
+	/// # Drop.
+	///
+	/// We might as well free the memory associated with the backing array
+	/// before we go.
+	fn drop(&mut self) {
+		// Safety: this is the inverse of the allocation we performed when
+		// constructing the object via `Self::new`.
+		unsafe {
+			std::alloc::dealloc(self.data.as_ptr().cast(), Self::LAYOUT);
+		}
+	}
+}
+
+impl KatScratch {
+	/// # Max Elements.
+	///
+	/// This represents the theoretical maximum number of nodes a length-
+	/// limiting pass might generate.
+	const MAX: usize = (2 * ZOPFLI_NUM_LL - 2) * 15;
+
+	/// # Layout.
+	///
+	/// This is what `self.data` actually looks like.
+	const LAYOUT: Layout = Layout::new::<[Node; Self::MAX]>();
+
+	#[allow(unsafe_code)]
+	/// # New!
+	///
+	/// Return a new instance of self, allocated but uninitialized.
+	///
+	/// Similar to other mega-array structures like `ZopfliHash`, this is
+	/// manually instantiated from pointers to avoid massive stack allocation.
+	/// Unlike the others, however, the data will remain in pointer form for
+	/// the duration to prevent the borrow-checker confusion this sort of
+	/// structure would otherwise produce. (See `KatScratch::push` for more
+	/// details.)
+	fn new() -> Self {
+		let data: NonNull<u8> = NonNull::new(unsafe { alloc(Self::LAYOUT) })
+			.unwrap_or_else(|| handle_alloc_error(Self::LAYOUT));
+
+		Self {
+			data,
+			len: Cell::new(0),
+		}
+	}
+
+	#[allow(unsafe_code)]
+	/// # Push.
+	///
+	/// Push a new node to the store and return an immutable reference to it.
+	///
+	/// This is a rather un-Rust thing to do, but works because:
+	/// 1. Referenced values are never mutated;
+	/// 2. The backing storage is never reallocated;
+	/// 3. Values from a previous length-limited call are never re-accessed after that call has ended;
+	fn push(&self, node: Node) -> Result<&'static Node, ZopfliError> {
+		// Pull the current length and verify we have room to add more nodes.
+		// This should never not be true, but zopfli is confusing so caution is
+		// appropriate. Haha.
+		let len = self.len.get();
+		if len < Self::MAX {
+			// Increment the length for next time.
+			self.len.set(len + 1);
+
+			unsafe {
+				// Safety: we just verified the length is in range, and because
+				// we're writing before reading, we know our return will have
+				// been initialized.
+				let ptr = self.data.cast::<Node>().as_ptr().add(len);
+				ptr.write(node); // Copy the value into position.
+				Ok(&*ptr)        // Return a reference to it.
+			}
+		}
+		// If we somehow surpassed the theoretical maximum, return an error to
+		// abort further processing of this image.
+		else { Err(zopfli_error!()) }
+	}
+
+	/// # Reset.
+	///
+	/// `Node` is `Copy` so we can simply write new entries over top the old
+	/// ones. Accordingly, this resets the internal length counter to zero.
+	fn reset(&self) { self.len.set(0) }
 }
 
 
@@ -392,12 +487,12 @@ impl<'a> PartialOrd for Leaf<'a> {
 /// # List.
 ///
 /// This struct holds a pair of recursive node chains.
-struct List<'a> {
-	lookahead0: &'a Node<'a>,
-	lookahead1: &'a Node<'a>,
+struct List {
+	lookahead0: &'static Node,
+	lookahead1: &'static Node,
 }
 
-impl<'a> List<'a> {
+impl List {
 	/// # Rotate.
 	fn rotate(&mut self) { self.lookahead0 = self.lookahead1; }
 
@@ -411,10 +506,10 @@ impl<'a> List<'a> {
 
 #[derive(Clone, Copy)]
 /// # Node.
-struct Node<'a> {
+struct Node {
 	weight: NonZeroU32,
 	count: NonZeroU32,
-	tail: Option<&'a Node<'a>>,
+	tail: Option<&'static Node>,
 }
 
 
@@ -425,29 +520,32 @@ struct Node<'a> {
 /// This method serves as the closure for the exported method's
 /// `BUMP.with_borrow_mut()` call, abstracted here mainly just to improve
 /// readability.
-fn llcl<const MAXBITS: usize>(leaves: &[Leaf<'_>], nodes: &mut Bump)
+fn llcl<const MAXBITS: usize>(leaves: &[Leaf<'_>], nodes: &KatScratch)
 -> Result<(), ZopfliError> {
 	// This can't happen; it is just a reminder for the compiler.
 	if leaves.len() < 3 || (1 << MAXBITS) < leaves.len() {
 		return Err(zopfli_error!());
 	}
 
+	// Reset before doing anything else so we have room for the nodes to come!
+	nodes.reset();
+
 	// Two starting nodes.
-	let node0 = Node {
+	let lookahead0 = nodes.push(Node {
 		weight: leaves[0].frequency,
 		count: NZ1,
 		tail: None,
-	};
+	})?;
 
-	let node1 = Node {
+	let lookahead1 = nodes.push(Node {
 		weight: leaves[1].frequency,
 		count: NZ2,
 		tail: None,
-	};
+	})?;
 
 	// The max MAXBITS is only 15, so it's no big deal if we over-allocate
 	// slightly.
-	let mut raw_lists = [List { lookahead0: &node0, lookahead1: &node1 }; MAXBITS];
+	let mut raw_lists = [List { lookahead0, lookahead1 }; MAXBITS];
 	let lists = &mut raw_lists[..MAXBITS.min(leaves.len() - 1)];
 
 	// In the last list, (2 * len_leaves - 2) active chains need to be
@@ -459,19 +557,14 @@ fn llcl<const MAXBITS: usize>(leaves: &[Leaf<'_>], nodes: &mut Bump)
 
 	// Add the last chain and write the results!
 	let node = llcl_finish(&lists[lists.len() - 2], &lists[lists.len() - 1], leaves);
-	llcl_write(node, leaves)?;
-
-	// Please be kind, rewind!
-	nodes.reset();
-
-	Ok(())
+	llcl_write(node, leaves)
 }
 
 /// # Boundary Package-Merge Step.
 ///
 /// Add a new chain to the list, using either a leaf or combination of two
 /// chains from the previous list.
-fn llcl_boundary_pm<'a>(leaves: &[Leaf<'_>], lists: &mut [List<'a>], nodes: &'a Bump)
+fn llcl_boundary_pm(leaves: &[Leaf<'_>], lists: &mut [List], nodes: &KatScratch)
 -> Result<(), ZopfliError> {
 	// This method should never be called with an empty list.
 	let [rest @ .., current] = lists else { return Err(zopfli_error!()); };
@@ -483,11 +576,11 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'_>], lists: &mut [List<'a>], nodes: &'a 
 		if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
 			// Shift the lookahead and add a new node.
 			current.rotate();
-			current.lookahead1 = nodes.try_alloc(Node {
+			current.lookahead1 = nodes.push(Node {
 				weight: last_leaf.frequency,
 				count: last_count.saturating_add(1),
 				tail: current.lookahead0.tail,
-			}).map_err(|_| zopfli_error!())?;
+			})?;
 		}
 		return Ok(());
 	}
@@ -501,21 +594,21 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'_>], lists: &mut [List<'a>], nodes: &'a 
 	// Add a leaf and increment the count.
 	if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
 		if last_leaf.frequency < weight_sum {
-			current.lookahead1 = nodes.try_alloc(Node {
+			current.lookahead1 = nodes.push(Node {
 				weight: last_leaf.frequency,
 				count: last_count.saturating_add(1),
 				tail: current.lookahead0.tail,
-			}).map_err(|_| zopfli_error!())?;
+			})?;
 			return Ok(());
 		}
 	}
 
 	// Update the tail.
-	current.lookahead1 = nodes.try_alloc(Node {
+	current.lookahead1 = nodes.push(Node {
 		weight: weight_sum,
 		count: last_count,
 		tail: Some(previous.lookahead1),
-	}).map_err(|_| zopfli_error!())?;
+	})?;
 
 	// Replace the used-up lookahead chains by recursing twice.
 	llcl_boundary_pm(leaves, rest, nodes)?;
@@ -523,7 +616,10 @@ fn llcl_boundary_pm<'a>(leaves: &[Leaf<'_>], lists: &mut [List<'a>], nodes: &'a 
 }
 
 /// # Finish Last Node!
-fn llcl_finish<'a>(list_y: &List<'a>, list_z: &List<'a>, leaves: &[Leaf<'_>]) -> Node<'a> {
+///
+/// This method establishes the final tail that the subsequent writing will
+/// start with.
+fn llcl_finish(list_y: &List, list_z: &List, leaves: &[Leaf<'_>]) -> Node {
 	// Figure out the final node!
 	let last_count = list_z.lookahead1.count;
 	let weight_sum = list_y.weight_sum();
@@ -544,7 +640,7 @@ fn llcl_finish<'a>(list_y: &List<'a>, list_z: &List<'a>, leaves: &[Leaf<'_>]) ->
 }
 
 /// # Write Code Lengths!
-fn llcl_write(mut node: Node<'_>, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
+fn llcl_write(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
 	// Make sure we counted correctly before doing anything else.
 	let mut last_count = node.count;
 	debug_assert!(leaves.len() >= last_count.get() as usize);
