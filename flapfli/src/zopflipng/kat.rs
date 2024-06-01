@@ -307,18 +307,8 @@ fn length_limited_code_lengths_tree(frequencies: &[u32; 19])
 	let mut bitlengths = [DeflateSym::D00; 19];
 	let bitcells = Cell::from_mut(bitlengths.as_mut_slice()).as_slice_of_cells();
 
-	// Build up a collection of "leaves" by joining each non-zero frequency
-	// with its corresponding bitlength.
-	let leaves = make_leaves(frequencies, bitcells);
-
-	// Sortcut: weighting only applies when there are more than two leaves.
-	if leaves.len() <= 2 {
-		for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
-		return Ok(bitlengths);
-	}
-
 	// Crunch!
-	SCRATCH.with(|nodes| llcl::<7>(&leaves, nodes)).map(|()| bitlengths)
+	SCRATCH.with(|nodes| llcl::<19, 7>(frequencies, bitcells, nodes)).map(|()| bitlengths)
 }
 
 /// # Length Limited Code Lengths.
@@ -337,79 +327,196 @@ pub(crate) fn length_limited_code_lengths<const SIZE: usize>(
 	// without losing writeability.
 	let bitlengths = Cell::from_mut(bitlengths.as_mut_slice()).as_slice_of_cells();
 
-	// Build up a collection of "leaves" by joining each non-zero frequency
-	// with its corresponding bitlength.
-	let leaves = make_leaves(frequencies, bitlengths);
-
-	// Sortcut: weighting only applies when there are more than two leaves.
-	if leaves.len() <= 2 {
-		for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
-		return Ok(());
-	}
-
 	// Crunch!
-	SCRATCH.with(|nodes| llcl::<15>(&leaves, nodes))
+	SCRATCH.with(|nodes| llcl::<SIZE, 15>(frequencies, bitlengths, nodes))
 }
 
 
 
 /// # Node Scratch.
 ///
-/// This is a super-cheap arena-like structure for holding the thousands of
-/// `Node` objects required for length-limited-code-length calculations.
-///
-/// The actual number of nodes will vary wildly from run-to-run, but this has
-/// room enough for all eventualities.
+/// This is a super-cheap arena-like structure for holding all the temporary
+/// data required for length-limited-code-length calculations.
 struct KatScratch {
-	data: NonNull<u8>,
-	len: Cell<usize>,
+	leaves: NonNull<u8>,
+	lists: NonNull<u8>,
+	nodes: NonNull<u8>,
+	nodes_len: Cell<usize>,
 }
 
 impl Drop for KatScratch {
 	#[allow(unsafe_code)]
 	/// # Drop.
 	///
-	/// We might as well free the memory associated with the backing array
+	/// We might as well free the memory associated with the backing arrays
 	/// before we go.
 	fn drop(&mut self) {
-		// Safety: this is the inverse of the allocation we performed when
-		// constructing the object via `Self::new`.
 		unsafe {
-			std::alloc::dealloc(self.data.as_ptr().cast(), Self::LAYOUT);
+			std::alloc::dealloc(self.leaves.as_ptr(), Self::LEAVES_LAYOUT);
+			std::alloc::dealloc(self.lists.as_ptr(), Self::LIST_LAYOUT);
+			std::alloc::dealloc(self.nodes.as_ptr(), Self::NODE_LAYOUT);
 		}
 	}
 }
 
 impl KatScratch {
-	/// # Max Elements.
+	/// # Max Nodes.
 	///
 	/// This represents the theoretical maximum number of nodes a length-
 	/// limiting pass might generate.
 	const MAX: usize = (2 * ZOPFLI_NUM_LL - 2) * 15;
 
-	/// # Layout.
-	///
-	/// This is what `self.data` actually looks like.
-	const LAYOUT: Layout = Layout::new::<[Node; Self::MAX]>();
+	/// # Leaves Array Layout.
+	const LEAVES_LAYOUT: Layout = Layout::new::<[Leaf<'_>; ZOPFLI_NUM_LL]>();
+
+	/// # List Array Layout.
+	const LIST_LAYOUT: Layout = Layout::new::<[List; 15]>();
+
+	/// # Node Array Layout.
+	const NODE_LAYOUT: Layout = Layout::new::<[Node; Self::MAX]>();
 
 	#[allow(unsafe_code)]
 	/// # New!
 	///
 	/// Return a new instance of self, allocated but uninitialized.
 	///
-	/// Similar to other mega-array structures like `ZopfliHash`, this is
-	/// manually instantiated from pointers to avoid massive stack allocation.
-	/// Unlike the others, however, the data will remain in pointer form for
-	/// the duration to prevent the borrow-checker confusion this sort of
-	/// structure would otherwise produce. (See `KatScratch::push` for more
-	/// details.)
+	/// Similar to other mega-array structures like `ZopfliHash`, its members
+	/// are manually allocated from pointers to keep them off the stack. Unlike
+	/// the others, though, the `KatScratch` members remain in pointer form to
+	/// prevent lifetime/borrow-checker confusion.
 	fn new() -> Self {
-		let data: NonNull<u8> = NonNull::new(unsafe { alloc(Self::LAYOUT) })
-			.unwrap_or_else(|| handle_alloc_error(Self::LAYOUT));
+		let leaves: NonNull<u8> = NonNull::new(unsafe { alloc(Self::LEAVES_LAYOUT) })
+			.unwrap_or_else(|| handle_alloc_error(Self::LEAVES_LAYOUT));
+
+		let lists: NonNull<u8> = NonNull::new(unsafe { alloc(Self::LIST_LAYOUT) })
+			.unwrap_or_else(|| handle_alloc_error(Self::LIST_LAYOUT));
+
+		let nodes: NonNull<u8> = NonNull::new(unsafe { alloc(Self::NODE_LAYOUT) })
+			.unwrap_or_else(|| handle_alloc_error(Self::NODE_LAYOUT));
 
 		Self {
-			data,
-			len: Cell::new(0),
+			leaves,
+			lists,
+			nodes,
+			nodes_len: Cell::new(0),
+		}
+	}
+
+	#[allow(unsafe_code)]
+	/// # Make Leaves.
+	///
+	/// Join the non-zero frequencies with their corresponding bitlengths into
+	/// a collection of leaves, then return it sorted.
+	///
+	/// ## Safety
+	///
+	/// The returned reference remains valid for the duration of the length-
+	/// limited method call because:
+	/// 1. The values are written only once (here);
+	/// 2. The backing storage is not reallocated;
+	/// 3. Values leftover from prior passes are never reread;
+	///
+	/// `Leaf` is `Copy` so there's nothing to drop, per se, but the overall
+	/// memory associated with the backing array will get deallocated as part
+	/// of `Self::drop`.
+	fn leaves<'a, const SIZE: usize>(
+		&self,
+		frequencies: &'a [u32; SIZE],
+		bitlengths: &'a [Cell<DeflateSym>],
+	) -> &[Leaf<'a>] {
+		let mut len = 0;
+		let ptr = self.leaves.cast::<Leaf<'_>>().as_ptr();
+		for (frequency, bitlength) in frequencies.iter().copied().zip(bitlengths) {
+			if let Some(frequency) = NonZeroU32::new(frequency) {
+				unsafe {
+					// The maximum SIZE is ZOPFLI_NUM_LL, so this will always
+					// be in range.
+					ptr.add(len).write(Leaf { frequency, bitlength });
+				}
+				len += 1;
+			}
+		}
+
+		// Safety: by writing before reading, we know this portion is
+		// initialized.
+		let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+		slice.sort();
+		slice
+	}
+
+	#[allow(unsafe_code)]
+	/// # Starter List.
+	///
+	/// This resets the internal node count, adds two new starter nodes, then
+	/// returns a `List` referencing them.
+	///
+	/// See `Self::push` for details about the internal `Node` storage and
+	/// safety details.
+	unsafe fn init_list(&self, weight1: NonZeroU32, weight2: NonZeroU32) -> List {
+		// Reset the length counter to two for the two nodes we're about to
+		// create.
+		self.nodes_len.set(2);
+
+		// The first node.
+		let ptr = self.nodes.cast::<Node>().as_ptr();
+		ptr.write(Node {
+			weight: weight1,
+			count: NZ1,
+			tail: None,
+		});
+		let lookahead0 = &*ptr;
+
+		// The second node.
+		let ptr = ptr.add(1);
+		ptr.write(Node {
+			weight: weight2,
+			count: NZ2,
+			tail: None,
+		});
+		let lookahead1 = &*ptr;
+
+		// And finally the list!
+		List { lookahead0, lookahead1 }
+	}
+
+	#[allow(unsafe_code)]
+	/// # Make Lists.
+	///
+	/// This resets the internal node counts and returns a slice of `len`
+	/// starter lists for the calculations to work from.
+	///
+	/// ## Safety
+	///
+	/// The returned reference remains valid for the duration of the length-
+	/// limited method call because:
+	/// 1. The pointer is only directly accessed once (here);
+	/// 2. The backing storage is not reallocated;
+	/// 3. Values leftover from prior passes are never reread;
+	///
+	/// `List` is `Copy` so there's nothing to drop, per se, but the overall
+	/// memory associated with the backing array will get deallocated as part
+	/// of `Self::drop`.
+	fn lists(&self, len: usize, weight1: NonZeroU32, weight2: NonZeroU32)
+	-> &'static mut [List] {
+		// Fifteen is the max MAXBITS used by the program so length will never
+		// actually be out of range, but there's no harm in verifying that
+		// during debug runs.
+		debug_assert!(len <= 15);
+
+		// Create a `List` with two starting `Node`s, then copy it `len` times
+		// into our backing array.
+		unsafe {
+			// Safety: we verified the length is in range, and since we're
+			// writing before reading, the return value will have been
+			// initialized.
+			let list = self.init_list(weight1, weight2);
+			let ptr = self.lists.cast::<List>().as_ptr();
+			for i in 0..len {
+				ptr.add(i).write(list);
+			}
+
+			// Return the slice corresponding to the values we just wrote!
+			std::slice::from_raw_parts_mut(ptr, len)
 		}
 	}
 
@@ -418,24 +525,35 @@ impl KatScratch {
 	///
 	/// Push a new node to the store and return an immutable reference to it.
 	///
-	/// This is a rather un-Rust thing to do, but works because:
-	/// 1. Referenced values are never mutated;
-	/// 2. The backing storage is never reallocated;
-	/// 3. Values from a previous length-limited call are never re-accessed after that call has ended;
+	/// This method is technically fallible, but should never actually fail as
+	/// the backing storage is pre-allocated to the theoretical maximum, but
+	/// given all the `unsafe`, it feels better to verify that at runtime.
+	///
+	/// ## Safety:
+	///
+	/// The returned reference remains valid for the duration of the length-
+	/// limited method call because:
+	/// 1. The values are written only once (here);
+	/// 2. The backing storage is not reallocated;
+	/// 3. Values leftover from prior passes are never reread;
+	///
+	/// `Node` is `Copy` so there's nothing to drop, per se, but the overall
+	/// memory associated with the backing array will get deallocated as part
+	/// of `Self::drop`.
 	fn push(&self, node: Node) -> Result<&'static Node, ZopfliError> {
 		// Pull the current length and verify we have room to add more nodes.
 		// This should never not be true, but zopfli is confusing so caution is
 		// appropriate. Haha.
-		let len = self.len.get();
+		let len = self.nodes_len.get();
 		if len < Self::MAX {
 			// Increment the length for next time.
-			self.len.set(len + 1);
+			self.nodes_len.set(len + 1);
 
 			unsafe {
 				// Safety: we just verified the length is in range, and because
 				// we're writing before reading, we know our return will have
 				// been initialized.
-				let ptr = self.data.cast::<Node>().as_ptr().add(len);
+				let ptr = self.nodes.cast::<Node>().as_ptr().add(len);
 				ptr.write(node); // Copy the value into position.
 				Ok(&*ptr)        // Return a reference to it.
 			}
@@ -444,12 +562,6 @@ impl KatScratch {
 		// abort further processing of this image.
 		else { Err(zopfli_error!()) }
 	}
-
-	/// # Reset.
-	///
-	/// `Node` is `Copy` so we can simply write new entries over top the old
-	/// ones. Accordingly, this resets the internal length counter to zero.
-	fn reset(&self) { self.len.set(0) }
 }
 
 
@@ -514,39 +626,37 @@ struct Node {
 
 
 
-#[allow(clippy::similar_names)]
+#[allow(unsafe_code, clippy::similar_names)]
 /// # Crunch the Code Lengths.
 ///
 /// This method serves as the closure for the exported method's
 /// `BUMP.with_borrow_mut()` call, abstracted here mainly just to improve
 /// readability.
-fn llcl<const MAXBITS: usize>(leaves: &[Leaf<'_>], nodes: &KatScratch)
--> Result<(), ZopfliError> {
-	// This can't happen; it is just a reminder for the compiler.
-	if leaves.len() < 3 || (1 << MAXBITS) < leaves.len() {
-		return Err(zopfli_error!());
+fn llcl<'a, const SIZE: usize, const MAXBITS: usize>(
+	frequencies: &'a [u32; SIZE],
+	bitlengths: &'a [Cell<DeflateSym>],
+	nodes: &KatScratch,
+) -> Result<(), ZopfliError> {
+	let leaves = nodes.leaves(frequencies, bitlengths);
+	if leaves.len() <= 2 {
+		for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
+		return Ok(());
 	}
 
-	// Reset before doing anything else so we have room for the nodes to come!
-	nodes.reset();
+	// This can't happen; it is just a reminder for the compiler.
+	if (1 << MAXBITS) < leaves.len() { return Err(zopfli_error!()); }
 
-	// Two starting nodes.
-	let lookahead0 = nodes.push(Node {
-		weight: leaves[0].frequency,
-		count: NZ1,
-		tail: None,
-	})?;
-
-	let lookahead1 = nodes.push(Node {
-		weight: leaves[1].frequency,
-		count: NZ2,
-		tail: None,
-	})?;
-
-	// The max MAXBITS is only 15, so it's no big deal if we over-allocate
-	// slightly.
-	let mut raw_lists = [List { lookahead0, lookahead1 }; MAXBITS];
-	let lists = &mut raw_lists[..MAXBITS.min(leaves.len() - 1)];
+	// Set up the lists.
+	let lists = nodes.lists(
+		MAXBITS.min(leaves.len() - 1),
+		leaves[0].frequency,
+		leaves[1].frequency,
+	);
+	if lists.len() < 2 {
+		// Safety: we'll always have `MAXBITS.min(leaves.len() - 1)` lists, but
+		// the compiler might not realize that without inlining.
+		unsafe { core::hint::unreachable_unchecked(); }
+	}
 
 	// In the last list, (2 * len_leaves - 2) active chains need to be
 	// created. We have two already from initialization; each boundary_pm run
@@ -668,22 +778,6 @@ fn llcl_write(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
 
 	// This shouldn't be reachable.
 	Err(zopfli_error!())
-}
-
-/// # Make Leaves.
-fn make_leaves<'a, const SIZE: usize>(
-	frequencies: &'a [u32; SIZE],
-	bitlengths: &'a [Cell<DeflateSym>],
-) -> Vec<Leaf<'a>> {
-	let mut out: Vec<_> = frequencies.iter()
-		.copied()
-		.zip(bitlengths)
-		.filter_map(|(frequency, bitlength)|
-			NonZeroU32::new(frequency).map(|frequency| Leaf { frequency, bitlength })
-		)
-		.collect();
-	out.sort();
-	out
 }
 
 #[allow(unsafe_code)]

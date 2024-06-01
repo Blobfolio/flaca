@@ -28,9 +28,10 @@ const USIZE_SIZE: usize = std::mem::size_of::<usize>();
 #[derive(Debug)]
 /// # Encoded Image.
 ///
-/// This holds a buffer pointer and size for an image allocated in C-land. It
-/// exists primarily to enforce cleanup at destruction, but also makes it easy
-/// to view the data as a slice.
+/// This is a convenience wrapper for an image encoded by `lodepng`, allowing
+/// for easy slice dereferencing and automatic drop cleanup.
+///
+/// Note the initial state is null/empty.
 pub struct EncodedPNG {
 	/// # Buffer.
 	pub(crate) buf: *mut u8,
@@ -43,6 +44,7 @@ impl Deref for EncodedPNG {
 	type Target = [u8];
 
 	#[allow(unsafe_code)]
+	#[inline]
 	fn deref(&self) -> &Self::Target {
 		if self.is_empty() { &[] }
 		else {
