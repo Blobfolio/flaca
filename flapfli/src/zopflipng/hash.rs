@@ -257,13 +257,8 @@ impl ZopfliState {
 			while 0 < idx && idx < costs.len() {
 				let v = usize::from(costs[idx].1);
 				if 1 <= v && v <= idx && v <= ZOPFLI_MAX_MATCH {
-					// Only lengths of at least ZOPFLI_MIN_MATCH count as lengths
-					// after tracing.
-					self.paths.push(
-						if v < ZOPFLI_MIN_MATCH { 1 } else { v as u16 }
-					);
-
-					// Move onto the next length or finish.
+					debug_assert!(costs[idx].1 != 2);
+					self.paths.push(v as u16);
 					idx -= v;
 				}
 				else {
@@ -496,8 +491,8 @@ impl ZopfliHash {
 			i += 1;
 		}
 
-		// The final cost should in a reasonable range.
-		debug_assert!((0.0..1E30).contains(&costs[costs.len() - 1].0));
+		// All costs should have been updated…
+		debug_assert!(costs.iter().all(|(cost, _)| (0.0..1E30).contains(cost)));
 		Ok(())
 	}
 
@@ -613,7 +608,7 @@ impl ZopfliHash {
 				store.push(length, dist, i)?;
 
 				// Hash the rest of the match.
-				for _ in 1..usize::from(length) {
+				for _ in 1..length {
 					i += 1;
 					self.update_hash(&arr[i..], i);
 				}
