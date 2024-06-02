@@ -92,7 +92,7 @@ impl LZ77Store {
 	}
 
 	/// # Push Values.
-	pub(crate) fn push(&mut self, litlen: u16, dist: u16, pos: usize) -> Result<(), ZopfliError> {
+	pub(crate) fn push(&mut self, litlen: LitLen, dist: u16, pos: usize) -> Result<(), ZopfliError> {
 		let e = LZ77StoreEntry::new(litlen, dist, pos)?;
 		self.push_entry(e);
 		Ok(())
@@ -268,22 +268,18 @@ pub(crate) struct LZ77StoreEntry {
 
 impl LZ77StoreEntry {
 	#[allow(
-		unsafe_code,
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
 		clippy::cast_sign_loss,
 	)]
 	/// # New.
-	const fn new(litlen: u16, dist: u16, pos: usize) -> Result<Self, ZopfliError> {
-		if litlen < 259 && dist < 32_768 {
+	const fn new(litlen: LitLen, dist: u16, pos: usize) -> Result<Self, ZopfliError> {
+		if dist < 32_768 {
 			// Using the signed type helps the compiler understand the upper
 			// range fits ZOPFLI_WINDOW_MAX.
 			let dist = dist as i16;
 			let (ll_symbol, d_symbol) =
-				if dist <= 0 {
-					// Safety: the maximum Lsym is 285.
-					(unsafe { std::mem::transmute::<u16, Lsym>(litlen) }, Dsym::D00)
-				}
+				if dist <= 0 { (Lsym::from_litlen(litlen), Dsym::D00) }
 				else {(
 					LENGTH_SYMBOLS_BITS_VALUES[litlen as usize].0,
 					DISTANCE_SYMBOLS[dist as usize],
@@ -291,7 +287,7 @@ impl LZ77StoreEntry {
 
 			Ok(Self {
 				pos,
-				litlen: unsafe { std::mem::transmute::<u16, LitLen>(litlen) },
+				litlen,
 				dist,
 				ll_symbol,
 				d_symbol,

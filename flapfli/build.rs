@@ -100,7 +100,7 @@ pub(crate) enum Dsym {");
 
 #[allow(dead_code)]
 #[repr(u16)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 /// # Lit/Lengths.
 pub(crate) enum LitLen {");
 	for i in 0..259 {

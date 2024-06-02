@@ -6,10 +6,10 @@ calling `ZopfliHash::find` a hundred million times in a row. Haha.
 */
 
 use super::{
+	LitLen,
 	sized_slice,
 	SUBLEN_LEN,
 	zopfli_error,
-	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
 	ZopfliError,
 };
@@ -91,10 +91,10 @@ impl MatchCache {
 	pub(crate) fn find(
 		&self,
 		pos: usize,
-		limit: &mut usize,
+		limit: &mut LitLen,
 		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
 		distance: &mut u16,
-		length: &mut u16,
+		length: &mut LitLen,
 	) -> Result<bool, ZopfliError> {
 		// One sanity check to rule them all.
 		if pos >= self.ld.len() { return Err(zopfli_error!()); }
@@ -102,7 +102,7 @@ impl MatchCache {
 
 		// If we have no distance, we have no cache.
 		let (cache_len, cache_dist) = ld_split(self.ld[pos]);
-		if cache_len != 0 && cache_dist == 0 { return Ok(false); }
+		if ! cache_len.is_zero() && cache_dist == 0 { return Ok(false); }
 
 		// Find the max sublength once, if ever.
 		let maxlength =
@@ -111,30 +111,30 @@ impl MatchCache {
 
 		// Proceed if our cached length or max sublength are under the limit.
 		if
-			*limit == ZOPFLI_MAX_MATCH ||
-			usize::from(cache_len) <= *limit ||
-			(sublen.is_some() && maxlength >= *limit)
+			limit.is_max() ||
+			(cache_len as u16) <= (*limit as u16) ||
+			(sublen.is_some() && maxlength >= (*limit as usize))
 		{
 			// Update length and distance if the sublength pointer is null or
 			// the cached sublength is bigger than the cached length.
-			if sublen.is_none() || usize::from(cache_len) <= maxlength {
+			if sublen.is_none() || (cache_len as usize) <= maxlength {
 				// Cap the length.
 				*length = cache_len;
-				if usize::from(*length) > *limit { *length = *limit as u16; }
+				if (*length as u16) > (*limit as u16) { *length = *limit; }
 
 				// Set the distance from the sublength cache.
 				if let Some(s) = sublen {
 					// Pull the sublength from cache and pull the distance from
 					// that.
-					if 3 <= *length { write_sublen(cache_sublen, s); }
-					*distance = s[usize::from(*length)];
+					if 3 <= (*length as u16) { write_sublen(cache_sublen, s); }
+					*distance = s[*length as usize];
 
 					// Sanity check: make sure the sublength distance at length
 					// matches the redundantly-cached distance.
 					if
-						*limit == ZOPFLI_MAX_MATCH &&
-						usize::from(*length) >= ZOPFLI_MIN_MATCH &&
-						*distance != cache_dist
+						*distance != cache_dist &&
+						limit.is_max() &&
+						length.is_matchable()
 					{
 						return Err(zopfli_error!());
 					}
@@ -147,7 +147,7 @@ impl MatchCache {
 			}
 
 			// Replace the limit with our sad cached length.
-			*limit = usize::from(cache_len);
+			*limit = cache_len;
 		}
 
 		// Nothing happened.
@@ -163,20 +163,20 @@ impl MatchCache {
 		pos: usize,
 		sublen: &[u16; SUBLEN_LEN],
 		distance: u16,
-		length: u16,
+		length: LitLen,
 	) -> Result<(), ZopfliError> {
 		match self.ld.get(pos).map(|&ld| ld_split(ld)) {
 			// If the current value is the default, let's proceed!
-			Some((1, 0)) => {},
+			Some((LitLen::L001, 0)) => {},
 			// If the current value is something else and legit, abort happy.
-			Some((l, d)) if l == 0 || d != 0 => return Ok(()),
+			Some((l, d)) if l.is_zero() || d != 0 => return Ok(()),
 			// Otherwise abort sad!
 			_ => return Err(zopfli_error!()),
 		}
 
 		// The sublength isn't cacheable, but that fact is itself worth
 		// caching!
-		if usize::from(length) < ZOPFLI_MIN_MATCH {
+		if ! length.is_matchable() {
 			self.ld[pos] = 0;
 			return Ok(());
 		}
@@ -184,8 +184,7 @@ impl MatchCache {
 		// Reslice it to the (inclusive) length, ignoring the first 3 entries
 		// since they're below the minimum give-a-shittable limit. Note that
 		// without them, each index can be represented (and stored) as a u8.
-		let slice = sublen.get(ZOPFLI_MIN_MATCH..=usize::from(length))
-			.ok_or(zopfli_error!())?;
+		let slice = &sublen[ZOPFLI_MIN_MATCH..=(length as usize)];
 
 		// Save the length/distance bit.
 		if distance == 0 { return Err(zopfli_error!()); }
@@ -209,12 +208,12 @@ impl MatchCache {
 		// The final value is implicitly "mismatched"; if we haven't hit the
 		// limit we should write it too.
 		if let Some([d0, d1, d2]) = dst.next() {
-			*d0 = (length - 3) as u8;
+			*d0 = (length as u16 - 3) as u8;
 			[*d1, *d2] = slice[slice.len() - 1].to_le_bytes();
 
 			// If we're still below the limit, copy (only) the length to the
 			// last slot to simplify any subsequent max_length lookups.
-			if let Some([d0, _, _]) = dst.last() { *d0 = (length - 3) as u8; }
+			if let Some([d0, _, _]) = dst.last() { *d0 = (length as u16 - 3) as u8; }
 		}
 
 		Ok(())
@@ -224,16 +223,22 @@ impl MatchCache {
 
 
 /// # Join Length Distance.
-const fn ld_join(length: u16, distance: u16) -> u32 {
-	let [l1, l2] = length.to_le_bytes();
+const fn ld_join(length: LitLen, distance: u16) -> u32 {
+	let [l1, l2] = (length as u16).to_le_bytes();
 	let [d1, d2] = distance.to_le_bytes();
 	u32::from_le_bytes([l1, l2, d1, d2])
 }
 
+#[allow(unsafe_code)]
 /// # Split Length Distance.
-const fn ld_split(ld: u32) -> (u16, u16) {
+const fn ld_split(ld: u32) -> (LitLen, u16) {
 	let [l1, l2, d1, d2] = ld.to_le_bytes();
-	(u16::from_le_bytes([l1, l2]), u16::from_le_bytes([d1, d2]))
+	(
+		// Safety: we're just undoing the work of ld_join, which had a valid
+		// LitLen to start with.
+		unsafe { std::mem::transmute::<u16, LitLen>(u16::from_le_bytes([l1, l2])) },
+		u16::from_le_bytes([d1, d2]),
+	)
 }
 
 /// # Max Sublength.

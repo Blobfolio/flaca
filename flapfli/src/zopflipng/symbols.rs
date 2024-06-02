@@ -88,6 +88,91 @@ impl DeflateSym {
 	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::D00) }
 }
 
+impl LitLen {
+	/// # Min Matchable.
+	///
+	/// This is equivalent to `ZOPFLI_MIN_MATCH`.
+	pub(crate) const MIN_MATCH: Self = Self::L003;
+
+	/// # Max Matchable.
+	///
+	/// This is equivalent to `ZOPFLI_MAX_MATCH`.
+	pub(crate) const MAX_MATCH: Self = Self::L258;
+
+	/// # Is Matchable?
+	///
+	/// Returns `true` if `self` is at least `Self::MIN_MATCH`.
+	pub(crate) const fn is_matchable(self) -> bool { 2 < (self as u16) }
+
+	/// # Is Max?
+	///
+	/// Returns `true` if `self` is `Self::MAX_MATCH`.
+	pub(crate) const fn is_max(self) -> bool { matches!(self, Self::MAX_MATCH) }
+
+	/// # Is Zero?
+	///
+	/// Returns `true` if `self` is zero.
+	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::L000) }
+}
+
+impl LitLen {
+	#[allow(unsafe_code)]
+	/// # From U8.
+	///
+	/// `LitLen` covers the full `u8` range, so we can safely convert the
+	/// former into the latter.
+	pub(crate) const fn from_u8(n: u8) -> Self {
+		unsafe { std::mem::transmute::<u16, Self>(n as u16) }
+	}
+
+	#[allow(unsafe_code)]
+	/// # Min w/ U16.
+	///
+	/// Return the smaller of `self` and `n`.
+	pub(crate) const fn min_u16(self, n: u16) -> Self {
+		if n < (self as u16) {
+			// Safety: since n is smaller than self, we know it fits!
+			unsafe { std::mem::transmute::<u16, Self>(n) }
+		}
+		else { self }
+	}
+
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	/// # Min w/ Usize.
+	///
+	/// Return the smaller of `self` and `n`.
+	pub(crate) const fn min_usize(self, n: usize) -> Self {
+		if n < (self as usize) {
+			// Safety: since n is smaller than self, we know it fits!
+			unsafe { std::mem::transmute::<u16, Self>(n as u16) }
+		}
+		else { self }
+	}
+
+	#[allow(unsafe_code)]
+	/// # Increment (Saturating).
+	///
+	/// Return `self + 1`, saturating to `Self::MAX_MATCH` if needed.
+	pub(crate) const fn increment(self) -> Self {
+		let n = (self as u16) + 1;
+		if n == 259 { Self::MAX_MATCH }
+		else {
+			unsafe { std::mem::transmute::<u16, Self>(n) }
+		}
+	}
+}
+
+impl Lsym {
+	#[allow(unsafe_code)]
+	/// # From `LitLen`.
+	///
+	/// The full range of `LitLen` is covered by `Lsym`, so the latter can
+	/// always represent the former.
+	pub(crate) const fn from_litlen(litlen: LitLen) -> Self {
+		unsafe { std::mem::transmute::<LitLen, Self>(litlen) }
+	}
+}
+
 
 
 #[cfg(test)]
