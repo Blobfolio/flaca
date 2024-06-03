@@ -25,6 +25,7 @@ use super::{
 	LitLen,
 	LZ77Store,
 	MatchCache,
+	SqueezeCache,
 	stats::SymbolStats,
 	SUBLEN_LEN,
 	zopfli_error,
@@ -56,8 +57,7 @@ const MIN_COST_DISTANCES: [u8; 30] = [
 pub(crate) struct ZopfliState {
 	lmc: MatchCache,
 	hash: Box<ZopfliHash>,
-	costs: Vec<(f32, LitLen)>,
-	paths: Vec<LitLen>,
+	squeeze: Box<SqueezeCache>,
 }
 
 impl ZopfliState {
@@ -66,17 +66,14 @@ impl ZopfliState {
 		Self {
 			lmc: MatchCache::new(),
 			hash: ZopfliHash::new(),
-			costs: Vec::new(),
-			paths: Vec::new(),
+			squeeze: SqueezeCache::new(),
 		}
 	}
 
 	/// # Initialize LMC/Squeeze Caches.
 	pub(crate) fn init_lmc(&mut self, blocksize: usize) {
 		self.lmc.init(blocksize);
-		if blocksize + 1 != self.costs.len() {
-			self.costs.resize(blocksize + 1, (f32::INFINITY, LitLen::L000));
-		}
+		self.squeeze.resize_costs(blocksize + 1);
 	}
 }
 
@@ -217,22 +214,20 @@ impl ZopfliState {
 		stats: Option<&SymbolStats>,
 		store: &mut LZ77Store,
 	) -> Result<(), ZopfliError> {
-		let costs = self.costs.as_mut_slice();
+		// Reset the costs.
+		let costs = self.squeeze.reset_costs();
 		if ! costs.is_empty() {
-			// Reset the costs.
-			for c in costs.iter_mut().skip(1) { c.0 = f32::INFINITY; }
-			costs[0].0 = 0.0;
-
 			// Reset and warm the hash.
 			self.hash.reset(arr, instart);
 
 			// Forward and backward squeeze passes.
 			self.hash.get_best_lengths(arr, instart, stats, costs, &mut self.lmc)?;
-			if self.trace_paths()? {
+			let paths = self.squeeze.trace_paths()?;
+			if ! paths.is_empty() {
 				self.hash.follow_paths(
 					arr,
 					instart,
-					self.paths.as_slice(),
+					paths,
 					store,
 					&mut self.lmc,
 				)?;
@@ -240,32 +235,6 @@ impl ZopfliState {
 		}
 
 		Ok(())
-	}
-}
-
-impl ZopfliState {
-	#[allow(clippy::cast_possible_truncation)]
-	/// # Trace Paths.
-	///
-	/// Calculate the optimal path of lz77 lengths to use, from the
-	/// lengths gathered during the `ZopfliHash::get_best_lengths` pass.
-	fn trace_paths(&mut self) -> Result<bool, ZopfliError> {
-		let costs = self.costs.as_slice();
-		if costs.len() < 2 { Ok(false) }
-		else {
-			self.paths.truncate(0);
-			let mut idx = costs.len() - 1;
-			while 0 < idx && idx < costs.len() {
-				let v = costs[idx].1;
-				if ! v.is_zero() && (v as usize) <= idx {
-					self.paths.push(v);
-					idx -= v as usize;
-				}
-				else { return Err(zopfli_error!()); }
-			}
-
-			Ok(true)
-		}
 	}
 }
 
@@ -577,7 +546,7 @@ impl ZopfliHash {
 
 		// Hash the path symbols.
 		let mut i = instart;
-		for length in paths.iter().copied().rev() {
+		for length in paths.iter().copied() {
 			self.update_hash(&arr[i..], i);
 
 			// Follow the matches!

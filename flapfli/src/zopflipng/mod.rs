@@ -27,7 +27,10 @@ pub(crate) use blocks::{
 	deflate_part,
 	SplitPoints,
 };
-use cache::MatchCache;
+use cache::{
+	MatchCache,
+	SqueezeCache,
+};
 use error::{
 	zopfli_error,
 	ZopfliError,

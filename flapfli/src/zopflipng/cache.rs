@@ -5,11 +5,24 @@ The LMC is used to eleviate some of the burden that would otherwise result from
 calling `ZopfliHash::find` a hundred million times in a row. Haha.
 */
 
+use std::{
+	alloc::{
+		alloc,
+		handle_alloc_error,
+		Layout,
+	},
+	cell::Cell,
+	ptr::{
+		addr_of_mut,
+		NonNull,
+	},
+};
 use super::{
 	LitLen,
 	sized_slice,
 	SUBLEN_LEN,
 	zopfli_error,
+	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZOPFLI_MIN_MATCH,
 	ZopfliError,
 };
@@ -217,6 +230,112 @@ impl MatchCache {
 		}
 
 		Ok(())
+	}
+}
+
+
+
+/// # Squeeze Cache.
+///
+/// This struct stores LZ77 length costs and paths.
+///
+/// The actual number of costs and paths will vary from image-to-image, block-
+/// to-block, but can actually go as high as a million and one!
+///
+/// Lest that sound like a terrible waste, this struct only exists as part of
+/// a thread-local static so will be reused as many times as needed.
+pub(crate) struct SqueezeCache {
+	costs: [(f32, LitLen); ZOPFLI_MASTER_BLOCK_SIZE + 1],
+	paths: [LitLen; ZOPFLI_MASTER_BLOCK_SIZE],
+	costs_len: Cell<usize>,
+}
+
+impl SqueezeCache {
+	#[allow(unsafe_code)]
+	/// # New (Boxed) Instance.
+	///
+	/// Arrays holding a million+ elements is obviously less than ideal, but
+	/// because these are referenced repeatedly with different sub-slice sizes,
+	/// it is much better for performance than vectors that have to be
+	/// continuously resized/reallocated.
+	///
+	/// Still, these are too big for the stack, so we're initializing them via
+	/// raw pointers and jamming them straight into a `Box`.
+	pub(crate) fn new() -> Box<Self> {
+		// Reserve the space.
+		const LAYOUT: Layout = Layout::new::<SqueezeCache>();
+		let out = NonNull::new(unsafe { alloc(LAYOUT).cast() })
+			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
+		let ptr: *mut Self = out.as_ptr();
+
+		unsafe {
+			// We don't actually care about these values yet, but need to at
+			// least ensure they make sense given that LitLen is an enum.
+			// Zero-filling does the trick!
+			addr_of_mut!((*ptr).costs).write_bytes(0, 1);
+			addr_of_mut!((*ptr).paths).write_bytes(0, 1);
+
+			// The length, likewise, doesn't really matter but may as well set
+			// it to zero since that is both valid and true!
+			addr_of_mut!((*ptr).costs_len).write(Cell::new(0));
+
+			// All set!
+			Box::from_raw(ptr)
+		}
+	}
+
+	/// # Resize Costs.
+	///
+	/// This sets the internal costs length to match the desired blocksize, but
+	/// does _not_ reset their values. (Unlike the match cache, this cache may
+	/// be reset multiple times per block.)
+	pub(crate) fn resize_costs(&self, blocksize: usize) {
+		self.costs_len.set(blocksize.min(ZOPFLI_MASTER_BLOCK_SIZE + 1));
+	}
+
+	/// # Reset Costs.
+	///
+	/// Reset and return a mutable slice of costs, sized according to the last
+	/// `resize_costs` call.
+	///
+	/// Note that only the costs themselves are reset; the lengths and paths
+	/// are dealt with _in situ_ during crunching.
+	pub(crate) fn reset_costs(&mut self) -> &mut [(f32, LitLen)] {
+		let len = self.costs_len.get();
+		let Some(costs) = self.costs.get_mut(..len) else { return &mut []; };
+		if len != 0 {
+			// The first cost needs to be zero; the rest need to be infinity.
+			costs[0].0 = 0.0;
+			for c in &mut costs[1..] { c.0 = f32::INFINITY; }
+		}
+		costs
+	}
+
+	/// # Trace Paths.
+	///
+	/// Calculate the optimal path of LZ77 lengths to use given the costs,
+	/// returned as a slice.
+	///
+	/// Note that these are written in reverse order for the benefit of the
+	/// `ZopfliHash::follow_paths` call that will wind up using them.
+	pub(crate) fn trace_paths(&mut self) -> Result<&[LitLen], ZopfliError> {
+		let costs = self.costs.get(..self.costs_len.get()).unwrap_or(&[]);
+		if costs.len() < 2 { Ok(&[]) }
+		else {
+			let mut from = ZOPFLI_MASTER_BLOCK_SIZE;
+			let mut idx = costs.len() - 1;
+			while 0 != from && 0 != idx {
+				let v = costs[idx].1;
+				if ! v.is_zero() && (v as usize) <= idx {
+					from -= 1;
+					self.paths[from] = v;
+					idx -= v as usize;
+				}
+				else { return Err(zopfli_error!()) }
+			}
+
+			Ok(&self.paths[from..])
+		}
 	}
 }
 
