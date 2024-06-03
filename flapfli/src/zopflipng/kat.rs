@@ -429,8 +429,8 @@ impl KatScratch {
 		for (frequency, bitlength) in frequencies.iter().copied().zip(bitlengths) {
 			if let Some(frequency) = NonZeroU32::new(frequency) {
 				unsafe {
-					// The maximum SIZE is ZOPFLI_NUM_LL, so this will always
-					// be in range.
+					// Safety: the maximum SIZE is ZOPFLI_NUM_LL, so this will
+					// always be in range.
 					ptr.add(len).write(Leaf { frequency, bitlength });
 				}
 				len += 1;

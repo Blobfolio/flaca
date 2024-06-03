@@ -55,7 +55,7 @@ const MIN_COST_DISTANCES: [u8; 30] = [
 /// structure, cutting down on the number of references being bounced around
 /// from method to method.
 pub(crate) struct ZopfliState {
-	lmc: MatchCache,
+	lmc: Box<MatchCache>,
 	hash: Box<ZopfliHash>,
 	squeeze: Box<SqueezeCache>,
 }
