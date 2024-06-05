@@ -246,51 +246,71 @@ impl<'a> TreeLd<'a> {
 			hclen -= 1;
 		}
 
+		#[allow(clippy::option_if_let_else)]
 		// Write the results?
 		if let Some(out) = out {
-			// Convert the lengths to symbols.
-			let cl_symbols = make_symbols(&cl_lengths)?;
-
-			// Write the main lengths.
-			out.add_bits(self.hlit as u32, 5);
-			out.add_bits(self.hdist as u32, 5);
-			out.add_bits(hclen as u32, 4);
-
-			// Write each cl_length in the jumbled DEFLATE order.
-			for &o in &DeflateSym::TREE[..hclen + 4] {
-				out.add_bits(cl_lengths[o as usize] as u32, 3);
-			}
-
-			// Write each symbol in order of appearance along with its extra bits,
-			// if any.
-			for (a, b) in rle {
-				let symbol = cl_symbols[a as usize];
-				out.add_huffman_bits(symbol, cl_lengths[a as usize] as u32);
-
-				// Extra bits.
-				match a {
-					DeflateSym::D16 => { out.add_bits(b, 2); },
-					DeflateSym::D17 => { out.add_bits(b, 3); },
-					DeflateSym::D18 => { out.add_bits(b, 7); },
-					_ => {},
-				}
-			}
-
-			// We have to return a number, so why not zero?
-			Ok(0)
+			self.crunch_write(cl_lengths, out, hclen, rle)
 		}
 		// Just calculate the would-be size and return.
 		else {
-			let mut size = 14;              // hlit, hdist, hclen.
-			size += (hclen as u32 + 4) * 3;        // cl_lengths.
-			for (a, b) in cl_lengths.iter().copied().zip(cl_counts.iter().copied()) {
-				size += (a as u32) * b;
-			}
-			size += cl_counts[16] * 2; // Extra bits.
-			size += cl_counts[17] * 3;
-			size += cl_counts[18] * 7;
-			Ok(size)
+			Ok(Self::crunch_size(cl_lengths, cl_counts, hclen))
 		}
+	}
+
+	#[allow(clippy::cast_possible_truncation)]
+	fn crunch_size(
+		cl_lengths: [DeflateSym; 19],
+		cl_counts: [u32; 19],
+		hclen: usize,
+	) -> u32 {
+		let mut size = 14;
+		size += (hclen as u32 + 4) * 3;
+		for (a, b) in cl_lengths.iter().copied().zip(cl_counts.iter().copied()) {
+			size += (a as u32) * b;
+		}
+		size += cl_counts[16] * 2; // Extra bits.
+		size += cl_counts[17] * 3;
+		size +  cl_counts[18] * 7
+	}
+
+	#[allow(clippy::cast_possible_truncation)]
+	fn crunch_write(
+		&self,
+		cl_lengths: [DeflateSym; 19],
+		out: &mut ZopfliOut,
+		hclen: usize,
+		rle: Vec<(DeflateSym, u32)>,
+	) -> Result<u32, ZopfliError> {
+		// Convert the lengths to symbols.
+		let cl_symbols = make_symbols(&cl_lengths)?;
+
+		// Write the main lengths.
+		out.add_bits(self.hlit as u32, 5);
+		out.add_bits(self.hdist as u32, 5);
+		out.add_bits(hclen as u32, 4);
+
+		// Write each cl_length in the jumbled DEFLATE order.
+		for &o in &DeflateSym::TREE[..hclen + 4] {
+			out.add_bits(cl_lengths[o as usize] as u32, 3);
+		}
+
+		// Write each symbol in order of appearance along with its extra bits,
+		// if any.
+		for (a, b) in rle {
+			let symbol = cl_symbols[a as usize];
+			out.add_huffman_bits(symbol, cl_lengths[a as usize] as u32);
+
+			// Extra bits.
+			match a {
+				DeflateSym::D16 => { out.add_bits(b, 2); },
+				DeflateSym::D17 => { out.add_bits(b, 3); },
+				DeflateSym::D18 => { out.add_bits(b, 7); },
+				_ => {},
+			}
+		}
+
+		// We have to return a number, so why not zero?
+		Ok(0)
 	}
 }
 
@@ -667,7 +687,7 @@ fn llcl<'a, const SIZE: usize, const MAXBITS: usize>(
 
 	// Add the last chain and write the results!
 	let node = llcl_finish(&lists[lists.len() - 2], &lists[lists.len() - 1], leaves);
-	llcl_write(node, leaves)
+	llcl_write::<MAXBITS>(node, leaves)
 }
 
 /// # Boundary Package-Merge Step.
@@ -750,14 +770,14 @@ fn llcl_finish(list_y: &List, list_z: &List, leaves: &[Leaf<'_>]) -> Node {
 }
 
 /// # Write Code Lengths!
-fn llcl_write(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
+fn llcl_write<const MAXBITS: usize>(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
 	// Make sure we counted correctly before doing anything else.
 	let mut last_count = node.count;
 	debug_assert!(leaves.len() >= last_count.get() as usize);
 
 	// Write the changes!
 	let mut writer = leaves.iter().take(last_count.get() as usize).rev();
-	for value in DeflateSym::LIMITED {
+	for value in DeflateSym::LIMITED.into_iter().take(MAXBITS) {
 		// Pull the next tail, if any.
 		if let Some(tail) = node.tail.copied() {
 			// Wait for a change in counts to write the values.
@@ -780,7 +800,6 @@ fn llcl_write(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
 	Err(zopfli_error!())
 }
 
-#[allow(unsafe_code)]
 /// # Zopfli Lengths to Symbols.
 ///
 /// This returns a new symbol array given the lengths, which are themselves
@@ -805,11 +824,10 @@ fn make_symbols(lengths: &[DeflateSym; 19])
 
 	// Update the symbols accordingly.
 	let mut symbols = [0; 19];
-	for (s, l) in symbols.iter_mut().zip(lengths.iter().copied()) {
-		if ! l.is_zero() {
-			// Safety: we already checked all lengths are less than MAXBITS.
-			*s = unsafe { *next_code.get_unchecked(l as usize) };
-			next_code[l as usize] += 1;
+	for (s, l) in symbols.iter_mut().zip(lengths.iter().map(|&l| l as usize)) {
+		if (1..8).contains(&l) {
+			*s = next_code[l];
+			next_code[l] += 1;
 		}
 	}
 	Ok(symbols)

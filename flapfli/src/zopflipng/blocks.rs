@@ -846,7 +846,6 @@ fn get_dynamic_lengths(
 	)
 }
 
-#[allow(unsafe_code)]
 /// # Zopfli Lengths to Symbols.
 ///
 /// This updates the symbol array given the corresponding lengths.
@@ -870,11 +869,10 @@ fn lengths_to_symbols<const SIZE: usize>(lengths: &[DeflateSym; SIZE])
 
 	// Update the symbols accordingly.
 	let mut symbols = [0; SIZE];
-	for (s, l) in symbols.iter_mut().zip(lengths.iter().copied()) {
-		if ! l.is_zero() {
-			// Safety: we already checked all lengths are less than 16.
-			*s = unsafe { *next_code.get_unchecked(l as usize) };
-			next_code[l as usize] += 1;
+	for (s, l) in symbols.iter_mut().zip(lengths.iter().map(|&l| l as usize)) {
+		if (1..16).contains(&l) {
+			*s = next_code[l];
+			next_code[l] += 1;
 		}
 	}
 	Ok(symbols)
