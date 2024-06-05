@@ -18,9 +18,10 @@ use std::{
 	ptr::NonNull,
 };
 use super::{
+	ArrayD,
+	ArrayLL,
 	DeflateSym,
 	zopfli_error,
-	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
 	ZopfliError,
 	ZopfliOut,
@@ -55,8 +56,8 @@ thread_local!(
 /// Both involve doing (virtually) the same thing several times in a row, so
 /// the centralized storage helps reduce a little bit of that overhead.
 pub(crate) struct TreeLd<'a> {
-	ll_lengths: &'a [DeflateSym; ZOPFLI_NUM_LL],
-	d_lengths: &'a [DeflateSym; ZOPFLI_NUM_D],
+	ll_lengths: &'a ArrayLL<DeflateSym>,
+	d_lengths: &'a ArrayD<DeflateSym>,
 	hlit: usize,
 	hdist: usize,
 }
@@ -64,8 +65,8 @@ pub(crate) struct TreeLd<'a> {
 impl<'a> TreeLd<'a> {
 	/// # New.
 	pub(crate) const fn new(
-		ll_lengths: &'a [DeflateSym; ZOPFLI_NUM_LL],
-		d_lengths: &'a [DeflateSym; ZOPFLI_NUM_D],
+		ll_lengths: &'a ArrayLL<DeflateSym>,
+		d_lengths: &'a ArrayD<DeflateSym>,
 	) -> Self {
 		// Find the last non-zero length symbol, starting from 285. (The offset
 		// marks the boundary between literals and symbols; we'll use both in

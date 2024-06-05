@@ -13,6 +13,8 @@ use std::{
 	sync::Mutex,
 };
 use super::{
+	ArrayD,
+	ArrayLL,
 	DISTANCE_SYMBOLS,
 	Dsym,
 	LENGTH_SYMBOLS_BITS_VALUES,
@@ -40,8 +42,8 @@ static POOL: Pool = Pool::new();
 /// # LZ77 Data Store.
 pub(crate) struct LZ77Store {
 	pub(crate) entries: Vec<LZ77StoreEntry>,
-	pub(crate) ll_counts: Vec<[u32; ZOPFLI_NUM_LL]>,
-	pub(crate) d_counts: Vec<[u32; ZOPFLI_NUM_D]>,
+	pub(crate) ll_counts: Vec<ArrayLL<u32>>,
+	pub(crate) d_counts: Vec<ArrayD<u32>>,
 }
 
 impl LZ77Store {
@@ -103,7 +105,7 @@ impl LZ77Store {
 	///
 	/// Return the last (current) length and distance count chunks, resizing as
 	/// needed.
-	fn last_counts(&mut self) -> (&mut [u32; ZOPFLI_NUM_LL], &mut [u32; ZOPFLI_NUM_D]) {
+	fn last_counts(&mut self) -> (&mut ArrayLL<u32>, &mut ArrayD<u32>) {
 		/// # (Maybe) Wrap Count Chunks.
 		///
 		/// Resize the chunks if needed and return the final length.
@@ -164,7 +166,7 @@ impl LZ77Store {
 
 	/// # Histogram.
 	pub(crate) fn histogram(&self, lstart: usize, lend: usize)
-	-> Result<([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]), ZopfliError> {
+	-> Result<(ArrayLL<u32>, ArrayD<u32>), ZopfliError> {
 		// Count the symbols directly.
 		if lstart + ZOPFLI_NUM_LL * 3 > lend {
 			let mut ll_counts = ZEROED_COUNTS_LL;
@@ -191,7 +193,7 @@ impl LZ77Store {
 
 	/// # Histogram at Position.
 	fn _histogram(&self, pos: usize)
-	-> Result<([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]), ZopfliError> {
+	-> Result<(ArrayLL<u32>, ArrayD<u32>), ZopfliError> {
 		// The relative chunked positions.
 		let ll_idx = pos.wrapping_div(ZOPFLI_NUM_LL);
 		let d_idx = pos.wrapping_div(ZOPFLI_NUM_D);
@@ -202,8 +204,8 @@ impl LZ77Store {
 		if self.ll_counts.len() <= ll_idx || self.d_counts.len() <= d_idx {
 			return Err(zopfli_error!());
 		}
-		let mut ll_counts: [u32; ZOPFLI_NUM_LL] = self.ll_counts[ll_idx];
-		let mut d_counts: [u32; ZOPFLI_NUM_D] = self.d_counts[d_idx];
+		let mut ll_counts: ArrayLL<u32> = self.ll_counts[ll_idx];
+		let mut d_counts: ArrayD<u32> = self.d_counts[d_idx];
 
 		// Subtract the symbol occurences between (pos+1) and the end of the
 		// available data for the chunk.
@@ -222,8 +224,8 @@ impl LZ77Store {
 	fn _histogram_sub(
 		&self,
 		pos: usize,
-		ll_counts: &mut [u32; ZOPFLI_NUM_LL],
-		d_counts: &mut [u32; ZOPFLI_NUM_D],
+		ll_counts: &mut ArrayLL<u32>,
+		d_counts: &mut ArrayD<u32>,
 	) -> Result<(), ZopfliError> {
 		// The relative chunked positions.
 		let ll_idx = pos.wrapping_div(ZOPFLI_NUM_LL);
@@ -305,11 +307,7 @@ impl LZ77StoreEntry {
 	}
 
 	/// # Add Symbol Counts.
-	fn add_counts(
-		&self,
-		ll_counts: &mut [u32; ZOPFLI_NUM_LL],
-		d_counts: &mut [u32; ZOPFLI_NUM_D],
-	) {
+	fn add_counts(&self, ll_counts: &mut ArrayLL<u32>, d_counts: &mut ArrayD<u32>) {
 		ll_counts[self.ll_symbol as usize] += 1;
 		if 0 < self.dist {
 			d_counts[self.d_symbol as usize] += 1;

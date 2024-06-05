@@ -179,6 +179,30 @@ impl Lsym {
 mod tests {
 	use super::*;
 
+	#[test]
+	/// # Deflate Symbol Size and Alignment.
+	fn t_deflate_size_align() {
+		use super::super::{ZOPFLI_NUM_D, ZOPFLI_NUM_LL};
+
+		assert_eq!(
+			std::mem::size_of::<[u8; ZOPFLI_NUM_LL]>(),
+			std::mem::size_of::<[DeflateSym; ZOPFLI_NUM_LL]>(),
+		);
+		assert_eq!(
+			std::mem::align_of::<[u8; ZOPFLI_NUM_LL]>(),
+			std::mem::align_of::<[DeflateSym; ZOPFLI_NUM_LL]>(),
+		);
+
+		assert_eq!(
+			std::mem::size_of::<[u8; ZOPFLI_NUM_D]>(),
+			std::mem::size_of::<[DeflateSym; ZOPFLI_NUM_D]>(),
+		);
+		assert_eq!(
+			std::mem::align_of::<[u8; ZOPFLI_NUM_D]>(),
+			std::mem::align_of::<[DeflateSym; ZOPFLI_NUM_D]>(),
+		);
+	}
+
 	// Note: the original `symbols.h` distance-related methods come in two
 	// flavors: one leveraging compiler math built-ins and one loaded with
 	// manual range branching. These tests compare both approaches against the

@@ -11,6 +11,8 @@ use std::{
 	collections::HashSet,
 };
 use super::{
+	ArrayD,
+	ArrayLL,
 	DeflateSym,
 	DISTANCE_BITS,
 	DISTANCE_VALUES,
@@ -533,10 +535,10 @@ fn add_lz77_data(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-	ll_symbols: &[u32; ZOPFLI_NUM_LL],
-	ll_lengths: &[DeflateSym; ZOPFLI_NUM_LL],
-	d_symbols: &[u32; ZOPFLI_NUM_D],
-	d_lengths: &[DeflateSym; ZOPFLI_NUM_D],
+	ll_symbols: &ArrayLL<u32>,
+	ll_lengths: &ArrayLL<DeflateSym>,
+	d_symbols: &ArrayD<u32>,
+	d_lengths: &ArrayD<DeflateSym>,
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
 	for e in store.entries.get(lstart..lend).ok_or(zopfli_error!())? {
@@ -656,10 +658,10 @@ fn calculate_block_size_auto_type(
 
 /// # Calculate Block Symbol Size w/ Histogram and Counts.
 fn calculate_block_symbol_size_given_counts(
-	ll_counts: &[u32; ZOPFLI_NUM_LL],
-	d_counts: &[u32; ZOPFLI_NUM_D],
-	ll_lengths: &[DeflateSym; ZOPFLI_NUM_LL],
-	d_lengths: &[DeflateSym; ZOPFLI_NUM_D],
+	ll_counts: &ArrayLL<u32>,
+	d_counts: &ArrayD<u32>,
+	ll_lengths: &ArrayLL<DeflateSym>,
+	d_lengths: &ArrayD<DeflateSym>,
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
@@ -698,8 +700,8 @@ fn calculate_block_symbol_size_given_counts(
 
 /// # Calculate Small Block Symbol Size.
 fn calculate_block_symbol_size_small(
-	ll_lengths: &[DeflateSym; ZOPFLI_NUM_LL],
-	d_lengths: &[DeflateSym; ZOPFLI_NUM_D],
+	ll_lengths: &ArrayLL<DeflateSym>,
+	d_lengths: &ArrayD<DeflateSym>,
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
@@ -828,8 +830,8 @@ fn get_dynamic_lengths(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-	ll_lengths: &mut [DeflateSym; ZOPFLI_NUM_LL],
-	d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D],
+	ll_lengths: &mut ArrayLL<DeflateSym>,
+	d_lengths: &mut ArrayD<DeflateSym>,
 ) -> Result<u32, ZopfliError> {
 	// Populate some counts.
 	let (mut ll_counts, d_counts) = store.histogram(lstart, lend)?;
@@ -1044,7 +1046,7 @@ fn optimize_huffman_for_rle(mut counts: &mut [u32]) {
 ///
 /// Ensure there are at least two distance codes to avoid issues with buggy
 /// decoders.
-fn patch_distance_codes(d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D]) {
+fn patch_distance_codes(d_lengths: &mut ArrayD<DeflateSym>) {
 	let mut one: Option<bool> = None;
 	for (i, dist) in d_lengths.iter().copied().enumerate().take(30) {
 		// We have (at least) two non-zero entries; no patching needed!
@@ -1124,17 +1126,17 @@ fn try_optimize_huffman_for_rle(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-	ll_counts: &[u32; ZOPFLI_NUM_LL],
-	d_counts: &[u32; ZOPFLI_NUM_D],
-	ll_lengths: &mut [DeflateSym; ZOPFLI_NUM_LL],
-	d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D],
+	ll_counts: &ArrayLL<u32>,
+	d_counts: &ArrayD<u32>,
+	ll_lengths: &mut ArrayLL<DeflateSym>,
+	d_lengths: &mut ArrayD<DeflateSym>,
 ) -> Result<u32, ZopfliError> {
 	/// # Length Limited Tree Size.
 	fn tree_size(
-		ll_counts: &[u32; ZOPFLI_NUM_LL],
-		d_counts: &[u32; ZOPFLI_NUM_D],
-		ll_lengths: &mut [DeflateSym; ZOPFLI_NUM_LL],
-		d_lengths: &mut [DeflateSym; ZOPFLI_NUM_D],
+		ll_counts: &ArrayLL<u32>,
+		d_counts: &ArrayD<u32>,
+		ll_lengths: &mut ArrayLL<DeflateSym>,
+		d_lengths: &mut ArrayD<DeflateSym>,
 	) -> Result<u32, ZopfliError> {
 		// Limit lengths and fix up distance codes.
 		kat::length_limited_code_lengths(ll_counts, ll_lengths)?;

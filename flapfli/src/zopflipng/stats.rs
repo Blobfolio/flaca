@@ -5,6 +5,8 @@ This module defines the squeeze stats structure and its companion PRNG.
 */
 
 use super::{
+	ArrayD,
+	ArrayLL,
 	LZ77Store,
 	ZEROED_COUNTS_D,
 	ZEROED_COUNTS_LL,
@@ -51,11 +53,11 @@ impl RanState {
 /// This holds the length and distance symbols and costs for a given block,
 /// data that can be used to improve compression on subsequent passes.
 pub(crate) struct SymbolStats {
-	ll_counts: [u32; ZOPFLI_NUM_LL],
-	d_counts:  [u32; ZOPFLI_NUM_D],
+	ll_counts: ArrayLL<u32>,
+	d_counts:  ArrayD<u32>,
 
-	pub(crate) ll_symbols: [f64; ZOPFLI_NUM_LL],
-	pub(crate) d_symbols:  [f64; ZOPFLI_NUM_D],
+	pub(crate) ll_symbols: ArrayLL<f64>,
+	pub(crate) d_symbols:  ArrayD<f64>,
 }
 
 impl SymbolStats {
@@ -78,8 +80,8 @@ impl SymbolStats {
 	/// previous value is halved and added to the corresponding current value.
 	pub(crate) fn add_last(
 		&mut self,
-		ll_counts: &[u32; ZOPFLI_NUM_LL],
-		d_counts: &[u32; ZOPFLI_NUM_D],
+		ll_counts: &ArrayLL<u32>,
+		d_counts: &ArrayD<u32>,
 	) {
 		for (l, r) in self.ll_counts.iter_mut().zip(ll_counts.iter().copied()) {
 			*l += r.wrapping_div(2);
@@ -95,7 +97,7 @@ impl SymbolStats {
 	/// # Clear Frequencies.
 	///
 	/// Set all `ll_counts` and `d_counts` to zero and return the originals.
-	pub(crate) fn clear(&mut self) -> ([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]) {
+	pub(crate) fn clear(&mut self) -> (ArrayLL<u32>, ArrayD<u32>) {
 		(
 			std::mem::replace(&mut self.ll_counts, ZEROED_COUNTS_LL),
 			std::mem::replace(&mut self.d_counts, ZEROED_COUNTS_D),
