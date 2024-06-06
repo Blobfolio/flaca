@@ -36,6 +36,10 @@ use error::{
 	ZopfliError,
 };
 pub(crate) use hash::ZopfliState;
+use kat::{
+	LengthLimitedCodeLengths,
+	TreeLd,
+};
 pub(crate) use lz77::LZ77Store;
 use super::{
 	EncodedPNG,

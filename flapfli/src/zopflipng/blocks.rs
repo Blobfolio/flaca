@@ -20,15 +20,15 @@ use super::{
 	FIXED_SYMBOLS_LL,
 	FIXED_TREE_D,
 	FIXED_TREE_LL,
-	kat,
 	LENGTH_SYMBOLS_BITS_VALUES,
+	LengthLimitedCodeLengths,
 	LZ77Store,
 	stats::{
 		RanState,
 		SymbolStats,
 	},
+	TreeLd,
 	zopfli_error,
-	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
 	ZopfliError,
 	ZopfliOut,
@@ -424,20 +424,16 @@ fn add_lz77_block_dynamic(
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
 	// Build the lengths first.
-	let mut ll_lengths = [DeflateSym::D00; ZOPFLI_NUM_LL];
-	let mut d_lengths = [DeflateSym::D00; ZOPFLI_NUM_D];
-	get_dynamic_lengths(
+	let (extra, _, ll_lengths, d_lengths) = get_dynamic_lengths(
 		store,
 		lstart,
 		lend,
-		&mut ll_lengths,
-		&mut d_lengths,
 	)?;
-	kat::TreeLd::new(&ll_lengths, &d_lengths).encode_tree(out)?;
+	TreeLd::encode_tree(&ll_lengths, &d_lengths, extra, out)?;
 
 	// Now we need the symbols.
-	let ll_symbols = lengths_to_symbols(&ll_lengths)?;
-	let d_symbols = lengths_to_symbols(&d_lengths)?;
+	let ll_symbols = ArrayLL::<u32>::llcl_symbols(&ll_lengths)?;
+	let d_symbols = ArrayD::<u32>::llcl_symbols(&d_lengths)?;
 
 	// Write all the data!
 	add_lz77_data(
@@ -620,15 +616,12 @@ fn calculate_block_size_dynamic(
 	lstart: usize,
 	lend: usize,
 ) -> Result<u32, ZopfliError> {
-	let mut ll_lengths = [DeflateSym::D00; ZOPFLI_NUM_LL];
-	let mut d_lengths = [DeflateSym::D00; ZOPFLI_NUM_D];
-	get_dynamic_lengths(
+	let (_, size, _, _) = get_dynamic_lengths(
 		store,
 		lstart,
 		lend,
-		&mut ll_lengths,
-		&mut d_lengths,
-	)
+	)?;
+	Ok(size)
 }
 
 /// # Calculate Best Block Size (in Bits).
@@ -830,9 +823,7 @@ fn get_dynamic_lengths(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
-	ll_lengths: &mut ArrayLL<DeflateSym>,
-	d_lengths: &mut ArrayD<DeflateSym>,
-) -> Result<u32, ZopfliError> {
+) -> Result<(u8, u32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
 	// Populate some counts.
 	let (mut ll_counts, d_counts) = store.histogram(lstart, lend)?;
 	ll_counts[256] = 1;
@@ -843,41 +834,7 @@ fn get_dynamic_lengths(
 		lend,
 		&ll_counts,
 		&d_counts,
-		ll_lengths,
-		d_lengths,
 	)
-}
-
-/// # Zopfli Lengths to Symbols.
-///
-/// This updates the symbol array given the corresponding lengths.
-fn lengths_to_symbols<const SIZE: usize>(lengths: &[DeflateSym; SIZE])
--> Result<[u32; SIZE], ZopfliError> {
-	// Count up the codes by code length.
-	let mut counts: [u32; 16] = [0; 16];
-	for l in lengths.iter().copied() {
-		if (l as u8) < 16 { counts[l as usize] += 1; }
-		else { return Err(zopfli_error!()); }
-	}
-
-	// Find the numerical value of the smallest code for each code length.
-	counts[0] = 0;
-	let mut code = 0;
-	let mut next_code: [u32; 16] = [0; 16];
-	for i in 1..16 {
-		code = (code + counts[i - 1]) << 1;
-		next_code[i] = code;
-	}
-
-	// Update the symbols accordingly.
-	let mut symbols = [0; SIZE];
-	for (s, l) in symbols.iter_mut().zip(lengths.iter().map(|&l| l as usize)) {
-		if (1..16).contains(&l) {
-			*s = next_code[l];
-			next_code[l] += 1;
-		}
-	}
-	Ok(symbols)
 }
 
 /// # Optimal LZ77.
@@ -1128,49 +1085,40 @@ fn try_optimize_huffman_for_rle(
 	lend: usize,
 	ll_counts: &ArrayLL<u32>,
 	d_counts: &ArrayD<u32>,
-	ll_lengths: &mut ArrayLL<DeflateSym>,
-	d_lengths: &mut ArrayD<DeflateSym>,
-) -> Result<u32, ZopfliError> {
+) -> Result<(u8, u32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
 	/// # Length Limited Tree Size.
-	fn tree_size(
-		ll_counts: &ArrayLL<u32>,
-		d_counts: &ArrayD<u32>,
-		ll_lengths: &mut ArrayLL<DeflateSym>,
-		d_lengths: &mut ArrayD<DeflateSym>,
-	) -> Result<u32, ZopfliError> {
+	fn tree_size(ll_counts: &ArrayLL<u32>, d_counts: &ArrayD<u32>)
+	-> Result<(u8, u32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
 		// Limit lengths and fix up distance codes.
-		kat::length_limited_code_lengths(ll_counts, ll_lengths)?;
-		kat::length_limited_code_lengths(d_counts, d_lengths)?;
-		patch_distance_codes(d_lengths);
+		let ll_lengths = ll_counts.llcl()?;
+		let mut d_lengths = d_counts.llcl()?;
+		patch_distance_codes(&mut d_lengths);
 
 		// Calculate the tree size.
-		kat::TreeLd::new(ll_lengths, d_lengths)
-			.calculate_tree_size()
-			.map(|(_, s)| s)
+		let (extra, size) = TreeLd::calculate_tree_size(&ll_lengths, &d_lengths)?;
+		Ok((extra, size, ll_lengths, d_lengths))
 	}
 
 	// Calculate the tree and data sizes as are.
-	let treesize = tree_size(ll_counts, d_counts, ll_lengths, d_lengths)?;
+	let (extra, treesize, ll_lengths, d_lengths) = tree_size(ll_counts, d_counts)?;
 	let datasize = calculate_block_symbol_size_given_counts(
 		ll_counts,
 		d_counts,
-		ll_lengths,
-		d_lengths,
+		&ll_lengths,
+		&d_lengths,
 		store,
 		lstart,
 		lend,
 	);
 
 	// Copy the counts, optimize them, etc., etc.
-	let mut ll_lengths2 = [DeflateSym::D00; ZOPFLI_NUM_LL];
-	let mut d_lengths2 = [DeflateSym::D00; ZOPFLI_NUM_D];
 	let mut ll_counts2 = *ll_counts;
 	let mut d_counts2 = *d_counts;
 	optimize_huffman_for_rle(&mut ll_counts2);
 	optimize_huffman_for_rle(&mut d_counts2);
 
 	// Calculate the optimized tree and data sizes.
-	let treesize2 = tree_size(&ll_counts2, &d_counts2, &mut ll_lengths2, &mut d_lengths2)?;
+	let (extra2, treesize2, ll_lengths2, d_lengths2) = tree_size(&ll_counts2, &d_counts2)?;
 	let datasize2 = calculate_block_symbol_size_given_counts(
 		ll_counts,  // Note: This requires the ORIGINAL counts.
 		d_counts,
@@ -1184,12 +1132,8 @@ fn try_optimize_huffman_for_rle(
 	// Return whichever's better.
 	let sum = treesize + datasize;
 	let sum2 = treesize2 + datasize2;
-	if sum <= sum2 { Ok(sum) }
-	else {
-		*ll_lengths = ll_lengths2;
-		*d_lengths = d_lengths2;
-		Ok(sum2)
-	}
+	if sum <= sum2 { Ok((extra, sum, ll_lengths, d_lengths)) }
+	else { Ok((extra2, sum2, ll_lengths2, d_lengths2)) }
 }
 
 
@@ -1201,11 +1145,11 @@ mod test {
 	#[test]
 	fn t_fixed_symbols() {
 		assert_eq!(
-			lengths_to_symbols(&FIXED_TREE_LL),
+			ArrayLL::<u32>::llcl_symbols(&FIXED_TREE_LL),
 			Ok(FIXED_SYMBOLS_LL),
 		);
 		assert_eq!(
-			lengths_to_symbols(&FIXED_TREE_D),
+			ArrayD::<u32>::llcl_symbols(&FIXED_TREE_D),
 			Ok(FIXED_SYMBOLS_D),
 		);
 	}
