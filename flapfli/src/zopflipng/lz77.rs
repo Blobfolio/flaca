@@ -4,14 +4,6 @@
 This module defines the LZ77 store structures.
 */
 
-use std::{
-	mem::ManuallyDrop,
-	ops::{
-		Deref,
-		DerefMut,
-	},
-	sync::Mutex,
-};
 use super::{
 	ArrayD,
 	ArrayLL,
@@ -23,8 +15,6 @@ use super::{
 	ZEROED_COUNTS_D,
 	ZEROED_COUNTS_LL,
 	zopfli_error,
-	ZOPFLI_NUM_D,
-	ZOPFLI_NUM_LL,
 	ZopfliError,
 };
 
@@ -34,7 +24,7 @@ use super::{
 ///
 /// Each `deflate_part` run can use as many as three of these; we might as well
 /// reuse the objects to cut down on the number of allocations being made.
-static POOL: Pool = Pool::new();
+// static POOL: Pool = Pool::new();
 
 
 
@@ -42,31 +32,12 @@ static POOL: Pool = Pool::new();
 /// # LZ77 Data Store.
 pub(crate) struct LZ77Store {
 	pub(crate) entries: Vec<LZ77StoreEntry>,
-	pub(crate) ll_counts: Vec<ArrayLL<u32>>,
-	pub(crate) d_counts: Vec<ArrayD<u32>>,
 }
 
 impl LZ77Store {
-	#[allow(clippy::new_ret_no_self)]
 	/// # New.
-	pub(crate) fn new() -> Swimmer { POOL.get() }
-
-	/// # Internal New.
-	const fn _new() -> Self {
-		Self {
-			entries: Vec::new(),
-			ll_counts: Vec::new(),
-			d_counts: Vec::new(),
-		}
-	}
-
-	/// # Append Entries.
-	///
-	/// This appends the entries from `other` to `self` en masse, kind of like
-	/// a push-many.
-	pub(crate) fn append(&mut self, other: &Self) {
-		self.entries.reserve_exact(other.entries.len());
-		for &entry in &other.entries { self.push_entry(entry); }
+	pub(crate) const fn new() -> Self {
+		Self { entries: Vec::new() }
 	}
 
 	/// # Symbol Span Range.
@@ -87,11 +58,7 @@ impl LZ77Store {
 	}
 
 	/// # Clear.
-	pub(crate) fn clear(&mut self) {
-		self.entries.truncate(0);
-		self.ll_counts.truncate(0);
-		self.d_counts.truncate(0);
-	}
+	pub(crate) fn clear(&mut self) { self.entries.truncate(0); }
 
 	/// # Push Values.
 	pub(crate) fn push(&mut self, litlen: LitLen, dist: u16, pos: usize) -> Result<(), ZopfliError> {
@@ -100,50 +67,8 @@ impl LZ77Store {
 		Ok(())
 	}
 
-	#[allow(unsafe_code)]
-	/// # Last Counts.
-	///
-	/// Return the last (current) length and distance count chunks, resizing as
-	/// needed.
-	fn last_counts(&mut self) -> (&mut ArrayLL<u32>, &mut ArrayD<u32>) {
-		/// # (Maybe) Wrap Count Chunks.
-		///
-		/// Resize the chunks if needed and return the final length.
-		fn wrap_chunk<const SIZE: usize>(set: &mut Vec<[u32; SIZE]>, pos: usize) -> usize {
-			let len = set.len();
-
-			// If the set is empty, set it up with a zeroed count chunk.
-			if len == 0 {
-				set.push([0; SIZE]);
-				1
-			}
-			// If the position has wrapped back around SIZE, it's time for a
-			// new chunk, initialized with the previous chunk's tallies.
-			else if pos % SIZE == 0 {
-				set.push(set[len - 1]);
-				len + 1
-			}
-			// Otherwise we're good.
-			else { len }
-		}
-
-		let pos = self.entries.len();
-		let d_len = wrap_chunk(&mut self.d_counts, pos);
-		let ll_len = wrap_chunk(&mut self.ll_counts, pos);
-
-		// Safety: neither can be empty at this point.
-		unsafe {(
-			self.ll_counts.get_unchecked_mut(ll_len - 1),
-			self.d_counts.get_unchecked_mut(d_len - 1),
-		)}
-	}
-
 	/// # Push Entry.
-	fn push_entry(&mut self, entry: LZ77StoreEntry) {
-		let (ll_counts, d_counts) = self.last_counts();
-		entry.add_counts(ll_counts, d_counts);
-		self.entries.push(entry);
-	}
+	fn push_entry(&mut self, entry: LZ77StoreEntry) { self.entries.push(entry); }
 
 	/// # Replace Store.
 	///
@@ -151,12 +76,13 @@ impl LZ77Store {
 	pub(crate) fn replace(&mut self, other: &Self) {
 		self.entries.truncate(0);
 		self.entries.extend_from_slice(&other.entries);
+	}
 
-		self.ll_counts.truncate(0);
-		self.ll_counts.extend_from_slice(&other.ll_counts);
-
-		self.d_counts.truncate(0);
-		self.d_counts.extend_from_slice(&other.d_counts);
+	/// # Steal/Append Entries.
+	///
+	/// Drain the entires from other and append them to self.
+	pub(crate) fn steal_entries(&mut self, other: &mut Self) {
+		self.entries.append(&mut other.entries);
 	}
 }
 
@@ -166,94 +92,18 @@ impl LZ77Store {
 
 	/// # Histogram.
 	pub(crate) fn histogram(&self, lstart: usize, lend: usize)
-	-> Result<(ArrayLL<u32>, ArrayD<u32>), ZopfliError> {
-		// Count the symbols directly.
-		if lstart + ZOPFLI_NUM_LL * 3 > lend {
-			let mut ll_counts = ZEROED_COUNTS_LL;
-			let mut d_counts = ZEROED_COUNTS_D;
+	-> (ArrayLL<u32>, ArrayD<u32>) {
+		let mut ll_counts = ZEROED_COUNTS_LL;
+		let mut d_counts = ZEROED_COUNTS_D;
 
-			let entries = self.entries.get(lstart..lend).ok_or(zopfli_error!())?;
-			for e in entries {
-				e.add_counts(&mut ll_counts, &mut d_counts);
-			}
-
-			Ok((ll_counts, d_counts))
-		}
-		// Subtract the cumulative histograms at the start from the end to get the
-		// one for this range.
-		else {
-			let (mut ll_counts, mut d_counts) = self._histogram(lend - 1)?;
-			if 0 < lstart {
-				self._histogram_sub(lstart - 1, &mut ll_counts, &mut d_counts)?;
-			}
-
-			Ok((ll_counts, d_counts))
-		}
-	}
-
-	/// # Histogram at Position.
-	fn _histogram(&self, pos: usize)
-	-> Result<(ArrayLL<u32>, ArrayD<u32>), ZopfliError> {
-		// The relative chunked positions.
-		let ll_idx = pos.wrapping_div(ZOPFLI_NUM_LL);
-		let d_idx = pos.wrapping_div(ZOPFLI_NUM_D);
-		let ll_end = (ll_idx + 1) * ZOPFLI_NUM_LL;
-		let d_end = (d_idx + 1) * ZOPFLI_NUM_D;
-
-		// Start by copying the counts directly from the nearest chunk.
-		if self.ll_counts.len() <= ll_idx || self.d_counts.len() <= d_idx {
-			return Err(zopfli_error!());
-		}
-		let mut ll_counts: ArrayLL<u32> = self.ll_counts[ll_idx];
-		let mut d_counts: ArrayD<u32> = self.d_counts[d_idx];
-
-		// Subtract the symbol occurences between (pos+1) and the end of the
-		// available data for the chunk.
-		for (i, e) in self.entries.iter().enumerate().take(ll_end).skip(pos + 1) {
-			ll_counts[e.ll_symbol as usize] -= 1;
-			if i < d_end && 0 < e.dist {
-				d_counts[e.d_symbol as usize] -= 1;
-			}
-		}
-
-		// We have our answer!
-		Ok((ll_counts, d_counts))
-	}
-
-	/// # Subtract Histogram.
-	fn _histogram_sub(
-		&self,
-		pos: usize,
-		ll_counts: &mut ArrayLL<u32>,
-		d_counts: &mut ArrayD<u32>,
-	) -> Result<(), ZopfliError> {
-		// The relative chunked positions.
-		let ll_idx = pos.wrapping_div(ZOPFLI_NUM_LL);
-		let d_idx = pos.wrapping_div(ZOPFLI_NUM_D);
-
-		// Start by copying the counts directly from the nearest chunk.
-		let (ll_old, d_old) = self.ll_counts.get(ll_idx)
-			.zip(self.d_counts.get(d_idx))
-			.ok_or(zopfli_error!())?;
-
-		// We're ultimately looking for `a -= (b_count - b_sym)`. Let's start
-		// by adding — minus-minus is plus — the symbols.
-		let ll_end = (ll_idx + 1) * ZOPFLI_NUM_LL;
-		let d_end = (d_idx + 1) * ZOPFLI_NUM_D;
-		for (i, e) in self.entries.iter().enumerate().take(ll_end).skip(pos + 1) {
+		for e in self.entries.iter().take(lend).skip(lstart) {
 			ll_counts[e.ll_symbol as usize] += 1;
-			if i < d_end && 0 < e.dist {
+			if 0 < e.dist {
 				d_counts[e.d_symbol as usize] += 1;
 			}
 		}
 
-		// To finish it off, we just need to subtract the counts. Slicing the
-		// store side serves as both a sanity check and a potential compiler
-		// size hint.
-		for (a, b) in ll_counts.iter_mut().zip(ll_old) { *a -= b; }
-		for (a, b) in d_counts.iter_mut().zip(d_old) { *a -= b; }
-
-		Ok(())
+		(ll_counts, d_counts)
 	}
 }
 
@@ -304,93 +154,5 @@ impl LZ77StoreEntry {
 	pub(crate) const fn length(&self) -> LitLen {
 		if self.dist <= 0 { LitLen::L001 }
 		else { self.litlen }
-	}
-
-	/// # Add Symbol Counts.
-	fn add_counts(&self, ll_counts: &mut ArrayLL<u32>, d_counts: &mut ArrayD<u32>) {
-		ll_counts[self.ll_symbol as usize] += 1;
-		if 0 < self.dist {
-			d_counts[self.d_symbol as usize] += 1;
-		}
-	}
-}
-
-
-
-/// # Cheap Object Pool.
-///
-/// This is an extremely simple pop/push object pool.
-struct Pool {
-	inner: Mutex<Vec<LZ77Store>>,
-}
-
-impl Pool {
-	/// # New!
-	const fn new() -> Self {
-		Self { inner: Mutex::new(Vec::new()) }
-	}
-
-	/// # Get!
-	///
-	/// Return a store from the cache if possible, or create one if not.
-	fn get(&self) -> Swimmer {
-		let store = self.inner.lock()
-			.ok()
-			.and_then(|mut v| v.pop())
-			.unwrap_or_else(LZ77Store::_new);
-		Swimmer(ManuallyDrop::new(store))
-	}
-}
-
-
-
-#[repr(transparent)]
-/// # Object Pool Member.
-///
-/// This wrapper ensures stores fetched from the pool will be automatically
-/// returned when dropped (so they can be fetched again).
-///
-/// Note that no reset-type action is performed; it is left to the caller to
-/// handle that if and when necessary.
-pub(crate) struct Swimmer(ManuallyDrop<LZ77Store>);
-
-impl Deref for Swimmer {
-	type Target = LZ77Store;
-	#[inline]
-	fn deref(&self) -> &Self::Target { &self.0 }
-}
-
-impl DerefMut for Swimmer {
-	#[inline]
-	fn deref_mut(&mut self) -> &mut Self::Target { &mut self.0 }
-}
-
-impl Drop for Swimmer {
-	#[allow(unsafe_code)]
-	fn drop(&mut self) {
-		if let Ok(mut ptr) = POOL.inner.lock() {
-			ptr.push(unsafe { ManuallyDrop::take(&mut self.0) });
-		}
-	}
-}
-
-
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn t_histogram_sub_take() {
-		// In _histogram_sub(), we assume d_end <= ll_end; let's verify that
-		// pattern seems to hold…
-		for i in 0..=usize::from(u16::MAX) {
-			let ll_start = ZOPFLI_NUM_LL * i.wrapping_div(ZOPFLI_NUM_LL);
-			let d_start = ZOPFLI_NUM_D * i.wrapping_div(ZOPFLI_NUM_D);
-			let ll_end = ll_start + ZOPFLI_NUM_LL;
-			let d_end = d_start + ZOPFLI_NUM_D;
-
-			assert!(d_end <= ll_end, "Failed with {i}!");
-		}
 	}
 }
