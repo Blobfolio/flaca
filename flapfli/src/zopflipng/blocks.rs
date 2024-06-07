@@ -29,7 +29,6 @@ use super::{
 	},
 	TreeLd,
 	zopfli_error,
-	ZOPFLI_NUM_LL,
 	ZopfliError,
 	ZopfliOut,
 	ZopfliState,
@@ -38,7 +37,7 @@ use super::{
 
 
 /// # Length Symbol Extra Bits.
-const LENGTH_EXTRA_BITS: [u8; 29] = [
+const LENGTH_EXTRA_BITS: [u32; 29] = [
 	0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
 	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
 ];
@@ -415,6 +414,7 @@ fn add_lz77_block(
 	}
 }
 
+#[inline(never)]
 /// # Add LZ77 Block (Dynamic).
 ///
 /// This finishes the work started by `add_lz77_block`.
@@ -601,33 +601,37 @@ fn calculate_block_size_fixed(
 	lstart: usize,
 	lend: usize,
 ) -> u32 {
-	if tiny_block(lstart, lend) {
-		3 + calculate_block_symbol_size_small(
-			&FIXED_TREE_LL, &FIXED_TREE_D,
-			store, lstart, lend,
-		)
+	// The end symbol is always included.
+	let mut size = FIXED_TREE_LL[256] as u32;
+
+	// Loop the store if we have data to loop.
+	let slice = store.entries.as_slice();
+	if lstart < lend && lend <= slice.len() {
+		// Make sure the end does not exceed the store!
+		for e in &slice[lstart..lend] {
+			if e.dist <= 0 {
+				size += FIXED_TREE_LL[e.litlen as usize] as u32;
+			}
+			else {
+				size += LENGTH_SYMBOLS_BITS_VALUES[e.litlen as usize].1;
+				size += FIXED_TREE_LL[e.ll_symbol as usize] as u32;
+				size += u32::from(DISTANCE_BITS[e.d_symbol as usize]);
+				size += FIXED_TREE_D[e.d_symbol as usize] as u32;
+			}
+		}
 	}
-	else {
-		let (ll_counts, d_counts) = store.histogram(lstart, lend);
-		3 + calculate_block_symbol_size_given_counts(
-			&ll_counts, &d_counts,
-			&FIXED_TREE_LL, &FIXED_TREE_D,
-		)
-	}
+
+	size
 }
 
+#[inline(never)]
 /// # Calculate Block Size (Dynamic).
 fn calculate_block_size_dynamic(
 	store: &LZ77Store,
 	lstart: usize,
 	lend: usize,
 ) -> Result<u32, ZopfliError> {
-	let (_, size, _, _) = get_dynamic_lengths(
-		store,
-		lstart,
-		lend,
-	)?;
-	Ok(size)
+	get_dynamic_lengths(store, lstart, lend).map(|(_, size, _, _)| size)
 }
 
 /// # Calculate Best Block Size (in Bits).
@@ -653,66 +657,6 @@ fn calculate_block_size_auto_type(
 	// Otherwise choose the smaller of fixed and dynamic.
 	else if fixed_cost < dynamic_cost { Ok(fixed_cost) }
 	else { Ok(dynamic_cost) }
-}
-
-/// # Calculate Block Symbol Size w/ Histogram and Counts.
-fn calculate_block_symbol_size_given_counts(
-	ll_counts: &ArrayLL<u32>,
-	d_counts: &ArrayD<u32>,
-	ll_lengths: &ArrayLL<DeflateSym>,
-	d_lengths: &ArrayD<DeflateSym>,
-) -> u32 {
-	// The end symbol is always included.
-	let mut result = ll_lengths[256] as u32;
-
-	// The early lengths and counts.
-	for (ll, lc) in ll_lengths.iter().copied().zip(ll_counts).take(256) {
-		result += (ll as u32) * lc;
-	}
-
-	// The lengths and counts with extra bits.
-	for (i, lbit) in LENGTH_EXTRA_BITS.iter().copied().enumerate() {
-		let i = i + 257;
-		result += (ll_lengths[i] as u32 + u32::from(lbit)) * ll_counts[i];
-	}
-
-	// The distance lengths, counts, and extra bits.
-	for (i, dbit) in DISTANCE_BITS.iter().copied().enumerate().take(30) {
-		result += (d_lengths[i] as u32 + u32::from(dbit)) * d_counts[i];
-	}
-
-	result
-}
-
-/// # Calculate Small Block Symbol Size.
-fn calculate_block_symbol_size_small(
-	ll_lengths: &ArrayLL<DeflateSym>,
-	d_lengths: &ArrayD<DeflateSym>,
-	store: &LZ77Store,
-	lstart: usize,
-	lend: usize,
-) -> u32 {
-	// The end symbol is always included.
-	let mut result = ll_lengths[256] as u32;
-
-	// Loop the store if we have data to loop.
-	let slice = store.entries.as_slice();
-	if lstart < lend && lend <= slice.len() {
-		// Make sure the end does not exceed the store!
-		for e in &slice[lstart..lend] {
-			if e.dist <= 0 {
-				result += ll_lengths[e.litlen as usize] as u32;
-			}
-			else {
-				result += LENGTH_SYMBOLS_BITS_VALUES[e.litlen as usize].1;
-				result += ll_lengths[e.ll_symbol as usize] as u32;
-				result += u32::from(DISTANCE_BITS[e.d_symbol as usize]);
-				result += d_lengths[e.d_symbol as usize] as u32;
-			}
-		}
-	}
-
-	result
 }
 
 #[allow(clippy::similar_names)]
@@ -806,28 +750,129 @@ fn find_minimum_cost(
 	Ok((best_idx, last_best_cost))
 }
 
-/// # Calculate the Bit Lengths for Dynamic Block Symbols.
+/// # Try Huffman RLE Optimization.
 ///
-/// This chooses lengths that lead to the smallest tree/symbol encoding.
-/// (This is not necessarily the optimal Huffman lengths.)
+/// This method attempts to optimize the RLE parts of the block, saving the
+/// result if better, ignoring it if not.
 ///
-/// The total size in bits (minus the 3-bit header) is returned.
-fn get_dynamic_lengths(
-	store: &LZ77Store,
-	lstart: usize,
-	lend: usize,
-) -> Result<(u8, u32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
-	// Populate some counts.
+/// The size of the encoded tree and data (in bits) is returned, minus the
+/// 3-bit block header.
+fn get_dynamic_lengths(store: &LZ77Store, lstart: usize, lend: usize)
+-> Result<(u8, u32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
+	#[allow(unsafe_code)]
+	/// # Revisualize as Bytes.
+	///
+	/// The compiler might be able to optimize `[u8]` comparisons better than
+	/// `[DeflateSym]` ones, even though they're equivalent.
+	const fn bytes<const N: usize>(arr: &[DeflateSym; N]) -> &[u8; N] {
+		// Safety: DeflateSym has the same size and alignment as u8.
+		unsafe { &* arr.as_ptr().cast() }
+	}
+
+	/// # Calculate Dynamic Block Size.
+	fn data_size(
+		ll_counts: &ArrayLL<u32>,
+		d_counts: &ArrayD<u32>,
+		ll_lengths: &ArrayLL<DeflateSym>,
+		d_lengths: &ArrayD<DeflateSym>,
+	) -> u32 {
+		// The end symbol is always included.
+		let mut result = ll_lengths[256] as u32;
+
+		// The early lengths and counts.
+		for (ll, lc) in ll_lengths.iter().copied().zip(ll_counts).take(256) {
+			result += (ll as u32) * lc;
+		}
+
+		// The lengths and counts with extra bits.
+		for (i, lbit) in (257..257 + LENGTH_EXTRA_BITS.len()).zip(LENGTH_EXTRA_BITS) {
+			result += (ll_lengths[i] as u32 + lbit) * ll_counts[i];
+		}
+
+		// The distance lengths, counts, and extra bits.
+		for (i, dbit) in DISTANCE_BITS.iter().copied().enumerate().take(30) {
+			result += (d_lengths[i] as u32 + u32::from(dbit)) * d_counts[i];
+		}
+
+		result
+	}
+
+	/// # Dynamic Length-Limited Code Lengths.
+	///
+	/// Calculate, patch, and return the distance code length symbols.
+	fn d_llcl(d_counts: &ArrayD<u32>)
+	-> Result<ArrayD<DeflateSym>, ZopfliError> {
+		let mut d_lengths = d_counts.llcl()?;
+
+		// Buggy decoders require at least two non-zero distances. Let's ese
+		// what we've got!
+		let mut one: Option<bool> = None;
+		for (i, dist) in d_lengths.iter().copied().enumerate().take(30) {
+			// We have (at least) two non-zero entries; no patching needed!
+			if ! dist.is_zero() && one.replace(i == 0).is_some() { return Ok(d_lengths); }
+		}
+
+		match one {
+			// The first entry had a code, so patching the second gives us two.
+			Some(true) => { d_lengths[1] = DeflateSym::D01; },
+			// The first entry didn't have a code, so patching it gives us two.
+			Some(false) => { d_lengths[0] = DeflateSym::D01; },
+			// There were no codes, so we can just patch the first two.
+			None => {
+				d_lengths[0] = DeflateSym::D01;
+				d_lengths[1] = DeflateSym::D01;
+			},
+		}
+
+		Ok(d_lengths)
+	}
+
+	#[inline(never)]
+	fn optimized_counts<const N: usize>(counts: &[u32; N]) -> [u32; N] {
+		let mut counts2 = *counts;
+		optimize_huffman_for_rle(&mut counts2);
+		counts2
+	}
+
+	// Pull the counts from the store.
 	let (mut ll_counts, d_counts) = store.histogram(lstart, lend);
 	ll_counts[256] = 1;
 
-	try_optimize_huffman_for_rle(
-		store,
-		lstart,
-		lend,
-		&ll_counts,
-		&d_counts,
-	)
+	// Get the length-limited symbols.
+	let ll_lengths = ll_counts.llcl()?;
+	let d_lengths = d_llcl(&d_counts)?;
+
+	// Calculate the tree and sizes.
+	let (extra, treesize) = TreeLd::calculate_tree_size(&ll_lengths, &d_lengths)?;
+	let datasize = data_size(&ll_counts, &d_counts, &ll_lengths, &d_lengths);
+	let sum = treesize + datasize;
+
+	// Now copy and optimize the counts, then redo the LLCL. (Note: we only
+	// need to keep the latter.)
+	let ll_counts2 = optimized_counts(&ll_counts);
+	let d_counts2 = optimized_counts(&d_counts);
+	let ll_lengths2 = ll_counts2.llcl()?;
+	let d_lengths2 = d_llcl(&d_counts2)?;
+
+	// Assuming we got different symbols, let's find the optimized sizes.
+	if
+		bytes(&d_lengths) != bytes(&d_lengths2) ||
+		bytes(&ll_lengths) != bytes(&ll_lengths2)
+	{
+		let (extra2, treesize2) = TreeLd::calculate_tree_size(&ll_lengths2, &d_lengths2)?;
+
+		// Note: this really does require the *original* counts.
+		let datasize2 = data_size(&ll_counts, &d_counts, &ll_lengths2, &d_lengths2);
+		let sum2 = treesize2 + datasize2;
+
+		// Return if better!
+		if sum2 < sum {
+			return Ok((extra2, sum2, ll_lengths2, d_lengths2));
+		}
+	}
+
+	// It was fine as it was!
+	Ok((extra, sum, ll_lengths, d_lengths))
 }
 
 /// # Optimal LZ77.
@@ -922,17 +967,8 @@ fn lz77_optimal(
 	Ok(())
 }
 
-/// # Split Block Cost.
-///
-/// Return the sum of the estimated costs of the left and right sections of the
-/// data.
-fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<u32, ZopfliError> {
-	let a = calculate_block_size_auto_type(store, start, mid)?;
-	let b = calculate_block_size_auto_type(store, mid, end)?;
-	Ok(a + b)
-}
-
-#[allow(clippy::integer_division)]
+#[allow(clippy::inline_always, clippy::integer_division)]
+#[inline(always)]
 /// # Optimize Huffman RLE Compression.
 ///
 /// Change the population counts to improve Huffman tree compression,
@@ -992,33 +1028,14 @@ fn optimize_huffman_for_rle(mut counts: &mut [u32]) {
 	}
 }
 
-/// # Patch Buggy Distance Codes.
+/// # Split Block Cost.
 ///
-/// Ensure there are at least two distance codes to avoid issues with buggy
-/// decoders.
-fn patch_distance_codes(d_lengths: &mut ArrayD<DeflateSym>) {
-	let mut one: Option<bool> = None;
-	for (i, dist) in d_lengths.iter().copied().enumerate().take(30) {
-		// We have (at least) two non-zero entries; no patching needed!
-		if ! dist.is_zero() && one.replace(i == 0).is_some() { return; }
-	}
-
-	match one {
-		// The first entry had a code, so patching the second gives us two.
-		Some(true) => { d_lengths[1] = DeflateSym::D01; },
-		// The first entry didn't have a code, so patching it gives us two.
-		Some(false) => { d_lengths[0] = DeflateSym::D01; },
-		// There were no codes, so we can just patch the first two.
-		None => {
-			d_lengths[0] = DeflateSym::D01;
-			d_lengths[1] = DeflateSym::D01;
-		},
-	}
-}
-
-/// # Tiny Block?
-const fn tiny_block(lstart: usize, lend: usize) -> bool {
-	lstart + ZOPFLI_NUM_LL * 3 > lend
+/// Return the sum of the estimated costs of the left and right sections of the
+/// data.
+fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<u32, ZopfliError> {
+	let a = calculate_block_size_auto_type(store, start, mid)?;
+	let b = calculate_block_size_auto_type(store, mid, end)?;
+	Ok(a + b)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1068,77 +1085,6 @@ fn try_lz77_expensive_fixed(
 			.map(|()| true)
 	}
 	else { Ok(false) }
-}
-
-/// # Try Huffman RLE Optimization.
-///
-/// This method attempts to optimize the RLE parts of the block, saving the
-/// result if better, ignoring it if not.
-///
-/// The size of the encoded tree and data (in bits) is returned, minus the
-/// 3-bit block header.
-fn try_optimize_huffman_for_rle(
-	store: &LZ77Store,
-	lstart: usize,
-	lend: usize,
-	ll_counts: &ArrayLL<u32>,
-	d_counts: &ArrayD<u32>,
-) -> Result<(u8, u32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
-	/// # Length Limited Tree Size.
-	fn tree_size(ll_counts: &ArrayLL<u32>, d_counts: &ArrayD<u32>)
-	-> Result<(u8, u32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
-		// Limit lengths and fix up distance codes.
-		let ll_lengths = ll_counts.llcl()?;
-		let mut d_lengths = d_counts.llcl()?;
-		patch_distance_codes(&mut d_lengths);
-
-		// Calculate the tree size.
-		let (extra, size) = TreeLd::calculate_tree_size(&ll_lengths, &d_lengths)?;
-		Ok((extra, size, ll_lengths, d_lengths))
-	}
-
-	// Calculate the tree and data sizes as are.
-	let (extra, treesize, ll_lengths, d_lengths) = tree_size(ll_counts, d_counts)?;
-	let datasize =
-		if tiny_block(lstart, lend) {
-			calculate_block_symbol_size_small(
-				&ll_lengths, &d_lengths,
-				store, lstart, lend,
-			)
-		}
-		else {
-			calculate_block_symbol_size_given_counts(
-				ll_counts, d_counts,
-				&ll_lengths, &d_lengths,
-			)
-		};
-
-	// Copy the counts, optimize them, etc., etc.
-	let mut ll_counts2 = *ll_counts;
-	let mut d_counts2 = *d_counts;
-	optimize_huffman_for_rle(&mut ll_counts2);
-	optimize_huffman_for_rle(&mut d_counts2);
-
-	// Calculate the optimized tree and data sizes.
-	let (extra2, treesize2, ll_lengths2, d_lengths2) = tree_size(&ll_counts2, &d_counts2)?;
-	let datasize2 = if tiny_block(lstart, lend) {
-		calculate_block_symbol_size_small(
-			&ll_lengths2, &d_lengths2,
-			store, lstart, lend,
-		)
-	}
-	else {
-		calculate_block_symbol_size_given_counts(
-			ll_counts, d_counts, // Note: this actually needs the *original* counts.
-			&ll_lengths2, &d_lengths2,
-		)
-	};
-
-	// Return whichever's better.
-	let sum = treesize + datasize;
-	let sum2 = treesize2 + datasize2;
-	if sum <= sum2 { Ok((extra, sum, ll_lengths, d_lengths)) }
-	else { Ok((extra2, sum2, ll_lengths2, d_lengths2)) }
 }
 
 

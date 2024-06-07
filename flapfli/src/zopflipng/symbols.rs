@@ -182,24 +182,24 @@ mod tests {
 	#[test]
 	/// # Deflate Symbol Size and Alignment.
 	fn t_deflate_size_align() {
-		use super::super::{ZOPFLI_NUM_D, ZOPFLI_NUM_LL};
+		use super::super::{ArrayD, ArrayLL};
 
 		assert_eq!(
-			std::mem::size_of::<[u8; ZOPFLI_NUM_LL]>(),
-			std::mem::size_of::<[DeflateSym; ZOPFLI_NUM_LL]>(),
+			std::mem::size_of::<ArrayLL<u8>>(),
+			std::mem::size_of::<ArrayLL<DeflateSym>>(),
 		);
 		assert_eq!(
-			std::mem::align_of::<[u8; ZOPFLI_NUM_LL]>(),
-			std::mem::align_of::<[DeflateSym; ZOPFLI_NUM_LL]>(),
+			std::mem::align_of::<ArrayLL<u8>>(),
+			std::mem::align_of::<ArrayLL<DeflateSym>>(),
 		);
 
 		assert_eq!(
-			std::mem::size_of::<[u8; ZOPFLI_NUM_D]>(),
-			std::mem::size_of::<[DeflateSym; ZOPFLI_NUM_D]>(),
+			std::mem::size_of::<ArrayD<u8>>(),
+			std::mem::size_of::<ArrayD<DeflateSym>>(),
 		);
 		assert_eq!(
-			std::mem::align_of::<[u8; ZOPFLI_NUM_D]>(),
-			std::mem::align_of::<[DeflateSym; ZOPFLI_NUM_D]>(),
+			std::mem::align_of::<ArrayD<u8>>(),
+			std::mem::align_of::<ArrayD<DeflateSym>>(),
 		);
 	}
 
