@@ -12,7 +12,10 @@ use std::{
 		handle_alloc_error,
 		Layout,
 	},
-	cell::Cell,
+	cell::{
+		Cell,
+		RefCell,
+	},
 	cmp::Ordering,
 	num::NonZeroU32,
 	ptr::NonNull,
@@ -44,7 +47,12 @@ thread_local!(
 	/// The length-limited-code-length methods need to temporarily store
 	/// thousands of `Node` objects. Using a thread-local share for that cuts
 	/// way down on the number of allocations we'd otherwise have to make!
-	static SCRATCH: KatScratch = KatScratch::new()
+	static KATSCRATCH: KatScratch = KatScratch::new();
+
+	/// # Shared Tree Scratch.
+	///
+	/// Similar idea as above, but for tree sizing/writing.
+	static TREESCRATCH: RefCell<TreeScratch> = const { RefCell::new(TreeScratch::new()) };
 );
 
 
@@ -64,7 +72,7 @@ mod sealed {
 		/// # Crunch the Code Lengths.
 		///
 		/// This method serves as the closure for the caller's call to
-		/// `SCRATCH.with_borrow_mut()`.
+		/// `KATSCRATCH.with_borrow_mut()`.
 		fn _llcl<'a>(
 			frequencies: &'a [u32; N],
 			bitlengths: &'a [Cell<DeflateSym>; N],
@@ -158,7 +166,7 @@ macro_rules! llcl {
 			let bitcells = array_of_cells(&mut bitlengths);
 
 			// Crunch!
-			SCRATCH.with(|nodes| Self::_llcl(self, bitcells, nodes)).map(|()| bitlengths)
+			KATSCRATCH.with(|nodes| Self::_llcl(self, bitcells, nodes)).map(|()| bitlengths)
 		}
 	);
 }
@@ -244,280 +252,32 @@ impl LengthLimitedCodeLengths<15, ZOPFLI_NUM_LL> for ArrayLL<u32> {
 
 
 
-/// # Tree Lengths and Distances.
+/// # Calculate the Exact Tree Size (in Bits).
 ///
-/// This struct is used for calculating the optimal DEFLATE tree size and/or
-/// writing the tree data to the output.
-///
-/// Both involve doing (virtually) the same thing several times in a row, so
-/// the centralized storage helps reduce a little bit of that overhead.
-pub(crate) struct TreeLd<'a> {
-	ll_lengths: &'a ArrayLL<DeflateSym>,
-	d_lengths: &'a ArrayD<DeflateSym>,
-	hlit: usize,
-	hdist: usize,
+/// This returns the index (0..8) that produced the smallest size, along
+/// with that size.
+pub(crate) fn best_tree_size(
+	ll_lengths: &ArrayLL<DeflateSym>,
+	d_lengths: &ArrayD<DeflateSym>,
+) -> Result<(u8, u32), ZopfliError> {
+	TREESCRATCH.with_borrow_mut(#[inline(always)] |t|
+		t.with_symbols(ll_lengths, d_lengths).best_tree()
+	)
 }
 
-impl<'a> TreeLd<'a> {
-	/// # New.
-	const fn new(
-		ll_lengths: &'a ArrayLL<DeflateSym>,
-		d_lengths: &'a ArrayD<DeflateSym>,
-	) -> Self {
-		// Find the last non-zero length symbol, starting from 285. (The offset
-		// marks the boundary between literals and symbols; we'll use both in
-		// some places, and not in others.)
-		let mut hlit = 29;
-		while hlit > 0 && ll_lengths[256 + hlit].is_zero() { hlit -= 1; }
-
-		// Now the same for distance, starting at 29 proper.
-		let mut hdist = 29;
-		while hdist > 0 && d_lengths[hdist].is_zero() { hdist -= 1; }
-
-		Self {
-			ll_lengths,
-			d_lengths,
-			hlit,
-			hdist,
-		}
-	}
-
-	/// # Total Entries.
-	///
-	/// Return the combined length and distance lengths that can be
-	/// traversed.
-	const fn len(&self) -> usize { self.hlit + 257 + self.hdist + 1 }
-
-	#[allow(unsafe_code)]
-	/// # Symbol.
-	///
-	/// Crunching loops through the length and distance symbols as if they were
-	/// one contiguous set. This returns the appropriate symbol given the
-	/// index. (Length symbols are returned first; once we run out of those
-	/// distance symbols are returned instead.)
-	///
-	/// The compiler doesn't really understand what we're doing, hence the
-	/// unsafe. (Also of note, all raw `u32` are checked during `TreeLd::new`
-	/// to ensure they can be represented as `DeflateSym`.)
-	fn symbol(&self, idx: usize) -> DeflateSym {
-		let ll_len = self.hlit + 257;
-
-		// Fetch it from the lengths table.
-		if idx < ll_len {
-			unsafe { *self.ll_lengths.get_unchecked(idx) }
-		}
-		// Fetch it from the distance table.
-		else {
-			debug_assert!(idx - ll_len <= 29);
-			unsafe { *self.d_lengths.get_unchecked(idx - ll_len) }
-		}
-	}
-}
-
-impl<'a> TreeLd<'a> {
-	/// # Calculate the Exact Tree Size (in Bits).
-	///
-	/// This returns the index (0..8) that produced the smallest size, along
-	/// with that size.
-	pub(crate) fn calculate_tree_size(
-		ll_lengths: &'a ArrayLL<DeflateSym>,
-		d_lengths: &'a ArrayD<DeflateSym>,
-	) -> Result<(u8, u32), ZopfliError> {
-		let tree = Self::new(ll_lengths, d_lengths);
-		let mut best_size = u32::MAX;
-		let mut best_idx = 0;
-
-		// Try every combination.
-		for idx in 0..8 {
-			let size = tree.crunch(idx, None)?;
-			if size < best_size {
-				best_size = size;
-				best_idx = idx;
-			}
-		}
-
-		Ok((best_idx, best_size))
-	}
-
-	#[allow(clippy::cast_possible_truncation)]
-	/// # Encode Tree.
-	///
-	/// This finds the index that produces the smallest tree size, then writes
-	/// that table's bits to the output.
-	pub(crate) fn encode_tree(
-		ll_lengths: &'a ArrayLL<DeflateSym>,
-		d_lengths: &'a ArrayD<DeflateSym>,
-		extra: u8,
-		out: &mut ZopfliOut,
-	) -> Result<(), ZopfliError> {
-		let tree = Self::new(ll_lengths, d_lengths);
-		tree.crunch(extra, Some(out))?;
-		Ok(())
-	}
-
-	#[allow(clippy::cast_possible_truncation)]
-	/// # Crunch the Tree.
-	///
-	/// This crunches the data for the given index, either returning the size
-	/// or writing it to the output (and returning zero).
-	fn crunch(&self, extra: u8, out: Option<&mut ZopfliOut>) -> Result<u32, ZopfliError> {
-		// Are we using any of the special alphabet parts?
-		let use_16 = 0 != extra & 1;
-		let use_17 = 0 != extra & 2;
-		let use_18 = 0 != extra & 4;
-
-		// We need a structure to hold the counts for each symbol.
-		let mut cl_counts = [0_u32; 19];
-
-		// We also need a structure to hold the positional symbol/count data,
-		// but only if we're going to write the tree at the end. If not, this
-		// will remain unallocated (and hopefully have minimal runtime impact).
-		let mut rle = Vec::new();
-		if out.is_some() { rle.reserve(self.len()); }
-
-		// Run through all the length symbols, then the distance symbols, with
-		// the odd skip to keep us on our toes.
-		let mut i = 0;
-		while i < self.len() {
-			let mut count: u32 = 1;
-			let symbol = self.symbol(i);
-
-			// Peek ahead; we may be able to do more in one go.
-			if use_16 || (symbol.is_zero() && (use_17 || use_18)) {
-				let mut j = i + 1;
-				while j < self.len() && symbol == self.symbol(j) {
-					count += 1;
-					j += 1;
-				}
-
-				// Skip these indices, if any, on the next pass.
-				i += (count - 1) as usize;
-			}
-
-			// Repetitions of zeroes.
-			if symbol.is_zero() && count >= 3 {
-				if use_18 {
-					while count >= 11 {
-						let count2 = count.min(138);
-						if out.is_some() {
-							rle.push((DeflateSym::D18, count2 - 11));
-						}
-						cl_counts[DeflateSym::D18 as usize] += 1;
-						count -= count2;
-					}
-				}
-				if use_17 {
-					while count >= 3 {
-						let count2 = count.min(10);
-						if out.is_some() {
-							rle.push((DeflateSym::D17, count2 - 3));
-						}
-						cl_counts[DeflateSym::D17 as usize] += 1;
-						count -= count2;
-					}
-				}
-			}
-
-			// Repetitions of any symbol.
-			if use_16 && count >= 4 {
-				// The first one always counts.
-				count -= 1;
-				if out.is_some() { rle.push((symbol, 0)); }
-				cl_counts[symbol as usize] += 1;
-
-				while count >= 3 {
-					let count2 = count.min(6);
-					if out.is_some() {
-						rle.push((DeflateSym::D16, count2 - 3));
-					}
-					cl_counts[DeflateSym::D16 as usize] += 1;
-					count -= count2;
-				}
-			}
-
-			// Deal with non- or insufficiently-repeating values.
-			if out.is_some() {
-				for _ in 0..count { rle.push((symbol, 0)); }
-			}
-			cl_counts[symbol as usize] += count;
-			i += 1;
-		}
-
-		// Update the lengths and symbols given the counts.
-		let cl_lengths = cl_counts.llcl()?;
-
-		// Find the last non-zero count.
-		let mut hclen = 15;
-		while hclen > 0 && cl_counts[DeflateSym::TREE[hclen + 3] as usize] == 0 {
-			hclen -= 1;
-		}
-
-		#[allow(clippy::option_if_let_else)]
-		// Write the results?
-		if let Some(out) = out {
-			self.crunch_write(cl_lengths, out, hclen, rle)
-		}
-		// Just calculate the would-be size and return.
-		else {
-			Ok(Self::crunch_size(cl_lengths, cl_counts, hclen))
-		}
-	}
-
-	#[allow(clippy::cast_possible_truncation)]
-	fn crunch_size(
-		cl_lengths: [DeflateSym; 19],
-		cl_counts: [u32; 19],
-		hclen: usize,
-	) -> u32 {
-		let mut size = 14;
-		size += (hclen as u32 + 4) * 3;
-		for (a, b) in cl_lengths.iter().copied().zip(cl_counts.iter().copied()) {
-			size += (a as u32) * b;
-		}
-		size += cl_counts[16] * 2; // Extra bits.
-		size += cl_counts[17] * 3;
-		size +  cl_counts[18] * 7
-	}
-
-	#[allow(clippy::cast_possible_truncation)]
-	fn crunch_write(
-		&self,
-		cl_lengths: [DeflateSym; 19],
-		out: &mut ZopfliOut,
-		hclen: usize,
-		rle: Vec<(DeflateSym, u32)>,
-	) -> Result<u32, ZopfliError> {
-		// Convert the lengths to symbols.
-		let cl_symbols = <[u32; 19]>::llcl_symbols(&cl_lengths)?;
-
-		// Write the main lengths.
-		out.add_bits(self.hlit as u32, 5);
-		out.add_bits(self.hdist as u32, 5);
-		out.add_bits(hclen as u32, 4);
-
-		// Write each cl_length in the jumbled DEFLATE order.
-		for &o in &DeflateSym::TREE[..hclen + 4] {
-			out.add_bits(cl_lengths[o as usize] as u32, 3);
-		}
-
-		// Write each symbol in order of appearance along with its extra bits,
-		// if any.
-		for (a, b) in rle {
-			let symbol = cl_symbols[a as usize];
-			out.add_huffman_bits(symbol, cl_lengths[a as usize] as u32);
-
-			// Extra bits.
-			match a {
-				DeflateSym::D16 => { out.add_bits(b, 2); },
-				DeflateSym::D17 => { out.add_bits(b, 3); },
-				DeflateSym::D18 => { out.add_bits(b, 7); },
-				_ => {},
-			}
-		}
-
-		// We have to return a number, so why not zero?
-		Ok(0)
-	}
+/// # Encode Tree.
+///
+/// This finds the index that produces the smallest tree size, then writes
+/// that table's bits to the output.
+pub(crate) fn encode_tree(
+	ll_lengths: &ArrayLL<DeflateSym>,
+	d_lengths: &ArrayD<DeflateSym>,
+	extra: u8,
+	out: &mut ZopfliOut,
+) -> Result<(), ZopfliError> {
+	TREESCRATCH.with_borrow_mut(#[inline(always)] |t|
+		t.with_symbols(ll_lengths, d_lengths).write_tree(extra, out)
+	)
 }
 
 
@@ -841,6 +601,280 @@ impl Node {
 
 
 
+/// # Tree Scratch.
+///
+/// This holds a merged length-and-distance symbol set for tree sizing and
+/// writing purposes.
+///
+/// This isn't nearly as large as most of the other zopfli structures, but
+/// referenced frequently enough to justify storing it as a thread-local static
+/// that can be reused willynilly.
+struct TreeScratch {
+	symbols: [DeflateSym; Self::MAX],
+	hlit: usize,
+	hdist: usize,
+
+	// Note: this should really be an array with the same count as `symbols`,
+	// but the compiler doesn't seem to like that, so whatever.
+	rle: Vec<(DeflateSym, u32)>,
+}
+
+impl TreeScratch {
+	/// The maximum number of symbols.
+	const MAX: usize = 29 + 257 + 29 + 1;
+
+	/// # New.
+	const fn new() -> Self {
+		Self {
+			symbols: [DeflateSym::D00; Self::MAX],
+			hlit: 0,
+			hdist: 0,
+			rle: Vec::new(),
+		}
+	}
+
+	/// # Total Length.
+	///
+	/// Returning a slice would be more useful, but Rust's borrow checker
+	/// gets confused because we'll still need to write to RLE.
+	const fn len(&self) -> usize { self.hlit + 257 + self.hdist + 1 }
+
+	/// # Load Symbols (and Reset).
+	fn with_symbols(
+		&mut self,
+		ll_lengths: &ArrayLL<DeflateSym>,
+		d_lengths: &ArrayD<DeflateSym>
+	) -> &mut Self {
+		// Find the last non-zero length symbol, starting from 285. (The offset
+		// (256) marks the boundary between literals and symbols; we'll use
+		// both literals and symbols in some places, but only the latter in
+		// others.)
+		self.hlit = 29;
+		while self.hlit > 0 && ll_lengths[256 + self.hlit].is_zero() { self.hlit -= 1; }
+
+		// Now the same for distance, starting at 29 proper.
+		self.hdist = 29;
+		while self.hdist > 0 && d_lengths[self.hdist].is_zero() { self.hdist -= 1; }
+
+		// Copy both into place. Note that both hlit and hdist are inclusive,
+		// so we need to +1 both for exclusivity.
+		let ll_end = self.hlit + 257;
+		self.symbols[..ll_end].copy_from_slice(&ll_lengths[..ll_end]);
+		self.symbols[ll_end..=ll_end + self.hdist].copy_from_slice(&d_lengths[..=self.hdist]);
+
+		self
+	}
+}
+
+impl TreeScratch {
+	/// # Best Tree.
+	///
+	/// Crunch all special symbol combinations and return the "extra" key
+	/// (0..8) that achieved the smallest output, along with its size.
+	fn best_tree(&self) -> Result<(u8, u32), ZopfliError> {
+		let mut best_extra = 0;
+		let mut best_size = u32::MAX;
+
+		for extra in 0..8 {
+			let size = self.crunch_size(extra)?;
+			if size < best_size {
+				best_extra = extra;
+				best_size = size;
+			}
+		}
+
+		Ok((best_extra, best_size))
+	}
+
+	#[allow(clippy::cast_possible_truncation)]
+	/// # Calculate Tree Size.
+	fn crunch_size(&self, extra: u8) -> Result<u32, ZopfliError> {
+		let (use_16, use_17, use_18) = extra_bools(extra);
+
+		// Hold the counts.
+		let mut cl_counts = [0_u32; 19];
+
+		let mut i = 0;
+		let all = &self.symbols[..self.len().min(Self::MAX)];
+		while i < all.len() {
+			let mut count = 1_u32;
+			let symbol = all[i];
+
+			macro_rules! special {
+				($step:literal, $max:literal, $symbol:ident) => (
+					while count >= $step {
+						let count2 = if count < $max { count } else { $max };
+						cl_counts[DeflateSym::$symbol as usize] += 1;
+						count -= count2;
+					}
+				);
+			}
+
+			// Peek ahead to maybe save some iteration!
+			if use_16 || ((use_17 || use_18) && symbol.is_zero()) {
+				let mut j = i + 1;
+				while j < all.len() && symbol == all[j] {
+					count += 1;
+					j += 1;
+				}
+
+				// Skip these indices, if any, on subsequent passes.
+				i += (count - 1) as usize;
+			}
+
+			// Repetitions of zeroes.
+			if symbol.is_zero() && count >= 3 {
+				if use_18 {
+					special!(11, 138, D18);
+				}
+				if use_17 {
+					special!(3, 10, D17);
+				}
+			}
+
+			// Other symbol repetitions.
+			if use_16 && count >= 4 {
+				// Always count the first one as itself.
+				count -= 1;
+				cl_counts[symbol as usize] += 1;
+
+				special!(3, 6, D16);
+			}
+
+			// Count the current symbol and move on.
+			cl_counts[symbol as usize] += count;
+			i += 1;
+		}
+
+		// Update the lengths and symbols given the counts.
+		let cl_lengths = cl_counts.llcl()?;
+
+		// Find the last non-zero count.
+		let mut hclen = 15;
+		while hclen > 0 && cl_counts[DeflateSym::TREE[hclen + 3] as usize] == 0 {
+			hclen -= 1;
+		}
+
+		// We can finally calculate the size!
+		let mut size = 14;
+		size += (hclen as u32 + 4) * 3;
+		for (a, b) in cl_lengths.into_iter().zip(cl_counts.iter().copied()) {
+			size += (a as u32) * b;
+		}
+		size += cl_counts[16] * 2; // Extra bits.
+		size += cl_counts[17] * 3;
+		Ok(size +  cl_counts[18] * 7)
+	}
+}
+
+impl TreeScratch {
+	#[allow(clippy::cast_possible_truncation)]
+	/// # Write Tree.
+	fn write_tree(&mut self, extra: u8, out: &mut ZopfliOut) -> Result<(), ZopfliError> {
+		let (use_16, use_17, use_18) = extra_bools(extra);
+
+		// Hold the counts.
+		let mut cl_counts = [0_u32; 19];
+		self.rle.truncate(0);
+
+		let mut i = 0;
+		let all = &self.symbols[..self.len().min(Self::MAX)];
+		while i < all.len() {
+			let mut count = 1_u32;
+			let symbol = all[i];
+
+			macro_rules! special {
+				($step:literal, $max:literal, $symbol:ident) => (
+					while count >= $step {
+						let count2 = if count < $max { count } else { $max };
+						self.rle.push((DeflateSym::$symbol, count2 - $step));
+						cl_counts[DeflateSym::$symbol as usize] += 1;
+						count -= count2;
+					}
+				);
+			}
+
+			// Peek ahead to maybe save some iteration!
+			if use_16 || ((use_17 || use_18) && symbol.is_zero()) {
+				let mut j = i + 1;
+				while j < all.len() && symbol == all[j] {
+					count += 1;
+					j += 1;
+				}
+
+				// Skip these indices, if any, on subsequent passes.
+				i += (count - 1) as usize;
+			}
+
+			// Repetitions of zeroes.
+			if count >= 3 && symbol.is_zero() {
+				if use_18 {
+					special!(11, 138, D18);
+				}
+				if use_17 {
+					special!(3, 10, D17);
+				}
+			}
+
+			// Other symbol repetitions.
+			if use_16 && count >= 4 {
+				// Always count the first one as itself.
+				count -= 1;
+				self.rle.push((symbol, 0));
+				cl_counts[symbol as usize] += 1;
+
+				special!(3, 6, D16);
+			}
+
+			// Count the current symbol and move on.
+			for _ in 0..count { self.rle.push((symbol, 0)); }
+			cl_counts[symbol as usize] += count;
+			i += 1;
+		}
+
+		// Update the lengths and symbols given the counts.
+		let cl_lengths = cl_counts.llcl()?;
+
+		// Find the last non-zero count.
+		let mut hclen = 15;
+		while hclen > 0 && cl_counts[DeflateSym::TREE[hclen + 3] as usize] == 0 {
+			hclen -= 1;
+		}
+
+		// Convert the lengths to (different) symbols.
+		let cl_symbols = <[u32; 19]>::llcl_symbols(&cl_lengths)?;
+
+		// Write the main lengths.
+		out.add_bits(self.hlit as u32, 5);
+		out.add_bits(self.hdist as u32, 5);
+		out.add_bits(hclen as u32, 4);
+
+		// Write each cl_length in the jumbled DEFLATE order.
+		for &o in &DeflateSym::TREE[..hclen + 4] {
+			out.add_bits(cl_lengths[o as usize] as u32, 3);
+		}
+
+		// Write each symbol in order of appearance along with its extra bits,
+		// if any.
+		for (a, b) in self.rle.drain(..) {
+			let symbol = cl_symbols[a as usize];
+			out.add_huffman_bits(symbol, cl_lengths[a as usize] as u32);
+
+			// Extra bits.
+			match a {
+				DeflateSym::D16 => { out.add_bits(b, 2); },
+				DeflateSym::D17 => { out.add_bits(b, 3); },
+				DeflateSym::D18 => { out.add_bits(b, 7); },
+				_ => {},
+			}
+		}
+
+		Ok(())
+	}
+}
+
+
+
 #[allow(unsafe_code)]
 /// Array of Cells.
 ///
@@ -851,6 +885,13 @@ fn array_of_cells<T, const N: usize>(arr: &mut [T; N]) -> &[Cell<T>; N] {
 	let cells = Cell::from_mut(arr);
 	// Safety: `Cell<T>` has the same memory layout as `T`.
 	unsafe { &*(std::ptr::from_ref(cells).cast::<[Cell<T>; N]>()) }
+}
+
+/// # Extra Boolification.
+///
+/// Extra the use-16/17/18 bools (for tree business) from a given byte.
+const fn extra_bools(extra: u8) -> (bool, bool, bool) {
+	(0 != extra & 1, 0 != extra & 2, 0 != extra & 4)
 }
 
 /// # Boundary Package-Merge Step.

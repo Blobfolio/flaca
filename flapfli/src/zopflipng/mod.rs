@@ -37,8 +37,9 @@ use error::{
 };
 pub(crate) use hash::ZopfliState;
 use kat::{
+	best_tree_size,
+	encode_tree,
 	LengthLimitedCodeLengths,
-	TreeLd,
 };
 pub(crate) use lz77::LZ77Store;
 use super::{

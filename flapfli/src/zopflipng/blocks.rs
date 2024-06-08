@@ -13,9 +13,11 @@ use std::{
 use super::{
 	ArrayD,
 	ArrayLL,
+	best_tree_size,
 	DeflateSym,
 	DISTANCE_BITS,
 	DISTANCE_VALUES,
+	encode_tree,
 	FIXED_SYMBOLS_D,
 	FIXED_SYMBOLS_LL,
 	FIXED_TREE_D,
@@ -27,7 +29,6 @@ use super::{
 		RanState,
 		SymbolStats,
 	},
-	TreeLd,
 	zopfli_error,
 	ZopfliError,
 	ZopfliOut,
@@ -430,7 +431,7 @@ fn add_lz77_block_dynamic(
 		lstart,
 		lend,
 	)?;
-	TreeLd::encode_tree(&ll_lengths, &d_lengths, extra, out)?;
+	encode_tree(&ll_lengths, &d_lengths, extra, out)?;
 
 	// Now we need the symbols.
 	let ll_symbols = ArrayLL::<u32>::llcl_symbols(&ll_lengths)?;
@@ -852,7 +853,7 @@ fn get_dynamic_lengths(store: &LZ77Store, lstart: usize, lend: usize)
 	let d_lengths = d_llcl(&d_counts)?;
 
 	// Calculate the tree and sizes.
-	let (extra, treesize) = TreeLd::calculate_tree_size(&ll_lengths, &d_lengths)?;
+	let (extra, treesize) = best_tree_size(&ll_lengths, &d_lengths)?;
 	let datasize = data_size(&ll_counts, &d_counts, &ll_lengths, &d_lengths);
 	let sum = treesize + datasize;
 
@@ -868,7 +869,7 @@ fn get_dynamic_lengths(store: &LZ77Store, lstart: usize, lend: usize)
 		bytes(&d_lengths) != bytes(&d_lengths2) ||
 		bytes(&ll_lengths) != bytes(&ll_lengths2)
 	{
-		let (extra2, treesize2) = TreeLd::calculate_tree_size(&ll_lengths2, &d_lengths2)?;
+		let (extra2, treesize2) = best_tree_size(&ll_lengths2, &d_lengths2)?;
 
 		// Note: this really does require the *original* counts.
 		let datasize2 = data_size(&ll_counts, &d_counts, &ll_lengths2, &d_lengths2);
