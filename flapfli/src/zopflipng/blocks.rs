@@ -116,6 +116,39 @@ impl SplitPoints {
 	/// This sets the LZ77 split points according to convoluted cost
 	/// evaluations.
 	fn split_lz77(&mut self, store: &LZ77Store) -> Result<usize, ZopfliError> {
+		#[allow(clippy::similar_names)]
+		/// # Find Largest Splittable Block.
+		///
+		/// This finds the largest available block for splitting, evenly spreading the
+		/// load if a limited number of blocks are requested.
+		///
+		/// Returns `false` if no blocks are found.
+		fn find_largest(
+			lz77size: usize,
+			done: &HashSet<usize, NoHash>,
+			splitpoints: &[usize],
+			lstart: &mut usize,
+			lend: &mut usize,
+		) -> bool {
+			let mut best = 0;
+			for i in 0..=splitpoints.len() {
+				let start =
+					if i == 0 { 0 }
+					else { splitpoints[i - 1] };
+				let end =
+					if i < splitpoints.len() { splitpoints[i] }
+					else { lz77size - 1 };
+
+				// We found a match!
+				if best < end - start && ! done.contains(&start) {
+					*lstart = start;
+					*lend = end;
+					best = end - start;
+				}
+			}
+			MINIMUM_SPLIT_DISTANCE <= best
+		}
+
 		// This won't work on tiny files.
 		if store.len() < MINIMUM_SPLIT_DISTANCE { return Ok(0); }
 
@@ -151,7 +184,7 @@ impl SplitPoints {
 			// Look for a split and adjust the start/end accordingly. If we don't
 			// find one or the remaining distance is too small to continue, we're
 			// done!
-			if ! find_largest_splittable_block(
+			if ! find_largest(
 				store.len(),
 				&self.done,
 				&self.slice2[..len],
@@ -487,6 +520,55 @@ fn add_lz77_block_auto_type(
 	lend: usize,
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
+	#[allow(clippy::too_many_arguments)]
+	/// # (Maybe) Add LZ77 Expensive Fixed Block.
+	///
+	/// This runs the full suite of fixed-tree tests on the data and writes it to
+	/// the output if it is indeed better than the uncompressed/dynamic variants.
+	///
+	/// Returns `true` if data was written.
+	fn try_fixed(
+		store: &LZ77Store,
+		fixed_store: &mut LZ77Store,
+		state: &mut ZopfliState,
+		uncompressed_cost: u32,
+		dynamic_cost: u32,
+		arr: &[u8],
+		lstart: usize,
+		lend: usize,
+		last_block: bool,
+		out: &mut ZopfliOut,
+	) -> Result<bool, ZopfliError> {
+		let (instart, inend) = store.byte_range(lstart, lend)?;
+
+		// Run all the expensive fixed-cost checks.
+		state.init_lmc(inend - instart);
+
+		// Pull the hasher.
+		fixed_store.clear();
+		state.optimal_run(
+			arr.get(..inend).ok_or(zopfli_error!())?,
+			instart,
+			None,
+			fixed_store,
+		)?;
+
+		// Find the resulting cost.
+		let fixed_cost = calculate_block_size_fixed(
+			fixed_store,
+			0,
+			fixed_store.len(),
+		);
+
+		// If it is better than dynamic, and uncompressed isn't better than both
+		// fixed and dynamic, it's the best and worth writing!
+		if fixed_cost < dynamic_cost && (fixed_cost <= uncompressed_cost || dynamic_cost <= uncompressed_cost) {
+			add_lz77_block(BlockType::Fixed, last_block, fixed_store, arr, 0, fixed_store.len(), out)
+				.map(|()| true)
+		}
+		else { Ok(false) }
+	}
+
 	// If the block is empty, we can assume a fixed-tree layout.
 	if lstart >= lend {
 		out.add_bits(u32::from(last_block), 1);
@@ -504,7 +586,7 @@ fn add_lz77_block_auto_type(
 	// if the store is big or the dynamic cost estimate is unimpressive.
 	if
 		(store.len() < 1000 || fixed_cost * 10 <= dynamic_cost * 11) &&
-		try_lz77_expensive_fixed(
+		try_fixed(
 			store, fixed_store, state, uncompressed_cost, dynamic_cost,
 			arr, lstart, lend, last_block,
 			out,
@@ -658,39 +740,6 @@ fn calculate_block_size_auto_type(
 	// Otherwise choose the smaller of fixed and dynamic.
 	else if fixed_cost < dynamic_cost { Ok(fixed_cost) }
 	else { Ok(dynamic_cost) }
-}
-
-#[allow(clippy::similar_names)]
-/// # Find Largest Splittable Block.
-///
-/// This finds the largest available block for splitting, evenly spreading the
-/// load if a limited number of blocks are requested.
-///
-/// Returns `false` if no blocks are found.
-fn find_largest_splittable_block(
-	lz77size: usize,
-	done: &HashSet<usize, NoHash>,
-	splitpoints: &[usize],
-	lstart: &mut usize,
-	lend: &mut usize,
-) -> bool {
-	let mut best = 0;
-	for i in 0..=splitpoints.len() {
-		let start =
-			if i == 0 { 0 }
-			else { splitpoints[i - 1] };
-		let end =
-			if i < splitpoints.len() { splitpoints[i] }
-			else { lz77size - 1 };
-
-		// We found a match!
-		if best < end - start && ! done.contains(&start) {
-			*lstart = start;
-			*lend = end;
-			best = end - start;
-		}
-	}
-	MINIMUM_SPLIT_DISTANCE <= best
 }
 
 /// # Minimum Split Cost.
@@ -1036,55 +1085,6 @@ fn optimize_huffman_for_rle(mut counts: &mut [u32]) {
 			for c in &counts[from..] { c.set(v); }
 		}
 	}
-}
-
-#[allow(clippy::too_many_arguments)]
-/// # (Maybe) Add LZ77 Expensive Fixed Block.
-///
-/// This runs the full suite of fixed-tree tests on the data and writes it to
-/// the output if it is indeed better than the uncompressed/dynamic variants.
-///
-/// Returns `true` if data was written.
-fn try_lz77_expensive_fixed(
-	store: &LZ77Store,
-	fixed_store: &mut LZ77Store,
-	state: &mut ZopfliState,
-	uncompressed_cost: u32,
-	dynamic_cost: u32,
-	arr: &[u8],
-	lstart: usize,
-	lend: usize,
-	last_block: bool,
-	out: &mut ZopfliOut,
-) -> Result<bool, ZopfliError> {
-	let (instart, inend) = store.byte_range(lstart, lend)?;
-
-	// Run all the expensive fixed-cost checks.
-	state.init_lmc(inend - instart);
-
-	// Pull the hasher.
-	fixed_store.clear();
-	state.optimal_run(
-		arr.get(..inend).ok_or(zopfli_error!())?,
-		instart,
-		None,
-		fixed_store,
-	)?;
-
-	// Find the resulting cost.
-	let fixed_cost = calculate_block_size_fixed(
-		fixed_store,
-		0,
-		fixed_store.len(),
-	);
-
-	// If it is better than dynamic, and uncompressed isn't better than both
-	// fixed and dynamic, it's the best and worth writing!
-	if fixed_cost < dynamic_cost && (fixed_cost <= uncompressed_cost || dynamic_cost <= uncompressed_cost) {
-		add_lz77_block(BlockType::Fixed, last_block, fixed_store, arr, 0, fixed_store.len(), out)
-			.map(|()| true)
-	}
-	else { Ok(false) }
 }
 
 
