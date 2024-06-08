@@ -110,11 +110,11 @@ impl SymbolStats {
 	/// results in the corresponding symbols arrays.
 	pub(crate) fn crunch(&mut self) {
 		#[allow(clippy::cast_precision_loss)]
-		fn calculate_entropy<const S: usize>(count: &[u32; S], bitlengths: &mut [f64; S]) {
+		fn calculate_entropy<const N: usize>(count: &[u32; N], bitlengths: &mut [f64; N]) {
 			let sum = count.iter().sum::<u32>();
 
 			if sum == 0 {
-				let log2sum = (S as f64).log2();
+				let log2sum = (N as f64).log2();
 				bitlengths.fill(log2sum);
 			}
 			else {
@@ -159,10 +159,10 @@ impl SymbolStats {
 	/// This randomizes the stat frequencies to allow things to maybe turn out
 	/// different on subsequent squeeze passes.
 	pub(crate) fn randomize(&mut self, state: &mut RanState) {
-		fn randomize_freqs<const S: usize>(freqs: &mut [u32; S], state: &mut RanState) {
-			for i in 0..S {
+		fn randomize_freqs<const N: usize>(freqs: &mut [u32; N], state: &mut RanState) {
+			for i in 0..N {
 				if (state.randomize() >> 4) % 3 == 0 {
-					let index = state.randomize() as usize % S;
+					let index = state.randomize() as usize % N;
 					freqs[i] = freqs[index];
 				}
 			}

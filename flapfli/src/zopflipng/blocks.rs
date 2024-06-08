@@ -700,6 +700,15 @@ fn find_minimum_cost(
 	mut start: usize,
 	mut end: usize,
 ) -> Result<(usize, u32), ZopfliError> {
+	/// # Split Block Cost.
+	///
+	/// Sum the left and right halves of the range.
+	fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<u32, ZopfliError> {
+		let a = calculate_block_size_auto_type(store, start, mid)?;
+		let b = calculate_block_size_auto_type(store, mid, end)?;
+		Ok(a + b)
+	}
+
 	// Keep track of the original start/end points.
 	let split_start = start - 1;
 	let split_end = end;
@@ -1026,16 +1035,6 @@ fn optimize_huffman_for_rle(mut counts: &mut [u32]) {
 			for c in &counts[from..] { c.set(v); }
 		}
 	}
-}
-
-/// # Split Block Cost.
-///
-/// Return the sum of the estimated costs of the left and right sections of the
-/// data.
-fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<u32, ZopfliError> {
-	let a = calculate_block_size_auto_type(store, start, mid)?;
-	let b = calculate_block_size_auto_type(store, mid, end)?;
-	Ok(a + b)
 }
 
 #[allow(clippy::too_many_arguments)]

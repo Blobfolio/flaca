@@ -93,6 +93,12 @@ impl ZopfliState {
 		store: &mut LZ77Store,
 		cache: Option<usize>,
 	) -> Result<(), ZopfliError> {
+		/// # Distance-Based Length Score.
+		const fn get_length_score(length: LitLen, distance: u16) -> u16 {
+			if 1024 < distance { (length as u16).saturating_sub(1) }
+			else { length as u16 }
+		}
+
 		// Reset the hash.
 		self.hash.reset(arr, instart);
 
@@ -678,6 +684,12 @@ impl ZopfliHash {
 		limit: LitLen,
 		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
 	) -> Result<(u16, LitLen), ZopfliError> {
+		/// # Distance Given Positions.
+		const fn ppp_distance(p: usize, pp: usize) -> usize {
+			if p < pp { pp - p }
+			else { ZOPFLI_WINDOW_SIZE + pp - p }
+		}
+
 		// This is asserted by find() too, but it's a good reminder.
 		if arr.len() <= pos { return Err(zopfli_error!()); }
 		let right = &arr[pos..];
@@ -705,10 +717,7 @@ impl ZopfliHash {
 
 		// Even though the ultimate distance will be u16, this variable needs
 		// to be at least 32-bit to keep the math from overflowing.
-		let mut dist =
-			if p < pp { pp - p }
-			else { ZOPFLI_WINDOW_SIZE + pp - p };
-
+		let mut dist = ppp_distance(p, pp);
 		let mut hits = 0;
 		let same0 = self.same[hpos];
 		let same1 = limit.min_u16(same0);
@@ -792,9 +801,7 @@ impl ZopfliHash {
 			p = chain.idx_prev[p] as usize;
 
 			// Increase the distance accordingly.
-			dist +=
-				if p < pp { pp - p }
-				else { ZOPFLI_WINDOW_SIZE + pp - p };
+			dist += ppp_distance(p, pp);
 
 			// And increase the short-circuiting hits counter to prevent
 			// endless work.
@@ -884,15 +891,6 @@ impl ZopfliHashChain {
 }
 
 
-
-/// # Distance-Based Length Score.
-///
-/// This is a simplistic cost model for the "greedy" LZ77 pass that helps it
-/// make a slightly better choice between two options during lazy matching.
-const fn get_length_score(length: LitLen, distance: u16) -> u16 {
-	if 1024 < distance { (length as u16).saturating_sub(1) }
-	else { length as u16 }
-}
 
 /// # Minimum Cost Model.
 ///

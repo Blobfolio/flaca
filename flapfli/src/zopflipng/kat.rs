@@ -59,15 +59,15 @@ mod sealed {
 	/// This sealed trait provides the core LLCL-related functionality for the
 	/// three different count sizes implementing `LengthLimitedCodeLengths`,
 	/// keeping them from cluttering the public ABI.
-	pub trait LengthLimitedCodeLengthsSealed<const MAXBITS: usize, const SIZE: usize> {
+	pub trait LengthLimitedCodeLengthsSealed<const MAXBITS: usize, const N: usize> {
 		#[allow(unsafe_code)]
 		/// # Crunch the Code Lengths.
 		///
 		/// This method serves as the closure for the caller's call to
 		/// `SCRATCH.with_borrow_mut()`.
 		fn _llcl<'a>(
-			frequencies: &'a [u32; SIZE],
-			bitlengths: &'a [Cell<DeflateSym>; SIZE],
+			frequencies: &'a [u32; N],
+			bitlengths: &'a [Cell<DeflateSym>; N],
 			nodes: &KatScratch
 		) -> Result<(), ZopfliError> {
 			let leaves = nodes.leaves(frequencies, bitlengths);
@@ -137,10 +137,10 @@ mod sealed {
 ///
 /// This trait adds an `llcl` method to symbol count arrays that generates the
 /// appropriate deflate symbols (bitlengths).
-pub(crate) trait LengthLimitedCodeLengths<const MAXBITS: usize, const SIZE: usize>: sealed::LengthLimitedCodeLengthsSealed<MAXBITS, SIZE>
+pub(crate) trait LengthLimitedCodeLengths<const MAXBITS: usize, const N: usize>: sealed::LengthLimitedCodeLengthsSealed<MAXBITS, N>
 where Self: Sized {
-	fn llcl(&self) -> Result<[DeflateSym; SIZE], ZopfliError>;
-	fn llcl_symbols(lengths: &[DeflateSym; SIZE]) -> Result<Self, ZopfliError>;
+	fn llcl(&self) -> Result<[DeflateSym; N], ZopfliError>;
+	fn llcl_symbols(lengths: &[DeflateSym; N]) -> Result<Self, ZopfliError>;
 }
 
 impl sealed::LengthLimitedCodeLengthsSealed<7, 19> for [u32; 19] {}
@@ -608,17 +608,17 @@ impl KatScratch {
 	/// `Leaf` is `Copy` so there's nothing to drop, per se, but the overall
 	/// memory associated with the backing array will get deallocated as part
 	/// of `Self::drop`.
-	fn leaves<'a, const SIZE: usize>(
+	fn leaves<'a, const N: usize>(
 		&self,
-		frequencies: &'a [u32; SIZE],
-		bitlengths: &'a [Cell<DeflateSym>; SIZE],
+		frequencies: &'a [u32; N],
+		bitlengths: &'a [Cell<DeflateSym>; N],
 	) -> &[Leaf<'a>] {
 		let mut len = 0;
 		let ptr = self.leaves.cast::<Leaf<'_>>().as_ptr();
 		for (frequency, bitlength) in frequencies.iter().copied().zip(bitlengths) {
 			if let Some(frequency) = NonZeroU32::new(frequency) {
 				unsafe {
-					// Safety: the maximum SIZE is ZOPFLI_NUM_LL, so this will
+					// Safety: the maximum N is ZOPFLI_NUM_LL, so this will
 					// always be in range.
 					ptr.add(len).write(Leaf { frequency, bitlength });
 				}
@@ -847,10 +847,10 @@ impl Node {
 /// Revisualize a mutable array as an array of cells.
 ///
 /// TODO: use `Cell::as_array_of_cells` once stabilized.
-fn array_of_cells<T, const SIZE: usize>(arr: &mut [T; SIZE]) -> &[Cell<T>; SIZE] {
+fn array_of_cells<T, const N: usize>(arr: &mut [T; N]) -> &[Cell<T>; N] {
 	let cells = Cell::from_mut(arr);
 	// Safety: `Cell<T>` has the same memory layout as `T`.
-	unsafe { &*(std::ptr::from_ref(cells).cast::<[Cell<T>; SIZE]>()) }
+	unsafe { &*(std::ptr::from_ref(cells).cast::<[Cell<T>; N]>()) }
 }
 
 /// # Boundary Package-Merge Step.
