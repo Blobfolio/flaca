@@ -39,6 +39,9 @@ const NZ1: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1) };
 #[allow(unsafe_code)]
 const NZ2: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
 
+#[allow(unsafe_code)]
+const NZ14: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(14) };
+
 
 
 thread_local!(
@@ -259,8 +262,8 @@ impl LengthLimitedCodeLengths<15, ZOPFLI_NUM_LL> for ArrayLL<u32> {
 pub(crate) fn best_tree_size(
 	ll_lengths: &ArrayLL<DeflateSym>,
 	d_lengths: &ArrayD<DeflateSym>,
-) -> Result<(u8, u32), ZopfliError> {
-	TREESCRATCH.with_borrow_mut(#[inline(always)] |t|
+) -> Result<(u8, NonZeroU32), ZopfliError> {
+	TREESCRATCH.with_borrow_mut(|t|
 		t.with_symbols(ll_lengths, d_lengths).best_tree()
 	)
 }
@@ -275,7 +278,7 @@ pub(crate) fn encode_tree(
 	extra: u8,
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
-	TREESCRATCH.with_borrow_mut(#[inline(always)] |t|
+	TREESCRATCH.with_borrow_mut(|t|
 		t.with_symbols(ll_lengths, d_lengths).write_tree(extra, out)
 	)
 }
@@ -616,7 +619,7 @@ struct TreeScratch {
 
 	// Note: this should really be an array with the same count as `symbols`,
 	// but the compiler doesn't seem to like that, so whatever.
-	rle: Vec<(DeflateSym, u32)>,
+	rle: Vec<(DeflateSym, u16)>,
 }
 
 impl TreeScratch {
@@ -671,9 +674,9 @@ impl TreeScratch {
 	///
 	/// Crunch all special symbol combinations and return the "extra" key
 	/// (0..8) that achieved the smallest output, along with its size.
-	fn best_tree(&self) -> Result<(u8, u32), ZopfliError> {
+	fn best_tree(&self) -> Result<(u8, NonZeroU32), ZopfliError> {
 		let mut best_extra = 0;
-		let mut best_size = u32::MAX;
+		let mut best_size = NonZeroU32::MAX;
 
 		for extra in 0..8 {
 			let size = self.crunch_size(extra)?;
@@ -688,7 +691,7 @@ impl TreeScratch {
 
 	#[allow(clippy::cast_possible_truncation)]
 	/// # Calculate Tree Size.
-	fn crunch_size(&self, extra: u8) -> Result<u32, ZopfliError> {
+	fn crunch_size(&self, extra: u8) -> Result<NonZeroU32, ZopfliError> {
 		let (use_16, use_17, use_18) = extra_bools(extra);
 
 		// Hold the counts.
@@ -716,10 +719,8 @@ impl TreeScratch {
 				while j < all.len() && symbol == all[j] {
 					count += 1;
 					j += 1;
+					i += 1;
 				}
-
-				// Skip these indices, if any, on subsequent passes.
-				i += (count - 1) as usize;
 			}
 
 			// Repetitions of zeroes.
@@ -756,14 +757,14 @@ impl TreeScratch {
 		}
 
 		// We can finally calculate the size!
-		let mut size = 14;
-		size += (hclen as u32 + 4) * 3;
+		let mut size = (hclen as u32 + 4) * 3;
 		for (a, b) in cl_lengths.into_iter().zip(cl_counts.iter().copied()) {
 			size += (a as u32) * b;
 		}
 		size += cl_counts[16] * 2; // Extra bits.
 		size += cl_counts[17] * 3;
-		Ok(size +  cl_counts[18] * 7)
+		size += cl_counts[18] * 7;
+		Ok(NZ14.saturating_add(size))
 	}
 }
 
@@ -780,7 +781,7 @@ impl TreeScratch {
 		let mut i = 0;
 		let all = &self.symbols[..self.len().min(Self::MAX)];
 		while i < all.len() {
-			let mut count = 1_u32;
+			let mut count = 1_u16;
 			let symbol = all[i];
 
 			macro_rules! special {
@@ -800,10 +801,8 @@ impl TreeScratch {
 				while j < all.len() && symbol == all[j] {
 					count += 1;
 					j += 1;
+					i += 1;
 				}
-
-				// Skip these indices, if any, on subsequent passes.
-				i += (count - 1) as usize;
 			}
 
 			// Repetitions of zeroes.
@@ -828,7 +827,7 @@ impl TreeScratch {
 
 			// Count the current symbol and move on.
 			for _ in 0..count { self.rle.push((symbol, 0)); }
-			cl_counts[symbol as usize] += count;
+			cl_counts[symbol as usize] += u32::from(count);
 			i += 1;
 		}
 
@@ -862,9 +861,9 @@ impl TreeScratch {
 
 			// Extra bits.
 			match a {
-				DeflateSym::D16 => { out.add_bits(b, 2); },
-				DeflateSym::D17 => { out.add_bits(b, 3); },
-				DeflateSym::D18 => { out.add_bits(b, 7); },
+				DeflateSym::D16 => { out.add_bits(u32::from(b), 2); },
+				DeflateSym::D17 => { out.add_bits(u32::from(b), 3); },
+				DeflateSym::D18 => { out.add_bits(u32::from(b), 7); },
 				_ => {},
 			}
 		}

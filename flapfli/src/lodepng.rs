@@ -25,6 +25,7 @@ use std::{
 use super::{
 	deflate_part,
 	EncodedPNG,
+	reset_dynamic_length_cache,
 	SplitPoints,
 	ZopfliState,
 	ZOPFLI_MASTER_BLOCK_SIZE,
@@ -70,6 +71,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	};
 
 	// Compress in chunks, à la ZopfliDeflate.
+	reset_dynamic_length_cache();
 	let mut i: usize = 0;
 	while i < insize {
 		// Each pass needs to know if it is the last, and how much data to
@@ -112,8 +114,8 @@ pub(crate) extern "C" fn flaca_png_deflate(
 /// `crc32fast`.
 pub(crate) extern "C" fn lodepng_crc32(buf: *const c_uchar, len: usize) -> c_uint {
 	let mut h = crc32fast::Hasher::new();
-    h.update(unsafe { std::slice::from_raw_parts(buf, len) });
-    h.finalize()
+	h.update(unsafe { std::slice::from_raw_parts(buf, len) });
+	h.finalize()
 }
 
 
