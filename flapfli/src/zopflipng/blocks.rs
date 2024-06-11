@@ -201,7 +201,10 @@ impl SplitPoints {
 		state: &mut ZopfliState,
 	) -> Result<&[usize], ZopfliError> {
 		// Start by splitting uncompressed.
-		let limit = self.split_raw(arr, instart, state, store2)?.min(MAX_SPLIT_POINTS);
+		let limit = usize::min(
+			self.split_raw(arr, instart, state, store2)?,
+			MAX_SPLIT_POINTS,
+		);
 		store2.clear();
 
 		// Now some LZ77 funny business.
@@ -240,7 +243,10 @@ impl SplitPoints {
 			// Move slice2 over to slice1 so we can repopulate slice2.
 			self.slice1.copy_from_slice(self.slice2.as_slice());
 
-			let limit2 = self.split_lz77(store)?.min(MAX_SPLIT_POINTS);
+			let limit2 = usize::min(
+				self.split_lz77(store)?,
+				MAX_SPLIT_POINTS,
+			);
 			let mut cost2 = 0;
 			for i in 0..=limit2 {
 				let start = if i == 0 { 0 } else { self.slice2[i - 1] };
@@ -754,7 +760,7 @@ fn lz77_optimal(
 	// Repeat statistics with the cost model from the previous
 	// stat run.
 	let mut last_ran = -1;
-	for i in 0..numiterations.max(0) {
+	for i in 0..i32::max(numiterations, 0) {
 		// Reset the LZ77 store.
 		scratch_store.clear();
 

@@ -407,7 +407,7 @@ fn optimize_huffman_for_rle(mut counts: &mut [u32]) {
 			// Collapse the stride if it is as least four and contained
 			// something non-zero.
 			if sum != 0 && stride >= 4 {
-				let v = ((sum + stride / 2) / stride).max(1);
+				let v = u32::max((sum + stride / 2) / stride, 1);
 				// This condition just helps the compiler understand the range
 				// won't overflow; it can't, but it doesn't know that.
 				if let Some(from) = i.checked_sub(stride as usize) {
@@ -434,7 +434,7 @@ fn optimize_huffman_for_rle(mut counts: &mut [u32]) {
 
 	// Collapse the trailing stride, if any.
 	if sum != 0 && stride >= 4 {
-		let v = ((sum + stride / 2) / stride).max(1);
+		let v = u32::max((sum + stride / 2) / stride, 1);
 		// This condition just helps the compiler understand the range won't
 		// overflow; it can't, but it doesn't know that.
 		if let Some(from) = counts.len().checked_sub(stride as usize) {

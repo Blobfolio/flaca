@@ -160,7 +160,7 @@ impl ZopfliOut {
 
 			// (Re)allocate if size is a power of two, or empty.
 			if 0 == (size & size.wrapping_sub(1)) {
-				*self.out = flapfli_allocate(*self.out, (size * 2).max(1));
+				*self.out = flapfli_allocate(*self.out, usize::max(size * 2, 1));
 			}
 
 			(*self.out).add(size).write(value);
@@ -378,7 +378,7 @@ impl LodePNGState {
 			(false, false) => LodePNGColorType::LCT_GREY,
 			(false, true) => LodePNGColorType::LCT_GREY_ALPHA,
 		};
-		self.info_png.color.bitdepth = 8.min(stats.bits);
+		self.info_png.color.bitdepth = u32::min(8, stats.bits);
 
 		// Rekey if necessary.
 		if 0 == stats.alpha && 0 != stats.key {

@@ -89,13 +89,15 @@ mod sealed {
 
 			// Set up the lists.
 			let lists = nodes.lists(
-				MAXBITS.min(leaves.len() - 1),
+				usize::min(MAXBITS, leaves.len() - 1),
 				leaves[0].frequency,
 				leaves[1].frequency,
 			);
 			if lists.len() < 2 {
-				// Safety: we'll always have `MAXBITS.min(leaves.len() - 1)` lists, but
-				// the compiler might not realize that without inlining.
+				// Safety: `usize::min(MAXBITS, leaves.len() - 1)` (above) is
+				// how many lists we'll have, and since MAXBITS is at least
+				// seven and leaves.len() at least three, we'll always have at
+				// least two lists.
 				unsafe { core::hint::unreachable_unchecked(); }
 			}
 
@@ -698,7 +700,7 @@ impl TreeScratch {
 		let mut cl_counts = [0_u32; 19];
 
 		let mut i = 0;
-		let all = &self.symbols[..self.len().min(Self::MAX)];
+		let all = &self.symbols[..usize::min(self.len(), Self::MAX)];
 		while i < all.len() {
 			let mut count = 1_u32;
 			let symbol = all[i];
@@ -779,7 +781,7 @@ impl TreeScratch {
 		self.rle.truncate(0);
 
 		let mut i = 0;
-		let all = &self.symbols[..self.len().min(Self::MAX)];
+		let all = &self.symbols[..usize::min(self.len(), Self::MAX)];
 		while i < all.len() {
 			let mut count = 1_u16;
 			let symbol = all[i];
