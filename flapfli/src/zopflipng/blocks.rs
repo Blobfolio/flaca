@@ -537,12 +537,9 @@ fn calculate_block_size_fixed(store: &LZ77Store, lstart: usize, lend: usize) -> 
 	if lstart < lend && lend <= slice.len() {
 		// Make sure the end does not exceed the store!
 		for e in &slice[lstart..lend] {
-			if e.dist <= 0 {
-				size += FIXED_TREE_LL[e.litlen as usize] as u32;
-			}
-			else {
+			size += FIXED_TREE_LL[e.ll_symbol as usize] as u32;
+			if 0 < e.dist {
 				size += LENGTH_SYMBOLS_BITS_VALUES[e.litlen as usize].1;
-				size += FIXED_TREE_LL[e.ll_symbol as usize] as u32;
 				size += u32::from(DISTANCE_BITS[e.d_symbol as usize]);
 				size += FIXED_TREE_D[e.d_symbol as usize] as u32;
 			}

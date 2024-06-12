@@ -140,13 +140,8 @@ impl SymbolStats {
 	/// `ZopfliLZ77Store` store, then crunches the results.
 	pub(crate) fn load_store(&mut self, store: &LZ77Store) {
 		for e in &store.entries {
-			if e.dist <= 0 {
-				self.ll_counts[e.litlen as usize] += 1;
-			}
-			else {
-				self.ll_counts[e.ll_symbol as usize] += 1;
-				self.d_counts[e.d_symbol as usize] += 1;
-			}
+			self.ll_counts[e.ll_symbol as usize] += 1;
+			if 0 < e.dist { self.d_counts[e.d_symbol as usize] += 1; }
 		}
 
 		// Set the end symbol and crunch.
