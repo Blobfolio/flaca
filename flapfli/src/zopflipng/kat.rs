@@ -71,7 +71,6 @@ mod sealed {
 	/// three different count sizes implementing `LengthLimitedCodeLengths`,
 	/// keeping them from cluttering the public ABI.
 	pub trait LengthLimitedCodeLengthsSealed<const MAXBITS: usize, const N: usize> {
-		#[allow(unsafe_code)]
 		/// # Crunch the Code Lengths.
 		///
 		/// This method serves as the closure for the caller's call to
@@ -93,6 +92,7 @@ mod sealed {
 				leaves[0].frequency,
 				leaves[1].frequency,
 			);
+			#[allow(unsafe_code)]
 			if lists.len() < 2 {
 				// Safety: `usize::min(MAXBITS, leaves.len() - 1)` (above) is
 				// how many lists we'll have, and since MAXBITS is at least

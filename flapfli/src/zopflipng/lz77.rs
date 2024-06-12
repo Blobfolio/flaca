@@ -98,9 +98,7 @@ impl LZ77Store {
 
 		for e in self.entries.iter().take(lend).skip(lstart) {
 			ll_counts[e.ll_symbol as usize] += 1;
-			if 0 < e.dist {
-				d_counts[e.d_symbol as usize] += 1;
-			}
+			if 0 < e.dist { d_counts[e.d_symbol as usize] += 1; }
 		}
 
 		(ll_counts, d_counts)

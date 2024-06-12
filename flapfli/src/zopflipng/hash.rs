@@ -99,7 +99,8 @@ impl ZopfliState {
 			else { length as u16 }
 		}
 
-		// Reset the hash.
+		// Reset the store and hash.
+		store.clear();
 		self.hash.reset(arr, instart);
 
 		// We'll need a few more variables…
@@ -206,6 +207,16 @@ impl ZopfliState {
 		Ok(())
 	}
 
+	#[inline(never)]
+	/// # Optimal Run (No Inlining).
+	pub(crate) fn optimal_run_cold(
+		&mut self,
+		arr: &[u8],
+		instart: usize,
+		stats: Option<&SymbolStats>,
+		store: &mut LZ77Store,
+	) -> Result<(), ZopfliError> { self.optimal_run(arr, instart, stats, store) }
+
 	/// # Optimal Run.
 	///
 	/// This performs backward/forward squeeze passes on the data, optionally
@@ -220,7 +231,8 @@ impl ZopfliState {
 		stats: Option<&SymbolStats>,
 		store: &mut LZ77Store,
 	) -> Result<(), ZopfliError> {
-		// Reset the costs.
+		// Reset the store and costs.
+		store.clear();
 		let costs = self.squeeze.reset_costs();
 		if ! costs.is_empty() {
 			// Reset and warm the hash.
@@ -737,7 +749,7 @@ impl ZopfliHash {
 			// * (limit <= ZOPFLI_MAX_MATCH)
 			// * (same <= limit), so…
 			// * (pos + same <= arr.len()) too
-			if 0 < dist && dist <= pos {
+			if 0 != dist && dist <= pos {
 				// Safety: we (safely) sliced right to arr[pos..] earlier and
 				// verified it was non-empty, but the compiler will have
 				// forgotten that by now.
