@@ -345,7 +345,7 @@ where Range<T>: Iterator<Item=T> + ExactSizeIterator {
 
 			// Our SymbolIteration impl.
 			writeln!(f, "impl SymbolIteration for {} {{", self.name)?;
-			writeln!(f, "\tfn all() -> {}Iter {{", self.name)?;
+			writeln!(f, "\tfn all() -> impl ExactSizeIterator<Item=Self> {{")?;
 			writeln!(f, "\t\t{}Iter({})", self.name, self.rng.start)?;
 			writeln!(f, "\t}}")?;
 			writeln!(f, "}}")?;

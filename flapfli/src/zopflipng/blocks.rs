@@ -205,7 +205,7 @@ impl SplitPoints {
 	/// whichever best is better.
 	fn split_again(
 		&mut self,
-		store: &mut LZ77Store,
+		store: &LZ77Store,
 		limit1: usize,
 		cost1: u32,
 	) -> Result<&[usize], ZopfliError> {
