@@ -3,8 +3,10 @@
 */
 
 use std::{
+	fmt,
 	fs::File,
 	io::Write,
+	ops::Range,
 	path::{
 		Path,
 		PathBuf,
@@ -77,50 +79,17 @@ fn build_ffi() {
 fn build_symbols() {
 	use std::fmt::Write;
 
-	let mut out = r"#[repr(u8)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-/// # Whackadoodle Deflate Indices.
-pub(crate) enum DeflateSym {".to_owned();
-	for i in 0..19 {
-		write!(&mut out, "\n\tD{i:02} = {i}_u8,").unwrap();
-	}
-	out.push_str(r"
-}
+	let mut out = format!(
+		"{}{}{}{}",
+		NumEnum::new(0..19_u8, "Whackadoodle Deflate Indices.", "DeflateSym")
+			.with_debug()
+			.with_eq(),
+		NumEnum::new(0..32_u16, "Distance Symbols.", "Dsym"),
+		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq(),
+		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),
+	);
 
-#[allow(dead_code)]
-#[repr(u16)]
-#[derive(Clone, Copy)]
-/// # Distance Symbols.
-pub(crate) enum Dsym {");
-	for i in 0..32 {
-		write!(&mut out, "\n\tD{i:02} = {i}_u16,").unwrap();
-	}
-	out.push_str(r"
-}
-
-#[allow(dead_code)]
-#[repr(u16)]
-#[derive(Clone, Copy, Eq, PartialEq)]
-/// # Lit/Lengths.
-pub(crate) enum LitLen {");
-	for i in 0..259 {
-		write!(&mut out, "\n\tL{i:03} = {i}_u16,").unwrap();
-	}
-	out.push_str(r"
-}
-
-#[allow(dead_code)]
-#[repr(u16)]
-#[derive(Clone, Copy)]
-/// # Lit/Len Symbols.
-pub(crate) enum Lsym {");
-	for i in 0..=285 {
-		write!(&mut out, "\n\tL{i:03} = {i}_u16,").unwrap();
-	}
-	out.push_str("
-}
-
-/// # Distance Symbols by Distance
+	out.push_str(r"/// # Distance Symbols by Distance
 ///
 /// This table is kinda terrible, but the performance gains (versus calculating
 /// the symbols on-the-fly) are incredible, so whatever.
@@ -263,4 +232,79 @@ fn out_path(stub: &str) -> PathBuf {
 fn write(path: &Path, data: &[u8]) {
 	File::create(path).and_then(|mut f| f.write_all(data).and_then(|_| f.flush()))
 		.expect("Unable to write file.");
+}
+
+
+
+/// # Number Enum.
+///
+/// We have a lot of custom numeric types that cover a range of numbers; this
+/// struct ensures we generate their code consistently.
+struct NumEnum<T: Copy + fmt::Display>
+where Range<T>: Iterator<Item=T> + ExactSizeIterator {
+	rng: Range<T>,
+	title: &'static str,
+	name: &'static str,
+	flags: u8,
+}
+
+impl<T: Copy + fmt::Display> NumEnum<T>
+where Range<T>: Iterator<Item=T> + ExactSizeIterator {
+	const DERIVE_DEBUG: u8 = 0b0000_0001;
+	const DERIVE_EQ: u8 =    0b0000_0010;
+
+	/// # New Instance.
+	const fn new(rng: Range<T>, title: &'static str, name: &'static str) -> Self {
+		Self { rng, title, name, flags: 0 }
+	}
+
+	/// # With Derive `Debug`.
+	const fn with_debug(self) -> Self {
+		Self {
+			flags: self.flags | Self::DERIVE_DEBUG,
+			..self
+		}
+	}
+
+	/// # With Derive `Eq`/`PartialEq`.
+	const fn with_eq(self) -> Self {
+		Self {
+			flags: self.flags | Self::DERIVE_EQ,
+			..self
+		}
+	}
+}
+
+impl<T: Copy + fmt::Display> fmt::Display for NumEnum<T>
+where Range<T>: Iterator<Item=T> + ExactSizeIterator {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// Allow dead code.
+		writeln!(f, "#[allow(dead_code)]")?;
+
+		// Representation.
+		let kind = std::any::type_name::<T>();
+		writeln!(f, "#[repr({kind})]")?;
+
+		// Derives.
+		write!(f, "#[derive(Clone, Copy")?;
+		if Self::DERIVE_DEBUG == self.flags & Self::DERIVE_DEBUG { write!(f, ", Debug")?; }
+		if Self::DERIVE_EQ == self.flags & Self::DERIVE_EQ { write!(f, ", Eq, PartialEq")?; }
+		writeln!(f, ")]")?;
+
+		// Title.
+		writeln!(f, "/// # {}", self.title)?;
+
+		// Opening.
+		writeln!(f, "pub(crate) enum {} {{", self.name)?;
+
+		// Arms.
+		let width: usize = self.rng.end.to_string().len();
+		let prefix: String = self.name[..1].to_ascii_uppercase();
+		for i in self.rng.clone() {
+			writeln!(f, "\t{prefix}{i:0width$} = {i}_{kind},", width=width)?;
+		}
+
+		// Closing.
+		writeln!(f, "}}\n")
+	}
 }
