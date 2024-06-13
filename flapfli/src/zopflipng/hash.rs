@@ -526,7 +526,7 @@ impl ZopfliHash {
 			// need mutch calculation.
 			let symbol_cost = stats.map_or(
 				13.0,
-				|s| (s.ll_symbols[285] + s.d_symbols[0]),
+				|s| s.ll_symbols[285] + s.d_symbols[0],
 			);
 
 			// We'll need to read data from one portion of the slice and add it

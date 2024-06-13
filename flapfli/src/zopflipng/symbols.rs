@@ -103,15 +103,6 @@ impl DeflateSym {
 		Self::D02, Self::D14, Self::D01, Self::D15,
 	];
 
-	/// # Length-Limited Symbols.
-	///
-	/// This excludes the extra-bit symbols (16-18) and zero.
-	pub(crate) const LIMITED: [Self; 15] = [
-		Self::D01, Self::D02, Self::D03, Self::D04, Self::D05,
-		Self::D06, Self::D07, Self::D08, Self::D09, Self::D10,
-		Self::D11, Self::D12, Self::D13, Self::D14, Self::D15,
-	];
-
 	/// # Is Zero?
 	///
 	/// We check this a lot.

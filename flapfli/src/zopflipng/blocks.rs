@@ -370,8 +370,8 @@ fn add_lz77_block(
 		encode_tree(ll_lengths, d_lengths, extra, out)?;
 
 		// Now we need the symbols.
-		let ll_symbols = ArrayLL::<u32>::llcl_symbols(ll_lengths)?;
-		let d_symbols = ArrayD::<u32>::llcl_symbols(d_lengths)?;
+		let ll_symbols = ArrayLL::<u32>::llcl_symbols(ll_lengths);
+		let d_symbols = ArrayD::<u32>::llcl_symbols(d_lengths);
 
 		// Write all the data!
 		add_lz77_data(
@@ -740,11 +740,11 @@ mod test {
 	fn t_fixed_symbols() {
 		assert_eq!(
 			ArrayLL::<u32>::llcl_symbols(&FIXED_TREE_LL),
-			Ok(FIXED_SYMBOLS_LL),
+			FIXED_SYMBOLS_LL,
 		);
 		assert_eq!(
 			ArrayD::<u32>::llcl_symbols(&FIXED_TREE_D),
-			Ok(FIXED_SYMBOLS_D),
+			FIXED_SYMBOLS_D,
 		);
 	}
 

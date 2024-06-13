@@ -83,7 +83,8 @@ fn build_symbols() {
 		"{}{}{}{}{}",
 		NumEnum::new(0..19_u8, "Whackadoodle Deflate Indices.", "DeflateSym")
 			.with_debug()
-			.with_eq(),
+			.with_eq()
+			.with_iter(),
 		NumEnum::new(0..32_u16, "Distance Symbols.", "Dsym"),
 		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq(),
 		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),

@@ -17,13 +17,17 @@ use std::{
 		RefCell,
 	},
 	cmp::Ordering,
-	num::NonZeroU32,
+	num::{
+		NonZeroU32,
+		NonZeroUsize,
+	},
 	ptr::NonNull,
 };
 use super::{
 	ArrayD,
 	ArrayLL,
 	DeflateSym,
+	SymbolIteration,
 	zopfli_error,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
@@ -41,6 +45,9 @@ const NZ2: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
 
 #[allow(unsafe_code)]
 const NZ14: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(14) };
+
+/// # Zero-Filled Tree Counts.
+const ZEROED_COUNTS_TREE: [u32; 19] = [0; 19];
 
 
 
@@ -70,7 +77,9 @@ mod sealed {
 	/// This sealed trait provides the core LLCL-related functionality for the
 	/// three different count sizes implementing `LengthLimitedCodeLengths`,
 	/// keeping them from cluttering the public ABI.
-	pub trait LengthLimitedCodeLengthsSealed<const MAXBITS: usize, const N: usize> {
+	pub trait LengthLimitedCodeLengthsSealed<const N: usize> {
+		const MAXBITS: NonZeroUsize;
+
 		/// # Crunch the Code Lengths.
 		///
 		/// This method serves as the closure for the caller's call to
@@ -88,7 +97,7 @@ mod sealed {
 
 			// Set up the lists.
 			let lists = nodes.lists(
-				usize::min(MAXBITS, leaves.len() - 1),
+				usize::min(Self::MAXBITS.get(), leaves.len() - 1),
 				leaves[0].frequency,
 				leaves[1].frequency,
 			);
@@ -97,7 +106,7 @@ mod sealed {
 				// Safety: `usize::min(MAXBITS, leaves.len() - 1)` (above) is
 				// how many lists we'll have, and since MAXBITS is at least
 				// seven and leaves.len() at least three, we'll always have at
-				// least two lists.
+				// least two lists to work with.
 				unsafe { core::hint::unreachable_unchecked(); }
 			}
 
@@ -121,7 +130,7 @@ mod sealed {
 
 			// Write the changes!
 			let mut writer = leaves.iter().take(last_count.get() as usize).rev();
-			for value in DeflateSym::LIMITED.into_iter().take(MAXBITS) {
+			for value in DeflateSym::all().skip(1).take(Self::MAXBITS.get()) {
 				// Pull the next tail, if any.
 				if let Some(tail) = node.tail.copied() {
 					// Wait for a change in counts to write the values.
@@ -150,109 +159,87 @@ mod sealed {
 ///
 /// This trait adds an `llcl` method to symbol count arrays that generates the
 /// appropriate deflate symbols (bitlengths).
-pub(crate) trait LengthLimitedCodeLengths<const MAXBITS: usize, const N: usize>: sealed::LengthLimitedCodeLengthsSealed<MAXBITS, N>
+pub(crate) trait LengthLimitedCodeLengths<const N: usize>: sealed::LengthLimitedCodeLengthsSealed<N>
 where Self: Sized {
 	fn llcl(&self) -> Result<[DeflateSym; N], ZopfliError>;
-	fn llcl_symbols(lengths: &[DeflateSym; N]) -> Result<Self, ZopfliError>;
+	fn llcl_symbols(lengths: &[DeflateSym; N]) -> Self;
 }
 
-impl sealed::LengthLimitedCodeLengthsSealed<7, 19> for [u32; 19] {}
-impl sealed::LengthLimitedCodeLengthsSealed<15, ZOPFLI_NUM_D> for ArrayD<u32> {}
-impl sealed::LengthLimitedCodeLengthsSealed<15, ZOPFLI_NUM_LL> for ArrayLL<u32> {}
+impl sealed::LengthLimitedCodeLengthsSealed<19> for [u32; 19] {
+	#[allow(unsafe_code)]
+	const MAXBITS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(7) };
+}
+impl sealed::LengthLimitedCodeLengthsSealed<ZOPFLI_NUM_D> for ArrayD<u32> {
+	#[allow(unsafe_code)]
+	const MAXBITS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(15) };
+}
+impl sealed::LengthLimitedCodeLengthsSealed<ZOPFLI_NUM_LL> for ArrayLL<u32> {
+	#[allow(unsafe_code)]
+	const MAXBITS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(15) };
+}
 
 macro_rules! llcl {
-	($size:expr) => (
+	($maxbits:literal, $size:expr) => (
 		/// # Counts to Symbols.
 		fn llcl(&self) -> Result<[DeflateSym; $size], ZopfliError> {
 			use sealed::LengthLimitedCodeLengthsSealed;
 
 			// Start the bitlengths at zero.
-			let mut bitlengths = [DeflateSym::D00; $size];
+			let mut bitlengths = const { [DeflateSym::D00; $size] };
 			let bitcells = array_of_cells(&mut bitlengths);
 
 			// Crunch!
 			KATSCRATCH.with(|nodes| Self::_llcl(self, bitcells, nodes)).map(|()| bitlengths)
 		}
-	);
-}
 
-macro_rules! llcl_symbols {
-	($maxbits:literal, $size:expr) => (
+		#[inline]
 		/// # Symbols to Counts.
-		fn llcl_symbols(lengths: &[DeflateSym; $size]) -> Result<Self, ZopfliError> {
-			// Count up the codes by code length.
-			let mut counts: [u32; $maxbits] = [0; $maxbits];
+		fn llcl_symbols(lengths: &[DeflateSym; $size]) -> Self {
+			// The lengths should have previously been limited.
+			debug_assert!(lengths.iter().all(|&l| (l as usize) < $maxbits));
+
+			// Count up the codes by code length. (Note: the compiler doesn't
+			// understand the lengths have been limited to $maxbits. Of all the
+			// different ways to get it to elide bounds checks, overallocating
+			// scratch to 19 performs best.
+			let mut scratch = ZEROED_COUNTS_TREE;
 			for l in lengths.iter().copied() {
-				if (l as u8) < $maxbits { counts[l as usize] += 1; }
-				else { return Err(zopfli_error!()); }
+				scratch[l as usize] += 1;
 			}
 
-			// Find the numerical value of the smallest code for each code length.
-			counts[0] = 0;
+			// Find the numerical value of the smallest code for each code
+			// length (up to $maxbits).
 			let mut code = 0;
-			let mut next_code: [u32; $maxbits] = counts.map(|c| {
-				let old_code = code;
-				code = (code + c) << 1;
-				old_code
-			});
+			scratch[0] = 0;
+			for c in scratch.iter_mut().take($maxbits) {
+				let next = (code + *c) << 1;
+				*c = std::mem::replace(&mut code, next);
+			}
 
-			// Update the symbols accordingly.
-			let symbols: [u32; $size] = lengths.map(|l|
-				if (1..$maxbits).contains(&(l as u8)) {
-					let old_code = next_code[l as usize];
-					next_code[l as usize] += 1;
-					old_code
+			// Update the (non-zero) symbol counts accordingly.
+			let mut symbols = const { [0; $size] };
+			for (l, s) in lengths.iter().copied().zip(&mut symbols) {
+				if ! l.is_zero() {
+					*s = scratch[l as usize];
+					scratch[l as usize] += 1;
 				}
-				else { 0 }
-			);
-
-			Ok(symbols)
+			}
+			symbols
 		}
 	);
 }
 
 // Tree symbols have seven maxbits, while NUM_D and NUM_LL each have 15.
-impl LengthLimitedCodeLengths<7, 19> for [u32; 19] {
-	llcl!(19);
-	llcl_symbols!(8, 19);
+impl LengthLimitedCodeLengths<19> for [u32; 19] {
+	llcl!(8, 19);
 }
 
-impl LengthLimitedCodeLengths<15, ZOPFLI_NUM_D> for ArrayD<u32> {
-	llcl!(ZOPFLI_NUM_D);
-	llcl_symbols!(16, ZOPFLI_NUM_D);
+impl LengthLimitedCodeLengths<ZOPFLI_NUM_D> for ArrayD<u32> {
+	llcl!(16, ZOPFLI_NUM_D);
 }
 
-impl LengthLimitedCodeLengths<15, ZOPFLI_NUM_LL> for ArrayLL<u32> {
-	llcl!(ZOPFLI_NUM_LL);
-	/// # Symbols to Counts.
-	fn llcl_symbols(lengths: &ArrayLL<DeflateSym>) -> Result<Self, ZopfliError> {
-		// Count up the codes by code length.
-		let mut counts: [u32; 16] = [0; 16];
-		for l in lengths.iter().copied() {
-			if (l as u8) < 16 { counts[l as usize] += 1; }
-			else { return Err(zopfli_error!()); }
-		}
-
-		// Find the numerical value of the smallest code for each code length.
-		counts[0] = 0;
-		let mut code = 0;
-		let mut next_code: [u32; 16] = counts.map(|c| {
-			let old_code = code;
-			code = (code + c) << 1;
-			old_code
-		});
-
-		// Update the symbols accordingly.
-		let mut symbols = [0; ZOPFLI_NUM_LL];
-		for (s, l) in symbols.iter_mut().zip(lengths.iter().copied()) {
-			if (1..16).contains(&(l as u8)) {
-				*s = next_code[l as usize];
-				next_code[l as usize] += 1;
-			}
-		}
-
-		Ok(symbols)
-	}
+impl LengthLimitedCodeLengths<ZOPFLI_NUM_LL> for ArrayLL<u32> {
+	llcl!(16, ZOPFLI_NUM_LL);
 }
 
 
@@ -378,6 +365,12 @@ impl KatScratch {
 		frequencies: &'a [u32; N],
 		bitlengths: &'a [Cell<DeflateSym>; N],
 	) -> &[Leaf<'a>] {
+		const {
+			// Abort with a compilation error if for some reason we try to
+			// pass more leaves than we've got room for.
+			assert!(N <= ZOPFLI_NUM_LL);
+		}
+
 		let mut len = 0;
 		let ptr = self.leaves.cast::<Leaf<'_>>().as_ptr();
 		for (frequency, bitlength) in frequencies.iter().copied().zip(bitlengths) {
@@ -697,7 +690,7 @@ impl TreeScratch {
 		let (use_16, use_17, use_18) = extra_bools(extra);
 
 		// Hold the counts.
-		let mut cl_counts = [0_u32; 19];
+		let mut cl_counts = ZEROED_COUNTS_TREE;
 
 		let mut i = 0;
 		let all = &self.symbols[..usize::min(self.len(), Self::MAX)];
@@ -777,7 +770,7 @@ impl TreeScratch {
 		let (use_16, use_17, use_18) = extra_bools(extra);
 
 		// Hold the counts.
-		let mut cl_counts = [0_u32; 19];
+		let mut cl_counts = ZEROED_COUNTS_TREE;
 		self.rle.truncate(0);
 
 		let mut i = 0;
@@ -843,7 +836,7 @@ impl TreeScratch {
 		}
 
 		// Convert the lengths to (different) symbols.
-		let cl_symbols = <[u32; 19]>::llcl_symbols(&cl_lengths)?;
+		let cl_symbols = <[u32; 19]>::llcl_symbols(&cl_lengths);
 
 		// Write the main lengths.
 		out.add_bits(self.hlit as u32, 5);
