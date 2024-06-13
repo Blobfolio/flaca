@@ -4,6 +4,7 @@
 This module defines the LZ77 store structures.
 */
 
+use std::ops::Range;
 use super::{
 	ArrayD,
 	ArrayLL,
@@ -43,16 +44,12 @@ impl LZ77Store {
 	/// # Symbol Span Range.
 	///
 	/// Convert an LZ77 range to the start/end positions of the block.
-	pub(crate) fn byte_range(
-		&self,
-		lstart: usize,
-		lend: usize,
-	) -> Result<(usize, usize), ZopfliError> {
+	pub(crate) fn byte_range(&self, rng: Range<usize>) -> Result<Range<usize>, ZopfliError> {
 		let slice = self.entries.as_slice();
-		if lstart < lend && lend <= slice.len() {
-			let instart = slice[lstart].pos;
-			let e = slice[lend - 1];
-			Ok((instart, e.length() as usize + e.pos))
+		if rng.start < rng.end && rng.end <= slice.len() {
+			let instart = slice[rng.start].pos;
+			let e = slice[rng.end - 1];
+			Ok(instart..e.length() as usize + e.pos)
 		}
 		else { Err(zopfli_error!()) }
 	}
@@ -91,12 +88,12 @@ impl LZ77Store {
 	pub(crate) fn len(&self) -> usize { self.entries.len() }
 
 	/// # Histogram.
-	pub(crate) fn histogram(&self, lstart: usize, lend: usize)
+	pub(crate) fn histogram(&self, rng: Range<usize>)
 	-> (ArrayLL<u32>, ArrayD<u32>) {
 		let mut ll_counts = ZEROED_COUNTS_LL;
 		let mut d_counts = ZEROED_COUNTS_D;
 
-		for e in self.entries.iter().take(lend).skip(lstart) {
+		for e in self.entries.iter().take(rng.end).skip(rng.start) {
 			ll_counts[e.ll_symbol as usize] += 1;
 			if 0 < e.dist { d_counts[e.d_symbol as usize] += 1; }
 		}

@@ -20,6 +20,7 @@ use std::{
 		c_uint,
 	},
 	mem::MaybeUninit,
+	ops::Range,
 	sync::atomic::Ordering::Relaxed,
 };
 use super::{
@@ -206,14 +207,13 @@ impl ZopfliOut {
 		&mut self,
 		last_block: bool,
 		arr: &[u8],
-		start: usize,
-		end: usize,
+		rng: Range<usize>,
 	) {
-		let mut pos = start;
+		let mut pos = rng.start;
 		loop {
 			let mut blocksize = usize::from(u16::MAX);
-			if pos + blocksize > end { blocksize = end - pos; }
-			let really_last_block = pos + blocksize >= end;
+			if pos + blocksize > rng.end { blocksize = rng.end - pos; }
+			let really_last_block = pos + blocksize >= rng.end;
 			let nlen = ! blocksize;
 
 			self.add_bit(u8::from(last_block && really_last_block));

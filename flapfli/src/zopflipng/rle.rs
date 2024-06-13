@@ -13,6 +13,7 @@ use std::{
 		HashMap,
 	},
 	num::NonZeroU32,
+	ops::Range,
 };
 use super::{
 	ArrayD,
@@ -56,7 +57,7 @@ thread_local!(
 /// smallest output.
 ///
 /// Note: the returned size does not include the 3-bit block header.
-pub(super) fn get_dynamic_lengths(store: &LZ77Store, lstart: usize, lend: usize)
+pub(super) fn get_dynamic_lengths(store: &LZ77Store, rng: Range<usize>)
 -> Result<(u8, NonZeroU32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
 	fn fetch(
 		cache: &mut RleCache,
@@ -89,7 +90,7 @@ pub(super) fn get_dynamic_lengths(store: &LZ77Store, lstart: usize, lend: usize)
 	}
 
 	// Pull the counts from the store.
-	let (mut ll_counts, d_counts) = store.histogram(lstart, lend);
+	let (mut ll_counts, d_counts) = store.histogram(rng);
 	ll_counts[256] = 1;
 
 	// Do all the work!

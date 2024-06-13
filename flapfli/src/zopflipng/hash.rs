@@ -79,7 +79,6 @@ impl ZopfliState {
 }
 
 impl ZopfliState {
-	/// # Greedy Run.
 	#[allow(unsafe_code, clippy::cast_possible_truncation)]
 	/// # Greedy LZ77 Run.
 	///
