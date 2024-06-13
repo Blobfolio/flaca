@@ -21,7 +21,8 @@ use std::{
 use super::{
 	DISTANCE_BITS,
 	DISTANCE_SYMBOLS,
-	LENGTH_SYMBOLS_BITS_VALUES,
+	LENGTH_SYMBOLS,
+	LENGTH_SYMBOL_BITS,
 	LitLen,
 	LZ77Store,
 	MatchCache,
@@ -911,7 +912,7 @@ impl ZopfliHashChain {
 fn get_minimum_cost(stats: &SymbolStats) -> f64 {
 	// Find the minimum length cost.
 	let mut length_cost = f64::INFINITY;
-	for &(lsym, lbits, _) in LENGTH_SYMBOLS_BITS_VALUES.iter().skip(3) {
+	for (lsym, lbits) in LENGTH_SYMBOLS.into_iter().zip(LENGTH_SYMBOL_BITS.into_iter()).skip(3) {
 		let cost = f64::from(lbits) + stats.ll_symbols[lsym as usize];
 		if cost < length_cost { length_cost = cost; }
 	}
@@ -950,7 +951,7 @@ fn peek_ahead_fixed(
 
 				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
 				new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
-				new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k as usize].1);
+				new_cost += f64::from(LENGTH_SYMBOL_BITS[k as usize]);
 			}
 
 			// Update it if lower.
@@ -984,8 +985,8 @@ fn peek_ahead_stats(
 				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
 				new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
 				new_cost += stats.d_symbols[dsym as usize];
-				new_cost += stats.ll_symbols[LENGTH_SYMBOLS_BITS_VALUES[k as usize].0 as usize];
-				new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k as usize].1);
+				new_cost += stats.ll_symbols[LENGTH_SYMBOLS[k as usize] as usize];
+				new_cost += f64::from(LENGTH_SYMBOL_BITS[k as usize]);
 			}
 
 			// Update it if lower.
@@ -1007,11 +1008,8 @@ mod tests {
 	#[test]
 	fn t_fixed_cost() {
 		// Get the largest dbit and lbit values.
-		let d_max: u8 = DISTANCE_BITS.iter().copied().max().unwrap();
-		let l_max: u8 = LENGTH_SYMBOLS_BITS_VALUES.iter()
-			.map(|(_, a, _)| *a as u8)
-			.max()
-			.unwrap();
+		let d_max: u8 = DISTANCE_BITS.into_iter().max().unwrap();
+		let l_max: u8 = LENGTH_SYMBOL_BITS.into_iter().max().unwrap();
 
 		// Make sure their sum (along with the largest base) fits within
 		// the u8 space, since that's what we're using at runtime.
@@ -1025,7 +1023,7 @@ mod tests {
 		// instead test (114 < litlen) because the symbol isn't otherwise
 		// needed. This sanity check makes sure the two conditions are indeed
 		// interchangeable.
-		for (i, (sym, _, _)) in LENGTH_SYMBOLS_BITS_VALUES.iter().copied().enumerate() {
+		for (i, sym) in LENGTH_SYMBOLS.iter().copied().enumerate() {
 			assert_eq!(
 				279 < (sym as u16),
 				114 < i,

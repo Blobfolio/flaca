@@ -9,7 +9,7 @@ use super::{
 	ArrayLL,
 	DISTANCE_SYMBOLS,
 	Dsym,
-	LENGTH_SYMBOLS_BITS_VALUES,
+	LENGTH_SYMBOLS,
 	LitLen,
 	Lsym,
 	ZEROED_COUNTS_D,
@@ -131,7 +131,7 @@ impl LZ77StoreEntry {
 			let (ll_symbol, d_symbol) =
 				if dist <= 0 { (Lsym::from_litlen(litlen), Dsym::D00) }
 				else {(
-					LENGTH_SYMBOLS_BITS_VALUES[litlen as usize].0,
+					LENGTH_SYMBOLS[litlen as usize],
 					DISTANCE_SYMBOLS[dist as usize],
 				)};
 

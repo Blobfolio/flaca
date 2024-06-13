@@ -22,7 +22,8 @@ use super::{
 	FIXED_TREE_D,
 	FIXED_TREE_LL,
 	get_dynamic_lengths,
-	LENGTH_SYMBOLS_BITS_VALUES,
+	LENGTH_SYMBOL_BIT_VALUES,
+	LENGTH_SYMBOL_BITS,
 	LengthLimitedCodeLengths,
 	LZ77Store,
 	SplitPIdx,
@@ -498,8 +499,10 @@ fn add_lz77_data(
 		}
 		// Otherwise add the length symbol bits and distance stuff.
 		else {
-			let (_, bits, value) = LENGTH_SYMBOLS_BITS_VALUES[e.litlen as usize];
-			out.add_bits(u32::from(value), bits);
+			out.add_bits(
+				u32::from(LENGTH_SYMBOL_BIT_VALUES[e.litlen as usize]),
+				u32::from(LENGTH_SYMBOL_BITS[e.litlen as usize]),
+			);
 
 			// Now the distance bits.
 			if d_lengths[e.d_symbol as usize].is_zero() { return Err(zopfli_error!()); }
@@ -541,7 +544,7 @@ fn calculate_block_size_fixed(store: &LZ77Store, lstart: usize, lend: usize) -> 
 		for e in &slice[lstart..lend] {
 			size += FIXED_TREE_LL[e.ll_symbol as usize] as u32;
 			if 0 < e.dist {
-				size += LENGTH_SYMBOLS_BITS_VALUES[e.litlen as usize].1;
+				size += u32::from(LENGTH_SYMBOL_BITS[e.litlen as usize]);
 				size += u32::from(DISTANCE_BITS[e.d_symbol as usize]);
 				size += FIXED_TREE_D[e.d_symbol as usize] as u32;
 			}

@@ -20,46 +20,71 @@ pub(crate) const DISTANCE_BITS: [u8; 32] = [
 	7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 0, 0,
 ];
 
-/// # Length Symbols, Extra Bits, and Bit Values.
-///
-/// This contains all symbols, bits, and bit values indexed by their
-/// litlen.
-///
-/// This is thankfully much shorter than the distance tables!
-pub(crate) const LENGTH_SYMBOLS_BITS_VALUES: [(Lsym, u32, u16); 259] = [
-	(Lsym::L000, 0, 0), (Lsym::L000, 0, 0), (Lsym::L000, 0, 0),
-	(Lsym::L257, 0, 0), (Lsym::L258, 0, 0), (Lsym::L259, 0, 0), (Lsym::L260, 0, 0), (Lsym::L261, 0, 0), (Lsym::L262, 0, 0), (Lsym::L263, 0, 0), (Lsym::L264, 0, 0),
-	(Lsym::L265, 1, 0), (Lsym::L265, 1, 1), (Lsym::L266, 1, 0), (Lsym::L266, 1, 1), (Lsym::L267, 1, 0), (Lsym::L267, 1, 1), (Lsym::L268, 1, 0), (Lsym::L268, 1, 1),
-	(Lsym::L269, 2, 0), (Lsym::L269, 2, 1), (Lsym::L269, 2, 2), (Lsym::L269, 2, 3), (Lsym::L270, 2, 0), (Lsym::L270, 2, 1), (Lsym::L270, 2, 2), (Lsym::L270, 2, 3),
-	(Lsym::L271, 2, 0), (Lsym::L271, 2, 1), (Lsym::L271, 2, 2), (Lsym::L271, 2, 3), (Lsym::L272, 2, 0), (Lsym::L272, 2, 1), (Lsym::L272, 2, 2), (Lsym::L272, 2, 3),
-	(Lsym::L273, 3, 0), (Lsym::L273, 3, 1), (Lsym::L273, 3, 2), (Lsym::L273, 3, 3), (Lsym::L273, 3, 4), (Lsym::L273, 3, 5), (Lsym::L273, 3, 6), (Lsym::L273, 3, 7),
-	(Lsym::L274, 3, 0), (Lsym::L274, 3, 1), (Lsym::L274, 3, 2), (Lsym::L274, 3, 3), (Lsym::L274, 3, 4), (Lsym::L274, 3, 5), (Lsym::L274, 3, 6), (Lsym::L274, 3, 7),
-	(Lsym::L275, 3, 0), (Lsym::L275, 3, 1), (Lsym::L275, 3, 2), (Lsym::L275, 3, 3), (Lsym::L275, 3, 4), (Lsym::L275, 3, 5), (Lsym::L275, 3, 6), (Lsym::L275, 3, 7),
-	(Lsym::L276, 3, 0), (Lsym::L276, 3, 1), (Lsym::L276, 3, 2), (Lsym::L276, 3, 3), (Lsym::L276, 3, 4), (Lsym::L276, 3, 5), (Lsym::L276, 3, 6), (Lsym::L276, 3, 7),
-	(Lsym::L277, 4, 0), (Lsym::L277, 4, 1), (Lsym::L277, 4, 2), (Lsym::L277, 4, 3), (Lsym::L277, 4, 4), (Lsym::L277, 4, 5), (Lsym::L277, 4, 6), (Lsym::L277, 4, 7),
-	(Lsym::L277, 4, 8), (Lsym::L277, 4, 9), (Lsym::L277, 4, 10), (Lsym::L277, 4, 11), (Lsym::L277, 4, 12), (Lsym::L277, 4, 13), (Lsym::L277, 4, 14), (Lsym::L277, 4, 15),
-	(Lsym::L278, 4, 0), (Lsym::L278, 4, 1), (Lsym::L278, 4, 2), (Lsym::L278, 4, 3), (Lsym::L278, 4, 4), (Lsym::L278, 4, 5), (Lsym::L278, 4, 6), (Lsym::L278, 4, 7),
-	(Lsym::L278, 4, 8), (Lsym::L278, 4, 9), (Lsym::L278, 4, 10), (Lsym::L278, 4, 11), (Lsym::L278, 4, 12), (Lsym::L278, 4, 13), (Lsym::L278, 4, 14), (Lsym::L278, 4, 15),
-	(Lsym::L279, 4, 0), (Lsym::L279, 4, 1), (Lsym::L279, 4, 2), (Lsym::L279, 4, 3), (Lsym::L279, 4, 4), (Lsym::L279, 4, 5), (Lsym::L279, 4, 6), (Lsym::L279, 4, 7),
-	(Lsym::L279, 4, 8), (Lsym::L279, 4, 9), (Lsym::L279, 4, 10), (Lsym::L279, 4, 11), (Lsym::L279, 4, 12), (Lsym::L279, 4, 13), (Lsym::L279, 4, 14), (Lsym::L279, 4, 15),
-	(Lsym::L280, 4, 0), (Lsym::L280, 4, 1), (Lsym::L280, 4, 2), (Lsym::L280, 4, 3), (Lsym::L280, 4, 4), (Lsym::L280, 4, 5), (Lsym::L280, 4, 6), (Lsym::L280, 4, 7),
-	(Lsym::L280, 4, 8), (Lsym::L280, 4, 9), (Lsym::L280, 4, 10), (Lsym::L280, 4, 11), (Lsym::L280, 4, 12), (Lsym::L280, 4, 13), (Lsym::L280, 4, 14), (Lsym::L280, 4, 15),
-	(Lsym::L281, 5, 0), (Lsym::L281, 5, 1), (Lsym::L281, 5, 2), (Lsym::L281, 5, 3), (Lsym::L281, 5, 4), (Lsym::L281, 5, 5), (Lsym::L281, 5, 6), (Lsym::L281, 5, 7),
-	(Lsym::L281, 5, 8), (Lsym::L281, 5, 9), (Lsym::L281, 5, 10), (Lsym::L281, 5, 11), (Lsym::L281, 5, 12), (Lsym::L281, 5, 13), (Lsym::L281, 5, 14), (Lsym::L281, 5, 15),
-	(Lsym::L281, 5, 16), (Lsym::L281, 5, 17), (Lsym::L281, 5, 18), (Lsym::L281, 5, 19), (Lsym::L281, 5, 20), (Lsym::L281, 5, 21), (Lsym::L281, 5, 22), (Lsym::L281, 5, 23),
-	(Lsym::L281, 5, 24), (Lsym::L281, 5, 25), (Lsym::L281, 5, 26), (Lsym::L281, 5, 27), (Lsym::L281, 5, 28), (Lsym::L281, 5, 29), (Lsym::L281, 5, 30), (Lsym::L281, 5, 31),
-	(Lsym::L282, 5, 0), (Lsym::L282, 5, 1), (Lsym::L282, 5, 2), (Lsym::L282, 5, 3), (Lsym::L282, 5, 4), (Lsym::L282, 5, 5), (Lsym::L282, 5, 6), (Lsym::L282, 5, 7),
-	(Lsym::L282, 5, 8), (Lsym::L282, 5, 9), (Lsym::L282, 5, 10), (Lsym::L282, 5, 11), (Lsym::L282, 5, 12), (Lsym::L282, 5, 13), (Lsym::L282, 5, 14), (Lsym::L282, 5, 15),
-	(Lsym::L282, 5, 16), (Lsym::L282, 5, 17), (Lsym::L282, 5, 18), (Lsym::L282, 5, 19), (Lsym::L282, 5, 20), (Lsym::L282, 5, 21), (Lsym::L282, 5, 22), (Lsym::L282, 5, 23),
-	(Lsym::L282, 5, 24), (Lsym::L282, 5, 25), (Lsym::L282, 5, 26), (Lsym::L282, 5, 27), (Lsym::L282, 5, 28), (Lsym::L282, 5, 29), (Lsym::L282, 5, 30), (Lsym::L282, 5, 31),
-	(Lsym::L283, 5, 0), (Lsym::L283, 5, 1), (Lsym::L283, 5, 2), (Lsym::L283, 5, 3), (Lsym::L283, 5, 4), (Lsym::L283, 5, 5), (Lsym::L283, 5, 6), (Lsym::L283, 5, 7),
-	(Lsym::L283, 5, 8), (Lsym::L283, 5, 9), (Lsym::L283, 5, 10), (Lsym::L283, 5, 11), (Lsym::L283, 5, 12), (Lsym::L283, 5, 13), (Lsym::L283, 5, 14), (Lsym::L283, 5, 15),
-	(Lsym::L283, 5, 16), (Lsym::L283, 5, 17), (Lsym::L283, 5, 18), (Lsym::L283, 5, 19), (Lsym::L283, 5, 20), (Lsym::L283, 5, 21), (Lsym::L283, 5, 22), (Lsym::L283, 5, 23),
-	(Lsym::L283, 5, 24), (Lsym::L283, 5, 25), (Lsym::L283, 5, 26), (Lsym::L283, 5, 27), (Lsym::L283, 5, 28), (Lsym::L283, 5, 29), (Lsym::L283, 5, 30), (Lsym::L283, 5, 31),
-	(Lsym::L284, 5, 0), (Lsym::L284, 5, 1), (Lsym::L284, 5, 2), (Lsym::L284, 5, 3), (Lsym::L284, 5, 4), (Lsym::L284, 5, 5), (Lsym::L284, 5, 6), (Lsym::L284, 5, 7),
-	(Lsym::L284, 5, 8), (Lsym::L284, 5, 9), (Lsym::L284, 5, 10), (Lsym::L284, 5, 11), (Lsym::L284, 5, 12), (Lsym::L284, 5, 13), (Lsym::L284, 5, 14), (Lsym::L284, 5, 15),
-	(Lsym::L284, 5, 16), (Lsym::L284, 5, 17), (Lsym::L284, 5, 18), (Lsym::L284, 5, 19), (Lsym::L284, 5, 20), (Lsym::L284, 5, 21), (Lsym::L284, 5, 22), (Lsym::L284, 5, 23),
-	(Lsym::L284, 5, 24), (Lsym::L284, 5, 25), (Lsym::L284, 5, 26), (Lsym::L284, 5, 27), (Lsym::L284, 5, 28), (Lsym::L284, 5, 29), (Lsym::L284, 5, 30), (Lsym::L285, 0, 0),
+/// # Length Symbols by Litlen.
+pub(crate) const LENGTH_SYMBOLS: [Lsym; 259] = [
+	Lsym::L000, Lsym::L000, Lsym::L000,
+	Lsym::L257, Lsym::L258, Lsym::L259, Lsym::L260, Lsym::L261, Lsym::L262, Lsym::L263, Lsym::L264,
+	Lsym::L265, Lsym::L265, Lsym::L266, Lsym::L266, Lsym::L267, Lsym::L267, Lsym::L268, Lsym::L268,
+	Lsym::L269, Lsym::L269, Lsym::L269, Lsym::L269, Lsym::L270, Lsym::L270, Lsym::L270, Lsym::L270,
+	Lsym::L271, Lsym::L271, Lsym::L271, Lsym::L271, Lsym::L272, Lsym::L272, Lsym::L272, Lsym::L272,
+	Lsym::L273, Lsym::L273, Lsym::L273, Lsym::L273, Lsym::L273, Lsym::L273, Lsym::L273, Lsym::L273,
+	Lsym::L274, Lsym::L274, Lsym::L274, Lsym::L274, Lsym::L274, Lsym::L274, Lsym::L274, Lsym::L274,
+	Lsym::L275, Lsym::L275, Lsym::L275, Lsym::L275, Lsym::L275, Lsym::L275, Lsym::L275, Lsym::L275,
+	Lsym::L276, Lsym::L276, Lsym::L276, Lsym::L276, Lsym::L276, Lsym::L276, Lsym::L276, Lsym::L276,
+	Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277,
+	Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277, Lsym::L277,
+	Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278,
+	Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278, Lsym::L278,
+	Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279,
+	Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279, Lsym::L279,
+	Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280,
+	Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280, Lsym::L280,
+	Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281,
+	Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281,
+	Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281,
+	Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281, Lsym::L281,
+	Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282,
+	Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282,
+	Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282,
+	Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282, Lsym::L282,
+	Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283,
+	Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283,
+	Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283,
+	Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283, Lsym::L283,
+	Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284,
+	Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284,
+	Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284,
+	Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L285,
+];
+
+/// # Length Symbol Bits by Litlen.
+pub(crate) const LENGTH_SYMBOL_BITS: [u8; 259] = [
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
+	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 0,
+];
+
+/// # Length Symbol Bit Values by Litlen.
+pub(crate) const LENGTH_SYMBOL_BIT_VALUES: [u8; 259] = [
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1,
+	0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 4, 5, 6, 7,
+	0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7,
+	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7,
+	8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7,
+	8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+	24, 25, 26, 27, 28, 29, 30, 31, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+	16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 0, 1, 2, 3, 4, 5, 6, 7,
+	8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 0,
 ];
 
 /// # Symbol Iterator.
