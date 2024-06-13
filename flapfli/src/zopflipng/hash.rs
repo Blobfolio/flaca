@@ -79,7 +79,20 @@ impl ZopfliState {
 }
 
 impl ZopfliState {
+	#[inline(never)]
+	/// # Greedy LZ77 Run (No Inlining).
+	pub(crate) fn greedy_cold(
+		&mut self,
+		arr: &[u8],
+		instart: usize,
+		store: &mut LZ77Store,
+		cache: Option<usize>,
+	) -> Result<(), ZopfliError> {
+		self.greedy(arr, instart, store, cache)
+	}
+
 	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[inline]
 	/// # Greedy LZ77 Run.
 	///
 	/// This method looks for best-length matches in the data (and/or cache),
@@ -217,6 +230,7 @@ impl ZopfliState {
 		store: &mut LZ77Store,
 	) -> Result<(), ZopfliError> { self.optimal_run(arr, instart, stats, store) }
 
+	#[inline]
 	/// # Optimal Run.
 	///
 	/// This performs backward/forward squeeze passes on the data, optionally

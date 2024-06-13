@@ -94,7 +94,7 @@ impl SplitPoints {
 	-> Result<usize, ZopfliError> {
 		// Populate an LZ77 store from a greedy pass. This results in better
 		// block choices than a full optimal pass.
-		state.greedy(arr, instart, store, None)?;
+		state.greedy_cold(arr, instart, store, None)?;
 
 		// Do an LZ77 pass.
 		let len = self.split_lz77(store)?;
