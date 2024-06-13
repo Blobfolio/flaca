@@ -88,8 +88,8 @@ pub(crate) const LENGTH_SYMBOL_BIT_VALUES: [u8; 259] = [
 ];
 
 /// # Symbol Iterator.
-pub(crate) trait SymbolIteration: Sized {
-	fn all() -> impl ExactSizeIterator<Item=Self>;
+pub(crate) trait SymbolIteration<U: ExactSizeIterator<Item=Self>>: Sized {
+	fn all() -> U;
 }
 
 impl DeflateSym {
