@@ -25,6 +25,8 @@ use super::{
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LengthLimitedCodeLengths,
 	LZ77Store,
+	SplitPIdx,
+	SymbolIteration,
 	stats::{
 		RanState,
 		SymbolStats,
@@ -616,14 +618,14 @@ fn find_minimum_cost(store: &LZ77Store, mut start: usize, mut end: usize)
 	let mut p = [0_usize; MINIMUM_SPLIT_DISTANCE - 1];
 	let mut last_best_cost = NonZeroU32::MAX;
 	while MINIMUM_SPLIT_DISTANCE <= end - start {
-		let mut best_p_idx = 0;
-		for (i, pp) in p.iter_mut().enumerate() {
-			*pp = start + (i + 1) * ((end - start).wrapping_div(MINIMUM_SPLIT_DISTANCE));
+		let mut best_p_idx = SplitPIdx::S0;
+		for (i, pp) in SplitPIdx::all().zip(p.iter_mut()) {
+			*pp = start + (i as usize + 1) * ((end - start).wrapping_div(MINIMUM_SPLIT_DISTANCE));
 			let line_cost =
 				if best_idx == *pp { last_best_cost }
 				else { split_cost(store, split_start, *pp, split_end)? };
 
-			if i == 0 || line_cost < best_cost {
+			if (i as usize) == 0 || line_cost < best_cost {
 				best_cost = line_cost;
 				best_p_idx = i;
 			}
@@ -633,15 +635,9 @@ fn find_minimum_cost(store: &LZ77Store, mut start: usize, mut end: usize)
 		if last_best_cost < best_cost { break; }
 
 		// Nudge the boundaries and back again.
-		#[allow(unsafe_code)]
-		if p.len() <= best_p_idx {
-			// Safety: best_p_idx comes from p.iter.enumerate.
-			unsafe { core::hint::unreachable_unchecked(); }
-		}
-
-		best_idx = p[best_p_idx];
-		if 0 != best_p_idx { start = p[best_p_idx - 1]; }
-		if best_p_idx + 1 < p.len() { end = p[best_p_idx + 1]; }
+		best_idx = p[best_p_idx as usize];
+		if 0 != (best_p_idx as usize) { start = p[best_p_idx as usize - 1]; }
+		if (best_p_idx as usize) + 1 < p.len() { end = p[best_p_idx as usize + 1]; }
 
 		last_best_cost = best_cost;
 	}
@@ -748,5 +744,19 @@ mod test {
 			ArrayD::<u32>::llcl_symbols(&FIXED_TREE_D),
 			Ok(FIXED_SYMBOLS_D),
 		);
+	}
+
+	#[test]
+	fn t_split_idx() {
+		// Make sure we have the same number of split indices as we do splits.
+		assert_eq!(
+			SplitPIdx::all().len(),
+			MINIMUM_SPLIT_DISTANCE - 1,
+		);
+
+		// Might as well they iterate the same.
+		let split1: Vec<usize> = SplitPIdx::all().map(|s| s as usize).collect();
+		let split2: Vec<usize> = (0..MINIMUM_SPLIT_DISTANCE - 1).collect();
+		assert_eq!(split1, split2);
 	}
 }

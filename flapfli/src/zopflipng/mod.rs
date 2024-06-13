@@ -64,6 +64,8 @@ use symbols::{
 	LENGTH_SYMBOLS_BITS_VALUES,
 	LitLen,
 	Lsym,
+	SplitPIdx,
+	SymbolIteration,
 };
 
 

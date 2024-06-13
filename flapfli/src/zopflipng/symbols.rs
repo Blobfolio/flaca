@@ -62,6 +62,11 @@ pub(crate) const LENGTH_SYMBOLS_BITS_VALUES: [(Lsym, u32, u16); 259] = [
 	(Lsym::L284, 5, 24), (Lsym::L284, 5, 25), (Lsym::L284, 5, 26), (Lsym::L284, 5, 27), (Lsym::L284, 5, 28), (Lsym::L284, 5, 29), (Lsym::L284, 5, 30), (Lsym::L285, 0, 0),
 ];
 
+/// # Symbol Iterator.
+pub(crate) trait SymbolIteration: Sized {
+	fn all() -> impl ExactSizeIterator<Item=Self>;
+}
+
 impl DeflateSym {
 	/// # Jumbled Tree Symbols.
 	///
@@ -157,6 +162,7 @@ impl LitLen {
 		let n = (self as u16) + 1;
 		if n == 259 { Self::MAX_MATCH }
 		else {
+			// Safety: the max is 258; since self+1 is not 259, we're in range.
 			unsafe { std::mem::transmute::<u16, Self>(n) }
 		}
 	}

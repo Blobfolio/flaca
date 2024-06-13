@@ -80,13 +80,14 @@ fn build_symbols() {
 	use std::fmt::Write;
 
 	let mut out = format!(
-		"{}{}{}{}",
+		"{}{}{}{}{}",
 		NumEnum::new(0..19_u8, "Whackadoodle Deflate Indices.", "DeflateSym")
 			.with_debug()
 			.with_eq(),
 		NumEnum::new(0..32_u16, "Distance Symbols.", "Dsym"),
 		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq(),
 		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),
+		NumEnum::new(0..9_u16, "Block Splitting Indices.", "SplitPIdx").with_iter(),
 	);
 
 	out.push_str(r"/// # Distance Symbols by Distance
@@ -252,6 +253,7 @@ impl<T: Copy + fmt::Display> NumEnum<T>
 where Range<T>: Iterator<Item=T> + ExactSizeIterator {
 	const DERIVE_DEBUG: u8 = 0b0000_0001;
 	const DERIVE_EQ: u8 =    0b0000_0010;
+	const DERIVE_ITER: u8 =  0b0000_0100;
 
 	/// # New Instance.
 	const fn new(rng: Range<T>, title: &'static str, name: &'static str) -> Self {
@@ -270,6 +272,14 @@ where Range<T>: Iterator<Item=T> + ExactSizeIterator {
 	const fn with_eq(self) -> Self {
 		Self {
 			flags: self.flags | Self::DERIVE_EQ,
+			..self
+		}
+	}
+
+	/// # With Iterator.
+	const fn with_iter(self) -> Self {
+		Self {
+			flags: self.flags | Self::DERIVE_ITER,
 			..self
 		}
 	}
@@ -305,6 +315,42 @@ where Range<T>: Iterator<Item=T> + ExactSizeIterator {
 		}
 
 		// Closing.
-		writeln!(f, "}}\n")
+		writeln!(f, "}}\n")?;
+
+		// Symbol iterator?
+		if Self::DERIVE_ITER == self.flags & Self::DERIVE_ITER {
+			// The iterator struct.
+			writeln!(f, "/// # `{}` Iterator.", self.name)?;
+			writeln!(f, "pub(crate) struct {}Iter({kind});", self.name)?;
+
+			// The Iterator impl.
+			writeln!(f, "impl Iterator for {}Iter {{", self.name)?;
+			writeln!(f, "\ttype Item = {};", self.name)?;
+			writeln!(f, "\tfn next(&mut self) -> Option<Self::Item> {{")?;
+			writeln!(f, "\t\tlet old = self.0;")?;
+			writeln!(f, "\t\tif old < {} {{", self.rng.end)?;
+			writeln!(f, "\t\t\tself.0 += 1;")?;
+			writeln!(f, "\t\t\t#[allow(unsafe_code)]")?;
+			writeln!(f, "\t\t\tSome(unsafe {{ std::mem::transmute::<{kind}, {}>(old) }})", self.name)?;
+			writeln!(f, "\t\t}} else {{ None }}")?;
+			writeln!(f, "\t}}")?;
+			writeln!(f, "}}")?;
+
+			// The ExactSizeIterator impl.
+			writeln!(f, "impl ExactSizeIterator for {}Iter {{", self.name)?;
+			writeln!(f, "\tfn len(&self) -> usize {{")?;
+			writeln!(f, "\t\tusize::from({}_{kind}.saturating_sub(self.0))", self.rng.end)?;
+			writeln!(f, "\t}}")?;
+			writeln!(f, "}}")?;
+
+			// Our SymbolIteration impl.
+			writeln!(f, "impl SymbolIteration for {} {{", self.name)?;
+			writeln!(f, "\tfn all() -> {}Iter {{", self.name)?;
+			writeln!(f, "\t\t{}Iter({})", self.name, self.rng.start)?;
+			writeln!(f, "\t}}")?;
+			writeln!(f, "}}")?;
+		}
+
+		Ok(())
 	}
 }
