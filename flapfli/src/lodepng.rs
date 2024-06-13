@@ -6,20 +6,27 @@ This module contains FFI bindings to `lodepng.c`.
 
 #![allow(non_camel_case_types, non_upper_case_globals)]
 
-use crate::ZOPFLI_ITERATIONS;
+use crate::{
+	ffi::{
+		flapfli_allocate,
+		flapfli_free,
+	},
+	ZOPFLI_ITERATIONS,
+};
 use std::{
 	cell::RefCell,
 	ffi::{
 		c_uchar,
 		c_uint,
-		c_void,
 	},
 	mem::MaybeUninit,
+	ops::Range,
 	sync::atomic::Ordering::Relaxed,
 };
 use super::{
 	deflate_part,
-	ffi::EncodedImage,
+	EncodedPNG,
+	reset_dynamic_length_cache,
 	SplitPoints,
 	ZopfliState,
 	ZOPFLI_MASTER_BLOCK_SIZE,
@@ -65,6 +72,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	};
 
 	// Compress in chunks, à la ZopfliDeflate.
+	reset_dynamic_length_cache();
 	let mut i: usize = 0;
 	while i < insize {
 		// Each pass needs to know if it is the last, and how much data to
@@ -107,8 +115,8 @@ pub(crate) extern "C" fn flaca_png_deflate(
 /// `crc32fast`.
 pub(crate) extern "C" fn lodepng_crc32(buf: *const c_uchar, len: usize) -> c_uint {
 	let mut h = crc32fast::Hasher::new();
-    h.update(unsafe { std::slice::from_raw_parts(buf, len) });
-    h.finalize()
+	h.update(unsafe { std::slice::from_raw_parts(buf, len) });
+	h.finalize()
 }
 
 
@@ -124,10 +132,8 @@ pub(super) struct DecodedImage {
 impl Drop for DecodedImage {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		if ! self.buf.is_null() {
-			unsafe { libc::free(self.buf.cast::<c_void>()); }
-			self.buf = std::ptr::null_mut();
-		}
+		unsafe { flapfli_free(self.buf); }
+		self.buf = std::ptr::null_mut();
 	}
 }
 
@@ -146,52 +152,90 @@ pub(super) struct ZopfliOut {
 
 impl ZopfliOut {
 	#[allow(unsafe_code)]
-	/// # Add Bit.
-	pub(crate) fn add_bit(&mut self, bit: i32) {
+	#[inline(never)]
+	/// # Append Data.
+	fn append_data(&mut self, value: u8) {
 		unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliAddBit(bit, &mut self.bp, self.out, self.outsize);
+			// Dereferencing this size gets annoying quick! Haha.
+			let size = *self.outsize;
+
+			// (Re)allocate if size is a power of two, or empty.
+			if 0 == (size & size.wrapping_sub(1)) {
+				*self.out = flapfli_allocate(*self.out, usize::max(size * 2, 1));
+			}
+
+			(*self.out).add(size).write(value);
+			self.outsize.write(size + 1);
 		}
 	}
+}
 
+impl ZopfliOut {
 	#[allow(unsafe_code)]
+	/// # Add Bit.
+	pub(crate) fn add_bit(&mut self, bit: u8) {
+		if self.bp == 0 { self.append_data(0); }
+		unsafe {
+			// Safety: `append_data` writes a byte to `outsize` and then
+			// increments it, so to reach and modify that same position we need
+			// to use `outsize - 1` instead.
+			*(*self.out).add(*self.outsize - 1) |= bit << self.bp;
+		}
+		self.bp = self.bp.wrapping_add(1) & 7;
+	}
+
 	/// # Add Multiple Bits.
 	pub(crate) fn add_bits(&mut self, symbol: u32, length: u32) {
-		unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliAddBits(symbol, length,&mut self.bp, self.out, self.outsize);
+		for i in 0..length {
+			let bit = (symbol >> i) & 1;
+			self.add_bit(bit as u8);
 		}
 	}
 
-	#[allow(unsafe_code)]
 	/// # Add Huffman Bits.
 	pub(crate) fn add_huffman_bits(&mut self, symbol: u32, length: u32) {
-		unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliAddHuffmanBits(symbol, length,&mut self.bp, self.out, self.outsize);
+		// Same as add_bits, except we're doing it backwards.
+		for i in (0..length).rev() {
+			let bit = (symbol >> i) & 1;
+			self.add_bit(bit as u8);
 		}
 	}
 
-	#[allow(unsafe_code)]
+	#[allow(clippy::cast_possible_truncation)]
 	/// # Add Non-Compressed Block.
 	pub(crate) fn add_uncompressed_block(
 		&mut self,
 		last_block: bool,
-		arr: *const u8,
-		start: usize,
-		end: usize,
+		arr: &[u8],
+		rng: Range<usize>,
 	) {
-		unsafe {
-			// Safety: only unsafe because of FFI.
-			ZopfliAddNonCompressedBlock(
-				i32::from(last_block),
-				arr,
-				start,
-				end,
-				&mut self.bp,
-				self.out,
-				self.outsize,
-			);
+		let mut pos = rng.start;
+		loop {
+			let mut blocksize = usize::from(u16::MAX);
+			if pos + blocksize > rng.end { blocksize = rng.end - pos; }
+			let really_last_block = pos + blocksize >= rng.end;
+			let nlen = ! blocksize;
+
+			self.add_bit(u8::from(last_block && really_last_block));
+
+			// BTYPE 00.
+			self.add_bit(0);
+			self.add_bit(0);
+
+			// Ignore bits of input up to th enext byte boundary.
+			self.bp = 0;
+
+			self.append_data((blocksize % 256) as u8);
+			self.append_data((blocksize.wrapping_div(256) % 256) as u8);
+			self.append_data((nlen % 256) as u8);
+			self.append_data((nlen.wrapping_div(256) % 256) as u8);
+
+			for bit in arr.iter().copied().skip(pos).take(blocksize) {
+				self.append_data(bit);
+			}
+
+			if really_last_block { break; }
+			pos += blocksize;
 		}
 	}
 }
@@ -262,9 +306,9 @@ impl LodePNGState {
 
 	#[allow(unsafe_code)]
 	/// # Encode!
-	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedImage<usize>> {
+	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedPNG> {
 		// Safety: a non-zero response is an error.
-		let mut out = EncodedImage::default();
+		let mut out = EncodedPNG::new();
 		let res = unsafe {
 			lodepng_encode(&mut out.buf, &mut out.size, img.buf, img.w, img.h, self)
 		};
@@ -334,7 +378,7 @@ impl LodePNGState {
 			(false, false) => LodePNGColorType::LCT_GREY,
 			(false, true) => LodePNGColorType::LCT_GREY_ALPHA,
 		};
-		self.info_png.color.bitdepth = 8.min(stats.bits);
+		self.info_png.color.bitdepth = u32::min(8, stats.bits);
 
 		// Rekey if necessary.
 		if 0 == stats.alpha && 0 != stats.key {

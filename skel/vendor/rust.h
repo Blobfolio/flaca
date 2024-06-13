@@ -11,9 +11,7 @@ This exposes the header for our custom lodepng deflater (i.e. zopfli).
 #include "lodepng/lodepng.h"
 
 /*
-Custom Deflate Callback.
-
-This tells LodePNG to use Zopfli.
+Custom (Zopfli) Deflate Callback.
 */
 unsigned flaca_png_deflate(
 	unsigned char** out, size_t* outsize,

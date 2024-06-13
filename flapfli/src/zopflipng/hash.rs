@@ -21,9 +21,12 @@ use std::{
 use super::{
 	DISTANCE_BITS,
 	DISTANCE_SYMBOLS,
-	LENGTH_SYMBOLS_BITS_VALUES,
+	LENGTH_SYMBOLS,
+	LENGTH_SYMBOL_BITS,
+	LitLen,
 	LZ77Store,
 	MatchCache,
+	SqueezeCache,
 	stats::SymbolStats,
 	SUBLEN_LEN,
 	zopfli_error,
@@ -53,10 +56,9 @@ const MIN_COST_DISTANCES: [u8; 30] = [
 /// structure, cutting down on the number of references being bounced around
 /// from method to method.
 pub(crate) struct ZopfliState {
-	lmc: MatchCache,
+	lmc: Box<MatchCache>,
 	hash: Box<ZopfliHash>,
-	costs: Vec<(f32, u16)>,
-	paths: Vec<u16>,
+	squeeze: Box<SqueezeCache>,
 }
 
 impl ZopfliState {
@@ -65,23 +67,32 @@ impl ZopfliState {
 		Self {
 			lmc: MatchCache::new(),
 			hash: ZopfliHash::new(),
-			costs: Vec::new(),
-			paths: Vec::new(),
+			squeeze: SqueezeCache::new(),
 		}
 	}
 
 	/// # Initialize LMC/Squeeze Caches.
 	pub(crate) fn init_lmc(&mut self, blocksize: usize) {
 		self.lmc.init(blocksize);
-		if blocksize + 1 != self.costs.len() {
-			self.costs.resize(blocksize + 1, (f32::INFINITY, 0));
-		}
+		self.squeeze.resize_costs(blocksize + 1);
 	}
 }
 
 impl ZopfliState {
-	/// # Greedy Run.
+	#[inline(never)]
+	/// # Greedy LZ77 Run (No Inlining).
+	pub(crate) fn greedy_cold(
+		&mut self,
+		arr: &[u8],
+		instart: usize,
+		store: &mut LZ77Store,
+		cache: Option<usize>,
+	) -> Result<(), ZopfliError> {
+		self.greedy(arr, instart, store, cache)
+	}
+
 	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[inline]
 	/// # Greedy LZ77 Run.
 	///
 	/// This method looks for best-length matches in the data (and/or cache),
@@ -95,14 +106,21 @@ impl ZopfliState {
 		store: &mut LZ77Store,
 		cache: Option<usize>,
 	) -> Result<(), ZopfliError> {
-		// Reset the hash.
+		/// # Distance-Based Length Score.
+		const fn get_length_score(length: LitLen, distance: u16) -> u16 {
+			if 1024 < distance { (length as u16).saturating_sub(1) }
+			else { length as u16 }
+		}
+
+		// Reset the store and hash.
+		store.clear();
 		self.hash.reset(arr, instart);
 
 		// We'll need a few more variables…
 		let mut sublen = [0_u16; SUBLEN_LEN];
-		let mut length: u16 = 0;
+		let mut length = LitLen::L000;
 		let mut distance: u16 = 0;
-		let mut prev_length: u16 = 0;
+		let mut prev_length = LitLen::L000;
 		let mut prev_distance: u16 = 0;
 		let mut match_available = false;
 
@@ -116,7 +134,7 @@ impl ZopfliState {
 			self.hash.find(
 				arr,
 				i,
-				ZOPFLI_MAX_MATCH,
+				LitLen::MAX_MATCH,
 				&mut Some(&mut sublen),
 				&mut distance,
 				&mut length,
@@ -135,11 +153,11 @@ impl ZopfliState {
 					// is zero, we won't reach this part until we've iterated
 					// at least once.
 					store.push(
-						u16::from(unsafe { *arr.get_unchecked(i - 1) }),
+						LitLen::from_u8(unsafe { *arr.get_unchecked(i - 1) }),
 						0,
 						i - 1,
 					)?;
-					if length_score >= ZOPFLI_MIN_MATCH as u16 && length < ZOPFLI_MAX_MATCH as u16 {
+					if length_score >= ZOPFLI_MIN_MATCH as u16 && ! length.is_max() {
 						match_available = true;
 						prev_length = length;
 						prev_distance = distance;
@@ -158,7 +176,7 @@ impl ZopfliState {
 
 					// Update the hash up through length and increment the loop
 					// position accordingly.
-					for _ in 2..length {
+					for _ in 2..(length as u16) {
 						i += 1;
 						self.hash.update_hash(&arr[i..], i);
 					}
@@ -169,7 +187,7 @@ impl ZopfliState {
 			}
 			// No previous match, but maybe we can set it for the next
 			// iteration?
-			else if length_score >= ZOPFLI_MIN_MATCH as u16 && length < ZOPFLI_MAX_MATCH as u16 {
+			else if length_score >= ZOPFLI_MIN_MATCH as u16 && ! length.is_max() {
 				match_available = true;
 				prev_length = length;
 				prev_distance = distance;
@@ -185,13 +203,13 @@ impl ZopfliState {
 			// Write from the source with no distance and reset the length to
 			// one.
 			else {
-				length = 1;
-				store.push(u16::from(arr[i]), 0, i)?;
+				length = LitLen::L001;
+				store.push(LitLen::from_u8(arr[i]), 0, i)?;
 			}
 
 			// Update the hash up through length and increment the loop
 			// position accordingly.
-			for _ in 1..length {
+			for _ in 1..(length as u16) {
 				i += 1;
 				self.hash.update_hash(&arr[i..], i);
 			}
@@ -202,6 +220,17 @@ impl ZopfliState {
 		Ok(())
 	}
 
+	#[inline(never)]
+	/// # Optimal Run (No Inlining).
+	pub(crate) fn optimal_run_cold(
+		&mut self,
+		arr: &[u8],
+		instart: usize,
+		stats: Option<&SymbolStats>,
+		store: &mut LZ77Store,
+	) -> Result<(), ZopfliError> { self.optimal_run(arr, instart, stats, store) }
+
+	#[inline]
 	/// # Optimal Run.
 	///
 	/// This performs backward/forward squeeze passes on the data, optionally
@@ -216,22 +245,21 @@ impl ZopfliState {
 		stats: Option<&SymbolStats>,
 		store: &mut LZ77Store,
 	) -> Result<(), ZopfliError> {
-		let costs = self.costs.as_mut_slice();
+		// Reset the store and costs.
+		store.clear();
+		let costs = self.squeeze.reset_costs();
 		if ! costs.is_empty() {
-			// Reset the costs.
-			for c in costs.iter_mut().skip(1) { c.0 = f32::INFINITY; }
-			costs[0].0 = 0.0;
-
 			// Reset and warm the hash.
 			self.hash.reset(arr, instart);
 
 			// Forward and backward squeeze passes.
 			self.hash.get_best_lengths(arr, instart, stats, costs, &mut self.lmc)?;
-			if self.trace_paths()? {
+			let paths = self.squeeze.trace_paths()?;
+			if ! paths.is_empty() {
 				self.hash.follow_paths(
 					arr,
 					instart,
-					self.paths.as_slice(),
+					paths,
 					store,
 					&mut self.lmc,
 				)?;
@@ -239,40 +267,6 @@ impl ZopfliState {
 		}
 
 		Ok(())
-	}
-}
-
-impl ZopfliState {
-	#[allow(clippy::cast_possible_truncation)]
-	/// # Trace Paths.
-	///
-	/// Calculate the optimal path of lz77 lengths to use, from the
-	/// lengths gathered during the `ZopfliHash::get_best_lengths` pass.
-	fn trace_paths(&mut self) -> Result<bool, ZopfliError> {
-		let costs = self.costs.as_slice();
-		if costs.len() < 2 { Ok(false) }
-		else {
-			self.paths.truncate(0);
-			let mut idx = costs.len() - 1;
-			while 0 < idx && idx < costs.len() {
-				let v = usize::from(costs[idx].1);
-				if 1 <= v && v <= idx && v <= ZOPFLI_MAX_MATCH {
-					// Only lengths of at least ZOPFLI_MIN_MATCH count as lengths
-					// after tracing.
-					self.paths.push(
-						if v < ZOPFLI_MIN_MATCH { 1 } else { v as u16 }
-					);
-
-					// Move onto the next length or finish.
-					idx -= v;
-				}
-				else {
-					return Err(zopfli_error!());
-				}
-			}
-
-			Ok(true)
-		}
 	}
 }
 
@@ -406,6 +400,7 @@ impl ZopfliHash {
 
 impl ZopfliHash {
 	#[allow(clippy::cast_possible_truncation)]
+	#[inline(never)]
 	/// # Get Best Lengths.
 	///
 	/// This method performs the forward pass for "squeeze", calculating the
@@ -419,14 +414,14 @@ impl ZopfliHash {
 		arr: &[u8],
 		instart: usize,
 		stats: Option<&SymbolStats>,
-		costs: &mut [(f32, u16)],
+		costs: &mut [(f32, LitLen)],
 		lmc: &mut MatchCache,
 	) -> Result<(), ZopfliError> {
 		// Costs and lengths are resized prior to this point; they should be
 		// one larger than the data of interest (and equal to each other).
 		debug_assert!(costs.len() == arr.len() - instart + 1);
 
-		let mut length = 0_u16;
+		let mut length = LitLen::L000;
 		let mut distance = 0_u16;
 		let mut sublen = [0_u16; SUBLEN_LEN];
 
@@ -448,7 +443,7 @@ impl ZopfliHash {
 			self.find(
 				arr,
 				i,
-				ZOPFLI_MAX_MATCH,
+				LitLen::MAX_MATCH,
 				&mut Some(&mut sublen),
 				&mut distance,
 				&mut length,
@@ -474,15 +469,15 @@ impl ZopfliHash {
 			// Update it if lower.
 			if new_cost < f64::from(costs[j + 1].0) {
 				costs[j + 1].0 = new_cost as f32;
-				costs[j + 1].1 = 1;
+				costs[j + 1].1 = LitLen::L001;
 			}
 
 			// If a long match was found, peek forward to recalculate those
 			// costs, at least the ones who could benefit from the expense of
 			// all that effort.
-			let limit = usize::from(length).min(costs.len().saturating_sub(j + 1));
-			if (ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH).contains(&limit) {
-				let sublen2 = &sublen[ZOPFLI_MIN_MATCH..=limit];
+			let limit = length.min_usize(costs.len().saturating_sub(j + 1));
+			if limit.is_matchable() {
+				let sublen2 = &sublen[ZOPFLI_MIN_MATCH..=limit as usize];
 				let costs2 = &mut costs[j + ZOPFLI_MIN_MATCH..];
 				if let Some(s) = stats {
 					peek_ahead_stats(cost_j, min_cost, sublen2, costs2, s);
@@ -496,8 +491,8 @@ impl ZopfliHash {
 			i += 1;
 		}
 
-		// The final cost should in a reasonable range.
-		debug_assert!((0.0..1E30).contains(&costs[costs.len() - 1].0));
+		// All costs should have been updated…
+		debug_assert!(costs.iter().all(|(cost, _)| (0.0..1E30).contains(cost)));
 		Ok(())
 	}
 
@@ -516,7 +511,7 @@ impl ZopfliHash {
 		mut pos: usize,
 		stats: Option<&SymbolStats>,
 		arr: &[u8],
-		costs: &mut [(f32, u16)],
+		costs: &mut [(f32, LitLen)],
 	) -> bool {
 		if
 			// We have more than ZOPFLI_MAX_MATCH entries behind us, and twice
@@ -546,7 +541,7 @@ impl ZopfliHash {
 			while let Some([a, _rest @ .., z]) = iter.next() {
 				z.set((
 					(f64::from(a.get().0) + symbol_cost) as f32,
-					ZOPFLI_MAX_MATCH as u16,
+					LitLen::MAX_MATCH,
 				));
 				pos += 1;
 				self.update_hash(&arr[pos..], pos);
@@ -571,7 +566,7 @@ impl ZopfliHash {
 		&mut self,
 		arr: &[u8],
 		instart: usize,
-		paths: &[u16],
+		paths: &[LitLen],
 		store: &mut LZ77Store,
 		lmc: &mut MatchCache,
 	) -> Result<(), ZopfliError> {
@@ -583,20 +578,20 @@ impl ZopfliHash {
 
 		// Hash the path symbols.
 		let mut i = instart;
-		for &length in paths.iter().rev() {
+		for length in paths.iter().copied() {
 			self.update_hash(&arr[i..], i);
 
-			// Add to output.
-			if length >= ZOPFLI_MIN_MATCH as u16 {
+			// Follow the matches!
+			if length.is_matchable() {
 				// Get the distance by recalculating the longest match, and
 				// make sure the length matches afterwards (as that's easy to
 				// screw up!).
-				let mut test_length = 0;
+				let mut test_length = LitLen::L000;
 				let mut dist = 0;
 				self.find(
 					arr,
 					i,
-					usize::from(length),
+					length,
 					&mut None,
 					&mut dist,
 					&mut test_length,
@@ -605,7 +600,7 @@ impl ZopfliHash {
 				)?;
 
 				// Make sure we were able to find what we were expecting.
-				if test_length != length && test_length > 2 {
+				if test_length != length && test_length.is_matchable() {
 					return Err(zopfli_error!());
 				}
 
@@ -613,14 +608,14 @@ impl ZopfliHash {
 				store.push(length, dist, i)?;
 
 				// Hash the rest of the match.
-				for _ in 1..usize::from(length) {
+				for _ in 1..(length as u16) {
 					i += 1;
 					self.update_hash(&arr[i..], i);
 				}
 			}
-			// Add it to the store.
+			// It isn't matchable; add it directly to the store.
 			else {
-				store.push(u16::from(arr[i]), 0, i)?;
+				store.push(LitLen::from_u8(arr[i]), 0, i)?;
 			}
 
 			i += 1;
@@ -644,10 +639,10 @@ impl ZopfliHash {
 		&self,
 		arr: &[u8],
 		pos: usize,
-		mut limit: usize,
+		mut limit: LitLen,
 		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
 		distance: &mut u16,
-		length: &mut u16,
+		length: &mut LitLen,
 		lmc: &mut MatchCache,
 		cache: Option<usize>,
 	) -> Result<(), ZopfliError> {
@@ -660,32 +655,28 @@ impl ZopfliHash {
 				distance,
 				length,
 			)? {
-				if pos + usize::from(*length) <= arr.len() { return Ok(()); }
+				if pos + (*length as usize) <= arr.len() { return Ok(()); }
 				return Err(zopfli_error!());
 			}
 		}
 
-		// This is explicitly checked by the caller and again by find_loop()
-		// below, so we can leave it as a redundant debug assertion.
-		debug_assert!((ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH).contains(&limit));
-
 		// We'll need at least ZOPFLI_MIN_MATCH bytes for a search; if we don't
 		// have it, zero everything out and call it a day.
 		if pos + ZOPFLI_MIN_MATCH > arr.len() {
-			*length = 0;
+			*length = LitLen::L000;
 			*distance = 0;
 			return Ok(());
 		}
 
 		// Cap the limit to fit if needed. Note that limit will always be at
 		// least one even if capped since pos < size.
-		if pos + limit > arr.len() { limit = arr.len() - pos; }
+		limit = limit.min_usize(arr.len() - pos);
 
 		// Calculate the best distance and length.
 		let (bestdist, bestlength) = self.find_loop(arr, pos, limit, sublen)?;
 
 		// Cache the results for next time, maybe.
-		if limit == ZOPFLI_MAX_MATCH {
+		if limit.is_max() {
 			if let Some(blockstart) = cache {
 				if let Some(s) = sublen {
 					lmc.set_sublen(pos - blockstart, s, bestdist, bestlength)?;
@@ -696,7 +687,7 @@ impl ZopfliHash {
 		// Update the values.
 		*distance = bestdist;
 		*length = bestlength;
-		if pos + usize::from(*length) <= arr.len() { Ok(()) }
+		if pos + (*length as usize) <= arr.len() { Ok(()) }
 		else { Err(zopfli_error!()) }
 	}
 
@@ -716,11 +707,17 @@ impl ZopfliHash {
 		&self,
 		arr: &[u8],
 		pos: usize,
-		limit: usize,
+		limit: LitLen,
 		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
-	) -> Result<(u16, u16), ZopfliError> {
+	) -> Result<(u16, LitLen), ZopfliError> {
+		/// # Distance Given Positions.
+		const fn ppp_distance(p: usize, pp: usize) -> usize {
+			if p < pp { pp - p }
+			else { ZOPFLI_WINDOW_SIZE + pp - p }
+		}
+
 		// This is asserted by find() too, but it's a good reminder.
-		if ZOPFLI_MAX_MATCH < limit || arr.len() <= pos { return Err(zopfli_error!()); }
+		if arr.len() <= pos { return Err(zopfli_error!()); }
 		let right = &arr[pos..];
 
 		let hpos = pos & ZOPFLI_WINDOW_MASK;
@@ -729,7 +726,7 @@ impl ZopfliHash {
 		// both eventually, but they're used in a lot of indexing so usize is
 		// more ergonomical for now.
 		let mut bestdist: usize = 0;
-		let mut bestlength: usize = 1;
+		let mut bestlength = LitLen::L001;
 
 		// We'll start by looking at the first hash chain, but may switch
 		// midway through if the second chain is better.
@@ -746,13 +743,10 @@ impl ZopfliHash {
 
 		// Even though the ultimate distance will be u16, this variable needs
 		// to be at least 32-bit to keep the math from overflowing.
-		let mut dist =
-			if p < pp { pp - p }
-			else { ZOPFLI_WINDOW_SIZE + pp - p };
-
+		let mut dist = ppp_distance(p, pp);
 		let mut hits = 0;
-		let same0 = usize::from(self.same[hpos]);
-		let same1 = usize::min(same0, limit);
+		let same0 = self.same[hpos];
+		let same1 = limit.min_u16(same0);
 		while p < ZOPFLI_WINDOW_SIZE && dist < ZOPFLI_WINDOW_SIZE && hits < ZOPFLI_MAX_CHAIN_HITS {
 			// These are simple sanity assertions; the values are only ever
 			// altered via ZopfliHashChain::update_hash so there isn't much
@@ -769,7 +763,7 @@ impl ZopfliHash {
 			// * (limit <= ZOPFLI_MAX_MATCH)
 			// * (same <= limit), so…
 			// * (pos + same <= arr.len()) too
-			if 0 < dist && dist <= pos {
+			if 0 != dist && dist <= pos {
 				// Safety: we (safely) sliced right to arr[pos..] earlier and
 				// verified it was non-empty, but the compiler will have
 				// forgotten that by now.
@@ -779,38 +773,37 @@ impl ZopfliHash {
 				}
 
 				// Check to see if we can do better than we've already done.
-				if bestlength >= right.len() || right[bestlength] == left[bestlength] {
+				if (bestlength as usize) >= right.len() || right[bestlength as usize] == left[bestlength as usize] {
 					// Check the match cache to see if we can start later.
 					let mut currentlength =
 						if 2 < same0 && right[0] == left[0] {
-							let same2 = usize::from(self.same[(pos - dist) & ZOPFLI_WINDOW_MASK]);
-							usize::min(same1, same2)
+							same1.min_u16(self.same[(pos - dist) & ZOPFLI_WINDOW_MASK])
 						}
-						else { 0 };
+						else { LitLen::L000 };
 
 					while
-						currentlength < limit &&
-						currentlength < right.len() &&
-						left[currentlength] == right[currentlength]
+						(currentlength as u16) < (limit as u16) &&
+						(currentlength as usize) < right.len() &&
+						left[currentlength as usize] == right[currentlength as usize]
 					{
-						currentlength += 1;
+						currentlength = currentlength.increment();
 					}
 
 					// We've found a better length!
-					if bestlength < currentlength && currentlength < SUBLEN_LEN {
+					if (bestlength as u16) < (currentlength as u16) {
 						// Update the sublength slice, if provided. Note that
 						// sublengths are (ZOPFLI_MAX_MATCH+1) if provided, and
 						// ZOPFLI_MAX_MATCH is the largest possible value of
 						// currentlength.
 						if let Some(s) = sublen {
-							s[bestlength + 1..=currentlength].fill(dist as u16);
+							s[bestlength as usize + 1..=currentlength as usize].fill(dist as u16);
 						}
 
 						bestdist = dist;
 						bestlength = currentlength;
 
 						// We can stop looking if we've reached the limit.
-						if currentlength >= limit { break; }
+						if (currentlength as u16) >= (limit as u16) { break; }
 					}
 				}
 			}
@@ -819,7 +812,7 @@ impl ZopfliHash {
 			// haven't already switched — switch to it!
 			if
 				! switched &&
-				same0 <= bestlength &&
+				same0 <= (bestlength as u16) &&
 				self.chain2.idx_hash[p] == self.chain2.val
 			{
 				switched = true;
@@ -834,9 +827,7 @@ impl ZopfliHash {
 			p = chain.idx_prev[p] as usize;
 
 			// Increase the distance accordingly.
-			dist +=
-				if p < pp { pp - p }
-				else { ZOPFLI_WINDOW_SIZE + pp - p };
+			dist += ppp_distance(p, pp);
 
 			// And increase the short-circuiting hits counter to prevent
 			// endless work.
@@ -844,8 +835,8 @@ impl ZopfliHash {
 		} // Thus concludes the long-ass loop!
 
 		// Return the distance and length values.
-		if bestlength <= limit { Ok((bestdist as u16, bestlength as u16)) }
-		else { Ok((0, 1)) }
+		if (bestlength as u16) <= (limit as u16) { Ok((bestdist as u16, bestlength)) }
+		else { Ok((0, LitLen::L001)) }
 	}
 }
 
@@ -927,15 +918,6 @@ impl ZopfliHashChain {
 
 
 
-/// # Distance-Based Length Score.
-///
-/// This is a simplistic cost model for the "greedy" LZ77 pass that helps it
-/// make a slightly better choice between two options during lazy matching.
-const fn get_length_score(length: u16, distance: u16) -> u16 {
-	if 1024 < distance { length - 1 }
-	else { length }
-}
-
 /// # Minimum Cost Model.
 ///
 /// This returns the minimum _statistical_ cost, which is the sum of the
@@ -943,7 +925,7 @@ const fn get_length_score(length: u16, distance: u16) -> u16 {
 fn get_minimum_cost(stats: &SymbolStats) -> f64 {
 	// Find the minimum length cost.
 	let mut length_cost = f64::INFINITY;
-	for &(lsym, lbits, _) in LENGTH_SYMBOLS_BITS_VALUES.iter().skip(3) {
+	for (lsym, lbits) in LENGTH_SYMBOLS.into_iter().zip(LENGTH_SYMBOL_BITS.into_iter()).skip(3) {
 		let cost = f64::from(lbits) + stats.ll_symbols[lsym as usize];
 		if cost < length_cost { length_cost = cost; }
 	}
@@ -965,33 +947,33 @@ fn peek_ahead_fixed(
 	cost_j: f64,
 	min_cost: f64,
 	sublen: &[u16],
-	costs: &mut [(f32, u16)],
+	costs: &mut [(f32, LitLen)],
 ) {
 	let min_cost_add = min_cost + cost_j;
-	let mut k = ZOPFLI_MIN_MATCH;
+	let mut k = LitLen::MIN_MATCH;
 	for (dist, c) in sublen.iter().copied().zip(costs) {
 		if min_cost_add < f64::from(c.0) {
 			let mut new_cost = cost_j;
 			if dist == 0 {
-				if k <= 143 { new_cost += 8.0; }
+				if (k as u16) <= 143 { new_cost += 8.0; }
 				else { new_cost += 9.0; }
 			}
 			else {
-				if 114 < k { new_cost += 13.0; }
+				if 114 < (k as u16) { new_cost += 13.0; }
 				else { new_cost += 12.0; }
 
 				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
 				new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
-				new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k].1);
+				new_cost += f64::from(LENGTH_SYMBOL_BITS[k as usize]);
 			}
 
 			// Update it if lower.
 			if (0.0..f64::from(c.0)).contains(&new_cost) {
 				c.0 = new_cost as f32;
-				c.1 = k as u16;
+				c.1 = k;
 			}
 		}
-		k += 1;
+		k = k.increment();
 	}
 }
 
@@ -1001,32 +983,32 @@ fn peek_ahead_stats(
 	cost_j: f64,
 	min_cost: f64,
 	sublen: &[u16],
-	costs: &mut [(f32, u16)],
+	costs: &mut [(f32, LitLen)],
 	stats: &SymbolStats,
 ) {
 	let min_cost_add = min_cost + cost_j;
-	let mut k = ZOPFLI_MIN_MATCH;
+	let mut k = LitLen::MIN_MATCH;
 	for (dist, c) in sublen.iter().copied().zip(costs) {
 		if min_cost_add < f64::from(c.0) {
 			let mut new_cost = cost_j;
 			if dist == 0 {
-				new_cost += stats.ll_symbols[k];
+				new_cost += stats.ll_symbols[k as usize];
 			}
 			else {
 				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
 				new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
 				new_cost += stats.d_symbols[dsym as usize];
-				new_cost += stats.ll_symbols[LENGTH_SYMBOLS_BITS_VALUES[k].0 as usize];
-				new_cost += f64::from(LENGTH_SYMBOLS_BITS_VALUES[k].1);
+				new_cost += stats.ll_symbols[LENGTH_SYMBOLS[k as usize] as usize];
+				new_cost += f64::from(LENGTH_SYMBOL_BITS[k as usize]);
 			}
 
 			// Update it if lower.
 			if (0.0..f64::from(c.0)).contains(&new_cost) {
 				c.0 = new_cost as f32;
-				c.1 = k as u16;
+				c.1 = k;
 			}
 		}
-		k += 1;
+		k = k.increment();
 	}
 }
 
@@ -1039,11 +1021,8 @@ mod tests {
 	#[test]
 	fn t_fixed_cost() {
 		// Get the largest dbit and lbit values.
-		let d_max: u8 = DISTANCE_BITS.iter().copied().max().unwrap();
-		let l_max: u8 = LENGTH_SYMBOLS_BITS_VALUES.iter()
-			.map(|(_, a, _)| *a as u8)
-			.max()
-			.unwrap();
+		let d_max: u8 = DISTANCE_BITS.into_iter().max().unwrap();
+		let l_max: u8 = LENGTH_SYMBOL_BITS.into_iter().max().unwrap();
 
 		// Make sure their sum (along with the largest base) fits within
 		// the u8 space, since that's what we're using at runtime.
@@ -1057,7 +1036,7 @@ mod tests {
 		// instead test (114 < litlen) because the symbol isn't otherwise
 		// needed. This sanity check makes sure the two conditions are indeed
 		// interchangeable.
-		for (i, (sym, _, _)) in LENGTH_SYMBOLS_BITS_VALUES.iter().copied().enumerate() {
+		for (i, sym) in LENGTH_SYMBOLS.iter().copied().enumerate() {
 			assert_eq!(
 				279 < (sym as u16),
 				114 < i,

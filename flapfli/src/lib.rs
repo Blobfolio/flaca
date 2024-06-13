@@ -38,15 +38,16 @@ mod ffi;
 mod lodepng;
 mod zopflipng;
 
-pub use ffi::EncodedImage;
+use ffi::EncodedPNG;
 pub use zopflipng::optimize;
 
 use std::sync::atomic::AtomicI32;
 use zopflipng::{
 	deflate_part,
+	reset_dynamic_length_cache,
 	SplitPoints,
-	ZopfliState,
 	ZOPFLI_MASTER_BLOCK_SIZE,
+	ZopfliState,
 };
 
 

@@ -5,6 +5,8 @@ This module defines the squeeze stats structure and its companion PRNG.
 */
 
 use super::{
+	ArrayD,
+	ArrayLL,
 	LZ77Store,
 	ZEROED_COUNTS_D,
 	ZEROED_COUNTS_LL,
@@ -51,11 +53,11 @@ impl RanState {
 /// This holds the length and distance symbols and costs for a given block,
 /// data that can be used to improve compression on subsequent passes.
 pub(crate) struct SymbolStats {
-	ll_counts: [u32; ZOPFLI_NUM_LL],
-	d_counts:  [u32; ZOPFLI_NUM_D],
+	ll_counts: ArrayLL<u32>,
+	d_counts:  ArrayD<u32>,
 
-	pub(crate) ll_symbols: [f64; ZOPFLI_NUM_LL],
-	pub(crate) d_symbols:  [f64; ZOPFLI_NUM_D],
+	pub(crate) ll_symbols: ArrayLL<f64>,
+	pub(crate) d_symbols:  ArrayD<f64>,
 }
 
 impl SymbolStats {
@@ -78,8 +80,8 @@ impl SymbolStats {
 	/// previous value is halved and added to the corresponding current value.
 	pub(crate) fn add_last(
 		&mut self,
-		ll_counts: &[u32; ZOPFLI_NUM_LL],
-		d_counts: &[u32; ZOPFLI_NUM_D],
+		ll_counts: &ArrayLL<u32>,
+		d_counts: &ArrayD<u32>,
 	) {
 		for (l, r) in self.ll_counts.iter_mut().zip(ll_counts.iter().copied()) {
 			*l += r.wrapping_div(2);
@@ -95,7 +97,7 @@ impl SymbolStats {
 	/// # Clear Frequencies.
 	///
 	/// Set all `ll_counts` and `d_counts` to zero and return the originals.
-	pub(crate) fn clear(&mut self) -> ([u32; ZOPFLI_NUM_LL], [u32; ZOPFLI_NUM_D]) {
+	pub(crate) fn clear(&mut self) -> (ArrayLL<u32>, ArrayD<u32>) {
 		(
 			std::mem::replace(&mut self.ll_counts, ZEROED_COUNTS_LL),
 			std::mem::replace(&mut self.d_counts, ZEROED_COUNTS_D),
@@ -108,11 +110,11 @@ impl SymbolStats {
 	/// results in the corresponding symbols arrays.
 	pub(crate) fn crunch(&mut self) {
 		#[allow(clippy::cast_precision_loss)]
-		fn calculate_entropy<const S: usize>(count: &[u32; S], bitlengths: &mut [f64; S]) {
+		fn calculate_entropy<const N: usize>(count: &[u32; N], bitlengths: &mut [f64; N]) {
 			let sum = count.iter().sum::<u32>();
 
 			if sum == 0 {
-				let log2sum = (S as f64).log2();
+				let log2sum = (N as f64).log2();
 				bitlengths.fill(log2sum);
 			}
 			else {
@@ -138,13 +140,8 @@ impl SymbolStats {
 	/// `ZopfliLZ77Store` store, then crunches the results.
 	pub(crate) fn load_store(&mut self, store: &LZ77Store) {
 		for e in &store.entries {
-			if e.dist <= 0 {
-				self.ll_counts[e.litlen as usize] += 1;
-			}
-			else {
-				self.ll_counts[e.ll_symbol as usize] += 1;
-				self.d_counts[e.d_symbol as usize] += 1;
-			}
+			self.ll_counts[e.ll_symbol as usize] += 1;
+			if 0 < e.dist { self.d_counts[e.d_symbol as usize] += 1; }
 		}
 
 		// Set the end symbol and crunch.
@@ -157,10 +154,10 @@ impl SymbolStats {
 	/// This randomizes the stat frequencies to allow things to maybe turn out
 	/// different on subsequent squeeze passes.
 	pub(crate) fn randomize(&mut self, state: &mut RanState) {
-		fn randomize_freqs<const S: usize>(freqs: &mut [u32; S], state: &mut RanState) {
-			for i in 0..S {
+		fn randomize_freqs<const N: usize>(freqs: &mut [u32; N], state: &mut RanState) {
+			for i in 0..N {
 				if (state.randomize() >> 4) % 3 == 0 {
-					let index = state.randomize() as usize % S;
+					let index = state.randomize() as usize % N;
 					freqs[i] = freqs[index];
 				}
 			}

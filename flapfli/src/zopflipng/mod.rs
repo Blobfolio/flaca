@@ -20,6 +20,7 @@ mod error;
 mod hash;
 mod kat;
 mod lz77;
+mod rle;
 mod stats;
 mod symbols;
 
@@ -27,15 +28,25 @@ pub(crate) use blocks::{
 	deflate_part,
 	SplitPoints,
 };
-use cache::MatchCache;
+use cache::{
+	MatchCache,
+	SqueezeCache,
+};
 use error::{
 	zopfli_error,
 	ZopfliError,
 };
 pub(crate) use hash::ZopfliState;
+use kat::{
+	best_tree_size,
+	encode_tree,
+	LengthLimitedCodeLengths,
+};
 pub(crate) use lz77::LZ77Store;
+use rle::get_dynamic_lengths;
+pub(crate) use rle::reset_dynamic_length_cache;
 use super::{
-	ffi::EncodedImage,
+	EncodedPNG,
 	lodepng::{
 		DecodedImage,
 		LodePNGColorType,
@@ -50,9 +61,13 @@ use symbols::{
 	DISTANCE_SYMBOLS,
 	DISTANCE_VALUES,
 	Dsym,
-	LENGTH_SYMBOLS_BITS_VALUES,
+	LENGTH_SYMBOL_BIT_VALUES,
+	LENGTH_SYMBOL_BITS,
+	LENGTH_SYMBOLS,
 	LitLen,
 	Lsym,
+	SplitPIdx,
+	SymbolIteration,
 };
 
 
@@ -64,13 +79,13 @@ const ZOPFLI_NUM_LL: usize = 288;
 const ZOPFLI_NUM_D: usize = 32;
 
 /// # Zero-Filled Distance Counts.
-const ZEROED_COUNTS_D: [u32; ZOPFLI_NUM_D] = [0; ZOPFLI_NUM_D];
+const ZEROED_COUNTS_D: ArrayD<u32> = [0; ZOPFLI_NUM_D];
 
 /// # Zero-Filled Litlen Counts.
-const ZEROED_COUNTS_LL: [u32; ZOPFLI_NUM_LL] = [0; ZOPFLI_NUM_LL];
+const ZEROED_COUNTS_LL: ArrayLL<u32> = [0; ZOPFLI_NUM_LL];
 
 /// # Fixed Litlen Tree.
-const FIXED_TREE_LL: [DeflateSym; ZOPFLI_NUM_LL] = [
+const FIXED_TREE_LL: ArrayLL<DeflateSym> = [
 	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
 	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
 	DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08, DeflateSym::D08,
@@ -83,7 +98,7 @@ const FIXED_TREE_LL: [DeflateSym; ZOPFLI_NUM_LL] = [
 ];
 
 /// # Fixed Litlen Symbols.
-const FIXED_SYMBOLS_LL: [u32; ZOPFLI_NUM_LL] = [
+const FIXED_SYMBOLS_LL: ArrayLL<u32> = [
 	48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
 	72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
 	96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
@@ -99,10 +114,10 @@ const FIXED_SYMBOLS_LL: [u32; ZOPFLI_NUM_LL] = [
 ];
 
 /// # Fixed Distance Tree.
-const FIXED_TREE_D: [DeflateSym; ZOPFLI_NUM_D] = [DeflateSym::D05; ZOPFLI_NUM_D];
+const FIXED_TREE_D: ArrayD<DeflateSym> = [DeflateSym::D05; ZOPFLI_NUM_D];
 
 /// # Fixed Distance Symbols.
-const FIXED_SYMBOLS_D: [u32; ZOPFLI_NUM_D] = [
+const FIXED_SYMBOLS_D: ArrayD<u32> = [
 	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 	16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
 ];
@@ -119,6 +134,12 @@ const ZOPFLI_MAX_MATCH: usize = 258;
 /// This is hardcoded in `squeeze.c`.
 const SUBLEN_LEN: usize = ZOPFLI_MAX_MATCH + 1;
 
+/// # Array with `ZOPFLI_NUM_LL` Entries.
+type ArrayLL<T> = [T; ZOPFLI_NUM_LL];
+
+/// # Array with `ZOPFLI_NUM_D` Entries.
+type ArrayD<T> = [T; ZOPFLI_NUM_D];
+
 
 
 #[must_use]
@@ -130,7 +151,7 @@ const SUBLEN_LEN: usize = ZOPFLI_MAX_MATCH + 1;
 ///
 /// Note: 16-bit transformations are not lossless; such images will have their
 /// bit depths reduced to a more typical 8 bits.
-pub fn optimize(src: &[u8]) -> Option<EncodedImage<usize>> {
+pub fn optimize(src: &[u8]) -> Option<EncodedPNG> {
 	let mut dec = LodePNGState::default();
 	let img = dec.decode(src)?;
 
@@ -170,13 +191,13 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrateg
 /// # Apply Optimizations.
 ///
 /// This attempts to re-encode an image using the provided filter strategy,
-/// returning an `EncodedImage` object if it all works out.
+/// returning an `EncodedPNG` object if it all works out.
 fn encode(
 	dec: &LodePNGState,
 	img: &DecodedImage,
 	strategy: LodePNGFilterStrategy,
 	slow: bool,
-) -> Option<EncodedImage<usize>> {
+) -> Option<EncodedPNG> {
 	// Encode and write to the buffer if it worked.
 	let mut enc = LodePNGState::encoder(dec, strategy, slow)?;
 	let out = enc.encode(img)?;
@@ -196,22 +217,4 @@ fn encode(
 	}
 
 	Some(out)
-}
-
-#[allow(unsafe_code)]
-/// # Split Array.
-///
-/// Take a sized slice out of the collection, or die trying.
-///
-/// This is equivalent to `slice.get(rng).and_then(TryInto::try_into)`, but
-/// less ugly!
-const fn sized_slice<T, const N: usize>(slice: &[T], idx: usize)
--> Result<&[T; N], ZopfliError> {
-	if idx + N <= slice.len() {
-		unsafe {
-			// Safety: the subslice is in range.
-			Ok(&*(slice.as_ptr().add(idx).cast()))
-		}
-	}
-	else { Err(zopfli_error!()) }
 }

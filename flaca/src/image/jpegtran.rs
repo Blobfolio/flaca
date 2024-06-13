@@ -48,11 +48,64 @@ use mozjpeg_sys::{
 use std::{
 	ffi::{
 		c_int,
+		c_uchar,
 		c_ulong,
+		c_void,
 	},
 	marker::PhantomPinned,
+	ops::Deref,
 };
-use flapfli::EncodedImage;
+
+
+
+#[derive(Debug)]
+/// # Encoded Image.
+///
+/// This holds a buffer pointer and size for an image allocated in C-land. It
+/// exists primarily to enforce cleanup at destruction, but also makes it easy
+/// to view the data as a slice.
+pub(super) struct EncodedJPEG {
+	/// # Buffer.
+	buf: *mut c_uchar,
+
+	/// # Buffer Size.
+	size: c_ulong,
+}
+
+impl Deref for EncodedJPEG {
+	type Target = [u8];
+
+	#[allow(clippy::cast_possible_truncation, unsafe_code)]
+	fn deref(&self) -> &Self::Target {
+		if self.is_empty() { &[] }
+		else {
+			unsafe { std::slice::from_raw_parts(self.buf, self.size as usize) }
+		}
+	}
+}
+
+impl Drop for EncodedJPEG {
+	#[allow(unsafe_code)]
+	fn drop(&mut self) {
+		if ! self.is_empty() {
+			unsafe { libc::free(self.buf.cast::<c_void>()); }
+			self.buf = std::ptr::null_mut();
+		}
+	}
+}
+
+impl EncodedJPEG {
+	/// # New.
+	const fn new() -> Self {
+		Self {
+			buf: std::ptr::null_mut(),
+			size: 0,
+		}
+	}
+
+	/// # Is Empty?
+	fn is_empty(&self) -> bool { self.size == 0 || self.buf.is_null() }
+}
 
 
 
@@ -68,7 +121,7 @@ use flapfli::EncodedImage;
 /// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<c_ulong>> {
+pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 	let mut transformoption = jpeg_transform_info {
 		transform: JXFORM_CODE_JXFORM_NONE,
 		perfect: 0,
@@ -140,7 +193,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedImage<c_ulong>> {
 	dstinfo.cinfo.optimize_coding = 1;
 
 	// Compress!
-	let mut out = EncodedImage::default();
+	let mut out = EncodedJPEG::new();
 	unsafe {
 		// Enable "progressive".
 		jpeg_simple_progression(&mut dstinfo.cinfo);

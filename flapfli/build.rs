@@ -3,8 +3,10 @@
 */
 
 use std::{
+	fmt,
 	fs::File,
 	io::Write,
+	ops::Range,
 	path::{
 		Path,
 		PathBuf,
@@ -35,25 +37,19 @@ pub fn main() {
 	build_symbols();
 }
 
-/// # Build `zopfli`/`lodepng`.
+/// # Build `lodepng`.
 ///
-/// The Rust ports of these libraries are missing features that noticeably
-/// affect PNG compression, and are quite a bit slower than the original C
-/// libraries as well. Unless/until that changes, we'll have to work with the
-/// originals.
-///
-/// The relevant `zopflipng` bits, though, were easily ported to the Flaca
-/// library proper, so we can at least avoid the headaches associated with C++
-/// interop!
+/// The Rust port of `lodepng` is missing some functionality that is required
+/// to fully emulate `zopflipng`, so we're stuck with the C version until I
+/// decide to completely rewrite that too. Haha.
 fn build_ffi() {
 	// Define some paths.
 	let repo = Path::new("../skel/vendor");
-	let zopfli_src = repo.join("zopfli");
 	let lodepng_src = repo.join("lodepng");
 
 	// Build Zopfli first.
 	let mut c = cc::Build::new();
-	c.includes([repo, &lodepng_src, &zopfli_src])
+	c.includes([repo, &lodepng_src])
 		.cpp(false)
 		.flag_if_supported("-W")
 		.flag_if_supported("-ansi")
@@ -61,16 +57,16 @@ fn build_ffi() {
 		.pic(true)
 		.static_flag(true)
 		.files([
-			zopfli_src.join("zopfli.c"),
 			lodepng_src.join("lodepng.c"),
 		])
+		.define("LODEPNG_NO_COMPILE_ALLOCATORS", None)
 		.define("LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS", None)
 		.define("LODEPNG_NO_COMPILE_CPP", None)
 		.define("LODEPNG_NO_COMPILE_CRC", None)
 		.define("LODEPNG_NO_COMPILE_DISK", None)
-		.compile("zopflipng");
+		.compile("lodepng");
 
-	bindings(repo, &lodepng_src, &zopfli_src);
+	bindings(&lodepng_src);
 }
 
 /// # Build Symbols.
@@ -83,50 +79,18 @@ fn build_ffi() {
 fn build_symbols() {
 	use std::fmt::Write;
 
-	let mut out = r"#[repr(u8)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-/// # Whackadoodle Deflate Indices.
-pub(crate) enum DeflateSym {".to_owned();
-	for i in 0..19 {
-		write!(&mut out, "\n\tD{i:02} = {i}_u8,").unwrap();
-	}
-	out.push_str(r"
-}
+	let mut out = format!(
+		"{}{}{}{}{}",
+		NumEnum::new(0..19_u8, "Whackadoodle Deflate Indices.", "DeflateSym")
+			.with_debug()
+			.with_eq(),
+		NumEnum::new(0..32_u16, "Distance Symbols.", "Dsym"),
+		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq(),
+		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),
+		NumEnum::new(0..9_u16, "Block Splitting Indices.", "SplitPIdx").with_iter(),
+	);
 
-#[allow(dead_code)]
-#[repr(u16)]
-#[derive(Clone, Copy)]
-/// # Distance Symbols.
-pub(crate) enum Dsym {");
-	for i in 0..32 {
-		write!(&mut out, "\n\tD{i:02} = {i}_u16,").unwrap();
-	}
-	out.push_str(r"
-}
-
-#[allow(dead_code)]
-#[repr(u16)]
-#[derive(Clone, Copy)]
-/// # Lit/Lengths.
-pub(crate) enum LitLen {");
-	for i in 0..259 {
-		write!(&mut out, "\n\tL{i:03} = {i}_u16,").unwrap();
-	}
-	out.push_str(r"
-}
-
-#[allow(dead_code)]
-#[repr(u16)]
-#[derive(Clone, Copy)]
-/// # Lit/Len Symbols.
-pub(crate) enum Lsym {");
-	for i in 0..=285 {
-		write!(&mut out, "\n\tL{i:03} = {i}_u16,").unwrap();
-	}
-	out.push_str("
-}
-
-/// # Distance Symbols by Distance
+	out.push_str(r"/// # Distance Symbols by Distance
 ///
 /// This table is kinda terrible, but the performance gains (versus calculating
 /// the symbols on-the-fly) are incredible, so whatever.
@@ -177,17 +141,16 @@ pub(crate) const DISTANCE_VALUES: &[u16; 32_768] = &[");
 ///
 /// These have been manually transcribed into the Rust sources, but this
 /// commented-out code can be re-enabled if they ever need to be updated.
-fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
+fn bindings(lodepng_src: &Path) {
 	let bindings = bindgen::Builder::default()
 		.clang_args([
+			"-DLODEPNG_NO_COMPILE_ALLOCATORS",
 			"-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS",
 			"-DLODEPNG_NO_COMPILE_CPP",
 			"-DLODEPNG_NO_COMPILE_CRC",
 			"-DLODEPNG_NO_COMPILE_DISK",
 		])
 		.header(lodepng_src.join("lodepng.h").to_string_lossy())
-		.header(repo.join("rust.h").to_string_lossy())
-		.header(zopfli_src.join("zopfli.h").to_string_lossy())
 		.allowlist_function("lodepng_color_mode_copy")
 		.allowlist_function("lodepng_color_stats_init")
 		.allowlist_function("lodepng_compute_color_stats")
@@ -195,10 +158,6 @@ fn bindings(repo: &Path, lodepng_src: &Path, zopfli_src: &Path) {
 		.allowlist_function("lodepng_encode")
 		.allowlist_function("lodepng_state_cleanup")
 		.allowlist_function("lodepng_state_init")
-		.allowlist_function("ZopfliAddBit")
-		.allowlist_function("ZopfliAddBits")
-		.allowlist_function("ZopfliAddHuffmanBits")
-		.allowlist_function("ZopfliAddNonCompressedBlock")
 		.allowlist_type("LodePNGColorStats")
 		.allowlist_type("LodePNGCompressSettings")
 		.allowlist_type("LodePNGState")
@@ -274,4 +233,124 @@ fn out_path(stub: &str) -> PathBuf {
 fn write(path: &Path, data: &[u8]) {
 	File::create(path).and_then(|mut f| f.write_all(data).and_then(|_| f.flush()))
 		.expect("Unable to write file.");
+}
+
+
+
+/// # Number Enum.
+///
+/// We have a lot of custom numeric types that cover a range of numbers; this
+/// struct ensures we generate their code consistently.
+struct NumEnum<T: Copy + fmt::Display>
+where Range<T>: Iterator<Item=T> + ExactSizeIterator {
+	rng: Range<T>,
+	title: &'static str,
+	name: &'static str,
+	flags: u8,
+}
+
+impl<T: Copy + fmt::Display> NumEnum<T>
+where Range<T>: Iterator<Item=T> + ExactSizeIterator {
+	const DERIVE_DEBUG: u8 = 0b0000_0001;
+	const DERIVE_EQ: u8 =    0b0000_0010;
+	const DERIVE_ITER: u8 =  0b0000_0100;
+
+	/// # New Instance.
+	const fn new(rng: Range<T>, title: &'static str, name: &'static str) -> Self {
+		Self { rng, title, name, flags: 0 }
+	}
+
+	/// # With Derive `Debug`.
+	const fn with_debug(self) -> Self {
+		Self {
+			flags: self.flags | Self::DERIVE_DEBUG,
+			..self
+		}
+	}
+
+	/// # With Derive `Eq`/`PartialEq`.
+	const fn with_eq(self) -> Self {
+		Self {
+			flags: self.flags | Self::DERIVE_EQ,
+			..self
+		}
+	}
+
+	/// # With Iterator.
+	const fn with_iter(self) -> Self {
+		Self {
+			flags: self.flags | Self::DERIVE_ITER,
+			..self
+		}
+	}
+}
+
+impl<T: Copy + fmt::Display> fmt::Display for NumEnum<T>
+where Range<T>: Iterator<Item=T> + ExactSizeIterator {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// Allow dead code.
+		writeln!(f, "#[allow(dead_code)]")?;
+
+		// Representation.
+		let kind = std::any::type_name::<T>();
+		writeln!(f, "#[repr({kind})]")?;
+
+		// Derives.
+		write!(f, "#[derive(Clone, Copy")?;
+		if Self::DERIVE_DEBUG == self.flags & Self::DERIVE_DEBUG { write!(f, ", Debug")?; }
+		if Self::DERIVE_EQ == self.flags & Self::DERIVE_EQ { write!(f, ", Eq, PartialEq")?; }
+		writeln!(f, ")]")?;
+
+		// Title.
+		writeln!(f, "/// # {}", self.title)?;
+
+		// Opening.
+		writeln!(f, "pub(crate) enum {} {{", self.name)?;
+
+		// Arms.
+		let width: usize = self.rng.end.to_string().len();
+		let prefix: String = self.name[..1].to_ascii_uppercase();
+		for i in self.rng.clone() {
+			writeln!(f, "\t{prefix}{i:0width$} = {i}_{kind},", width=width)?;
+		}
+
+		// Closing.
+		writeln!(f, "}}\n")?;
+
+		// Symbol iterator?
+		if Self::DERIVE_ITER == self.flags & Self::DERIVE_ITER {
+			// The iterator struct.
+			writeln!(f, "/// # `{}` Iterator.", self.name)?;
+			writeln!(f, "pub(crate) struct {}Iter({kind});", self.name)?;
+
+			// The Iterator impl.
+			writeln!(f, "impl Iterator for {}Iter {{", self.name)?;
+			writeln!(f, "\ttype Item = {};", self.name)?;
+			writeln!(f, "\tfn next(&mut self) -> Option<Self::Item> {{")?;
+			writeln!(f, "\t\tlet old = self.0;")?;
+			writeln!(f, "\t\tif old < {} {{", self.rng.end)?;
+			writeln!(f, "\t\t\tself.0 += 1;")?;
+			writeln!(f, "\t\t\t#[allow(unsafe_code)]")?;
+			writeln!(f, "\t\t\tSome(unsafe {{ std::mem::transmute::<{kind}, {}>(old) }})", self.name)?;
+			writeln!(f, "\t\t}} else {{ None }}")?;
+			writeln!(f, "\t}}")?;
+			writeln!(f, "}}")?;
+
+			// The ExactSizeIterator impl.
+			writeln!(f, "impl ExactSizeIterator for {}Iter {{", self.name)?;
+			writeln!(f, "\tfn len(&self) -> usize {{")?;
+			writeln!(f, "\t\tusize::from({}_{kind}.saturating_sub(self.0))", self.rng.end)?;
+			writeln!(f, "\t}}")?;
+			writeln!(f, "}}")?;
+
+			// Our SymbolIteration impl.
+			writeln!(f, "impl SymbolIteration for {} {{", self.name)?;
+			writeln!(f, "\tfn all() -> impl ExactSizeIterator<Item=Self> {{")?;
+			writeln!(f, "\t\t{}Iter({})", self.name, self.rng.start)?;
+			writeln!(f, "\t}}")?;
+			writeln!(f, "}}")?;
+		}
+
+		Ok(())
+	}
 }

@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.1.0"
+version = "3.1.1"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -117,6 +117,7 @@ crossbeam-channel = "=0.5.*"
 ctrlc = "=3.4.4"
 dactyl = "0.7.*"
 dowser = "0.9.*"
+libc = "0.2.*"
 write_atomic = "0.5.*"
 
 [dependencies.flapfli]
