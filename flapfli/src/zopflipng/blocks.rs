@@ -199,6 +199,38 @@ impl SplitPoints {
 		Ok(len)
 	}
 
+	/// # (Re)split Best.
+	///
+	/// If there's enough data, resplit with optimized LZ77 paths and return
+	/// whichever best is better.
+	fn split_again(
+		&mut self,
+		store: &mut LZ77Store,
+		limit1: usize,
+		cost1: u32,
+	) -> Result<&[usize], ZopfliError> {
+		if 1 < limit1 {
+			// Move slice2 over to slice1 so we can repopulate slice2.
+			self.slice1.copy_from_slice(self.slice2.as_slice());
+
+			let limit2 = usize::min(
+				self.split_lz77(store)?,
+				MAX_SPLIT_POINTS,
+			);
+			let mut cost2 = 0;
+			for i in 0..=limit2 {
+				let start = if i == 0 { 0 } else { self.slice2[i - 1] };
+				let end = if i < limit2 { self.slice2[i] } else { store.len() };
+				cost2 += calculate_block_size_auto_type(store, start..end)?.get();
+			}
+
+			// It's better!
+			if cost2 < cost1 { Ok(&self.slice2[..limit2]) }
+			else { Ok(&self.slice1[..limit1]) }
+		}
+		else { Ok(&self.slice2[..limit1]) }
+	}
+
 	/// # Split Best.
 	///
 	/// Compare the optimal raw split points with a dedicated lz77 pass and
@@ -247,30 +279,10 @@ impl SplitPoints {
 			// Save the chunk size to our best.
 			if i < limit { self.slice2[i] = store.len(); }
 		}
-		drop(store3);
 
 		// Try a second pass, recalculating the LZ77 splits with the updated
 		// store details.
-		if 1 < limit {
-			// Move slice2 over to slice1 so we can repopulate slice2.
-			self.slice1.copy_from_slice(self.slice2.as_slice());
-
-			let limit2 = usize::min(
-				self.split_lz77(store)?,
-				MAX_SPLIT_POINTS,
-			);
-			let mut cost2 = 0;
-			for i in 0..=limit2 {
-				let start = if i == 0 { 0 } else { self.slice2[i - 1] };
-				let end = if i < limit2 { self.slice2[i] } else { store.len() };
-				cost2 += calculate_block_size_auto_type(store, start..end)?.get();
-			}
-
-			// It's better!
-			if cost2 < cost1 { Ok(&self.slice2[..limit2]) }
-			else { Ok(&self.slice1[..limit]) }
-		}
-		else { Ok(&self.slice2[..limit]) }
+		self.split_again(store, limit, cost1)
 	}
 }
 
