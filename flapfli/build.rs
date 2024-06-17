@@ -80,7 +80,7 @@ fn build_symbols() {
 	use std::fmt::Write;
 
 	let mut out = format!(
-		"{}{}{}{}{}",
+		"{}{}{}{}{}{}",
 		NumEnum::new(0..19_u8, "Whackadoodle Deflate Indices.", "DeflateSym")
 			.with_debug()
 			.with_eq()
@@ -89,6 +89,7 @@ fn build_symbols() {
 		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq(),
 		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),
 		NumEnum::new(0..9_u16, "Block Splitting Indices.", "SplitPIdx").with_iter(),
+		NumEnum::new(0..15_u8, "Block Split Length.", "SplitLen").with_eq(),
 	);
 
 	out.push_str(r"/// # Distance Symbols by Distance

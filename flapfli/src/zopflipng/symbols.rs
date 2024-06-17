@@ -105,7 +105,7 @@ impl DeflateSym {
 
 	/// # Is Zero?
 	///
-	/// We check this a lot.
+	/// Returns `true` if `self` is zero.
 	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::D00) }
 }
 
@@ -192,6 +192,29 @@ impl Lsym {
 	/// always represent the former.
 	pub(crate) const fn from_litlen(litlen: LitLen) -> Self {
 		unsafe { std::mem::transmute::<LitLen, Self>(litlen) }
+	}
+}
+
+impl SplitLen {
+	/// # Is Zero?
+	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::S00) }
+
+	/// # Is Max?
+	pub(crate) const fn is_max(self) -> bool { matches!(self, Self::S14) }
+
+	/// # Increment.
+	pub(crate) const fn increment(self) -> Self {
+		#[allow(unsafe_code)]
+		unsafe {
+			// Safety: this method is called from just two places —
+			// `split_lz77` and `split_raw` — both of which explicitly check
+			// the current value, breaking their loops if/when the maximum is
+			// reached.
+			if self.is_max() { core::hint::unreachable_unchecked(); }
+
+			// Safety: SplitLen has the same size and alignment as u8.
+			std::mem::transmute::<u8, Self>(self as u8 + 1)
+		}
 	}
 }
 
