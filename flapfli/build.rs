@@ -86,7 +86,7 @@ fn build_symbols() {
 			.with_eq()
 			.with_iter(),
 		NumEnum::new(0..32_u16, "Distance Symbols.", "Dsym"),
-		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq(),
+		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq().with_iter(),
 		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),
 		NumEnum::new(0..9_u16, "Block Splitting Indices.", "SplitPIdx").with_iter(),
 		NumEnum::new(0..15_u8, "Block Split Length.", "SplitLen").with_eq(),

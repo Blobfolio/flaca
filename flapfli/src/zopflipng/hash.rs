@@ -21,8 +21,8 @@ use std::{
 use super::{
 	DISTANCE_BITS,
 	DISTANCE_SYMBOLS,
-	LENGTH_SYMBOLS,
 	LENGTH_SYMBOL_BITS,
+	LENGTH_SYMBOLS,
 	LitLen,
 	LZ77Store,
 	MatchCache,
@@ -784,12 +784,16 @@ impl ZopfliHash {
 						}
 						else { LitLen::L000 };
 
-					while
-						(currentlength as u16) < (limit as u16) &&
-						(currentlength as usize) < right.len() &&
-						left[currentlength as usize] == right[currentlength as usize]
-					{
-						currentlength = currentlength.increment();
+					// Bump the length for each matching left/right pair, up to
+					// the limit.
+					for next in LitLen::next_iter(currentlength).take((limit as usize) - (currentlength as usize)) {
+						if
+							(currentlength as usize) < right.len() &&
+							left[currentlength as usize] == right[currentlength as usize]
+						{
+							currentlength = next;
+						}
+						else { break; }
 					}
 
 					// We've found a better length!
@@ -953,8 +957,7 @@ fn peek_ahead_fixed(
 	costs: &mut [(f32, LitLen)],
 ) {
 	let min_cost_add = min_cost + cost_j;
-	let mut k = LitLen::MIN_MATCH;
-	for (dist, c) in sublen.iter().copied().zip(costs) {
+	for ((dist, c), k) in sublen.iter().copied().zip(costs).zip(LitLen::matchable_iter()) {
 		if min_cost_add < f64::from(c.0) {
 			let mut new_cost = cost_j;
 			if dist == 0 {
@@ -976,7 +979,6 @@ fn peek_ahead_fixed(
 				c.1 = k;
 			}
 		}
-		k = k.increment();
 	}
 }
 
@@ -990,8 +992,7 @@ fn peek_ahead_stats(
 	stats: &SymbolStats,
 ) {
 	let min_cost_add = min_cost + cost_j;
-	let mut k = LitLen::MIN_MATCH;
-	for (dist, c) in sublen.iter().copied().zip(costs) {
+	for ((dist, c), k) in sublen.iter().copied().zip(costs).zip(LitLen::matchable_iter()) {
 		if min_cost_add < f64::from(c.0) {
 			let mut new_cost = cost_j;
 			if dist == 0 {
@@ -1011,7 +1012,6 @@ fn peek_ahead_stats(
 				c.1 = k;
 			}
 		}
-		k = k.increment();
 	}
 }
 
