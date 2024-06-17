@@ -203,9 +203,7 @@ macro_rules! llcl {
 			// different ways to get it to elide bounds checks, overallocating
 			// scratch to 19 performs best.
 			let mut scratch = ZEROED_COUNTS_TREE;
-			for l in lengths.iter().copied() {
-				scratch[l as usize] += 1;
-			}
+			for l in lengths.iter().copied() { scratch[l as usize] += 1; }
 
 			// Find the numerical value of the smallest code for each code
 			// length (up to $maxbits).

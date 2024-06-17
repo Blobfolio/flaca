@@ -493,12 +493,8 @@ fn add_lz77_data(
 			ll_lengths[e.ll_symbol as usize] as u32,
 		);
 
-		// If the distance is zero, the litlen should be a literal!
-		if e.dist <= 0 {
-			if (e.litlen as u16) >= 256 { return Err(zopfli_error!()); }
-		}
-		// Otherwise add the length symbol bits and distance stuff.
-		else {
+		// Add the length symbol bits and distance stuff.
+		if 0 < e.dist {
 			out.add_bits(
 				u32::from(LENGTH_SYMBOL_BIT_VALUES[e.litlen as usize]),
 				u32::from(LENGTH_SYMBOL_BITS[e.litlen as usize]),
@@ -515,6 +511,8 @@ fn add_lz77_data(
 				u32::from(DISTANCE_BITS[e.d_symbol as usize]),
 			);
 		}
+		// If the distance is zero, the litlen must be a literal.
+		else if (e.litlen as u16) >= 256 { return Err(zopfli_error!()); }
 	}
 
 	Ok(())

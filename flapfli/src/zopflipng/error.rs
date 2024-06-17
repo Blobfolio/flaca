@@ -2,28 +2,36 @@
 # Flapfli: Errors.
 */
 
+#[cfg(debug_assertions)]
 use std::fmt;
 
+
+
+#[cfg(not(debug_assertions))]
+/// # Error (Release).
+///
+/// This library uses `Result` return types like conditionally-panicking
+/// assertions. (Error responses shouldn't actually be possible, but, well,
+/// bugs happen!)
+///
+/// When debug assertions are _disabled_, errors are bubbled up to lodepng,
+/// allowing it to gracefully abandon its efforts.
+pub(crate) type ZopfliError = ();
+
+
+
+#[cfg(debug_assertions)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-/// # Zopfli Error.
+/// # Error (Debug).
 ///
-/// This struct is used for logical failings (bugs) in the ported zopfli
-/// functionality. This shouldn't ever be instantiated in practice…
-///
-/// When compiled with `debug-assertions = true`, an error will panic with the
-/// offending source file and line number details to aid investigation.
-///
-/// Otherwise it simply serves as a flag for lodepng, letting it know that
-/// something went wrong so it can abandon its compressive efforts for the
-/// given image.
-///
-/// The macro `zopfli_error!` is used internally to populate the appropriate
-/// details or not.
+/// When debug assertions are _enabled_, error responses panic with the
+/// relevant source details to aid further investigation.
 pub(crate) struct ZopfliError {
-	#[cfg(debug_assertions)] file: &'static str,
-	#[cfg(debug_assertions)] line: u32,
+	file: &'static str,
+	line: u32,
 }
 
+#[cfg(debug_assertions)]
 impl ZopfliError {
 	#[cfg(debug_assertions)]
 	/// # New Error.
@@ -32,8 +40,8 @@ impl ZopfliError {
 	}
 }
 
+#[cfg(debug_assertions)]
 impl fmt::Display for ZopfliError {
-	#[cfg(debug_assertions)]
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.write_fmt(format_args!(
 			"Zopfli BUG!!! Sanity check failed at {}:{}",
@@ -41,34 +49,24 @@ impl fmt::Display for ZopfliError {
 			self.line,
 		))
 	}
-
-	#[cfg(not(debug_assertions))]
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str("zopfli bug")
-	}
 }
-
-impl std::error::Error for ZopfliError {}
 
 
 
 #[cfg(debug_assertions)]
-/// # Error Macro.
+/// # Error Macro (Debug).
 ///
-/// Initialize a new error with the appropriate environmental argument(s)
-/// according to `debug-assertions`.
+/// The debug version of this macro panics with a message indicating the file
+/// and line number to aid further investigation.
 macro_rules! zopfli_error {
 	() => (ZopfliError::new(file!(), line!()));
 }
 
 #[cfg(not(debug_assertions))]
-/// # Error Macro.
+/// # Error Macro (Release).
 ///
-/// Initialize a new error with the appropriate environmental argument(s)
-/// according to `debug-assertions`.
-macro_rules! zopfli_error {
-	() => (ZopfliError {});
-}
+/// The non-debug version simply returns a `()`.
+macro_rules! zopfli_error { () => (()); }
 
 /// # Expose it to the rest of the module.
 pub(super) use zopfli_error;

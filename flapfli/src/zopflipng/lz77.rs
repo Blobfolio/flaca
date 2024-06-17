@@ -58,10 +58,8 @@ impl LZ77Store {
 	pub(crate) fn clear(&mut self) { self.entries.truncate(0); }
 
 	/// # Push Values.
-	pub(crate) fn push(&mut self, litlen: LitLen, dist: u16, pos: usize) -> Result<(), ZopfliError> {
-		let e = LZ77StoreEntry::new(litlen, dist, pos)?;
-		self.push_entry(e);
-		Ok(())
+	pub(crate) fn push(&mut self, litlen: LitLen, dist: u16, pos: usize) {
+		self.push_entry(LZ77StoreEntry::new(litlen, dist, pos));
 	}
 
 	/// # Push Entry.
@@ -120,34 +118,34 @@ impl LZ77StoreEntry {
 		clippy::cast_sign_loss,
 	)]
 	/// # New.
-	const fn new(litlen: LitLen, dist: u16, pos: usize) -> Result<Self, ZopfliError> {
-		if dist < 32_768 {
-			// Using the signed type helps the compiler understand the upper
-			// range fits ZOPFLI_WINDOW_MAX.
-			let dist = dist as i16;
-			let (ll_symbol, d_symbol) =
-				if dist <= 0 { (Lsym::from_litlen(litlen), Dsym::D00) }
-				else {(
-					LENGTH_SYMBOLS[litlen as usize],
-					DISTANCE_SYMBOLS[dist as usize],
-				)};
+	const fn new(litlen: LitLen, dist: u16, pos: usize) -> Self {
+		debug_assert!(dist < 32_768);
 
-			Ok(Self {
-				pos,
-				litlen,
-				dist,
-				ll_symbol,
-				d_symbol,
-			})
+		// Using the signed type helps the compiler understand the upper
+		// range fits ZOPFLI_WINDOW_MAX and wraps (impossible) bad values to
+		// boot.
+		let dist = dist as i16;
+		let (ll_symbol, d_symbol) =
+			if 0 < dist {(
+				LENGTH_SYMBOLS[litlen as usize],
+				DISTANCE_SYMBOLS[dist as usize],
+			)}
+			else { (Lsym::from_litlen(litlen), Dsym::D00) };
+
+		Self {
+			pos,
+			litlen,
+			dist,
+			ll_symbol,
+			d_symbol,
 		}
-		else { Err(zopfli_error!()) }
 	}
 
 	/// # Length.
 	///
 	/// If the distance is zero, 1, otherwise the litlen.
 	pub(crate) const fn length(&self) -> LitLen {
-		if self.dist <= 0 { LitLen::L001 }
-		else { self.litlen }
+		if 0 < self.dist { self.litlen }
+		else { LitLen::L001 }
 	}
 }
