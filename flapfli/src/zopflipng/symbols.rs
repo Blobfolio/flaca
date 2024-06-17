@@ -107,6 +107,11 @@ impl DeflateSym {
 	///
 	/// Returns `true` if `self` is zero.
 	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::D00) }
+
+	/// # Non-Zero Iter.
+	///
+	/// Return an iterator beginning at one.
+	pub(crate) const fn nonzero_iter() -> DeflateSymIter { DeflateSymIter(1) }
 }
 
 impl LitLen {

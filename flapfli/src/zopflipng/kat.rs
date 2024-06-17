@@ -27,7 +27,6 @@ use super::{
 	ArrayD,
 	ArrayLL,
 	DeflateSym,
-	SymbolIteration,
 	zopfli_error,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
@@ -80,6 +79,7 @@ mod sealed {
 	pub trait LengthLimitedCodeLengthsSealed<const N: usize> {
 		const MAXBITS: NonZeroUsize;
 
+		#[inline]
 		/// # Crunch the Code Lengths.
 		///
 		/// This method serves as the closure for the caller's call to
@@ -122,6 +122,7 @@ mod sealed {
 			Self::llcl_write(node, leaves)
 		}
 
+		#[inline]
 		/// # Write Code Lengths!
 		fn llcl_write(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
 			// Make sure we counted correctly before doing anything else.
@@ -130,7 +131,7 @@ mod sealed {
 
 			// Write the changes!
 			let mut writer = leaves.iter().take(last_count.get() as usize).rev();
-			for value in DeflateSym::all().skip(1).take(Self::MAXBITS.get()) {
+			for value in DeflateSym::nonzero_iter().take(Self::MAXBITS.get()) {
 				// Pull the next tail, if any.
 				if let Some(tail) = node.tail.copied() {
 					// Wait for a change in counts to write the values.
@@ -185,7 +186,7 @@ macro_rules! llcl {
 			use sealed::LengthLimitedCodeLengthsSealed;
 
 			// Start the bitlengths at zero.
-			let mut bitlengths = const { [DeflateSym::D00; $size] };
+			let mut bitlengths = [DeflateSym::D00; $size];
 			let bitcells = array_of_cells(&mut bitlengths);
 
 			// Crunch!
@@ -215,7 +216,7 @@ macro_rules! llcl {
 			}
 
 			// Update the (non-zero) symbol counts accordingly.
-			let mut symbols = const { [0; $size] };
+			let mut symbols = [0; $size];
 			for (l, s) in lengths.iter().copied().zip(&mut symbols) {
 				if ! l.is_zero() {
 					*s = scratch[l as usize];
@@ -342,6 +343,7 @@ impl KatScratch {
 	}
 
 	#[allow(unsafe_code)]
+	#[inline]
 	/// # Make Leaves.
 	///
 	/// Join the non-zero frequencies with their corresponding bitlengths into
@@ -425,6 +427,7 @@ impl KatScratch {
 	}
 
 	#[allow(unsafe_code)]
+	#[inline]
 	/// # Make Lists.
 	///
 	/// This resets the internal node counts and returns a slice of `len`
@@ -466,6 +469,7 @@ impl KatScratch {
 	}
 
 	#[allow(unsafe_code)]
+	#[inline]
 	/// # Push.
 	///
 	/// Push a new node to the store and return an immutable reference to it.
@@ -550,9 +554,11 @@ struct List {
 }
 
 impl List {
+	#[inline]
 	/// # Rotate.
 	fn rotate(&mut self) { self.lookahead0 = self.lookahead1; }
 
+	#[inline]
 	/// # Weight Sum.
 	const fn weight_sum(&self) -> NonZeroU32 {
 		self.lookahead0.weight.saturating_add(self.lookahead1.weight.get())
@@ -570,6 +576,7 @@ struct Node {
 }
 
 impl Node {
+	#[inline]
 	/// # Finish Last Node!
 	///
 	/// This method establishes the final tail that the subsequent writing
