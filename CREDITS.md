@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   3.1.1
-    Generated: 2024-06-13 17:53:19 UTC
+    Version:   3.1.2
+    Generated: 2024-06-18 04:53:29 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -19,7 +19,7 @@
 | [dowser](https://github.com/Blobfolio/dowser) | 0.9.1 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [equivalent](https://github.com/cuviper/equivalent) | 1.0.1 |  | Apache-2.0 or MIT |
 | [fastrand](https://github.com/smol-rs/fastrand) | 2.1.0 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 or MIT |
-| flapfli | 3.1.1 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
+| flapfli | 3.1.2 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
 | [funty](https://github.com/myrrlyn/funty) | 2.0.0 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
 | [fyi_msg](https://github.com/Blobfolio/fyi) | 0.13.6 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.14.5 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
