@@ -21,8 +21,8 @@ use std::{
 use super::{
 	DISTANCE_BITS,
 	DISTANCE_SYMBOLS,
-	LENGTH_SYMBOLS,
 	LENGTH_SYMBOL_BITS,
+	LENGTH_SYMBOLS,
 	LitLen,
 	LZ77Store,
 	MatchCache,
@@ -47,6 +47,9 @@ const MIN_COST_DISTANCES: [u8; 30] = [
 	4, 4, 5, 5, 6, 6, 7, 7, 8, 8,
 	9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
 ];
+
+/// # Zero-Filled Sublength Cache.
+const ZEROED_SUBLEN: [u16; SUBLEN_LEN] = [0; SUBLEN_LEN];
 
 
 
@@ -117,7 +120,7 @@ impl ZopfliState {
 		self.hash.reset(arr, instart);
 
 		// We'll need a few more variables…
-		let mut sublen = [0_u16; SUBLEN_LEN];
+		let mut sublen = ZEROED_SUBLEN;
 		let mut length = LitLen::L000;
 		let mut distance: u16 = 0;
 		let mut prev_length = LitLen::L000;
@@ -156,7 +159,7 @@ impl ZopfliState {
 						LitLen::from_u8(unsafe { *arr.get_unchecked(i - 1) }),
 						0,
 						i - 1,
-					)?;
+					);
 					if length_score >= ZOPFLI_MIN_MATCH as u16 && ! length.is_max() {
 						match_available = true;
 						prev_length = length;
@@ -172,7 +175,7 @@ impl ZopfliState {
 					distance = prev_distance;
 
 					// Write the values!
-					store.push(length, distance, i - 1)?;
+					store.push(length, distance, i - 1);
 
 					// Update the hash up through length and increment the loop
 					// position accordingly.
@@ -198,13 +201,13 @@ impl ZopfliState {
 
 			// Write the current length/distance.
 			if length_score >= ZOPFLI_MIN_MATCH as u16 {
-				store.push(length, distance, i)?;
+				store.push(length, distance, i);
 			}
 			// Write from the source with no distance and reset the length to
 			// one.
 			else {
 				length = LitLen::L001;
-				store.push(LitLen::from_u8(arr[i]), 0, i)?;
+				store.push(LitLen::from_u8(arr[i]), 0, i);
 			}
 
 			// Update the hash up through length and increment the loop
@@ -423,7 +426,7 @@ impl ZopfliHash {
 
 		let mut length = LitLen::L000;
 		let mut distance = 0_u16;
-		let mut sublen = [0_u16; SUBLEN_LEN];
+		let mut sublen = ZEROED_SUBLEN;
 
 		// Find the minimum and maximum cost.
 		let min_cost = stats.map_or(12.0, get_minimum_cost);
@@ -526,7 +529,7 @@ impl ZopfliHash {
 			// need mutch calculation.
 			let symbol_cost = stats.map_or(
 				13.0,
-				|s| (s.ll_symbols[285] + s.d_symbols[0]),
+				|s| s.ll_symbols[285] + s.d_symbols[0],
 			);
 
 			// We'll need to read data from one portion of the slice and add it
@@ -605,7 +608,7 @@ impl ZopfliHash {
 				}
 
 				// Add it to the store.
-				store.push(length, dist, i)?;
+				store.push(length, dist, i);
 
 				// Hash the rest of the match.
 				for _ in 1..(length as u16) {
@@ -615,7 +618,7 @@ impl ZopfliHash {
 			}
 			// It isn't matchable; add it directly to the store.
 			else {
-				store.push(LitLen::from_u8(arr[i]), 0, i)?;
+				store.push(LitLen::from_u8(arr[i]), 0, i);
 			}
 
 			i += 1;
@@ -781,12 +784,16 @@ impl ZopfliHash {
 						}
 						else { LitLen::L000 };
 
-					while
-						(currentlength as u16) < (limit as u16) &&
-						(currentlength as usize) < right.len() &&
-						left[currentlength as usize] == right[currentlength as usize]
-					{
-						currentlength = currentlength.increment();
+					// Bump the length for each matching left/right pair, up to
+					// the limit.
+					for next in LitLen::next_iter(currentlength).take((limit as usize) - (currentlength as usize)) {
+						if
+							(currentlength as usize) < right.len() &&
+							left[currentlength as usize] == right[currentlength as usize]
+						{
+							currentlength = next;
+						}
+						else { break; }
 					}
 
 					// We've found a better length!
@@ -950,8 +957,7 @@ fn peek_ahead_fixed(
 	costs: &mut [(f32, LitLen)],
 ) {
 	let min_cost_add = min_cost + cost_j;
-	let mut k = LitLen::MIN_MATCH;
-	for (dist, c) in sublen.iter().copied().zip(costs) {
+	for ((dist, c), k) in sublen.iter().copied().zip(costs).zip(LitLen::matchable_iter()) {
 		if min_cost_add < f64::from(c.0) {
 			let mut new_cost = cost_j;
 			if dist == 0 {
@@ -973,7 +979,6 @@ fn peek_ahead_fixed(
 				c.1 = k;
 			}
 		}
-		k = k.increment();
 	}
 }
 
@@ -987,8 +992,7 @@ fn peek_ahead_stats(
 	stats: &SymbolStats,
 ) {
 	let min_cost_add = min_cost + cost_j;
-	let mut k = LitLen::MIN_MATCH;
-	for (dist, c) in sublen.iter().copied().zip(costs) {
+	for ((dist, c), k) in sublen.iter().copied().zip(costs).zip(LitLen::matchable_iter()) {
 		if min_cost_add < f64::from(c.0) {
 			let mut new_cost = cost_j;
 			if dist == 0 {
@@ -1008,7 +1012,6 @@ fn peek_ahead_stats(
 				c.1 = k;
 			}
 		}
-		k = k.increment();
 	}
 }
 

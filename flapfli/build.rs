@@ -80,14 +80,16 @@ fn build_symbols() {
 	use std::fmt::Write;
 
 	let mut out = format!(
-		"{}{}{}{}{}",
+		"{}{}{}{}{}{}",
 		NumEnum::new(0..19_u8, "Whackadoodle Deflate Indices.", "DeflateSym")
 			.with_debug()
-			.with_eq(),
+			.with_eq()
+			.with_iter(),
 		NumEnum::new(0..32_u16, "Distance Symbols.", "Dsym"),
-		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq(),
+		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq().with_iter(),
 		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),
 		NumEnum::new(0..9_u16, "Block Splitting Indices.", "SplitPIdx").with_iter(),
+		NumEnum::new(0..15_u8, "Block Split Length.", "SplitLen").with_eq(),
 	);
 
 	out.push_str(r"/// # Distance Symbols by Distance
@@ -242,7 +244,7 @@ fn write(path: &Path, data: &[u8]) {
 /// We have a lot of custom numeric types that cover a range of numbers; this
 /// struct ensures we generate their code consistently.
 struct NumEnum<T: Copy + fmt::Display>
-where Range<T>: Iterator<Item=T> + ExactSizeIterator {
+where Range<T>: ExactSizeIterator<Item=T> {
 	rng: Range<T>,
 	title: &'static str,
 	name: &'static str,
@@ -250,7 +252,7 @@ where Range<T>: Iterator<Item=T> + ExactSizeIterator {
 }
 
 impl<T: Copy + fmt::Display> NumEnum<T>
-where Range<T>: Iterator<Item=T> + ExactSizeIterator {
+where Range<T>: ExactSizeIterator<Item=T> {
 	const DERIVE_DEBUG: u8 = 0b0000_0001;
 	const DERIVE_EQ: u8 =    0b0000_0010;
 	const DERIVE_ITER: u8 =  0b0000_0100;
@@ -286,7 +288,7 @@ where Range<T>: Iterator<Item=T> + ExactSizeIterator {
 }
 
 impl<T: Copy + fmt::Display> fmt::Display for NumEnum<T>
-where Range<T>: Iterator<Item=T> + ExactSizeIterator {
+where Range<T>: ExactSizeIterator<Item=T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		// Allow dead code.
 		writeln!(f, "#[allow(dead_code)]")?;
@@ -319,36 +321,38 @@ where Range<T>: Iterator<Item=T> + ExactSizeIterator {
 
 		// Symbol iterator?
 		if Self::DERIVE_ITER == self.flags & Self::DERIVE_ITER {
-			// The iterator struct.
-			writeln!(f, "/// # `{}` Iterator.", self.name)?;
-			writeln!(f, "pub(crate) struct {}Iter({kind});", self.name)?;
+			writeln!(
+				f,
+				"/// # `{name}` Iterator.
+pub(crate) struct {name}Iter({kind});
 
-			// The Iterator impl.
-			writeln!(f, "impl Iterator for {}Iter {{", self.name)?;
-			writeln!(f, "\ttype Item = {};", self.name)?;
-			writeln!(f, "\tfn next(&mut self) -> Option<Self::Item> {{")?;
-			writeln!(f, "\t\tlet old = self.0;")?;
-			writeln!(f, "\t\tif old < {} {{", self.rng.end)?;
-			writeln!(f, "\t\t\tself.0 += 1;")?;
-			writeln!(f, "\t\t\t#[allow(unsafe_code)]")?;
-			writeln!(f, "\t\t\tSome(unsafe {{ std::mem::transmute::<{kind}, {}>(old) }})", self.name)?;
-			writeln!(f, "\t\t}} else {{ None }}")?;
-			writeln!(f, "\t}}")?;
-			writeln!(f, "}}")?;
+impl Iterator for {name}Iter {{
+	type Item = {name};
+	fn next(&mut self) -> Option<Self::Item> {{
+		let old = self.0;
+		if old < {end} {{
+			self.0 += 1;
+			#[allow(unsafe_code)]
+			Some(unsafe {{ std::mem::transmute::<{kind}, {name}>(old) }})
+		}}
+		else {{ None }}
+	}}
+}}
 
-			// The ExactSizeIterator impl.
-			writeln!(f, "impl ExactSizeIterator for {}Iter {{", self.name)?;
-			writeln!(f, "\tfn len(&self) -> usize {{")?;
-			writeln!(f, "\t\tusize::from({}_{kind}.saturating_sub(self.0))", self.rng.end)?;
-			writeln!(f, "\t}}")?;
-			writeln!(f, "}}")?;
+impl ExactSizeIterator for {name}Iter {{
+	fn len(&self) -> usize {{
+		usize::from({end}_{kind}.saturating_sub(self.0))
+	}}
+}}
 
-			// Our SymbolIteration impl.
-			writeln!(f, "impl SymbolIteration for {} {{", self.name)?;
-			writeln!(f, "\tfn all() -> impl ExactSizeIterator<Item=Self> {{")?;
-			writeln!(f, "\t\t{}Iter({})", self.name, self.rng.start)?;
-			writeln!(f, "\t}}")?;
-			writeln!(f, "}}")?;
+impl SymbolIteration<{name}Iter> for {name} {{
+	fn all() -> {name}Iter {{ {name}Iter({start}) }}
+}}
+",
+				name=self.name,
+				end=self.rng.end,
+				start=self.rng.start,
+			)?;
 		}
 
 		Ok(())

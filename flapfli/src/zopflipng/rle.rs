@@ -343,7 +343,12 @@ fn deflate_hash(
 	/// Convert a `DeflateSym` array into an equivalent byte array for faster
 	/// hashing.
 	const fn deflate_bytes<const N: usize>(arr: &[DeflateSym; N]) -> &[u8; N] {
-		// Safety: DeflateSym has the same size and alignment as u8.
+		// Safety: DeflateSym has the same size and alignment as u8, and if
+		// for some reason that isn't true, this code won't compile.
+		const {
+			assert!(std::mem::size_of::<[DeflateSym; N]>() == std::mem::size_of::<[u8; N]>());
+			assert!(std::mem::align_of::<[DeflateSym; N]>() == std::mem::align_of::<[u8; N]>());
+		}
 		unsafe { &* arr.as_ptr().cast() }
 	}
 

@@ -94,8 +94,8 @@ pub(crate) extern "C" fn flaca_png_deflate(
 
 		#[cfg(debug_assertions)] if let Err(e) = res { panic!("{e}"); }
 
-		// For non-debug purposes, just let lodepng know we failed when thre's
-		// an error so it can skip the rest of the processing.
+		// Errors shouldn't be possible, but if something happens to go wrong,
+		// return one so lodepng can abandon its efforts.
 		if res.is_err() { return 1; }
 
 		// Onward and upward!

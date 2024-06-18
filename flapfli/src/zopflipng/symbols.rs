@@ -88,8 +88,8 @@ pub(crate) const LENGTH_SYMBOL_BIT_VALUES: [u8; 259] = [
 ];
 
 /// # Symbol Iterator.
-pub(crate) trait SymbolIteration: Sized {
-	fn all() -> impl ExactSizeIterator<Item=Self>;
+pub(crate) trait SymbolIteration<U: ExactSizeIterator<Item=Self>>: Sized {
+	fn all() -> U;
 }
 
 impl DeflateSym {
@@ -103,27 +103,18 @@ impl DeflateSym {
 		Self::D02, Self::D14, Self::D01, Self::D15,
 	];
 
-	/// # Length-Limited Symbols.
-	///
-	/// This excludes the extra-bit symbols (16-18) and zero.
-	pub(crate) const LIMITED: [Self; 15] = [
-		Self::D01, Self::D02, Self::D03, Self::D04, Self::D05,
-		Self::D06, Self::D07, Self::D08, Self::D09, Self::D10,
-		Self::D11, Self::D12, Self::D13, Self::D14, Self::D15,
-	];
-
 	/// # Is Zero?
 	///
-	/// We check this a lot.
+	/// Returns `true` if `self` is zero.
 	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::D00) }
+
+	/// # Non-Zero Iter.
+	///
+	/// Return an iterator beginning at one.
+	pub(crate) const fn nonzero_iter() -> DeflateSymIter { DeflateSymIter(1) }
 }
 
 impl LitLen {
-	/// # Min Matchable.
-	///
-	/// This is equivalent to `ZOPFLI_MIN_MATCH`.
-	pub(crate) const MIN_MATCH: Self = Self::L003;
-
 	/// # Max Matchable.
 	///
 	/// This is equivalent to `ZOPFLI_MAX_MATCH`.
@@ -131,7 +122,7 @@ impl LitLen {
 
 	/// # Is Matchable?
 	///
-	/// Returns `true` if `self` is at least `Self::MIN_MATCH`.
+	/// Returns `true` if `self` is at least `ZOPFLI_MIN_MATCH`.
 	pub(crate) const fn is_matchable(self) -> bool { 2 < (self as u16) }
 
 	/// # Is Max?
@@ -179,17 +170,16 @@ impl LitLen {
 		else { self }
 	}
 
-	#[allow(unsafe_code)]
-	/// # Increment (Saturating).
+	/// # Matchable Iter.
 	///
-	/// Return `self + 1`, saturating to `Self::MAX_MATCH` if needed.
-	pub(crate) const fn increment(self) -> Self {
-		let n = (self as u16) + 1;
-		if n == 259 { Self::MAX_MATCH }
-		else {
-			// Safety: the max is 258; since self+1 is not 259, we're in range.
-			unsafe { std::mem::transmute::<u16, Self>(n) }
-		}
+	/// Return an iterator covering `ZOPFLI_MIN_MATCH..=ZOPFLI_MAX_MATCH`.
+	pub(crate) const fn matchable_iter() -> LitLenIter { LitLenIter(3) }
+
+	/// # Next Iter.
+	///
+	/// Return an iterator beginning with the next litlen, if any.
+	pub(crate) const fn next_iter(after: Self) -> LitLenIter {
+		LitLenIter(after as u16 + 1)
 	}
 }
 
@@ -201,6 +191,29 @@ impl Lsym {
 	/// always represent the former.
 	pub(crate) const fn from_litlen(litlen: LitLen) -> Self {
 		unsafe { std::mem::transmute::<LitLen, Self>(litlen) }
+	}
+}
+
+impl SplitLen {
+	/// # Is Zero?
+	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::S00) }
+
+	/// # Is Max?
+	pub(crate) const fn is_max(self) -> bool { matches!(self, Self::S14) }
+
+	/// # Increment.
+	pub(crate) const fn increment(self) -> Self {
+		#[allow(unsafe_code)]
+		unsafe {
+			// Safety: this method is called from just two places —
+			// `split_lz77` and `split_raw` — both of which explicitly check
+			// the current value, breaking their loops if/when the maximum is
+			// reached.
+			if self.is_max() { core::hint::unreachable_unchecked(); }
+
+			// Safety: SplitLen has the same size and alignment as u8.
+			std::mem::transmute::<u8, Self>(self as u8 + 1)
+		}
 	}
 }
 

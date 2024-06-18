@@ -27,6 +27,7 @@ use super::{
 	LENGTH_SYMBOL_BITS,
 	LengthLimitedCodeLengths,
 	LZ77Store,
+	SplitLen,
 	SplitPIdx,
 	SymbolIteration,
 	stats::{
@@ -47,9 +48,6 @@ const BLOCK_TYPE_DYNAMIC: u8 = 2;
 /// # Minimum Split Distance.
 const MINIMUM_SPLIT_DISTANCE: usize = 10;
 
-/// # Max Split Points.
-const MAX_SPLIT_POINTS: usize = 14;
-
 #[allow(unsafe_code)]
 const NZ10: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(10) };
 #[allow(unsafe_code)]
@@ -59,15 +57,16 @@ const NZ11: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(11) };
 
 /// # Split Point Scratch.
 ///
-/// This holds three sets of block split points for use during the deflate
+/// This holds two sets of block split points for use during the deflate
 /// passes. Each set can hold up to 14 points (one less than
-/// `BLOCKSPLITTING_MAX`).
+/// `BLOCKSPLITTING_MAX`), but we're overallocating to 15 to cheaply elide
+/// bounds checks.
 ///
 /// A single instance of this struct is (re)used for all deflate passes on a
 /// given image to reduce allocation overhead.
 pub(crate) struct SplitPoints {
-	slice1: [usize; MAX_SPLIT_POINTS],
-	slice2: [usize; MAX_SPLIT_POINTS],
+	slice1: [usize; 15],
+	slice2: [usize; 15],
 	done: HashSet<usize, NoHash>,
 }
 
@@ -75,8 +74,8 @@ impl SplitPoints {
 	/// # New Instance.
 	pub(crate) fn new() -> Self {
 		Self {
-			slice1: [0; MAX_SPLIT_POINTS],
-			slice2: [0; MAX_SPLIT_POINTS],
+			slice1: [0; 15],
+			slice2: [0; 15],
 			done: HashSet::with_hasher(NoHash::default()),
 		}
 	}
@@ -91,7 +90,7 @@ impl SplitPoints {
 	/// In terms of order-of-operations, this must be called _before_ the
 	/// second-stage LZ77 pass as it would otherwise blow away that data.
 	fn split_raw(&mut self, arr: &[u8], instart: usize, state: &mut ZopfliState, store: &mut LZ77Store)
-	-> Result<usize, ZopfliError> {
+	-> Result<SplitLen, ZopfliError> {
 		// Populate an LZ77 store from a greedy pass. This results in better
 		// block choices than a full optimal pass.
 		state.greedy_cold(arr, instart, store, None)?;
@@ -100,29 +99,28 @@ impl SplitPoints {
 		let len = self.split_lz77(store)?;
 
 		// Find the corresponding uncompressed positions.
-		if 0 != len && len <= MAX_SPLIT_POINTS {
+		if len.is_zero() { Ok(len) }
+		else {
 			let mut pos = instart;
-			let mut j = 0;
-			for (i, e) in store.entries.iter().enumerate().take(self.slice2[len - 1] + 1) {
-				if i == self.slice2[j] {
-					self.slice1[j] = pos;
-					j += 1;
-					if j == len { return Ok(len); }
+			let mut j = SplitLen::S00;
+			for (i, e) in store.entries.iter().enumerate().take(self.slice2[len as usize - 1] + 1) {
+				if i == self.slice2[j as usize] {
+					self.slice1[j as usize] = pos;
+					j = j.increment();
+					if (j as u8) == (len as u8) { return Ok(len); }
 				}
 				pos += e.length() as usize;
 			}
 
 			Err(zopfli_error!())
 		}
-		else { Ok(len) }
 	}
 
 	/// # LZ77 Split Pass.
 	///
 	/// This sets the LZ77 split points according to convoluted cost
 	/// evaluations.
-	fn split_lz77(&mut self, store: &LZ77Store) -> Result<usize, ZopfliError> {
-		#[allow(clippy::similar_names)]
+	fn split_lz77(&mut self, store: &LZ77Store) -> Result<SplitLen, ZopfliError> {
 		/// # Find Largest Splittable Block.
 		///
 		/// This finds the largest available block for splitting, evenly spreading the
@@ -155,13 +153,13 @@ impl SplitPoints {
 		}
 
 		// This won't work on tiny files.
-		if store.len() < MINIMUM_SPLIT_DISTANCE { return Ok(0); }
+		if store.len() < MINIMUM_SPLIT_DISTANCE { return Ok(SplitLen::S00); }
 
 		// Get started!
 		self.done.clear();
 		let mut rng = 0..store.len();
 		let mut last = 0;
-		let mut len = 0;
+		let mut len = SplitLen::S00;
 		loop {
 			let (llpos, llcost) = find_minimum_cost(store, rng.start + 1..rng.end)?;
 			if llpos <= rng.start || llpos >= rng.end {
@@ -174,15 +172,15 @@ impl SplitPoints {
 			}
 			else {
 				// Mark it as a split point and add it sorted.
-				self.slice2[len] = llpos;
-				len += 1;
+				self.slice2[len as usize] = llpos;
+				len = len.increment();
 
 				// Keep the list sorted.
-				if last > llpos { self.slice2[..len].sort_unstable(); }
+				if last > llpos { self.slice2[..len as usize].sort_unstable(); }
 				else { last = llpos; }
 
 				// Stop if we've split the maximum number of times.
-				if len == MAX_SPLIT_POINTS { break; }
+				if len.is_max() { break; }
 			}
 
 			// Look for a split and adjust the start/end accordingly. If we don't
@@ -191,7 +189,7 @@ impl SplitPoints {
 			if ! find_largest(
 				store.len(),
 				&self.done,
-				&self.slice2[..len],
+				&self.slice2[..len as usize],
 				&mut rng,
 			) { break; }
 		}
@@ -206,29 +204,26 @@ impl SplitPoints {
 	fn split_again(
 		&mut self,
 		store: &LZ77Store,
-		limit1: usize,
+		limit1: SplitLen,
 		cost1: u32,
 	) -> Result<&[usize], ZopfliError> {
-		if 1 < limit1 {
+		if 1 < (limit1 as u8) {
 			// Move slice2 over to slice1 so we can repopulate slice2.
 			self.slice1.copy_from_slice(self.slice2.as_slice());
 
-			let limit2 = usize::min(
-				self.split_lz77(store)?,
-				MAX_SPLIT_POINTS,
-			);
+			let limit2 = self.split_lz77(store)?;
 			let mut cost2 = 0;
-			for i in 0..=limit2 {
+			for i in 0..=limit2 as usize {
 				let start = if i == 0 { 0 } else { self.slice2[i - 1] };
-				let end = if i < limit2 { self.slice2[i] } else { store.len() };
+				let end = if i < (limit2 as usize) { self.slice2[i] } else { store.len() };
 				cost2 += calculate_block_size_auto_type(store, start..end)?.get();
 			}
 
 			// It's better!
-			if cost2 < cost1 { Ok(&self.slice2[..limit2]) }
-			else { Ok(&self.slice1[..limit1]) }
+			if cost2 < cost1 { Ok(&self.slice2[..limit2 as usize]) }
+			else { Ok(&self.slice1[..limit1 as usize]) }
 		}
-		else { Ok(&self.slice2[..limit1]) }
+		else { Ok(&self.slice2[..limit1 as usize]) }
 	}
 
 	/// # Split Best.
@@ -245,18 +240,15 @@ impl SplitPoints {
 		state: &mut ZopfliState,
 	) -> Result<&[usize], ZopfliError> {
 		// Start by splitting uncompressed.
-		let limit = usize::min(
-			self.split_raw(arr, instart, state, store2)?,
-			MAX_SPLIT_POINTS,
-		);
+		let limit = self.split_raw(arr, instart, state, store2)?;
 		store2.clear();
 
 		// Now some LZ77 funny business.
 		let mut cost1 = 0;
 		let mut store3 = LZ77Store::new();
-		for i in 0..=limit {
+		for i in 0..=limit as usize {
 			let start = if i == 0 { instart } else { self.slice1[i - 1] };
-			let end = if i < limit { self.slice1[i] } else { arr.len() };
+			let end = if i < (limit as usize) { self.slice1[i] } else { arr.len() };
 
 			// This assertion is redundant as we explicitly check range sanity
 			// earlier and later in the pipeline.
@@ -277,7 +269,7 @@ impl SplitPoints {
 			store.steal_entries(store2);
 
 			// Save the chunk size to our best.
-			if i < limit { self.slice2[i] = store.len(); }
+			if i < (limit as usize) { self.slice2[i] = store.len(); }
 		}
 
 		// Try a second pass, recalculating the LZ77 splits with the updated
@@ -370,8 +362,8 @@ fn add_lz77_block(
 		encode_tree(ll_lengths, d_lengths, extra, out)?;
 
 		// Now we need the symbols.
-		let ll_symbols = ArrayLL::<u32>::llcl_symbols(ll_lengths)?;
-		let d_symbols = ArrayD::<u32>::llcl_symbols(d_lengths)?;
+		let ll_symbols = ArrayLL::<u32>::llcl_symbols(ll_lengths);
+		let d_symbols = ArrayD::<u32>::llcl_symbols(d_lengths);
 
 		// Write all the data!
 		add_lz77_data(
@@ -493,12 +485,8 @@ fn add_lz77_data(
 			ll_lengths[e.ll_symbol as usize] as u32,
 		);
 
-		// If the distance is zero, the litlen should be a literal!
-		if e.dist <= 0 {
-			if (e.litlen as u16) >= 256 { return Err(zopfli_error!()); }
-		}
-		// Otherwise add the length symbol bits and distance stuff.
-		else {
+		// Add the length symbol bits and distance stuff.
+		if 0 < e.dist {
 			out.add_bits(
 				u32::from(LENGTH_SYMBOL_BIT_VALUES[e.litlen as usize]),
 				u32::from(LENGTH_SYMBOL_BITS[e.litlen as usize]),
@@ -515,6 +503,8 @@ fn add_lz77_data(
 				u32::from(DISTANCE_BITS[e.d_symbol as usize]),
 			);
 		}
+		// If the distance is zero, the litlen must be a literal.
+		else if (e.litlen as u16) >= 256 { return Err(zopfli_error!()); }
 	}
 
 	Ok(())
@@ -740,11 +730,11 @@ mod test {
 	fn t_fixed_symbols() {
 		assert_eq!(
 			ArrayLL::<u32>::llcl_symbols(&FIXED_TREE_LL),
-			Ok(FIXED_SYMBOLS_LL),
+			FIXED_SYMBOLS_LL,
 		);
 		assert_eq!(
 			ArrayD::<u32>::llcl_symbols(&FIXED_TREE_D),
-			Ok(FIXED_SYMBOLS_D),
+			FIXED_SYMBOLS_D,
 		);
 	}
 
