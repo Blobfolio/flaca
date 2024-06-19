@@ -433,10 +433,9 @@ fn add_lz77_block(
 		state.init_lmc(rng2.len());
 
 		// Perform an optimal run.
-		state.optimal_run_cold(
+		state.optimal_run_fixed(
 			arr.get(..rng2.end).ok_or(zopfli_error!())?,
 			rng2.start,
-			None,
 			fixed_store,
 		)?;
 
@@ -678,7 +677,7 @@ fn lz77_optimal(
 	let mut last_ran = -1;
 	for i in 0..numiterations {
 		// Optimal run.
-		state.optimal_run(arr, instart, Some(&current_stats), scratch_store)?;
+		state.optimal_run(arr, instart, &current_stats, scratch_store)?;
 
 		// This is the cost we actually care about.
 		let current_cost = calculate_block_size_dynamic(

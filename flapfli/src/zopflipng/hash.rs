@@ -225,13 +225,35 @@ impl ZopfliState {
 
 	#[inline(never)]
 	/// # Optimal Run (No Inlining).
-	pub(crate) fn optimal_run_cold(
+	pub(crate) fn optimal_run_fixed(
 		&mut self,
 		arr: &[u8],
 		instart: usize,
-		stats: Option<&SymbolStats>,
 		store: &mut LZ77Store,
-	) -> Result<(), ZopfliError> { self.optimal_run(arr, instart, stats, store) }
+	) -> Result<(), ZopfliError> {
+		// Reset the store and costs.
+		store.clear();
+		let costs = self.squeeze.reset_costs();
+		if ! costs.is_empty() {
+			// Reset and warm the hash.
+			self.hash.reset(arr, instart);
+
+			// Forward and backward squeeze passes.
+			self.hash.get_best_lengths_fixed(arr, instart, costs, &mut self.lmc)?;
+			let paths = self.squeeze.trace_paths()?;
+			if ! paths.is_empty() {
+				self.hash.follow_paths(
+					arr,
+					instart,
+					paths,
+					store,
+					&mut self.lmc,
+				)?;
+			}
+		}
+
+		Ok(())
+	}
 
 	#[inline]
 	/// # Optimal Run.
@@ -245,7 +267,7 @@ impl ZopfliState {
 		&mut self,
 		arr: &[u8],
 		instart: usize,
-		stats: Option<&SymbolStats>,
+		stats: &SymbolStats,
 		store: &mut LZ77Store,
 	) -> Result<(), ZopfliError> {
 		// Reset the store and costs.
@@ -416,10 +438,44 @@ impl ZopfliHash {
 		&mut self,
 		arr: &[u8],
 		instart: usize,
-		stats: Option<&SymbolStats>,
+		stats: &SymbolStats,
 		costs: &mut [(f32, LitLen)],
 		lmc: &mut MatchCache,
 	) -> Result<(), ZopfliError> {
+		/// # Minimum Cost Model (Non-Zero Distances).
+		fn minimum_cost(stats: &SymbolStats) -> f64 {
+			// Find the minimum length cost.
+			let mut length_cost = f64::INFINITY;
+			for (lsym, lbits) in LENGTH_SYMBOLS.iter().copied().zip(LENGTH_SYMBOL_BITS_F.into_iter()).skip(3) {
+				let cost = lbits + stats.ll_symbols[lsym as usize];
+				if cost < length_cost { length_cost = cost; }
+			}
+
+			// Now find the minimum distance cost.
+			let mut dist_cost = f64::INFINITY;
+			for (bits, v) in MIN_COST_DISTANCES.iter().copied().zip(stats.d_symbols) {
+				let cost = f64::from(bits) + v;
+				if cost < dist_cost { dist_cost = cost; }
+			}
+
+			// Add them together and we have our minimum.
+			length_cost + dist_cost
+		}
+
+		/// # Adjusted Cost.
+		fn stat_cost(dist: u16, k: LitLen, stats: &SymbolStats) -> f64 {
+			if dist == 0 {
+				stats.ll_symbols[k as usize]
+			}
+			else {
+				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
+				DISTANCE_BITS_F[dsym as usize] +
+				stats.d_symbols[dsym as usize] +
+				stats.ll_symbols[LENGTH_SYMBOLS[k as usize] as usize] +
+				LENGTH_SYMBOL_BITS_F[k as usize]
+			}
+		}
+
 		// Costs and lengths are resized prior to this point; they should be
 		// one larger than the data of interest (and equal to each other).
 		debug_assert!(costs.len() == arr.len() - instart + 1);
@@ -429,7 +485,7 @@ impl ZopfliHash {
 		let mut sublen = ZEROED_SUBLEN;
 
 		// Find the minimum and maximum cost.
-		let min_cost = stats.map_or(12.0, get_minimum_cost);
+		let min_cost = minimum_cost(stats);
 
 		let mut i = instart;
 		while i < arr.len() {
@@ -438,7 +494,7 @@ impl ZopfliHash {
 
 			// We're in a long repetition of the same character and have more
 			// than ZOPFLI_MAX_MATCH ahead of and behind us.
-			if self._get_best_lengths_max_match(instart, i, stats, arr, costs) {
+			if self._get_best_lengths_max_match(instart, i, Some(stats), arr, costs) {
 				i += ZOPFLI_MAX_MATCH;
 			}
 
@@ -463,10 +519,7 @@ impl ZopfliHash {
 			if i >= arr.len() || j + 1 >= costs.len() { break; }
 
 			let cost_j = f64::from(costs[j].0);
-			let new_cost = stats.map_or_else(
-				|| if arr[i] <= 143 { 8.0 } else { 9.0 },
-				|s| s.ll_symbols[usize::from(arr[i])],
-			) + cost_j;
+			let new_cost = stats.ll_symbols[usize::from(arr[i])] + cost_j;
 			debug_assert!(0.0 <= new_cost);
 
 			// Update it if lower.
@@ -480,13 +533,121 @@ impl ZopfliHash {
 			// all that effort.
 			let limit = length.min_usize(costs.len().saturating_sub(j + 1));
 			if limit.is_matchable() {
-				let sublen2 = &sublen[ZOPFLI_MIN_MATCH..=limit as usize];
-				let costs2 = &mut costs[j + ZOPFLI_MIN_MATCH..];
-				if let Some(s) = stats {
-					peek_ahead_stats(cost_j, min_cost, sublen2, costs2, s);
+				let min_cost_add = min_cost + cost_j;
+				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter().copied().zip(&mut costs[j + ZOPFLI_MIN_MATCH..]).zip(LitLen::matchable_iter()) {
+					if min_cost_add < f64::from(c.0) {
+						// Update it if lower.
+						let new_cost = cost_j + stat_cost(dist, k, stats);
+						if new_cost < f64::from(c.0) {
+							c.0 = new_cost as f32;
+							c.1 = k;
+						}
+					}
 				}
-				else {
-					peek_ahead_fixed(cost_j, min_cost, sublen2, costs2);
+			}
+
+			// Back around again!
+			i += 1;
+		}
+
+		// All costs should have been updated…
+		debug_assert!(costs.iter().all(|(cost, _)| (0.0..1E30).contains(cost)));
+		Ok(())
+	}
+
+	#[allow(clippy::cast_possible_truncation)]
+	#[inline(never)]
+	/// # Get Best Lengths (Fixed).
+	///
+	/// This does the same thing as `ZopfliHash::get_best_lengths`, but with
+	/// simpler, fixed costs.
+	fn get_best_lengths_fixed(
+		&mut self,
+		arr: &[u8],
+		instart: usize,
+		costs: &mut [(f32, LitLen)],
+		lmc: &mut MatchCache,
+	) -> Result<(), ZopfliError> {
+		/// # Adjusted Cost.
+		const fn fixed_cost(dist: u16, k: LitLen) -> u8 {
+			use super::{DISTANCE_BITS, LENGTH_SYMBOL_BITS};
+
+			if dist == 0 {
+				8 + (143 < (k as u16)) as u8
+			}
+			else {
+				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
+				DISTANCE_BITS[dsym as usize] +
+				LENGTH_SYMBOL_BITS[k as usize] +
+				(114 < (k as u16)) as u8 +
+				12
+			}
+		}
+
+		// Costs and lengths are resized prior to this point; they should be
+		// one larger than the data of interest (and equal to each other).
+		debug_assert!(costs.len() == arr.len() - instart + 1);
+
+		let mut length = LitLen::L000;
+		let mut distance = 0_u16;
+		let mut sublen = ZEROED_SUBLEN;
+
+		let mut i = instart;
+		while i < arr.len() {
+			// Hash the remainder.
+			self.update_hash(&arr[i..], i);
+
+			// We're in a long repetition of the same character and have more
+			// than ZOPFLI_MAX_MATCH ahead of and behind us.
+			if self._get_best_lengths_max_match(instart, i, None, arr, costs) {
+				i += ZOPFLI_MAX_MATCH;
+			}
+
+			// Find the longest remaining match.
+			self.find(
+				arr,
+				i,
+				LitLen::MAX_MATCH,
+				&mut Some(&mut sublen),
+				&mut distance,
+				&mut length,
+				lmc,
+				Some(instart),
+			)?;
+
+			// Relative position for the costs and lengths, which have
+			// (iend - istart + 1) entries, so j is always in range when i is.
+			let j = i - instart;
+
+			// This should never trigger; it is mainly a reminder to the
+			// compiler that our i/j indices are still applicable.
+			if i >= arr.len() || j + 1 >= costs.len() { break; }
+
+			let cost_j = f64::from(costs[j].0);
+			let new_cost = if arr[i] <= 143 { 8.0 } else { 9.0 } + cost_j;
+			debug_assert!(0.0 <= new_cost);
+
+			// Update it if lower.
+			if new_cost < f64::from(costs[j + 1].0) {
+				costs[j + 1].0 = new_cost as f32;
+				costs[j + 1].1 = LitLen::L001;
+			}
+
+			// If a long match was found, peek forward to recalculate those
+			// costs, at least the ones who could benefit from the expense of
+			// all that effort.
+			let limit = length.min_usize(costs.len().saturating_sub(j + 1));
+			if limit.is_matchable() {
+				let min_cost_add = 8.0 + cost_j;
+				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter().copied().zip(&mut costs[j + ZOPFLI_MIN_MATCH..]).zip(LitLen::matchable_iter()) {
+					if min_cost_add < f64::from(c.0) {
+						// Update it if lower.
+						let new_cost = cost_j + f64::from(fixed_cost(dist, k));
+						if new_cost < f64::from(c.0) {
+							c.0 = new_cost as f32;
+							c.1 = k;
+						}
+					}
 				}
 			}
 
@@ -920,98 +1081,6 @@ impl ZopfliHashChain {
 
 		// Update the head.
 		self.hash_idx[hval as usize] = hpos as i16;
-	}
-}
-
-
-
-/// # Minimum Cost Model.
-///
-/// This returns the minimum _statistical_ cost, which is the sum of the
-/// minimum length cost and minimum distance cost.
-fn get_minimum_cost(stats: &SymbolStats) -> f64 {
-	// Find the minimum length cost.
-	let mut length_cost = f64::INFINITY;
-	for (lsym, lbits) in LENGTH_SYMBOLS.into_iter().zip(LENGTH_SYMBOL_BITS_F.into_iter()).skip(3) {
-		let cost = lbits + stats.ll_symbols[lsym as usize];
-		if cost < length_cost { length_cost = cost; }
-	}
-
-	// Now find the minimum distance cost.
-	let mut dist_cost = f64::INFINITY;
-	for (bits, v) in MIN_COST_DISTANCES.iter().copied().zip(stats.d_symbols) {
-		let cost = f64::from(bits) + v;
-		if cost < dist_cost { dist_cost = cost; }
-	}
-
-	// Add them together and we have our minimum.
-	length_cost + dist_cost
-}
-
-#[allow(clippy::cast_possible_truncation)]
-/// # Get Best Lengths Peek Ahead (Fixed).
-fn peek_ahead_fixed(
-	cost_j: f64,
-	min_cost: f64,
-	sublen: &[u16],
-	costs: &mut [(f32, LitLen)],
-) {
-	let min_cost_add = min_cost + cost_j;
-	for ((dist, c), k) in sublen.iter().copied().zip(costs).zip(LitLen::matchable_iter()) {
-		if min_cost_add < f64::from(c.0) {
-			let mut new_cost = cost_j;
-			if dist == 0 {
-				if (k as u16) <= 143 { new_cost += 8.0; }
-				else { new_cost += 9.0; }
-			}
-			else {
-				if 114 < (k as u16) { new_cost += 13.0; }
-				else { new_cost += 12.0; }
-
-				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
-				new_cost += DISTANCE_BITS_F[dsym as usize];
-				new_cost += LENGTH_SYMBOL_BITS_F[k as usize];
-			}
-
-			// Update it if lower.
-			if (0.0..f64::from(c.0)).contains(&new_cost) {
-				c.0 = new_cost as f32;
-				c.1 = k;
-			}
-		}
-	}
-}
-
-#[allow(clippy::cast_possible_truncation)]
-/// # Get Best Lengths Peek Ahead (Dynamic).
-fn peek_ahead_stats(
-	cost_j: f64,
-	min_cost: f64,
-	sublen: &[u16],
-	costs: &mut [(f32, LitLen)],
-	stats: &SymbolStats,
-) {
-	let min_cost_add = min_cost + cost_j;
-	for ((dist, c), k) in sublen.iter().copied().zip(costs).zip(LitLen::matchable_iter()) {
-		if min_cost_add < f64::from(c.0) {
-			let mut new_cost = cost_j;
-			if dist == 0 {
-				new_cost += stats.ll_symbols[k as usize];
-			}
-			else {
-				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
-				new_cost += DISTANCE_BITS_F[dsym as usize];
-				new_cost += stats.d_symbols[dsym as usize];
-				new_cost += stats.ll_symbols[LENGTH_SYMBOLS[k as usize] as usize];
-				new_cost += LENGTH_SYMBOL_BITS_F[k as usize];
-			}
-
-			// Update it if lower.
-			if (0.0..f64::from(c.0)).contains(&new_cost) {
-				c.0 = new_cost as f32;
-				c.1 = k;
-			}
-		}
 	}
 }
 
