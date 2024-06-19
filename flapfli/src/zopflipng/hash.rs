@@ -19,9 +19,9 @@ use std::{
 	},
 };
 use super::{
-	DISTANCE_BITS,
+	DISTANCE_BITS_F,
 	DISTANCE_SYMBOLS,
-	LENGTH_SYMBOL_BITS,
+	LENGTH_SYMBOL_BITS_F,
 	LENGTH_SYMBOLS,
 	LitLen,
 	LZ77Store,
@@ -932,8 +932,8 @@ impl ZopfliHashChain {
 fn get_minimum_cost(stats: &SymbolStats) -> f64 {
 	// Find the minimum length cost.
 	let mut length_cost = f64::INFINITY;
-	for (lsym, lbits) in LENGTH_SYMBOLS.into_iter().zip(LENGTH_SYMBOL_BITS.into_iter()).skip(3) {
-		let cost = f64::from(lbits) + stats.ll_symbols[lsym as usize];
+	for (lsym, lbits) in LENGTH_SYMBOLS.into_iter().zip(LENGTH_SYMBOL_BITS_F.into_iter()).skip(3) {
+		let cost = lbits + stats.ll_symbols[lsym as usize];
 		if cost < length_cost { length_cost = cost; }
 	}
 
@@ -969,8 +969,8 @@ fn peek_ahead_fixed(
 				else { new_cost += 12.0; }
 
 				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
-				new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
-				new_cost += f64::from(LENGTH_SYMBOL_BITS[k as usize]);
+				new_cost += DISTANCE_BITS_F[dsym as usize];
+				new_cost += LENGTH_SYMBOL_BITS_F[k as usize];
 			}
 
 			// Update it if lower.
@@ -1000,10 +1000,10 @@ fn peek_ahead_stats(
 			}
 			else {
 				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
-				new_cost += f64::from(DISTANCE_BITS[dsym as usize]);
+				new_cost += DISTANCE_BITS_F[dsym as usize];
 				new_cost += stats.d_symbols[dsym as usize];
 				new_cost += stats.ll_symbols[LENGTH_SYMBOLS[k as usize] as usize];
-				new_cost += f64::from(LENGTH_SYMBOL_BITS[k as usize]);
+				new_cost += LENGTH_SYMBOL_BITS_F[k as usize];
 			}
 
 			// Update it if lower.
@@ -1024,8 +1024,8 @@ mod tests {
 	#[test]
 	fn t_fixed_cost() {
 		// Get the largest dbit and lbit values.
-		let d_max: u8 = DISTANCE_BITS.into_iter().max().unwrap();
-		let l_max: u8 = LENGTH_SYMBOL_BITS.into_iter().max().unwrap();
+		let d_max: u8 = super::super::DISTANCE_BITS.into_iter().max().unwrap();
+		let l_max: u8 = super::super::LENGTH_SYMBOL_BITS.into_iter().max().unwrap();
 
 		// Make sure their sum (along with the largest base) fits within
 		// the u8 space, since that's what we're using at runtime.

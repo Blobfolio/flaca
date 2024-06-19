@@ -20,6 +20,27 @@ const DISTANCE_EXTRA_BITS_MASK: [(u32, u32); 16] = [
 	(8193, 4095), (16_385, 8191), (32_769, 16_383),
 ];
 
+/// # Distance Extra Byts (by Symbol).
+const DISTANCE_BITS: [u8; 32] = [
+	0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+	7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 0, 0,
+];
+
+/// # Length Symbol Bits (by Litlen).
+const LENGTH_SYMBOL_BITS: [u8; 259] = [
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
+	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 0,
+];
+
 const ZOPFLI_WINDOW_SIZE: u16 = 32_768;
 
 
@@ -134,6 +155,26 @@ pub(crate) const DISTANCE_VALUES: &[u16; 32_768] = &[");
 		write!(&mut out, "{dvalue}, ").unwrap();
 	}
 	out.push_str("\n];\n");
+
+	/// # Distance and length bits.
+	///
+	/// Generate integer and float constants for our bit arrays.
+	fn bits_and_bobs<const N: usize>(title: &str, name: &str, arr: [u8; N]) -> String {
+		format!(
+			"/// # {title}.
+pub(crate) const {name}: [u8; {N}] = {arr:?};
+
+/// # {title} (Float).
+///
+/// This is identical to the `u8` version, but avoids a lot of `f64::from` calls.
+pub(crate) const {name}_F: [f64; {N}] = {:?};
+",
+			arr.map(f64::from),
+		)
+	}
+
+	out.push_str(&bits_and_bobs("Distance Bits (by Symbol)", "DISTANCE_BITS", DISTANCE_BITS));
+	out.push_str(&bits_and_bobs("Length Bits (by Symbol)", "LENGTH_SYMBOL_BITS", LENGTH_SYMBOL_BITS));
 
 	// Save it!
 	write(&out_path("symbols.rs"), out.as_bytes());

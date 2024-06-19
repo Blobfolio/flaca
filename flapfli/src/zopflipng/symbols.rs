@@ -10,16 +10,6 @@ via `build.rs`.
 // terrible DISTANCE_SYMBOLS and DISTANCE_VALUES lookup tables.
 include!(concat!(env!("OUT_DIR"), "/symbols.rs"));
 
-/// # Distance Extra Bits (by Symbol).
-///
-/// Note only the first `30` values have meaning, but the compiler doesn't
-/// understand distances are only using 15 bits. Padding the table to `32`
-/// helps eliminate superfluous bounds checks.
-pub(crate) const DISTANCE_BITS: [u8; 32] = [
-	0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
-	7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 0, 0,
-];
-
 /// # Length Symbols by Litlen.
 pub(crate) const LENGTH_SYMBOLS: [Lsym; 259] = [
 	Lsym::L000, Lsym::L000, Lsym::L000,
@@ -55,21 +45,6 @@ pub(crate) const LENGTH_SYMBOLS: [Lsym; 259] = [
 	Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284,
 	Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284,
 	Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L285,
-];
-
-/// # Length Symbol Bits by Litlen.
-pub(crate) const LENGTH_SYMBOL_BITS: [u8; 259] = [
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
-	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 0,
 ];
 
 /// # Length Symbol Bit Values by Litlen.
@@ -222,6 +197,18 @@ impl SplitLen {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn t_symbol_bits() {
+		// The DISTANCE_BITS/_F and LENGTH_SYMBOL_BITS/_F constants should have
+		// equivalent values.
+		for (f, i) in DISTANCE_BITS_F.iter().copied().zip(DISTANCE_BITS) {
+			assert_eq!(f, f64::from(i));
+		}
+		for (f, i) in LENGTH_SYMBOL_BITS_F.iter().copied().zip(LENGTH_SYMBOL_BITS) {
+			assert_eq!(f, f64::from(i));
+		}
+	}
 
 	#[test]
 	/// # Deflate Symbol Size and Alignment.
