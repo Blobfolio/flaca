@@ -105,7 +105,15 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 	# Make the docs.
 	cargo rustdoc \
 		--release \
-		--target-dir "{{ cargo_dir }}"
+		--manifest-path "{{ pkg_dir1 }}/Cargo.toml" \
+		--target-dir "{{ cargo_dir }}" \
+		-- --document-private-items
+
+	cargo rustdoc \
+		--release \
+		--manifest-path "{{ pkg_dir2 }}/Cargo.toml" \
+		--target-dir "{{ cargo_dir }}" \
+		-- --document-private-items
 
 	# Move the docs and clean up ownership.
 	[ ! -d "{{ doc_dir }}" ] || rm -rf "{{ doc_dir }}"
