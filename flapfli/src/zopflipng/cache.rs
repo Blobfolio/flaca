@@ -51,7 +51,7 @@ const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 /// than make up for it.
 pub(crate) struct MatchCache {
 	ld: [u32; ZOPFLI_MASTER_BLOCK_SIZE],
-	sublen: [[u8; SUBLEN_CACHED_LEN]; ZOPFLI_MASTER_BLOCK_SIZE],
+	sublen: [u8; SUBLEN_CACHED_LEN * ZOPFLI_MASTER_BLOCK_SIZE],
 }
 
 impl MatchCache {
@@ -99,10 +99,10 @@ impl MatchCache {
 
 		// Lengths default to one, everything else to zero.
 		self.ld[..blocksize].fill(DEFAULT_LD);
-		self.sublen[..blocksize].fill([0; SUBLEN_CACHED_LEN]);
+		self.sublen[..blocksize * SUBLEN_CACHED_LEN].fill(0);
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
 	/// # Find Match.
 	///
 	/// Find the sublength, distance, and length from cache, if possible.
@@ -123,7 +123,10 @@ impl MatchCache {
 		// If we have no distance, we have no cache.
 		let (cache_len, cache_dist) = ld_split(self.ld[pos]);
 		if ! cache_len.is_zero() && cache_dist == 0 { return Ok(false); }
-		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = &self.sublen[pos];
+		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = unsafe {
+			// Safety: the slice has the same length as the array.
+			&* self.sublen[pos * SUBLEN_CACHED_LEN..(pos + 1) * SUBLEN_CACHED_LEN].as_ptr().cast()
+		};
 
 		// Find the max sublength once, if ever.
 		let maxlength =
@@ -219,7 +222,7 @@ impl MatchCache {
 
 		// The cache gets written three bytes at a time; this iterator will
 		// help us eliminate the bounds checks we'd otherwise run into.
-		let mut dst = self.sublen[pos].chunks_exact_mut(3);
+		let mut dst = self.sublen.chunks_exact_mut(3).skip(pos * ZOPFLI_CACHE_LENGTH).take(ZOPFLI_CACHE_LENGTH);
 
 		// Start by writing all mismatched pairs, up to the limit.
 		for (i, pair) in (0_u8..=u8::MAX).zip(slice.windows(2)) {
