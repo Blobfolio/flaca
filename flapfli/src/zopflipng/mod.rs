@@ -18,6 +18,7 @@ mod blocks;
 mod cache;
 mod error;
 mod hash;
+mod iter;
 mod kat;
 mod lz77;
 mod rle;
@@ -37,6 +38,7 @@ use error::{
 	ZopfliError,
 };
 pub(crate) use hash::ZopfliState;
+use iter::ReducingSlices;
 use kat::{
 	best_tree_size,
 	encode_tree,

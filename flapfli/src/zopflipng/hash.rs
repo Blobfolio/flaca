@@ -26,6 +26,7 @@ use super::{
 	LitLen,
 	LZ77Store,
 	MatchCache,
+	ReducingSlices,
 	SqueezeCache,
 	stats::SymbolStats,
 	SUBLEN_LEN,
@@ -102,6 +103,10 @@ impl ZopfliState {
 	/// updating the store with the results.
 	///
 	/// This is one of two entrypoints into the inner `ZopfliHash` data.
+	///
+	/// TODO: this should probably leverage `ReducingSlices` like elsewhere,
+	/// but that seems to fuck up compiler inlining decisions in mysterious
+	/// ways, so TBD.
 	pub(crate) fn greedy(
 		&mut self,
 		arr: &[u8],
@@ -424,7 +429,7 @@ impl ZopfliHash {
 }
 
 impl ZopfliHash {
-	#[allow(clippy::cast_possible_truncation)]
+	#[allow(unsafe_code, clippy::cast_possible_truncation, clippy::too_many_lines)]
 	#[inline(never)]
 	/// # Get Best Lengths.
 	///
@@ -464,9 +469,7 @@ impl ZopfliHash {
 
 		/// # Adjusted Cost.
 		fn stat_cost(dist: u16, k: LitLen, stats: &SymbolStats) -> f64 {
-			if dist == 0 {
-				stats.ll_symbols[k as usize]
-			}
+			if dist == 0 { stats.ll_symbols[k as usize] }
 			else {
 				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
 				DISTANCE_BITS_F[dsym as usize] +
@@ -476,32 +479,74 @@ impl ZopfliHash {
 			}
 		}
 
-		// Costs and lengths are resized prior to this point; they should be
-		// one larger than the data of interest (and equal to each other).
-		debug_assert!(costs.len() == arr.len() - instart + 1);
+		// The costs are sized according to the (relevant) array slice; they
+		// should always be exactly one larger.
+		if arr.len() <= instart || costs.len() != arr.len() + 1 - instart {
+			return Err(zopfli_error!());
+		}
+
+		// Iterators will help us avoid a bunch of unsafe.
+		let mut iter = ReducingSlices::new(&arr[instart..]).zip(
+			ReducingSlices::new(Cell::from_mut(costs).as_slice_of_cells())
+		);
 
 		let mut length = LitLen::L000;
 		let mut distance = 0_u16;
 		let mut sublen = ZEROED_SUBLEN;
 
-		// Find the minimum and maximum cost.
+		// Find the minimum and symbol costs, which we'll need to reference
+		// repeatedly in the loop.
 		let min_cost = minimum_cost(stats);
+		let symbol_cost = stats.ll_symbols[285] + stats.d_symbols[0];
 
-		let mut i = instart;
-		while i < arr.len() {
+		while let Some((mut arr2, mut cost2)) = iter.next() {
+			if arr2.is_empty() || arr2.len() + 1 != cost2.len() {
+				// Safety: the ReducingSlices iter only returns non-empty
+				// slices.
+				unsafe { core::hint::unreachable_unchecked(); }
+			}
+
 			// Hash the remainder.
-			self.update_hash(&arr[i..], i);
+			let mut pos = arr.len() - arr2.len();
+			self.update_hash(arr2, pos);
 
-			// We're in a long repetition of the same character and have more
-			// than ZOPFLI_MAX_MATCH ahead of and behind us.
-			if self._get_best_lengths_max_match(instart, i, Some(stats), arr, costs) {
-				i += ZOPFLI_MAX_MATCH;
+			if
+				// We have more than ZOPFLI_MAX_MATCH entries behind us, and twice
+				// twice as many ahead of us.
+				pos > instart + ZOPFLI_MAX_MATCH + 1 &&
+				arr2.len() > ZOPFLI_MAX_MATCH * 2 + 1 &&
+				// The current and max-match-ago positions have long repetitions.
+				self.same[pos & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16 * 2 &&
+				self.same[(pos - ZOPFLI_MAX_MATCH) & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16
+			{
+				// Fast forward!
+				let before = pos;
+				for (arr3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
+					if cost2.len() <= ZOPFLI_MAX_MATCH {
+						// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
+						// remaining entries; cost2.len() will be at least one
+						// more than that.
+						unsafe { core::hint::unreachable_unchecked(); }
+					};
+					cost2[ZOPFLI_MAX_MATCH].set((
+						(f64::from(cost2[0].get().0) + symbol_cost) as f32,
+						LitLen::MAX_MATCH,
+					));
+					cost2 = cost3; // The costs are rotated _after_ updating…
+
+					pos += 1;
+					arr2 = arr3;   // …but the array is rotated beforehand.
+					self.update_hash(arr2, pos);
+				}
+
+				debug_assert_eq!(pos - before, ZOPFLI_MAX_MATCH);
+				debug_assert_eq!(arr2.len() + 1, cost2.len());
 			}
 
 			// Find the longest remaining match.
 			self.find(
-				arr,
-				i,
+				arr, // The full, original array.
+				pos,
 				LitLen::MAX_MATCH,
 				&mut Some(&mut sublen),
 				&mut distance,
@@ -510,44 +555,44 @@ impl ZopfliHash {
 				Some(instart),
 			)?;
 
-			// Relative position for the costs and lengths, which have
-			// (iend - istart + 1) entries, so j is always in range when i is.
-			let j = i - instart;
-
-			// This should never trigger; it is mainly a reminder to the
-			// compiler that our i/j indices are still applicable.
-			if i >= arr.len() || j + 1 >= costs.len() { break; }
-
-			let cost_j = f64::from(costs[j].0);
-			let new_cost = stats.ll_symbols[usize::from(arr[i])] + cost_j;
-			debug_assert!(0.0 <= new_cost);
+			if arr2.is_empty() || arr2.len() + 1 != cost2.len() {
+				// Safety: the MAX loop (if it ran at all) only advanced the
+				// slices ZOPFLI_MAX_MATCH; we have more work to do!
+				unsafe { core::hint::unreachable_unchecked(); }
+			}
 
 			// Update it if lower.
-			if new_cost < f64::from(costs[j + 1].0) {
-				costs[j + 1].0 = new_cost as f32;
-				costs[j + 1].1 = LitLen::L001;
+			let cost_j = f64::from(cost2[0].get().0);
+			let new_cost = stats.ll_symbols[usize::from(arr2[0])] + cost_j;
+			if new_cost < f64::from(cost2[1].get().0) {
+				cost2[1].set((new_cost as f32, LitLen::L001));
 			}
 
 			// If a long match was found, peek forward to recalculate those
 			// costs, at least the ones who could benefit from the expense of
 			// all that effort.
-			let limit = length.min_usize(costs.len().saturating_sub(j + 1));
+			let limit = length.min_usize(cost2.len() - 1);
 			if limit.is_matchable() {
 				let min_cost_add = min_cost + cost_j;
-				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter().copied().zip(&mut costs[j + ZOPFLI_MIN_MATCH..]).zip(LitLen::matchable_iter()) {
-					if min_cost_add < f64::from(c.0) {
+
+				if cost2.len() <= (limit as usize) {
+					// Safety: limit is capped to cost2.len() - 1.
+					unsafe { core::hint::unreachable_unchecked(); }
+				}
+
+				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter()
+					.copied()
+					.zip(&cost2[ZOPFLI_MIN_MATCH..=limit as usize])
+					.zip(LitLen::matchable_iter())
+				{
+					let current_cost = f64::from(c.get().0);
+					if min_cost_add < current_cost {
 						// Update it if lower.
 						let new_cost = cost_j + stat_cost(dist, k, stats);
-						if new_cost < f64::from(c.0) {
-							c.0 = new_cost as f32;
-							c.1 = k;
-						}
+						if new_cost < current_cost { c.set((new_cost as f32, k)); }
 					}
 				}
 			}
-
-			// Back around again!
-			i += 1;
 		}
 
 		// All costs should have been updated…
@@ -555,7 +600,7 @@ impl ZopfliHash {
 		Ok(())
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
 	#[inline(never)]
 	/// # Get Best Lengths (Fixed).
 	///
@@ -569,12 +614,12 @@ impl ZopfliHash {
 		lmc: &mut MatchCache,
 	) -> Result<(), ZopfliError> {
 		/// # Adjusted Cost.
+		///
+		/// These are really tiny so we might as well use single-byte math.
 		const fn fixed_cost(dist: u16, k: LitLen) -> u8 {
 			use super::{DISTANCE_BITS, LENGTH_SYMBOL_BITS};
 
-			if dist == 0 {
-				8 + (143 < (k as u16)) as u8
-			}
+			if dist == 0 { 8 + (143 < (k as u16)) as u8 }
 			else {
 				let dsym = DISTANCE_SYMBOLS[(dist & 32_767) as usize];
 				DISTANCE_BITS[dsym as usize] +
@@ -584,29 +629,69 @@ impl ZopfliHash {
 			}
 		}
 
-		// Costs and lengths are resized prior to this point; they should be
-		// one larger than the data of interest (and equal to each other).
-		debug_assert!(costs.len() == arr.len() - instart + 1);
+		// The costs are sized according to the (relevant) array slice; they
+		// should always be exactly one larger.
+		if arr.len() <= instart || costs.len() != arr.len() + 1 - instart {
+			return Err(zopfli_error!());
+		}
+
+		// Iterators will help us avoid a bunch of unsafe.
+		let mut iter = ReducingSlices::new(&arr[instart..]).zip(
+			ReducingSlices::new(Cell::from_mut(costs).as_slice_of_cells())
+		);
 
 		let mut length = LitLen::L000;
 		let mut distance = 0_u16;
 		let mut sublen = ZEROED_SUBLEN;
 
-		let mut i = instart;
-		while i < arr.len() {
-			// Hash the remainder.
-			self.update_hash(&arr[i..], i);
+		while let Some((mut arr2, mut cost2)) = iter.next() {
+			if arr2.is_empty() || arr2.len() + 1 != cost2.len() {
+				// Safety: the ReducingSlices iter only returns non-empty
+				// slices.
+				unsafe { core::hint::unreachable_unchecked(); }
+			}
 
-			// We're in a long repetition of the same character and have more
-			// than ZOPFLI_MAX_MATCH ahead of and behind us.
-			if self._get_best_lengths_max_match(instart, i, None, arr, costs) {
-				i += ZOPFLI_MAX_MATCH;
+			// Hash the remainder.
+			let mut pos = arr.len() - arr2.len();
+			self.update_hash(arr2, pos);
+
+			if
+				// We have more than ZOPFLI_MAX_MATCH entries behind us, and twice
+				// twice as many ahead of us.
+				pos > instart + ZOPFLI_MAX_MATCH + 1 &&
+				arr2.len() > ZOPFLI_MAX_MATCH * 2 + 1 &&
+				// The current and max-match-ago positions have long repetitions.
+				self.same[pos & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16 * 2 &&
+				self.same[(pos - ZOPFLI_MAX_MATCH) & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16
+			{
+				// Fast forward!
+				let before = pos;
+				for (arr3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
+					if cost2.len() <= ZOPFLI_MAX_MATCH {
+						// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
+						// remaining entries; cost2.len() will be at least one
+						// more than that.
+						unsafe { core::hint::unreachable_unchecked(); }
+					};
+					cost2[ZOPFLI_MAX_MATCH].set((
+						(f64::from(cost2[0].get().0) + 13.0) as f32,
+						LitLen::MAX_MATCH,
+					));
+					cost2 = cost3; // The costs are rotated _after_ updating…
+
+					pos += 1;
+					arr2 = arr3;   // …but the array is rotated beforehand.
+					self.update_hash(arr2, pos);
+				}
+
+				debug_assert_eq!(pos - before, ZOPFLI_MAX_MATCH);
+				debug_assert_eq!(arr2.len() + 1, cost2.len());
 			}
 
 			// Find the longest remaining match.
 			self.find(
-				arr,
-				i,
+				arr, // The full, original array.
+				pos,
 				LitLen::MAX_MATCH,
 				&mut Some(&mut sublen),
 				&mut distance,
@@ -615,110 +700,49 @@ impl ZopfliHash {
 				Some(instart),
 			)?;
 
-			// Relative position for the costs and lengths, which have
-			// (iend - istart + 1) entries, so j is always in range when i is.
-			let j = i - instart;
-
-			// This should never trigger; it is mainly a reminder to the
-			// compiler that our i/j indices are still applicable.
-			if i >= arr.len() || j + 1 >= costs.len() { break; }
-
-			let cost_j = f64::from(costs[j].0);
-			let new_cost = if arr[i] <= 143 { 8.0 } else { 9.0 } + cost_j;
-			debug_assert!(0.0 <= new_cost);
+			if arr2.is_empty() || arr2.len() + 1 != cost2.len() {
+				// Safety: the MAX loop (if it ran at all) only advanced the
+				// slices ZOPFLI_MAX_MATCH; we have more work to do!
+				unsafe { core::hint::unreachable_unchecked(); }
+			}
 
 			// Update it if lower.
-			if new_cost < f64::from(costs[j + 1].0) {
-				costs[j + 1].0 = new_cost as f32;
-				costs[j + 1].1 = LitLen::L001;
+			let cost_j = f64::from(cost2[0].get().0);
+			let new_cost = if arr2[0] <= 143 { 8.0 } else { 9.0 } + cost_j;
+			if new_cost < f64::from(cost2[1].get().0) {
+				cost2[1].set((new_cost as f32, LitLen::L001));
 			}
 
 			// If a long match was found, peek forward to recalculate those
 			// costs, at least the ones who could benefit from the expense of
 			// all that effort.
-			let limit = length.min_usize(costs.len().saturating_sub(j + 1));
+			let limit = length.min_usize(cost2.len() - 1);
 			if limit.is_matchable() {
 				let min_cost_add = 8.0 + cost_j;
-				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter().copied().zip(&mut costs[j + ZOPFLI_MIN_MATCH..]).zip(LitLen::matchable_iter()) {
-					if min_cost_add < f64::from(c.0) {
+
+				if cost2.len() <= (limit as usize) {
+					// Safety: limit is capped to cost2.len() - 1.
+					unsafe { core::hint::unreachable_unchecked(); }
+				}
+
+				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter()
+					.copied()
+					.zip(&cost2[ZOPFLI_MIN_MATCH..=limit as usize])
+					.zip(LitLen::matchable_iter())
+				{
+					let current_cost = f64::from(c.get().0);
+					if min_cost_add < current_cost {
 						// Update it if lower.
 						let new_cost = cost_j + f64::from(fixed_cost(dist, k));
-						if new_cost < f64::from(c.0) {
-							c.0 = new_cost as f32;
-							c.1 = k;
-						}
+						if new_cost < current_cost { c.set((new_cost as f32, k)); }
 					}
 				}
 			}
-
-			// Back around again!
-			i += 1;
 		}
 
 		// All costs should have been updated…
 		debug_assert!(costs.iter().all(|(cost, _)| (0.0..1E30).contains(cost)));
 		Ok(())
-	}
-
-	#[allow(clippy::cast_possible_truncation)]
-	/// # Best Length Max Match.
-	///
-	/// This fast-forwards through long repetitions in the middle of a
-	/// `ZopfliHash::get_best_lengths` block, processing `ZOPFLI_MAX_MATCH`
-	/// `arr` and `costs` entries in one go.
-	///
-	/// Returns `true` if such a match was found so the indices can be
-	/// incremented accordingly on the caller's side.
-	fn _get_best_lengths_max_match(
-		&mut self,
-		instart: usize,
-		mut pos: usize,
-		stats: Option<&SymbolStats>,
-		arr: &[u8],
-		costs: &mut [(f32, LitLen)],
-	) -> bool {
-		if
-			// We have more than ZOPFLI_MAX_MATCH entries behind us, and twice
-			// twice as many ahead of us.
-			pos > instart + ZOPFLI_MAX_MATCH + 1 &&
-			arr.len() > pos + ZOPFLI_MAX_MATCH * 2 + 1 &&
-			// The current and max-match-ago positions have long repetitions.
-			self.same[pos & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16 * 2 &&
-			self.same[(pos - ZOPFLI_MAX_MATCH) & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16
-		{
-			// The symbol cost for ZOPFLI_MAX_LENGTH (and a distance of 1) doesn't
-			// need mutch calculation.
-			let symbol_cost = stats.map_or(
-				13.0,
-				|s| s.ll_symbols[285] + s.d_symbols[0],
-			);
-
-			// We'll need to read data from one portion of the slice and add it
-			// to data in another portion. Index-based access confusing the
-			// compiler, so to avoid a bunch of "unsafe", we'll work with a
-			// slice-of-cells representation instead.
-			let costs = Cell::from_mut(costs).as_slice_of_cells();
-
-			// Fast forward!
-			let before = pos;
-			let mut iter = costs.windows(ZOPFLI_MAX_MATCH + 1).skip(pos - instart).take(ZOPFLI_MAX_MATCH);
-			while let Some([a, _rest @ .., z]) = iter.next() {
-				z.set((
-					(f64::from(a.get().0) + symbol_cost) as f32,
-					LitLen::MAX_MATCH,
-				));
-				pos += 1;
-				self.update_hash(&arr[pos..], pos);
-			}
-
-			// We should never not hit our desired take() because the lengths
-			// of arr and cost are fixed and intertwined, but it's a good debug
-			// sort of thing to check.
-			debug_assert_eq!(pos - before, ZOPFLI_MAX_MATCH);
-
-			true
-		}
-		else { false }
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
@@ -741,9 +765,19 @@ impl ZopfliHash {
 		self.reset(arr, instart);
 
 		// Hash the path symbols.
-		let mut i = instart;
-		for length in paths.iter().copied() {
-			self.update_hash(&arr[i..], i);
+		let mut pos = instart;
+		let mut len_iter = paths.iter().copied();
+		let mut arr_iter = ReducingSlices::new(&arr[instart..]);
+		while let Some((length, arr2)) = len_iter.next().zip(arr_iter.next()) {
+			#[allow(unsafe_code)]
+			if arr2.is_empty() {
+				// Safety: the ReducingSlices iter only returns non-empty
+				// slices.
+				unsafe { core::hint::unreachable_unchecked(); }
+			}
+
+			// Hash it.
+			self.update_hash(arr2, pos);
 
 			// Follow the matches!
 			if length.is_matchable() {
@@ -753,8 +787,8 @@ impl ZopfliHash {
 				let mut test_length = LitLen::L000;
 				let mut dist = 0;
 				self.find(
-					arr,
-					i,
+					arr, // The full, original array.
+					pos,
 					length,
 					&mut None,
 					&mut dist,
@@ -769,20 +803,26 @@ impl ZopfliHash {
 				}
 
 				// Add it to the store.
-				store.push(length, dist, i);
+				store.push(length, dist, pos);
 
 				// Hash the rest of the match.
-				for _ in 1..(length as u16) {
-					i += 1;
-					self.update_hash(&arr[i..], i);
+				for arr2 in arr_iter.by_ref().take(length as usize - 1) {
+					pos += 1;
+					self.update_hash(arr2, pos);
 				}
 			}
 			// It isn't matchable; add it directly to the store.
 			else {
-				store.push(LitLen::from_u8(arr[i]), 0, i);
+				#[allow(unsafe_code)]
+				if arr2.is_empty() {
+					// Safety: the ReducingSlices iter only returns non-empty
+					// slices.
+					unsafe { core::hint::unreachable_unchecked(); }
+				}
+				store.push(LitLen::from_u8(arr2[0]), 0, pos);
 			}
 
-			i += 1;
+			pos += 1;
 		}
 
 		Ok(())
