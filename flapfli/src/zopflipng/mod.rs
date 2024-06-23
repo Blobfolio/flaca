@@ -157,27 +157,55 @@ type ArrayD<T> = [T; ZOPFLI_NUM_D];
 /// Note: 16-bit transformations are not lossless; such images will have their
 /// bit depths reduced to a more typical 8 bits.
 pub fn optimize(src: &[u8]) -> Option<EncodedPNG> {
+	// Start by decoding the source.
 	let mut dec = LodePNGState::default();
 	let img = dec.decode(src)?;
 
-	// Encode!
-	let strategy = best_strategy(&dec, &img);
-	let out = encode(&dec, &img, strategy, true)?;
+	// Find the right strategy.
+	let mut enc = LodePNGState::encoder(&dec)?;
+	let mut out = EncodedPNG::new();
+	let strategy = best_strategy(&img, &mut enc, &mut out);
 
-	// Return it if better and nonzero!
-	if out.size < src.len() { Some(out) }
-	else { None }
+	// Now re-re-encode with zopfli and the best strategy.
+	enc.set_strategy(strategy);
+	enc.set_zopfli();
+	if enc.encode(&img, &mut out) {
+		// For really small images, we might be able to save even more by
+		// nuking the palette.
+		if out.size < 4096 && LodePNGColorType::LCT_PALETTE.is_match(&out) {
+			if let Some(out2) = enc.try_small(&img) {
+				if out2.size < out.size && out2.size < src.len() {
+					// We improved again!
+					return Some(out2);
+				}
+			}
+		}
+
+		// We improved!
+		if out.size < src.len() { return Some(out); }
+	}
+
+	None
 }
 
 
 
 /// # Best Strategy.
 ///
-/// This attempts to find the best filtering strategy for the image by trying
-/// all of them in fast mode, and picking whichever produces the smallest
-/// output.
-fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrategy {
-	[
+/// This re-encodes the image (quickly) using each strategy, returning
+/// whichever produced the smallest output.
+///
+/// Skipping zopfli here saves _a ton_ of processing time and (almost) never
+/// changes the answer, so it's a shortcut worth taking.
+fn best_strategy(
+	img: &DecodedImage,
+	enc: &mut LodePNGState,
+	out: &mut EncodedPNG,
+) -> LodePNGFilterStrategy {
+	let mut best_size = usize::MAX;
+	let mut best_strategy = LodePNGFilterStrategy::LFS_ZERO;
+
+	for strategy in [
 		LodePNGFilterStrategy::LFS_ZERO,
 		LodePNGFilterStrategy::LFS_ONE,
 		LodePNGFilterStrategy::LFS_TWO,
@@ -186,40 +214,13 @@ fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrateg
 		LodePNGFilterStrategy::LFS_MINSUM,
 		LodePNGFilterStrategy::LFS_ENTROPY,
 		LodePNGFilterStrategy::LFS_BRUTE_FORCE,
-	]
-		.into_iter()
-		.filter_map(|s| encode(dec, img, s, false).map(|out| (out.size, s)))
-		.min_by(|a, b| a.0.cmp(&b.0))
-		.map_or(LodePNGFilterStrategy::LFS_ZERO, |(_, s)| s)
-}
-
-/// # Apply Optimizations.
-///
-/// This attempts to re-encode an image using the provided filter strategy,
-/// returning an `EncodedPNG` object if it all works out.
-fn encode(
-	dec: &LodePNGState,
-	img: &DecodedImage,
-	strategy: LodePNGFilterStrategy,
-	slow: bool,
-) -> Option<EncodedPNG> {
-	// Encode and write to the buffer if it worked.
-	let mut enc = LodePNGState::encoder(dec, strategy, slow)?;
-	let out = enc.encode(img)?;
-
-	// We might be able to save a couple bytes by nuking the palette if the
-	// image is already really small.
-	if
-		out.size < 4096 &&
-		LodePNGColorType::LCT_PALETTE.is_match(&out) &&
-		enc.prepare_encoder_small(img)
-	{
-		if let Some(out2) = enc.encode(img) {
-			if out2.size < out.size {
-				return Some(out2);
-			}
+	] {
+		enc.set_strategy(strategy);
+		if enc.encode(img, out) && out.size < best_size {
+			best_size = out.size;
+			best_strategy = strategy;
 		}
 	}
 
-	Some(out)
+	best_strategy
 }

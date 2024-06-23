@@ -14,6 +14,7 @@ use std::{
 		realloc,
 	},
 	ffi::c_void,
+	num::NonZeroUsize,
 	ops::Deref,
 	ptr::NonNull,
 };
@@ -46,7 +47,7 @@ impl Deref for EncodedPNG {
 	#[allow(unsafe_code)]
 	#[inline]
 	fn deref(&self) -> &Self::Target {
-		if self.is_empty() { &[] }
+		if self.is_null() { &[] }
 		else {
 			unsafe { std::slice::from_raw_parts(self.buf, self.size) }
 		}
@@ -70,10 +71,8 @@ impl EncodedPNG {
 		}
 	}
 
-	/// # Is Empty?
-	///
-	/// Returns true if the instance is empty.
-	fn is_empty(&self) -> bool { self.size == 0 || self.buf.is_null() }
+	/// # Is Null?
+	pub(crate) fn is_null(&self) -> bool { self.size == 0 || self.buf.is_null() }
 }
 
 
@@ -93,7 +92,7 @@ impl EncodedPNG {
 ///
 /// This still requires a lot of unsafe, but at least it lives on this side of
 /// the FFI divide!
-pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: usize) -> *mut u8 {
+pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> *mut u8 {
 	let real_ptr =
 		// If null, allocate it fresh.
 		if ptr.is_null() {
@@ -105,12 +104,14 @@ pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: usize) -> *mut u8 
 		// Otherwise resize!
 		else {
 			let (real_ptr, old_size) = size_and_ptr(ptr);
-			realloc(real_ptr, layout_for(old_size), new_size + USIZE_SIZE)
+			// Return it as-was if the allocation is already sufficient.
+			if old_size >= new_size { return ptr; }
+			realloc(real_ptr, layout_for(old_size), USIZE_SIZE + new_size.get())
 		};
 
 	// Safety: the layout is aligned to usize.
-	real_ptr.cast::<usize>().write(new_size); // Write the length.
-	real_ptr.add(USIZE_SIZE)                  // Return the rest.
+	real_ptr.cast::<usize>().write(new_size.get()); // Write the length.
+	real_ptr.add(USIZE_SIZE)                        // Return the rest.
 }
 
 #[allow(unsafe_code, clippy::inline_always)]
@@ -145,14 +146,20 @@ unsafe extern "C" fn lodepng_free(ptr: *mut c_void) { flapfli_free(ptr.cast()); 
 ///
 /// This is the same as ours, but casts to `c_void` for the ABI.
 unsafe extern "C" fn lodepng_malloc(size: usize) -> *mut c_void {
-	flapfli_allocate(std::ptr::null_mut(), size).cast()
+	flapfli_allocate(
+		std::ptr::null_mut(),
+		NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN),
+	).cast()
 }
 
 #[no_mangle]
 #[allow(unsafe_code)]
 /// # Re-allocate!
 unsafe extern "C" fn lodepng_realloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
-	flapfli_allocate(ptr.cast(), new_size).cast()
+	flapfli_allocate(
+		ptr.cast(),
+		NonZeroUsize::new(new_size).unwrap_or(NonZeroUsize::MIN),
+	).cast()
 }
 
 
@@ -163,8 +170,8 @@ unsafe extern "C" fn lodepng_realloc(ptr: *mut c_void, new_size: usize) -> *mut 
 ///
 /// This returns an appropriately sized and aligned layout with room at the
 /// beginning to hold our "secret" length information.
-const unsafe fn layout_for(size: usize) -> Layout {
-	Layout::from_size_align_unchecked(USIZE_SIZE + size, std::mem::align_of::<usize>())
+const unsafe fn layout_for(size: NonZeroUsize) -> Layout {
+	Layout::from_size_align_unchecked(USIZE_SIZE + size.get(), std::mem::align_of::<usize>())
 }
 
 #[allow(unsafe_code, clippy::cast_ptr_alignment, clippy::inline_always)]
@@ -173,9 +180,11 @@ const unsafe fn layout_for(size: usize) -> Layout {
 ///
 /// This method takes the `size`-sized pointer shared with the rest of the
 /// crate (and `lodepng`) and converts it to the "real" one containing the
-/// extra length information, returning it along with said length.
-const unsafe fn size_and_ptr(ptr: *mut u8) -> (*mut u8, usize) {
+/// extra length information, returning it along with said length (the usable
+/// space, i.e. without the extra usize).
+const unsafe fn size_and_ptr(ptr: *mut u8) -> (*mut u8, NonZeroUsize) {
 	let size_and_data_ptr = ptr.sub(USIZE_SIZE);
-	let size = *(size_and_data_ptr as *const usize);
+	// Safety: the size is written from a NonZeroUsize.
+	let size = NonZeroUsize::new_unchecked(*(size_and_data_ptr as *const usize));
 	(size_and_data_ptr, size)
 }

@@ -20,6 +20,7 @@ use std::{
 		c_uint,
 	},
 	mem::MaybeUninit,
+	num::NonZeroUsize,
 	ops::Range,
 	sync::atomic::Ordering::Relaxed,
 };
@@ -161,7 +162,10 @@ impl ZopfliOut {
 
 			// (Re)allocate if size is a power of two, or empty.
 			if 0 == (size & size.wrapping_sub(1)) {
-				*self.out = flapfli_allocate(*self.out, usize::max(size * 2, 1));
+				*self.out = flapfli_allocate(
+					*self.out,
+					NonZeroUsize::new(size * 2).unwrap_or(NonZeroUsize::MIN),
+				);
 			}
 
 			(*self.out).add(size).write(value);
@@ -306,27 +310,25 @@ impl LodePNGState {
 
 	#[allow(unsafe_code)]
 	/// # Encode!
-	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedPNG> {
+	///
+	/// Returns true if there were no errors and the result is non-empty.
+	pub(super) fn encode(&mut self, img: &DecodedImage, out: &mut EncodedPNG) -> bool {
+		// Reset the size.
+		out.size = 0;
+
 		// Safety: a non-zero response is an error.
-		let mut out = EncodedPNG::new();
 		let res = unsafe {
 			lodepng_encode(&mut out.buf, &mut out.size, img.buf, img.w, img.h, self)
 		};
 
-		// Return it if we got it.
-		if 0 == res && ! out.is_empty() { Some(out) }
-		else { None }
+		0 == res && ! out.is_null()
 	}
 
 	#[allow(unsafe_code)]
 	/// # Set Up Encoder.
 	///
 	/// This configures and returns a new state for encoding purposes.
-	pub(super) fn encoder(
-		dec: &Self,
-		strategy: LodePNGFilterStrategy,
-		slow: bool
-	) -> Option<Self> {
+	pub(super) fn encoder(dec: &Self) -> Option<Self> {
 		let mut enc = Self::default();
 
 		// Copy palette details over to the encoder.
@@ -341,31 +343,39 @@ impl LodePNGState {
 		}
 
 		enc.encoder.filter_palette_zero = 0;
-		enc.encoder.filter_strategy = strategy;
-
-		// For final compression, enable the custom zopfli deflater.
-		if slow {
-			enc.encoder.zlibsettings.windowsize = 32_768;
-			enc.encoder.zlibsettings.custom_deflate = Some(flaca_png_deflate);
-		}
-		else {
-			enc.encoder.zlibsettings.windowsize = 8_192;
-		}
+		enc.encoder.filter_strategy = LodePNGFilterStrategy::LFS_ZERO;
+		enc.encoder.zlibsettings.windowsize = 8_192;
 
 		Some(enc)
 	}
 
+	/// # Change Strategies.
+	pub(super) fn set_strategy(&mut self, strategy: LodePNGFilterStrategy) {
+		self.encoder.filter_strategy = strategy;
+	}
+
+	/// # Prepare for Zopfli.
+	pub(super) fn set_zopfli(&mut self) {
+		self.encoder.zlibsettings.windowsize = 32_768;
+		self.encoder.zlibsettings.custom_deflate = Some(flaca_png_deflate);
+	}
+
 	#[allow(unsafe_code)]
-	/// # Prepare Encoder for Encoding (a small image).
+	#[inline(never)]
+	/// # Paletteless Encode (for small images).
 	///
-	/// This updates an existing encoder to potentially further optimize a
-	/// really small image.
-	pub(super) fn prepare_encoder_small(&mut self, img: &DecodedImage) -> bool {
+	/// Patch the encoder settings to see if we can squeeze even more savings
+	/// out of the (small) image, reencode it, and return the result if there
+	/// are no errors.
+	///
+	/// Note: the caller will need to check the resulting size to see if
+	/// savings were actually achieved.
+	pub(super) fn try_small(&mut self, img: &DecodedImage) -> Option<EncodedPNG> {
 		// Safety: a non-zero response is an error.
 		let mut stats = LodePNGColorStats::default();
 		if 0 != unsafe {
 			lodepng_compute_color_stats(&mut stats, img.buf, img.w, img.h, &self.info_raw)
-		} { return false; }
+		} { return None; }
 
 		// The image is too small for tRNS chunk overhead.
 		if img.w * img.h <= 16 && 0 != stats.key { stats.alpha = 1; }
@@ -389,7 +399,10 @@ impl LodePNGState {
 		}
 		else { self.info_png.color.key_defined = 0; }
 
-		true
+		// Re-encode it and see what happens!
+		let mut out = EncodedPNG::new();
+		if self.encode(img, &mut out) { Some(out) }
+		else { None }
 	}
 }
 
