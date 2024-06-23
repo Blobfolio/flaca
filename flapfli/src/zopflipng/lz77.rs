@@ -21,14 +21,6 @@ use super::{
 
 
 
-/// # Shared `LZ77Store` Pool.
-///
-/// Each `deflate_part` run can use as many as three of these; we might as well
-/// reuse the objects to cut down on the number of allocations being made.
-// static POOL: Pool = Pool::new();
-
-
-
 #[derive(Clone)]
 /// # LZ77 Data Store.
 pub(crate) struct LZ77Store {
@@ -86,8 +78,7 @@ impl LZ77Store {
 	pub(crate) fn len(&self) -> usize { self.entries.len() }
 
 	/// # Histogram.
-	pub(crate) fn histogram(&self, rng: Range<usize>)
-	-> (ArrayLL<u32>, ArrayD<u32>) {
+	pub(crate) fn histogram(&self, rng: Range<usize>) -> (ArrayLL<u32>, ArrayD<u32>) {
 		let mut ll_counts = ZEROED_COUNTS_LL;
 		let mut d_counts = ZEROED_COUNTS_D;
 

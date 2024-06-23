@@ -229,7 +229,9 @@ impl ZopfliState {
 	}
 
 	#[inline(never)]
-	/// # Optimal Run (No Inlining).
+	/// # Optimal Run (Fixed).
+	///
+	/// Same as `ZopfliHash::optimal_run`, but without the histogram stats.
 	pub(crate) fn optimal_run_fixed(
 		&mut self,
 		arr: &[u8],
@@ -260,14 +262,11 @@ impl ZopfliState {
 		Ok(())
 	}
 
-	#[inline]
 	/// # Optimal Run.
 	///
-	/// This performs backward/forward squeeze passes on the data, optionally
-	/// considering existing histogram data. The `store` is updated with the
-	/// best-length match data.
-	///
-	/// This is one of two entrypoints into the inner `ZopfliHash` data.
+	/// This performs backward/forward squeeze passes on the data with
+	/// existing histogram data. The `store` is updated with the best-length
+	/// match data.
 	pub(crate) fn optimal_run(
 		&mut self,
 		arr: &[u8],

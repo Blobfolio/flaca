@@ -637,6 +637,7 @@ fn find_minimum_cost(store: &LZ77Store, mut rng: Range<usize>)
 	Ok((best_idx, last_best_cost))
 }
 
+#[inline(never)]
 /// # Optimal LZ77.
 ///
 /// Calculate lit/len and dist pairs for the dataset.
@@ -660,13 +661,12 @@ fn lz77_optimal(
 	// Greedy run.
 	state.greedy(arr, instart, scratch_store, Some(instart))?;
 
-	// Create new stats with the store (updated by the greedy pass).
-	let mut current_stats = SymbolStats::new();
-	current_stats.load_store(scratch_store);
-
-	// Set up dummy stats we can use to track best and last.
+	// Set up the PRNG and two sets of stats, populating one with the greedy-
+	// crunched store.
 	let mut ran = RanState::new();
 	let mut best_stats = SymbolStats::new();
+	let mut current_stats = SymbolStats::new();
+	current_stats.load_store(scratch_store);
 
 	// We'll also want dummy best and last costs.
 	let mut last_cost = NonZeroU32::MIN;
@@ -676,6 +676,9 @@ fn lz77_optimal(
 	// stat run.
 	let mut last_ran = -1;
 	for i in 0..numiterations {
+		// Rebuild the symbols.
+		current_stats.crunch();
+
 		// Optimal run.
 		state.optimal_run(arr, instart, &current_stats, scratch_store)?;
 
@@ -692,24 +695,16 @@ fn lz77_optimal(
 			best_cost = current_cost;
 		}
 
-		// Copy the stats to last_stats, clear them, and repopulate
-		// with the current store.
-		let (last_litlens, last_dists) = current_stats.clear();
-		current_stats.load_store(scratch_store);
+		// Repopulate the counts from the current store, and if the randomness
+		// has "warmed up" sufficiently, combine them with half the previous
+		// values to create a sorted of weighted average.
+		current_stats.reload_store(scratch_store, last_ran != -1);
 
-		// Once the randomness has kicked in, improve convergence by
-		// weighting the current and previous stats.
-		if last_ran != -1 {
-			current_stats.add_last(&last_litlens, &last_dists);
-			current_stats.crunch();
-		}
-
-		// Replace the current stats with the best stats, randomize,
-		// and see what happens.
+		// If nothing changed, replace the current stats with the best stats,
+		// reorder the counts, and see what happens.
 		if 5 < i && current_cost == last_cost {
 			current_stats = best_stats;
 			current_stats.randomize(&mut ran);
-			current_stats.crunch();
 			last_ran = i;
 		}
 
