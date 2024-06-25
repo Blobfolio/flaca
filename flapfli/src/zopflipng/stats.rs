@@ -19,7 +19,8 @@ use super::{
 #[derive(Clone, Copy)]
 /// # Randomness.
 ///
-/// This struct is only used to cheaply randomize stat frequencies.
+/// This struct is only used to cheaply (and predictably) shuffle stat
+/// frequencies.
 pub(crate) struct RanState {
 	m_w: u32,
 	m_z: u32,
