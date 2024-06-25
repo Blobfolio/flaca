@@ -240,35 +240,6 @@ fn calculate_size(
 	ll_lengths: &ArrayLL<DeflateSym>,
 	d_lengths: &ArrayD<DeflateSym>,
 ) -> Result<(CacheEntry, u64), ZopfliError> {
-	#[inline(never)]
-	/// # Calculate Dynamic Block Size.
-	fn data_size(
-		ll_counts: &ArrayLL<u32>,
-		d_counts: &ArrayD<u32>,
-		ll_lengths: &ArrayLL<DeflateSym>,
-		d_lengths: &ArrayD<DeflateSym>,
-	) -> u32 {
-		// The end symbol is always included.
-		let mut size = ll_lengths[256] as u32;
-
-		// The early lengths and counts.
-		for (ll, lc) in ll_lengths.iter().copied().zip(ll_counts).take(256) {
-			size += (ll as u32) * lc;
-		}
-
-		// The lengths and counts with extra bits.
-		for (i, lbit) in (257..257 + LENGTH_EXTRA_BITS.len()).zip(LENGTH_EXTRA_BITS) {
-			size += (ll_lengths[i] as u32 + lbit) * ll_counts[i];
-		}
-
-		// The distance lengths, counts, and extra bits.
-		for (i, dbit) in DISTANCE_BITS.iter().copied().enumerate().take(30) {
-			size += (d_lengths[i] as u32 + u32::from(dbit)) * d_counts[i];
-		}
-
-		size
-	}
-
 	// Hash the symbols.
 	let hash = deflate_hash(ll_counts, d_counts, ll_lengths, d_lengths);
 
@@ -280,13 +251,46 @@ fn calculate_size(
 
 	// Calculate the sizes.
 	let (extra, treesize) = best_tree_size(ll_lengths, d_lengths)?;
-	let datasize = data_size(ll_counts, d_counts, ll_lengths, d_lengths);
+	let datasize = calculate_size_data(ll_counts, d_counts, ll_lengths, d_lengths);
 	let size = treesize.saturating_add(datasize);
 	let out = CacheEntry { extra, size };
 
 	// Save to cache for later, then return.
 	entry.insert(out);
 	Ok((out, hash))
+}
+
+#[inline(never)]
+/// # Calculate Dynamic Data Block Size.
+fn calculate_size_data(
+	ll_counts: &ArrayLL<u32>,
+	d_counts: &ArrayD<u32>,
+	ll_lengths: &ArrayLL<DeflateSym>,
+	d_lengths: &ArrayD<DeflateSym>,
+) -> u32 {
+	// The early lengths and counts.
+	let a = ll_lengths.iter().copied()
+		.zip(ll_counts.iter().copied())
+		.take(256)
+		.map(|(ll, lc)| (ll as u32) * lc)
+		.sum::<u32>();
+
+	// The lengths and counts with extra bits.
+	let b = ll_lengths[257..].iter().copied()
+		.zip(ll_counts[257..].iter().copied())
+		.zip(LENGTH_EXTRA_BITS)
+		.map(|((ll, lc), lbit)| (ll as u32 + lbit) * lc)
+		.sum::<u32>();
+
+	// The distance lengths, counts, and extra bits.
+	let c = d_lengths.iter().copied()
+		.zip(d_counts.iter().copied())
+		.zip(DISTANCE_BITS)
+		.take(30)
+		.map(|((dl, dc), dbit)| (dl as u32 + u32::from(dbit)) * dc)
+		.sum::<u32>();
+
+	a + b + c + ll_lengths[256] as u32
 }
 
 /// # Dynamic Length-Limited Code Lengths.

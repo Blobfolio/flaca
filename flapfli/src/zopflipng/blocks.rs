@@ -523,26 +523,27 @@ fn calculate_block_size_uncompressed(store: &LZ77Store, rng: Range<usize>)
 
 /// # Calculate Block Size (Fixed).
 fn calculate_block_size_fixed(store: &LZ77Store, rng: Range<usize>) -> NonZeroU32 {
-	// The end symbol is always included.
-	let mut size = FIXED_TREE_LL[256] as u32;
-
 	// Loop the store if we have data to loop.
 	let slice = store.entries.as_slice();
-	if rng.start < rng.end && rng.end <= slice.len() {
-		// Make sure the end does not exceed the store!
-		for e in &slice[rng] {
-			size += FIXED_TREE_LL[e.ll_symbol as usize] as u32;
-			if 0 < e.dist {
-				size += u32::from(LENGTH_SYMBOL_BITS[e.litlen as usize]);
-				size += u32::from(DISTANCE_BITS[e.d_symbol as usize]);
-				size += FIXED_TREE_D[e.d_symbol as usize] as u32;
-			}
+	let size =
+		if rng.start < rng.end && rng.end <= slice.len() {
+			slice[rng].iter()
+			.map(|e| {
+				let mut size = FIXED_TREE_LL[e.ll_symbol as usize] as u32;
+				if 0 < e.dist {
+					size += u32::from(LENGTH_SYMBOL_BITS[e.litlen as usize]);
+					size += u32::from(DISTANCE_BITS[e.d_symbol as usize]);
+					size += FIXED_TREE_D[e.d_symbol as usize] as u32;
+				}
+				size
+			})
+			.sum::<u32>()
 		}
-	}
+		else { 0 };
 
 	// This can't really fail, but fixed models are bullshit anyway so we can
 	// fall back to an unbeatably large number.
-	NonZeroU32::new(size).unwrap_or(NonZeroU32::MAX)
+	NonZeroU32::new(size + FIXED_TREE_LL[256] as u32).unwrap_or(NonZeroU32::MAX)
 }
 
 /// # Calculate Block Size (Dynamic).

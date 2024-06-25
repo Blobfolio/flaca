@@ -758,9 +758,11 @@ impl TreeScratch {
 
 		// We can finally calculate the size!
 		let mut size = (hclen as u32 + 4) * 3;
-		for (a, b) in cl_lengths.into_iter().zip(cl_counts.iter().copied()) {
-			size += (a as u32) * b;
-		}
+		size += cl_lengths.iter()
+			.copied()
+			.zip(cl_counts.iter().copied())
+			.map(|(a, b)| (a as u32) * b)
+			.sum::<u32>();
 		size += cl_counts[16] * 2; // Extra bits.
 		size += cl_counts[17] * 3;
 		size += cl_counts[18] * 7;
