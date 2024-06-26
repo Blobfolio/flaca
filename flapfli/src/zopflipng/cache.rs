@@ -37,6 +37,11 @@ const DEFAULT_LD: u32 = u32::from_le_bytes([1, 0, 0, 0]);
 /// # Sublength Cache Entries.
 const ZOPFLI_CACHE_LENGTH: usize = 8;
 
+/// # Length of Split Cache.
+///
+/// As this is a bit-array, each byte covers eight indices.
+const SPLIT_CACHE_LEN: usize = ZOPFLI_MASTER_BLOCK_SIZE.div_ceil(8);
+
 /// # Sublength Cache Total Length.
 ///
 /// Each entry uses three bytes, so the total size is…
@@ -250,6 +255,72 @@ impl MatchCache {
 
 
 
+/// # Split Cache.
+///
+/// This structure holds a sort of bit-array used for keeping track of which
+/// split points have already been tested.
+///
+/// Even though 125K is under clippy's warning threshold, it's still a good
+/// idea to box it up since there'll be one instance per thread.
+pub(crate) struct SplitCache {
+	set: [u8; SPLIT_CACHE_LEN],
+}
+
+impl SplitCache {
+	#[allow(unsafe_code)]
+	/// # New.
+	///
+	/// See the notes associated with the other cache structures for the how
+	/// and why of all this pointer-boxing business.
+	pub(super) fn new() -> Box<Self> {
+		// Reserve the space.
+		const LAYOUT: Layout = Layout::new::<SplitCache>();
+		let out = NonNull::new(unsafe { alloc(LAYOUT).cast() })
+			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
+		let ptr: *mut Self = out.as_ptr();
+
+		unsafe {
+			// False is zeroes all the way down.
+			addr_of_mut!((*ptr).set).write_bytes(0, 1);
+			Box::from_raw(ptr)
+		}
+	}
+
+	/// # Initialize.
+	///
+	/// Clear the first `blocksize`-worth of values.
+	pub(crate) fn init(&mut self, blocksize: usize) {
+		// Lodepng will never pass along more than ZOPFLI_MASTER_BLOCK_SIZE
+		// bytes, but this lets the compiler know we won't go over.
+		let mut bitsize = blocksize.div_ceil(8);
+		if SPLIT_CACHE_LEN < bitsize {
+			bitsize = SPLIT_CACHE_LEN;
+		}
+
+		self.set[..bitsize].fill(0);
+	}
+
+	#[inline]
+	/// # Not Checked?
+	///
+	/// Returns true if the value is currently unchecked.
+	pub(crate) const fn is_unset(&self, pos: usize) -> bool {
+		let idx = pos.wrapping_div(8);
+		let mask: u8 = 1 << (pos % 8);
+		SPLIT_CACHE_LEN <= idx || 0 == self.set[idx] & mask
+	}
+
+	#[inline]
+	/// # Mark as Checked.
+	pub(crate) fn set(&mut self, pos: usize) {
+		let idx = pos.wrapping_div(8);
+		let mask: u8 = 1 << (pos % 8);
+		if idx < SPLIT_CACHE_LEN { self.set[idx] |= mask; }
+	}
+}
+
+
+
 /// # Squeeze Cache.
 ///
 /// This struct stores LZ77 length costs and paths.
@@ -416,5 +487,52 @@ mod tests {
 
 		// Joining should get us back where we started.
 		assert_eq!(DEFAULT_LD, ld_join(len, dist));
+	}
+
+	#[test]
+	fn t_split_mask() {
+		// What we expect our masks to look like.
+		const fn split_cache_mask(pos: usize) -> u8 {
+			match pos % 8 {
+				0 => 0b0000_0001,
+				1 => 0b0000_0010,
+				2 => 0b0000_0100,
+				3 => 0b0000_1000,
+				4 => 0b0001_0000,
+				5 => 0b0010_0000,
+				6 => 0b0100_0000,
+				_ => 0b1000_0000,
+			}
+		}
+
+		for pos in 0..255_usize {
+			let mask: u8 = 1 << (pos % 8);
+			assert_eq!(mask, split_cache_mask(pos));
+		}
+	}
+
+	#[test]
+	fn t_split_cache() {
+		let mut cache = SplitCache::new();
+		cache.init(ZOPFLI_MASTER_BLOCK_SIZE);
+
+		// Check that positions are false to start, true after set.
+		for i in 0..ZOPFLI_MASTER_BLOCK_SIZE {
+			assert!(cache.is_unset(i));
+			cache.set(i);
+			assert!(! cache.is_unset(i));
+		}
+
+		// Everything should be set now.
+		assert!(cache.set.iter().all(|&b| b == u8::MAX));
+
+		// If we initialize with a small value, only those bits should be
+		// affected.
+		cache.init(32);
+		assert_eq!(cache.set[0], 0);
+		assert_eq!(cache.set[1], 0);
+		assert_eq!(cache.set[2], 0);
+		assert_eq!(cache.set[3], 0);
+		assert_eq!(cache.set[4], u8::MAX);
 	}
 }

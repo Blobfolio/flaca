@@ -28,7 +28,6 @@ use super::{
 	deflate_part,
 	EncodedPNG,
 	reset_dynamic_length_cache,
-	SplitPoints,
 	ZopfliState,
 	ZOPFLI_MASTER_BLOCK_SIZE,
 };
@@ -39,10 +38,7 @@ use super::{
 include!(concat!(env!("OUT_DIR"), "/lodepng-bindgen.rs"));
 
 thread_local!(
-	static STATES: RefCell<(ZopfliState, SplitPoints)> = RefCell::new((
-		ZopfliState::new(),
-		SplitPoints::new(),
-	))
+	static STATES: RefCell<ZopfliState> = RefCell::new(ZopfliState::new())
 );
 
 
@@ -83,9 +79,8 @@ pub(crate) extern "C" fn flaca_png_deflate(
 			else { (false, ZOPFLI_MASTER_BLOCK_SIZE) };
 
 		// Crunch the part!
-		let res = STATES.with_borrow_mut(|(state, splits)| deflate_part(
+		let res = STATES.with_borrow_mut(|state| deflate_part(
 			state,
-			splits,
 			numiterations,
 			last_part,
 			unsafe { std::slice::from_raw_parts(arr, i + size) },

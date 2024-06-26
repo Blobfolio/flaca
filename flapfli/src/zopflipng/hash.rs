@@ -27,6 +27,7 @@ use super::{
 	LZ77Store,
 	MatchCache,
 	ReducingSlices,
+	SplitCache,
 	SqueezeCache,
 	stats::SymbolStats,
 	SUBLEN_LEN,
@@ -62,6 +63,7 @@ const ZEROED_SUBLEN: [u16; SUBLEN_LEN] = [0; SUBLEN_LEN];
 pub(crate) struct ZopfliState {
 	lmc: Box<MatchCache>,
 	hash: Box<ZopfliHash>,
+	split: Box<SplitCache>,
 	squeeze: Box<SqueezeCache>,
 }
 
@@ -71,6 +73,7 @@ impl ZopfliState {
 		Self {
 			lmc: MatchCache::new(),
 			hash: ZopfliHash::new(),
+			split: SplitCache::new(),
 			squeeze: SqueezeCache::new(),
 		}
 	}
@@ -79,6 +82,12 @@ impl ZopfliState {
 	pub(crate) fn init_lmc(&mut self, blocksize: usize) {
 		self.lmc.init(blocksize);
 		self.squeeze.resize_costs(blocksize + 1);
+	}
+
+	/// # Split Cache.
+	pub(crate) fn split_cache(&mut self, blocksize: usize) -> &mut SplitCache {
+		self.split.init(blocksize);
+		&mut self.split
 	}
 }
 

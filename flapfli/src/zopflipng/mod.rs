@@ -25,12 +25,10 @@ mod rle;
 mod stats;
 mod symbols;
 
-pub(crate) use blocks::{
-	deflate_part,
-	SplitPoints,
-};
+pub(crate) use blocks::deflate_part;
 use cache::{
 	MatchCache,
+	SplitCache,
 	SqueezeCache,
 };
 use error::{

@@ -45,7 +45,6 @@ use std::sync::atomic::AtomicI32;
 use zopflipng::{
 	deflate_part,
 	reset_dynamic_length_cache,
-	SplitPoints,
 	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZopfliState,
 };
