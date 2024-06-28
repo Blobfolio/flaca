@@ -571,6 +571,7 @@ fn split_points(
 	Ok((split_b, raw_len))
 }
 
+#[inline(never)]
 /// # Split Points: Uncompressed.
 fn split_points_raw(
 	arr: &[u8],
@@ -605,7 +606,6 @@ fn split_points_raw(
 	}
 }
 
-#[inline(never)]
 /// # LZ77 Split Pass.
 ///
 /// This sets the LZ77 split points according to convoluted cost

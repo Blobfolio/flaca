@@ -6,11 +6,6 @@ calling `ZopfliHash::find` a hundred million times in a row. Haha.
 */
 
 use std::{
-	alloc::{
-		alloc,
-		handle_alloc_error,
-		Layout,
-	},
 	cell::Cell,
 	ptr::{
 		addr_of_mut,
@@ -24,6 +19,7 @@ use super::{
 	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZOPFLI_MIN_MATCH,
 	ZopfliError,
+	ZopfliStateInit,
 };
 
 
@@ -49,6 +45,7 @@ const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 
 
 
+#[repr(C)]
 /// # Longest Match Cache.
 ///
 /// This structure holds cached length/distance details for individual
@@ -59,35 +56,20 @@ pub(crate) struct MatchCache {
 	sublen: [u8; SUBLEN_CACHED_LEN * ZOPFLI_MASTER_BLOCK_SIZE],
 }
 
-impl MatchCache {
+impl ZopfliStateInit for MatchCache {
 	#[allow(unsafe_code)]
-	/// # New.
-	///
-	/// Arrays holding a million elements are obviously less than ideal, but
-	/// because these are referenced repeatedly with different sub-slice sizes,
-	/// it is much better for performance than vectors that have to be
-	/// continuously resized/reallocated.
-	///
-	/// Still, these are too big for the stack, so we're initializing them via
-	/// raw pointers and jamming them straight into a `Box`.
-	pub(super) fn new() -> Box<Self> {
-		// Reserve the space.
-		const LAYOUT: Layout = Layout::new::<MatchCache>();
-		let out = NonNull::new(unsafe { alloc(LAYOUT).cast() })
-			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
-		let ptr: *mut Self = out.as_ptr();
+	#[inline]
+	unsafe fn state_init(nn: NonNull<Self>) {
+		let ptr = nn.as_ptr();
 
-		unsafe {
-			// The arrays can be zero-filled to start with; they'll get reset
-			// prior to use anyway.
-			addr_of_mut!((*ptr).ld).write_bytes(0, 1);
-			addr_of_mut!((*ptr).sublen).write_bytes(0, 1);
-
-			// All set!
-			Box::from_raw(ptr)
-		}
+		// The arrays can be zero-filled to start with; they'll get reset
+		// prior to use anyway.
+		addr_of_mut!((*ptr).ld).write_bytes(0, 1);
+		addr_of_mut!((*ptr).sublen).write_bytes(0, 1);
 	}
+}
 
+impl MatchCache {
 	/// # Initialize.
 	///
 	/// This resizes the cache buffers and resets their values to their default
@@ -266,26 +248,16 @@ pub(crate) struct SplitCache {
 	set: [u8; SPLIT_CACHE_LEN],
 }
 
-impl SplitCache {
+impl ZopfliStateInit for SplitCache {
 	#[allow(unsafe_code)]
-	/// # New.
-	///
-	/// See the notes associated with the other cache structures for the how
-	/// and why of all this pointer-boxing business.
-	pub(super) fn new() -> Box<Self> {
-		// Reserve the space.
-		const LAYOUT: Layout = Layout::new::<SplitCache>();
-		let out = NonNull::new(unsafe { alloc(LAYOUT).cast() })
-			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
-		let ptr: *mut Self = out.as_ptr();
-
-		unsafe {
-			// False is zeroes all the way down.
-			addr_of_mut!((*ptr).set).write_bytes(0, 1);
-			Box::from_raw(ptr)
-		}
+	#[inline]
+	unsafe fn state_init(nn: NonNull<Self>) {
+		// False is zeroes all the way down.
+		addr_of_mut!((*nn.as_ptr()).set).write_bytes(0, 1);
 	}
+}
 
+impl SplitCache {
 	/// # Initialize.
 	///
 	/// Clear the first `blocksize`-worth of values.
@@ -336,39 +308,24 @@ pub(crate) struct SqueezeCache {
 	costs_len: Cell<usize>,
 }
 
-impl SqueezeCache {
+impl ZopfliStateInit for SqueezeCache {
 	#[allow(unsafe_code)]
-	/// # New (Boxed) Instance.
-	///
-	/// Arrays holding a million+ elements is obviously less than ideal, but
-	/// because these are referenced repeatedly with different sub-slice sizes,
-	/// it is much better for performance than vectors that have to be
-	/// continuously resized/reallocated.
-	///
-	/// Still, these are too big for the stack, so we're initializing them via
-	/// raw pointers and jamming them straight into a `Box`.
-	pub(crate) fn new() -> Box<Self> {
-		// Reserve the space.
-		const LAYOUT: Layout = Layout::new::<SqueezeCache>();
-		let out = NonNull::new(unsafe { alloc(LAYOUT).cast() })
-			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
-		let ptr: *mut Self = out.as_ptr();
+	#[inline]
+	unsafe fn state_init(nn: NonNull<Self>) {
+		let ptr = nn.as_ptr();
 
-		unsafe {
-			// The arrays can be zero-filled to start with; they'll be reset
-			// or overwritten before use anyway.
-			addr_of_mut!((*ptr).costs).write_bytes(0, 1);
-			addr_of_mut!((*ptr).paths).write_bytes(0, 1);
+		// The arrays can be zero-filled to start with; they'll be reset
+		// or overwritten before use anyway.
+		addr_of_mut!((*ptr).costs).write_bytes(0, 1);
+		addr_of_mut!((*ptr).paths).write_bytes(0, 1);
 
-			// Zero works equally well for the initial length, especially
-			// because it's true! Haha.
-			addr_of_mut!((*ptr).costs_len).write(Cell::new(0));
-
-			// All set!
-			Box::from_raw(ptr)
-		}
+		// Zero works equally well for the initial length, especially
+		// because it's true! Haha.
+		addr_of_mut!((*ptr).costs_len).write(Cell::new(0));
 	}
+}
 
+impl SqueezeCache {
 	/// # Resize Costs.
 	///
 	/// This sets the internal costs length to match the desired blocksize, but
@@ -513,8 +470,9 @@ mod tests {
 
 	#[test]
 	fn t_split_cache() {
-		let mut cache = SplitCache::new();
-		cache.init(ZOPFLI_MASTER_BLOCK_SIZE);
+		let mut cache = SplitCache {
+			set: [0_u8; SPLIT_CACHE_LEN],
+		};
 
 		// Check that positions are false to start, true after set.
 		for i in 0..ZOPFLI_MASTER_BLOCK_SIZE {

@@ -32,6 +32,7 @@ use super::{
 	stats::SymbolStats,
 	SUBLEN_LEN,
 	zopfli_error,
+	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
 	ZopfliError,
@@ -61,31 +62,49 @@ const ZEROED_SUBLEN: [u16; SUBLEN_LEN] = [0; SUBLEN_LEN];
 /// structure, cutting down on the number of references being bounced around
 /// from method to method.
 pub(crate) struct ZopfliState {
-	lmc: Box<MatchCache>,
-	hash: Box<ZopfliHash>,
-	split: Box<SplitCache>,
-	squeeze: Box<SqueezeCache>,
+	lmc: MatchCache,
+	hash: ZopfliHash,
+	split: SplitCache,
+	squeeze: SqueezeCache,
 }
 
 impl ZopfliState {
+	#[allow(unsafe_code)]
+	#[inline(never)]
 	/// # New.
-	pub(crate) fn new() -> Self {
-		Self {
-			lmc: MatchCache::new(),
-			hash: ZopfliHash::new(),
-			split: SplitCache::new(),
-			squeeze: SqueezeCache::new(),
+	///
+	/// This struct's members are mostly large and terrible arrays. To keep
+	/// them off the stack, it is necessary to initialize everything from raw
+	/// pointers and box them up.
+	pub(crate) fn new() -> Box<Self> {
+		// Reserve the space.
+		const LAYOUT: Layout = Layout::new::<ZopfliState>();
+		let out: NonNull<Self> = NonNull::new(unsafe { alloc(LAYOUT).cast() })
+			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
+		let ptr = out.as_ptr();
+
+		unsafe {
+			// Initialize the members.
+			MatchCache::state_init(NonNull::new_unchecked(addr_of_mut!((*ptr).lmc)));
+			ZopfliHash::state_init(NonNull::new_unchecked(addr_of_mut!((*ptr).hash)));
+			SplitCache::state_init(NonNull::new_unchecked(addr_of_mut!((*ptr).split)));
+			SqueezeCache::state_init(NonNull::new_unchecked(addr_of_mut!((*ptr).squeeze)));
+
+			// Done!
+			Box::from_raw(ptr)
 		}
 	}
 
 	/// # Initialize LMC/Squeeze Caches.
 	pub(crate) fn init_lmc(&mut self, blocksize: usize) {
+		debug_assert!(blocksize <= ZOPFLI_MASTER_BLOCK_SIZE);
 		self.lmc.init(blocksize);
 		self.squeeze.resize_costs(blocksize + 1);
 	}
 
 	/// # Split Cache.
 	pub(crate) fn split_cache(&mut self, blocksize: usize) -> &mut SplitCache {
+		debug_assert!(blocksize <= ZOPFLI_MASTER_BLOCK_SIZE);
 		self.split.init(blocksize);
 		&mut self.split
 	}
@@ -310,6 +329,22 @@ impl ZopfliState {
 
 
 
+/// # State Init.
+///
+/// The `ZopfliState` struct is initialized from a raw pointer to prevent
+/// stack allocations. This trait exposes — in as limited a way as possible —
+/// raw initialization methods for its members.
+///
+/// The `state_init` invocations do not necessarily populate _default_ values
+/// since they'll be re(reset) prior to use anyway, but the values will at
+/// least be valid for the types to prevent accidental UB.
+pub(crate) trait ZopfliStateInit {
+	#[allow(unsafe_code)]
+	unsafe fn state_init(nn: NonNull<Self>);
+}
+
+
+
 #[derive(Clone, Copy)]
 /// # Zopfli Hash.
 ///
@@ -326,47 +361,31 @@ struct ZopfliHash {
 	same: [u16; ZOPFLI_WINDOW_SIZE],
 }
 
-impl ZopfliHash {
+impl ZopfliStateInit for ZopfliHash {
 	#[allow(unsafe_code)]
-	/// # New (Boxed) Instance.
-	///
-	/// The fixed arrays holding this structure's data are monstrous — 458,756
-	/// bytes per instance! — but absolutely critical for performance.
-	///
-	/// To keep Rust from placing all that shit on the stack — as it would
-	/// normally try to do — this method manually initializes everything from
-	/// raw pointers, then boxes it up for delivery à la [`zopfli-rs`](https://github.com/zopfli-rs/zopfli).
-	fn new() -> Box<Self> {
-		// Reserve the space.
-		const LAYOUT: Layout = Layout::new::<ZopfliHash>();
-		let out = NonNull::new(unsafe { alloc(LAYOUT).cast() })
-			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
-		let ptr: *mut Self = out.as_ptr();
+	#[inline]
+	unsafe fn state_init(nn: NonNull<Self>) {
+		let ptr = nn.as_ptr();
 
-		// Safety: all this pointer business is necessary to keep the content
-		// off the stack. Once it's boxed we can breathe easier. ;)
-		unsafe {
-			// All the hash/index arrays default to `-1_i16` for `None`, which
-			// we can do efficiently by setting all bits to one.
-			addr_of_mut!((*ptr).chain1.hash_idx).write_bytes(u8::MAX, 1);
-			addr_of_mut!((*ptr).chain1.idx_hash).write_bytes(u8::MAX, 1);
-			addr_of_mut!((*ptr).chain1.idx_prev).write_bytes(u8::MAX, 1);
+		// All the hash/index arrays default to `-1_i16` for `None`, which
+		// we can do efficiently by setting all bits to one.
+		addr_of_mut!((*ptr).chain1.hash_idx).write_bytes(u8::MAX, 1);
+		addr_of_mut!((*ptr).chain1.idx_hash).write_bytes(u8::MAX, 1);
+		addr_of_mut!((*ptr).chain1.idx_prev).write_bytes(u8::MAX, 1);
 
-			// The initial hash value is just plain zero.
-			addr_of_mut!((*ptr).chain1.val).write(0);
+		// The initial hash value is just plain zero.
+		addr_of_mut!((*ptr).chain1.val).write(0);
 
-			// The second chain is the same as the first, so we can simply copy
-			// it wholesale.
-			addr_of_mut!((*ptr).chain2).copy_from_nonoverlapping(addr_of!((*ptr).chain1), 1);
+		// The second chain is the same as the first, so we can simply copy
+		// it wholesale.
+		addr_of_mut!((*ptr).chain2).copy_from_nonoverlapping(addr_of!((*ptr).chain1), 1);
 
-			// The repetition counts default to zero.
-			addr_of_mut!((*ptr).same).write_bytes(0, 1);
-
-			// All set!
-			Box::from_raw(ptr)
-		}
+		// The repetition counts default to zero.
+		addr_of_mut!((*ptr).same).write_bytes(0, 1);
 	}
+}
 
+impl ZopfliHash {
 	/// # Reset/Warm Up.
 	///
 	/// This sets all values to their defaults, then cycles the first chain's
