@@ -419,6 +419,7 @@ fn find_minimum_cost(store: &LZ77Store, mut rng: Range<usize>)
 	Ok((best_idx, last_best_cost))
 }
 
+#[inline]
 /// # Optimal LZ77.
 ///
 /// Calculate lit/len and dist pairs for the dataset.
@@ -495,6 +496,7 @@ fn lz77_optimal(
 	Ok(())
 }
 
+#[inline(never)]
 /// # Best Split Points.
 ///
 /// Compare the optimal raw and LZ77 split points, returning whichever is
@@ -551,7 +553,7 @@ fn split_points(
 	// If we have at least two split points, do one further LZ77 pass using the
 	// updated store details to see if the big picture changes anything.
 	if 1 < (raw_len as u8) {
-		let two_len = split_points_lz77(state, store, &mut split_a)?;
+		let two_len = split_points_lz77_cold(state, store, &mut split_a)?;
 		split_a[two_len as usize] = store.len();
 		split_a.rotate_right(1);
 		debug_assert!(split_a[0] == 0); // We don't write to the last byte.
@@ -569,6 +571,7 @@ fn split_points(
 	Ok((split_b, raw_len))
 }
 
+#[inline(never)]
 /// # Split Points: Uncompressed.
 fn split_points_raw(
 	arr: &[u8],
@@ -603,6 +606,14 @@ fn split_points_raw(
 	}
 }
 
+#[inline(never)]
+fn split_points_lz77_cold(
+	state: &mut ZopfliState,
+	store: &LZ77Store,
+	split_b: &mut SplitPoints,
+) -> Result<SplitLen, ZopfliError> { split_points_lz77(state, store, split_b) }
+
+#[inline]
 /// # LZ77 Split Pass.
 ///
 /// This sets the LZ77 split points according to convoluted cost

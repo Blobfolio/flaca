@@ -131,10 +131,6 @@ impl ZopfliState {
 	/// updating the store with the results.
 	///
 	/// This is one of two entrypoints into the inner `ZopfliHash` data.
-	///
-	/// TODO: this should probably leverage `ReducingSlices` like elsewhere,
-	/// but that seems to fuck up compiler inlining decisions in mysterious
-	/// ways, so TBD.
 	pub(crate) fn greedy(
 		&mut self,
 		arr: &[u8],
@@ -152,6 +148,10 @@ impl ZopfliState {
 		store.clear();
 		self.hash.reset(arr, instart);
 
+		// Short circuit.
+		if instart >= arr.len() { return Ok(()); }
+		let mut iter = ReducingSlices::new(&arr[instart..]);
+
 		// We'll need a few more variables…
 		let mut sublen = ZEROED_SUBLEN;
 		let mut length = LitLen::L000;
@@ -161,15 +161,18 @@ impl ZopfliState {
 		let mut match_available = false;
 
 		// Loop the data!
-		let mut i = instart;
-		while i < arr.len() {
+		while let Some(arr2) = iter.next() {
+			// Safety: the ReducingSlices iter only returns non-empty slices.
+			if arr2.is_empty() { crate::unreachable(); }
+
 			// Update the hash.
-			self.hash.update_hash(&arr[i..], i);
+			let mut pos = arr.len() - arr2.len();
+			self.hash.update_hash(arr2, pos);
 
 			// Run the finder.
 			self.hash.find(
-				arr,
-				i,
+				arr, // The full, original array.
+				pos,
 				LitLen::MAX_MATCH,
 				&mut Some(&mut sublen),
 				&mut distance,
@@ -190,16 +193,14 @@ impl ZopfliState {
 					// at least once.
 					#[allow(unsafe_code)]
 					store.push(
-						LitLen::from_u8(unsafe { *arr.get_unchecked(i - 1) }),
+						LitLen::from_u8(unsafe { *arr.get_unchecked(pos - 1) }),
 						0,
-						i - 1,
+						pos - 1,
 					);
 					if length_score >= ZOPFLI_MIN_MATCH as u16 && ! length.is_max() {
 						match_available = true;
 						prev_length = length;
 						prev_distance = distance;
-
-						i += 1;
 						continue;
 					}
 				}
@@ -209,16 +210,14 @@ impl ZopfliState {
 					distance = prev_distance;
 
 					// Write the values!
-					store.push(length, distance, i - 1);
+					store.push(length, distance, pos - 1);
 
 					// Update the hash up through length and increment the loop
 					// position accordingly.
-					for _ in 2..(length as u16) {
-						i += 1;
-						self.hash.update_hash(&arr[i..], i);
+					for arr2 in iter.by_ref().take(length as usize - 2) {
+						pos += 1;
+						self.hash.update_hash(arr2, pos);
 					}
-
-					i += 1;
 					continue;
 				}
 			}
@@ -228,30 +227,30 @@ impl ZopfliState {
 				match_available = true;
 				prev_length = length;
 				prev_distance = distance;
-
-				i += 1;
 				continue;
 			}
 
 			// Write the current length/distance.
 			if length_score >= ZOPFLI_MIN_MATCH as u16 {
-				store.push(length, distance, i);
+				store.push(length, distance, pos);
 			}
 			// Write from the source with no distance and reset the length to
 			// one.
 			else {
+				// Safety: the ReducingSlices iter only returns non-empty
+				// slices.
+				if arr2.is_empty() { crate::unreachable(); }
+
 				length = LitLen::L001;
-				store.push(LitLen::from_u8(arr[i]), 0, i);
+				store.push(LitLen::from_u8(arr2[0]), 0, pos);
 			}
 
 			// Update the hash up through length and increment the loop
 			// position accordingly.
-			for _ in 1..(length as u16) {
-				i += 1;
-				self.hash.update_hash(&arr[i..], i);
+			for arr2 in iter.by_ref().take(length as usize - 1) {
+				pos += 1;
+				self.hash.update_hash(arr2, pos);
 			}
-
-			i += 1;
 		}
 
 		Ok(())
