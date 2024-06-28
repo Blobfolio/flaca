@@ -53,3 +53,14 @@ use zopflipng::{
 
 /// # Number of Zopfli Iterations.
 pub static ZOPFLI_ITERATIONS: AtomicI32 = AtomicI32::new(0);
+
+#[track_caller]
+#[allow(unsafe_code)]
+/// # Unreachable Hint.
+///
+/// This is a simple unreachability wrapper that produces a more panicky
+/// variant when debug assertions are enabled.
+pub(crate) const fn unreachable() {
+	#[cfg(debug_assertions)] unreachable!();
+	#[cfg(not(debug_assertions))] unsafe { core::hint::unreachable_unchecked(); }
+}

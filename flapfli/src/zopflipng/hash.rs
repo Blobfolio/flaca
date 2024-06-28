@@ -123,7 +123,7 @@ impl ZopfliState {
 		self.greedy(arr, instart, store, cache)
 	}
 
-	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[allow(clippy::cast_possible_truncation)]
 	#[inline]
 	/// # Greedy LZ77 Run.
 	///
@@ -188,6 +188,7 @@ impl ZopfliState {
 					// Safety: match_available starts false so even if instart
 					// is zero, we won't reach this part until we've iterated
 					// at least once.
+					#[allow(unsafe_code)]
 					store.push(
 						LitLen::from_u8(unsafe { *arr.get_unchecked(i - 1) }),
 						0,
@@ -290,6 +291,7 @@ impl ZopfliState {
 		Ok(())
 	}
 
+	#[inline(never)]
 	/// # Optimal Run.
 	///
 	/// This performs backward/forward squeeze passes on the data with
@@ -456,7 +458,7 @@ impl ZopfliHash {
 }
 
 impl ZopfliHash {
-	#[allow(unsafe_code, clippy::cast_possible_truncation, clippy::too_many_lines)]
+	#[allow(clippy::cast_possible_truncation)]
 	#[inline(never)]
 	/// # Get Best Lengths.
 	///
@@ -527,11 +529,8 @@ impl ZopfliHash {
 		let symbol_cost = stats.ll_symbols[285] + stats.d_symbols[0];
 
 		while let Some((mut arr2, mut cost2)) = iter.next() {
-			if arr2.is_empty() || arr2.len() + 1 != cost2.len() {
-				// Safety: the ReducingSlices iter only returns non-empty
-				// slices.
-				unsafe { core::hint::unreachable_unchecked(); }
-			}
+			// Safety: the ReducingSlices iter only returns non-empty slices.
+			if arr2.is_empty() || arr2.len() + 1 != cost2.len() { crate::unreachable(); }
 
 			// Hash the remainder.
 			let mut pos = arr.len() - arr2.len();
@@ -549,12 +548,10 @@ impl ZopfliHash {
 				// Fast forward!
 				let before = pos;
 				for (arr3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
-					if cost2.len() <= ZOPFLI_MAX_MATCH {
-						// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
-						// remaining entries; cost2.len() will be at least one
-						// more than that.
-						unsafe { core::hint::unreachable_unchecked(); }
-					};
+					// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
+					// remaining entries; cost2.len() will be at least one
+					// more than that.
+					if cost2.len() <= ZOPFLI_MAX_MATCH { crate::unreachable(); }
 					cost2[ZOPFLI_MAX_MATCH].set((
 						(f64::from(cost2[0].get().0) + symbol_cost) as f32,
 						LitLen::MAX_MATCH,
@@ -582,11 +579,9 @@ impl ZopfliHash {
 				Some(instart),
 			)?;
 
-			if arr2.is_empty() || arr2.len() + 1 != cost2.len() {
-				// Safety: the MAX loop (if it ran at all) only advanced the
-				// slices ZOPFLI_MAX_MATCH; we have more work to do!
-				unsafe { core::hint::unreachable_unchecked(); }
-			}
+			// Safety: the MAX loop (if it ran at all) only advanced the
+			// slices ZOPFLI_MAX_MATCH; we have more work to do!
+			if arr2.is_empty() || arr2.len() + 1 != cost2.len() { crate::unreachable(); }
 
 			// Update it if lower.
 			let cost_j = f64::from(cost2[0].get().0);
@@ -602,10 +597,8 @@ impl ZopfliHash {
 			if limit.is_matchable() {
 				let min_cost_add = min_cost + cost_j;
 
-				if cost2.len() <= (limit as usize) {
-					// Safety: limit is capped to cost2.len() - 1.
-					unsafe { core::hint::unreachable_unchecked(); }
-				}
+				// Safety: limit is capped to cost2.len() - 1.
+				if cost2.len() <= (limit as usize) { crate::unreachable(); }
 
 				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter()
 					.copied()
@@ -627,7 +620,7 @@ impl ZopfliHash {
 		Ok(())
 	}
 
-	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[allow(clippy::cast_possible_truncation)]
 	#[inline(never)]
 	/// # Get Best Lengths (Fixed).
 	///
@@ -672,11 +665,8 @@ impl ZopfliHash {
 		let mut sublen = ZEROED_SUBLEN;
 
 		while let Some((mut arr2, mut cost2)) = iter.next() {
-			if arr2.is_empty() || arr2.len() + 1 != cost2.len() {
-				// Safety: the ReducingSlices iter only returns non-empty
-				// slices.
-				unsafe { core::hint::unreachable_unchecked(); }
-			}
+			// Safety: the ReducingSlices iter only returns non-empty slices.
+			if arr2.is_empty() || arr2.len() + 1 != cost2.len() { crate::unreachable(); }
 
 			// Hash the remainder.
 			let mut pos = arr.len() - arr2.len();
@@ -694,12 +684,10 @@ impl ZopfliHash {
 				// Fast forward!
 				let before = pos;
 				for (arr3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
-					if cost2.len() <= ZOPFLI_MAX_MATCH {
-						// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
-						// remaining entries; cost2.len() will be at least one
-						// more than that.
-						unsafe { core::hint::unreachable_unchecked(); }
-					};
+					// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
+					// remaining entries; cost2.len() will be at least one
+					// more than that.
+					if cost2.len() <= ZOPFLI_MAX_MATCH { crate::unreachable(); }
 					cost2[ZOPFLI_MAX_MATCH].set((
 						(f64::from(cost2[0].get().0) + 13.0) as f32,
 						LitLen::MAX_MATCH,
@@ -727,11 +715,9 @@ impl ZopfliHash {
 				Some(instart),
 			)?;
 
-			if arr2.is_empty() || arr2.len() + 1 != cost2.len() {
-				// Safety: the MAX loop (if it ran at all) only advanced the
-				// slices ZOPFLI_MAX_MATCH; we have more work to do!
-				unsafe { core::hint::unreachable_unchecked(); }
-			}
+			// Safety: the MAX loop (if it ran at all) only advanced the
+			// slices ZOPFLI_MAX_MATCH; we have more work to do!
+			if arr2.is_empty() || arr2.len() + 1 != cost2.len() { crate::unreachable(); }
 
 			// Update it if lower.
 			let cost_j = f64::from(cost2[0].get().0);
@@ -747,10 +733,8 @@ impl ZopfliHash {
 			if limit.is_matchable() {
 				let min_cost_add = 8.0 + cost_j;
 
-				if cost2.len() <= (limit as usize) {
-					// Safety: limit is capped to cost2.len() - 1.
-					unsafe { core::hint::unreachable_unchecked(); }
-				}
+				// Safety: limit is capped to cost2.len() - 1.
+				if cost2.len() <= (limit as usize) { crate::unreachable(); }
 
 				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter()
 					.copied()
@@ -796,12 +780,9 @@ impl ZopfliHash {
 		let mut len_iter = paths.iter().copied();
 		let mut arr_iter = ReducingSlices::new(&arr[instart..]);
 		while let Some((length, arr2)) = len_iter.next().zip(arr_iter.next()) {
-			#[allow(unsafe_code)]
-			if arr2.is_empty() {
-				// Safety: the ReducingSlices iter only returns non-empty
-				// slices.
-				unsafe { core::hint::unreachable_unchecked(); }
-			}
+			// Safety: the ReducingSlices iter only returns non-empty
+			// slices.
+			if arr2.is_empty() { crate::unreachable(); }
 
 			// Hash it.
 			self.update_hash(arr2, pos);
@@ -840,12 +821,9 @@ impl ZopfliHash {
 			}
 			// It isn't matchable; add it directly to the store.
 			else {
-				#[allow(unsafe_code)]
-				if arr2.is_empty() {
-					// Safety: the ReducingSlices iter only returns non-empty
-					// slices.
-					unsafe { core::hint::unreachable_unchecked(); }
-				}
+				// Safety: the ReducingSlices iter only returns non-empty
+				// slices.
+				if arr2.is_empty() { crate::unreachable(); }
 				store.push(LitLen::from_u8(arr2[0]), 0, pos);
 			}
 
@@ -999,9 +977,7 @@ impl ZopfliHash {
 				// verified it was non-empty, but the compiler will have
 				// forgotten that by now.
 				let left = unsafe { arr.get_unchecked(pos - dist..pos - dist + right.len()) };
-				if right.is_empty() || left.len() != right.len() {
-					unsafe { core::hint::unreachable_unchecked(); }
-				}
+				if right.is_empty() || left.len() != right.len() { crate::unreachable(); }
 
 				// Check to see if we can do better than we've already done.
 				if (bestlength as usize) >= right.len() || right[bestlength as usize] == left[bestlength as usize] {

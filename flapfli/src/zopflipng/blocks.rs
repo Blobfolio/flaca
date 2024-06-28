@@ -419,7 +419,6 @@ fn find_minimum_cost(store: &LZ77Store, mut rng: Range<usize>)
 	Ok((best_idx, last_best_cost))
 }
 
-#[inline(never)]
 /// # Optimal LZ77.
 ///
 /// Calculate lit/len and dist pairs for the dataset.
@@ -496,7 +495,6 @@ fn lz77_optimal(
 	Ok(())
 }
 
-#[inline(never)]
 /// # Best Split Points.
 ///
 /// Compare the optimal raw and LZ77 split points, returning whichever is
@@ -571,7 +569,6 @@ fn split_points(
 	Ok((split_b, raw_len))
 }
 
-#[inline(never)]
 /// # Split Points: Uncompressed.
 fn split_points_raw(
 	arr: &[u8],

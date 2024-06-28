@@ -184,7 +184,7 @@ impl SplitLen {
 			// `split_lz77` and `split_raw` — both of which explicitly check
 			// the current value, breaking their loops if/when the maximum is
 			// reached.
-			if self.is_max() { core::hint::unreachable_unchecked(); }
+			if self.is_max() { crate::unreachable(); }
 
 			// Safety: SplitLen has the same size and alignment as u8.
 			std::mem::transmute::<u8, Self>(self as u8 + 1)

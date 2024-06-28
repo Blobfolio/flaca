@@ -92,12 +92,9 @@ impl SymbolStats {
 
 		// Lengths second.
 		let sum = self.ll_counts.iter().copied().sum::<u32>();
-		#[allow(unsafe_code)]
-		if sum == 0 {
-			// Safety: ll_counts[256] is always 1 — (re)load_store and
-			// randomize both force it — so this sum will always be nonzero.
-			unsafe { core::hint::unreachable_unchecked(); }
-		}
+		// Safety: ll_counts[256] is always 1 — (re)load_store and randomize
+		// both force it — so this sum will always be nonzero.
+		if sum == 0 { crate::unreachable(); }
 		let log2sum = f64::from(sum).log2();
 		self.ll_symbols.fill(log2sum);
 		for (c, b) in self.ll_counts.iter().copied().zip(&mut self.ll_symbols) {

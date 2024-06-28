@@ -101,14 +101,11 @@ mod sealed {
 				leaves[0].frequency,
 				leaves[1].frequency,
 			);
-			#[allow(unsafe_code)]
-			if lists.len() < 2 {
-				// Safety: `usize::min(MAXBITS, leaves.len() - 1)` (above) is
-				// how many lists we'll have, and since MAXBITS is at least
-				// seven and leaves.len() at least three, we'll always have at
-				// least two lists to work with.
-				unsafe { core::hint::unreachable_unchecked(); }
-			}
+			// Safety: `usize::min(MAXBITS, leaves.len() - 1)` (above) is
+			// how many lists we'll have, and since MAXBITS is at least
+			// seven and leaves.len() at least three, we'll always have at
+			// least two lists to work with.
+			if lists.len() < 2 { crate::unreachable(); }
 
 			// In the last list, (2 * len_leaves - 2) active chains need to be
 			// created. We have two already from initialization; each boundary_pm run
