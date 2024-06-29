@@ -22,6 +22,7 @@ mod iter;
 mod kat;
 mod lz77;
 mod rle;
+mod rng;
 mod stats;
 mod symbols;
 
@@ -44,6 +45,7 @@ use kat::{
 	LengthLimitedCodeLengths,
 };
 pub(crate) use lz77::LZ77Store;
+use rng::ZopfliRange;
 use rle::get_dynamic_lengths;
 pub(crate) use rle::reset_dynamic_length_cache;
 use super::{

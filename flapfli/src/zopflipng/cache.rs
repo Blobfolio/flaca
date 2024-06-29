@@ -7,6 +7,7 @@ calling `ZopfliHash::find` a hundred million times in a row. Haha.
 
 use std::{
 	cell::Cell,
+	num::NonZeroUsize,
 	ptr::{
 		addr_of_mut,
 		NonNull,
@@ -32,6 +33,10 @@ const DEFAULT_LD: u32 = u32::from_le_bytes([1, 0, 0, 0]);
 
 /// # Sublength Cache Entries.
 const ZOPFLI_CACHE_LENGTH: usize = 8;
+
+#[allow(unsafe_code)]
+/// # Non-zero Limit.
+const NZ_MASTER_BLOCK_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(ZOPFLI_MASTER_BLOCK_SIZE) };
 
 /// # Length of Split Cache.
 ///
@@ -77,16 +82,16 @@ impl MatchCache {
 	///
 	/// Because this is a shared buffer, allocations persist for the duration
 	/// of the program run so they can be reused.
-	pub(crate) fn init(&mut self, mut blocksize: usize) {
+	pub(crate) fn init(&mut self, mut blocksize: NonZeroUsize) {
 		// Lodepng will never pass along more than ZOPFLI_MASTER_BLOCK_SIZE
 		// bytes, but this lets the compiler know we won't go over.
-		if ZOPFLI_MASTER_BLOCK_SIZE < blocksize {
-			blocksize = ZOPFLI_MASTER_BLOCK_SIZE;
+		if NZ_MASTER_BLOCK_SIZE < blocksize {
+			blocksize = NZ_MASTER_BLOCK_SIZE;
 		}
 
 		// Lengths default to one, everything else to zero.
-		self.ld[..blocksize].fill(DEFAULT_LD);
-		self.sublen[..blocksize * SUBLEN_CACHED_LEN].fill(0);
+		self.ld[..blocksize.get()].fill(DEFAULT_LD);
+		self.sublen[..blocksize.get() * SUBLEN_CACHED_LEN].fill(0);
 	}
 
 	#[allow(unsafe_code, clippy::cast_possible_truncation)]
@@ -261,10 +266,10 @@ impl SplitCache {
 	/// # Initialize.
 	///
 	/// Clear the first `blocksize`-worth of values.
-	pub(crate) fn init(&mut self, blocksize: usize) {
+	pub(crate) fn init(&mut self, blocksize: NonZeroUsize) {
 		// Lodepng will never pass along more than ZOPFLI_MASTER_BLOCK_SIZE
 		// bytes, but this lets the compiler know we won't go over.
-		let mut bitsize = blocksize.div_ceil(8);
+		let mut bitsize = blocksize.get().div_ceil(8);
 		if SPLIT_CACHE_LEN < bitsize {
 			bitsize = SPLIT_CACHE_LEN;
 		}
@@ -332,8 +337,8 @@ impl SqueezeCache {
 	/// does _not_ reset their values. (Unlike the LMC, which more or less
 	/// persists for the duration of a given block, costs are calculated and
 	/// discarded and recalculated and discarded… several times.)
-	pub(crate) fn resize_costs(&self, blocksize: usize) {
-		self.costs_len.set(blocksize);
+	pub(crate) fn resize_costs(&self, blocksize: NonZeroUsize) {
+		self.costs_len.set(blocksize.get());
 	}
 
 	/// # Reset Costs.
@@ -486,7 +491,7 @@ mod tests {
 
 		// If we initialize with a small value, only those bits should be
 		// affected.
-		cache.init(32);
+		cache.init(NonZeroUsize::new(32).unwrap());
 		assert_eq!(cache.set[0], 0);
 		assert_eq!(cache.set[1], 0);
 		assert_eq!(cache.set[2], 0);

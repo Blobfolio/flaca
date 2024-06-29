@@ -4,7 +4,6 @@
 This module defines the LZ77 store structures.
 */
 
-use std::ops::Range;
 use super::{
 	ArrayD,
 	ArrayLL,
@@ -17,6 +16,7 @@ use super::{
 	ZEROED_COUNTS_LL,
 	zopfli_error,
 	ZopfliError,
+	ZopfliRange,
 };
 
 
@@ -36,12 +36,15 @@ impl LZ77Store {
 	/// # Symbol Span Range.
 	///
 	/// Convert an LZ77 range to the start/end positions of the block.
-	pub(crate) fn byte_range(&self, rng: Range<usize>) -> Result<Range<usize>, ZopfliError> {
+	pub(crate) fn byte_range(&self, rng: ZopfliRange) -> Result<ZopfliRange, ZopfliError> {
 		let slice = self.entries.as_slice();
-		if rng.start < rng.end && rng.end <= slice.len() {
-			let instart = slice[rng.start].pos;
-			let e = slice[rng.end - 1];
-			Ok(instart..e.length() as usize + e.pos)
+		if rng.end() <= slice.len() {
+			// Safety: ZopfliRange is non-empty.
+			if rng.start() >= rng.end() { crate::unreachable(); }
+
+			let instart = slice[rng.start()].pos;
+			let e = slice[rng.end() - 1];
+			ZopfliRange::new(instart, e.length() as usize + e.pos)
 		}
 		else { Err(zopfli_error!()) }
 	}
@@ -78,11 +81,11 @@ impl LZ77Store {
 	pub(crate) fn len(&self) -> usize { self.entries.len() }
 
 	/// # Histogram.
-	pub(crate) fn histogram(&self, rng: Range<usize>) -> (ArrayLL<u32>, ArrayD<u32>) {
+	pub(crate) fn histogram(&self, rng: ZopfliRange) -> (ArrayLL<u32>, ArrayD<u32>) {
 		let mut ll_counts = ZEROED_COUNTS_LL;
 		let mut d_counts = ZEROED_COUNTS_D;
 
-		for e in self.entries.iter().take(rng.end).skip(rng.start) {
+		for e in self.entries.get(rng.rng()).unwrap_or(&[]) {
 			ll_counts[e.ll_symbol as usize] += 1;
 			if 0 < e.dist { d_counts[e.d_symbol as usize] += 1; }
 		}

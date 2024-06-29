@@ -13,7 +13,6 @@ use std::{
 		HashMap,
 	},
 	num::NonZeroU32,
-	ops::Range,
 };
 use super::{
 	ArrayD,
@@ -24,6 +23,7 @@ use super::{
 	LengthLimitedCodeLengths,
 	LZ77Store,
 	ZopfliError,
+	ZopfliRange,
 };
 
 
@@ -57,7 +57,7 @@ thread_local!(
 /// smallest output.
 ///
 /// Note: the returned size does not include the 3-bit block header.
-pub(super) fn get_dynamic_lengths(store: &LZ77Store, rng: Range<usize>)
+pub(super) fn get_dynamic_lengths(store: &LZ77Store, rng: ZopfliRange)
 -> Result<(u8, NonZeroU32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
 	fn fetch(
 		cache: &mut RleCache,

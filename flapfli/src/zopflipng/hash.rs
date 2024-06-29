@@ -12,6 +12,7 @@ use std::{
 		Layout,
 	},
 	cell::Cell,
+	num::NonZeroUsize,
 	ptr::{
 		addr_of,
 		addr_of_mut,
@@ -96,15 +97,15 @@ impl ZopfliState {
 	}
 
 	/// # Initialize LMC/Squeeze Caches.
-	pub(crate) fn init_lmc(&mut self, blocksize: usize) {
-		debug_assert!(blocksize <= ZOPFLI_MASTER_BLOCK_SIZE);
+	pub(crate) fn init_lmc(&mut self, blocksize: NonZeroUsize) {
+		debug_assert!(blocksize.get() <= ZOPFLI_MASTER_BLOCK_SIZE);
 		self.lmc.init(blocksize);
-		self.squeeze.resize_costs(blocksize + 1);
+		self.squeeze.resize_costs(blocksize.saturating_add(1));
 	}
 
 	/// # Split Cache.
-	pub(crate) fn split_cache(&mut self, blocksize: usize) -> &mut SplitCache {
-		debug_assert!(blocksize <= ZOPFLI_MASTER_BLOCK_SIZE);
+	pub(crate) fn split_cache(&mut self, blocksize: NonZeroUsize) -> &mut SplitCache {
+		debug_assert!(blocksize.get() <= ZOPFLI_MASTER_BLOCK_SIZE);
 		self.split.init(blocksize);
 		&mut self.split
 	}

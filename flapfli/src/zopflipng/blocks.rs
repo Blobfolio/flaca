@@ -5,9 +5,9 @@ This module contains the deflate entrypoint and all of the block-related odds
 and ends that didn't make it into other modules.
 */
 
-use std::{
-	num::NonZeroU32,
-	ops::Range,
+use std::num::{
+	NonZeroU32,
+	NonZeroUsize,
 };
 use super::{
 	ArrayD,
@@ -36,6 +36,7 @@ use super::{
 	zopfli_error,
 	ZopfliError,
 	ZopfliOut,
+	ZopfliRange,
 	ZopfliState,
 };
 
@@ -94,15 +95,28 @@ pub(crate) fn deflate_part(
 	// Write the data!
 	let store_len = best[best_len as usize + 1];
 	for pair in best[..best_len as usize + 2].windows(2) {
-		add_lz77_block(
-			last_block && pair[1] == store_len,
-			&store,
-			&mut store2,
-			state,
-			arr,
-			pair[0]..pair[1],
-			out,
-		)?;
+		let really_last_block = last_block && pair[1] == store_len;
+
+		if let Ok(rng) = ZopfliRange::new(pair[0], pair[1]) {
+			add_lz77_block(
+				really_last_block,
+				&store,
+				&mut store2,
+				state,
+				arr,
+				rng,
+				out,
+			)?;
+		}
+
+		// I don't think empty blocks are possible, but the original zopfli
+		// seems to think they imply a fixed-tree layout, so let's run with it!
+		else {
+			debug_assert_eq!(pair[0], pair[1]);
+			out.add_bits(u32::from(really_last_block), 1);
+			out.add_bits(1, 2);
+			out.add_bits(0, 7);
+		}
 	}
 
 	Ok(())
@@ -121,14 +135,14 @@ fn add_lz77_block(
 	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
 	arr: &[u8],
-	rng: Range<usize>,
+	rng: ZopfliRange,
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
 	/// # Add LZ77 Block (Dynamic).
 	fn add_dynamic(
 		last_block: bool,
 		store: &LZ77Store,
-		rng: Range<usize>,
+		rng: ZopfliRange,
 		out: &mut ZopfliOut,
 		extra: u8,
 		ll_lengths: &ArrayLL<DeflateSym>,
@@ -160,7 +174,7 @@ fn add_lz77_block(
 	fn add_fixed(
 		last_block: bool,
 		store: &LZ77Store,
-		rng: Range<usize>,
+		rng: ZopfliRange,
 		out: &mut ZopfliOut,
 	) -> Result<(), ZopfliError> {
 		// Type Bits.
@@ -181,49 +195,42 @@ fn add_lz77_block(
 	}
 
 	#[inline(never)]
-	fn dynamic_details(store: &LZ77Store, rng: Range<usize>)
+	fn dynamic_details(store: &LZ77Store, rng: ZopfliRange)
 	-> Result<(u8, NonZeroU32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
 		get_dynamic_lengths(store, rng)
 	}
 
 	#[inline(never)]
-	fn fixed_cost_cold(store: &LZ77Store, rng: Range<usize>) -> NonZeroU32 {
+	fn fixed_cost_cold(store: &LZ77Store, rng: ZopfliRange) -> NonZeroU32 {
 		calculate_block_size_fixed(store, rng)
 	}
 
-	// If the block is empty, we can assume a fixed-tree layout.
-	if rng.is_empty() {
-		out.add_bits(u32::from(last_block), 1);
-		out.add_bits(1, 2);
-		out.add_bits(0, 7);
-		return Ok(());
-	}
-
 	// Calculate the three costs.
-	let uncompressed_cost = calculate_block_size_uncompressed(store, rng.clone())?;
-	let (dynamic_extra, dynamic_cost, dynamic_ll, dynamic_d) = dynamic_details(store, rng.clone())?;
+	let uncompressed_cost = calculate_block_size_uncompressed(store, rng)?;
+	let (dynamic_extra, dynamic_cost, dynamic_ll, dynamic_d) = dynamic_details(store, rng)?;
 
 	// Most blocks won't benefit from a fixed tree layout, but if we've got a
 	// tiny one or the unoptimized-fixed size is within 10% of the dynamic size
 	// we should check it out.
 	if
 		store.len() <= 1000 ||
-		calculate_block_size_fixed(store, rng.clone()).saturating_mul(NZ10) <= dynamic_cost.saturating_mul(NZ11)
+		calculate_block_size_fixed(store, rng).saturating_mul(NZ10) <= dynamic_cost.saturating_mul(NZ11)
 	{
-		let rng2 = store.byte_range(rng.clone())?;
+		let rng2 = store.byte_range(rng)?;
 		state.init_lmc(rng2.len());
 
 		// Perform an optimal run.
 		state.optimal_run_fixed(
-			arr.get(..rng2.end).ok_or(zopfli_error!())?,
-			rng2.start,
+			arr.get(..rng2.end()).ok_or(zopfli_error!())?,
+			rng2.start(),
 			fixed_store,
 		)?;
 
 		// And finally, the cost!
-		let fixed_cost = fixed_cost_cold(fixed_store, 0..fixed_store.len());
+		let fixed_rng = ZopfliRange::new(0, fixed_store.len())?;
+		let fixed_cost = fixed_cost_cold(fixed_store, fixed_rng);
 		if fixed_cost < dynamic_cost && fixed_cost <= uncompressed_cost {
-			return add_fixed(last_block, fixed_store, 0..fixed_store.len(), out);
+			return add_fixed(last_block, fixed_store, fixed_rng, out);
 		}
 	}
 
@@ -238,7 +245,7 @@ fn add_lz77_block(
 	// uncompressed form.
 	else {
 		let rng = store.byte_range(rng)?;
-		out.add_uncompressed_block(last_block, arr, rng);
+		out.add_uncompressed_block(last_block, arr, rng.rng());
 		Ok(())
 	}
 }
@@ -250,14 +257,14 @@ fn add_lz77_block(
 /// the end code (256).
 fn add_lz77_data(
 	store: &LZ77Store,
-	rng: Range<usize>,
+	rng: ZopfliRange,
 	ll_symbols: &ArrayLL<u32>,
 	ll_lengths: &ArrayLL<DeflateSym>,
 	d_symbols: &ArrayD<u32>,
 	d_lengths: &ArrayD<DeflateSym>,
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
-	for e in store.entries.get(rng).ok_or(zopfli_error!())? {
+	for e in store.entries.get(rng.rng()).ok_or(zopfli_error!())? {
 		// Always add the length symbol (or literal).
 		if ll_lengths[e.ll_symbol as usize].is_zero() { return Err(zopfli_error!()); }
 		out.add_huffman_bits(
@@ -292,10 +299,10 @@ fn add_lz77_data(
 
 #[allow(clippy::cast_possible_truncation)] // The maximum blocksize is only 1 million.
 /// # Calculate Block Size (Uncompressed).
-fn calculate_block_size_uncompressed(store: &LZ77Store, rng: Range<usize>)
+fn calculate_block_size_uncompressed(store: &LZ77Store, rng: ZopfliRange)
 -> Result<NonZeroU32, ZopfliError> {
 	let rng = store.byte_range(rng)?;
-	let blocksize = rng.len() as u32;
+	let blocksize = rng.len().get() as u32;
 
 	// Blocks larger than u16::MAX need to be split.
 	let blocks = blocksize.div_ceil(65_535);
@@ -303,46 +310,45 @@ fn calculate_block_size_uncompressed(store: &LZ77Store, rng: Range<usize>)
 }
 
 /// # Calculate Block Size (Fixed).
-fn calculate_block_size_fixed(store: &LZ77Store, rng: Range<usize>) -> NonZeroU32 {
+fn calculate_block_size_fixed(store: &LZ77Store, rng: ZopfliRange) -> NonZeroU32 {
 	// Loop the store if we have data to loop.
-	let slice = store.entries.as_slice();
-	let size =
-		if rng.start < rng.end && rng.end <= slice.len() {
-			slice[rng].iter()
-			.map(|e| {
-				let mut size = FIXED_TREE_LL[e.ll_symbol as usize] as u32;
-				if 0 < e.dist {
-					size += u32::from(LENGTH_SYMBOL_BITS[e.litlen as usize]);
-					size += u32::from(DISTANCE_BITS[e.d_symbol as usize]);
-					size += FIXED_TREE_D[e.d_symbol as usize] as u32;
-				}
-				size
-			})
-			.sum::<u32>()
-		}
-		else { 0 };
+	let size = store.entries.get(rng.rng())
+		.unwrap_or(&[])
+		.iter()
+		.map(|e| {
+			let mut size = FIXED_TREE_LL[e.ll_symbol as usize] as u32;
+			if 0 < e.dist {
+				size += u32::from(LENGTH_SYMBOL_BITS[e.litlen as usize]);
+				size += u32::from(DISTANCE_BITS[e.d_symbol as usize]);
+				size += FIXED_TREE_D[e.d_symbol as usize] as u32;
+			}
+			size
+		})
+		.sum::<u32>();
 
 	// This can't really fail, but fixed models are bullshit anyway so we can
 	// fall back to an unbeatably large number.
-	NonZeroU32::new(size + FIXED_TREE_LL[256] as u32).unwrap_or(NonZeroU32::MAX)
+	NonZeroU32::new(size)
+		.unwrap_or(NonZeroU32::MAX)
+		.saturating_add(FIXED_TREE_LL[256] as u32)
 }
 
 /// # Calculate Block Size (Dynamic).
-fn calculate_block_size_dynamic(store: &LZ77Store, rng: Range<usize>)
+fn calculate_block_size_dynamic(store: &LZ77Store, rng: ZopfliRange)
 -> Result<NonZeroU32, ZopfliError> {
 	get_dynamic_lengths(store, rng).map(|(_, size, _, _)| size)
 }
 
 /// # Calculate Best Block Size (in Bits).
-fn calculate_block_size_auto_type(store: &LZ77Store, rng: Range<usize>)
+fn calculate_block_size_auto_type(store: &LZ77Store, rng: ZopfliRange)
 -> Result<NonZeroU32, ZopfliError> {
-	let uncompressed_cost = calculate_block_size_uncompressed(store, rng.clone())?;
+	let uncompressed_cost = calculate_block_size_uncompressed(store, rng)?;
 
 	// We can skip the expensive fixed-cost calculations for large blocks since
 	// they're unlikely ever to use it.
 	let fixed_cost =
 		if 1000 < store.len() { uncompressed_cost }
-		else { calculate_block_size_fixed(store, rng.clone()) };
+		else { calculate_block_size_fixed(store, rng) };
 
 	let dynamic_cost = calculate_block_size_dynamic(store, rng)?;
 
@@ -358,46 +364,61 @@ fn calculate_block_size_auto_type(store: &LZ77Store, rng: Range<usize>)
 /// # Minimum Split Cost.
 ///
 /// Return the index of the smallest split cost between `start..end`.
-fn find_minimum_cost(store: &LZ77Store, mut rng: Range<usize>)
+fn find_minimum_cost(store: &LZ77Store, full_rng: ZopfliRange)
 -> Result<(usize, NonZeroU32), ZopfliError> {
+	#[inline(never)]
+	/// # Small Cost.
+	///
+	/// For small ranges, skip the logic and compare all possible splits. This
+	/// will return an error if no splits are possible.
+	fn small_cost(store: &LZ77Store, rng: ZopfliRange)
+	-> Result<(usize, NonZeroU32), ZopfliError> {
+		if 1 < rng.len().get() {
+			let mut best_cost = NonZeroU32::MAX;
+			let mut best_idx = rng.start() + 1;
+			for (a, b) in rng.splits() {
+				let cost = split_cost(store, a, b)?;
+				if cost < best_cost {
+					best_cost = cost;
+					best_idx = a.end(); // The split point.
+				}
+			}
+			Ok((best_idx, best_cost))
+		}
+		// Not big enough to split!
+		else { Err(zopfli_error!()) }
+	}
+
 	/// # Split Block Cost.
 	///
 	/// Sum the left and right halves of the range.
-	fn split_cost(store: &LZ77Store, start: usize, mid: usize, end: usize) -> Result<NonZeroU32, ZopfliError> {
-		let a = calculate_block_size_auto_type(store, start..mid)?;
-		let b = calculate_block_size_auto_type(store, mid..end)?;
+	fn split_cost(store: &LZ77Store, a: ZopfliRange, b: ZopfliRange) -> Result<NonZeroU32, ZopfliError> {
+		let a = calculate_block_size_auto_type(store, a)?;
+		let b = calculate_block_size_auto_type(store, b)?;
 		Ok(a.saturating_add(b.get()))
 	}
 
-	// Keep track of the original start/end points.
-	let split_start = rng.start - 1;
-	let split_end = rng.end;
+	// Short circuit.
+	if full_rng.len().get() <= 1024 { return small_cost(store, full_rng); }
 
-	let mut best_cost = NonZeroU32::MAX;
-	let mut best_idx = rng.start;
-
-	// Small chunks don't need much.
-	if rng.len() < 1024 {
-		for i in rng {
-			let cost = split_cost(store, split_start, i, split_end)?;
-			if cost < best_cost {
-				best_cost = cost;
-				best_idx = i;
-			}
-		}
-		return Ok((best_idx, best_cost));
-	}
+	// Advance the range.
+	let mut rng = full_rng.advance()?;
 
 	// Divide and conquer.
+	let mut best_cost = NonZeroU32::MAX;
+	let mut best_idx = rng.start();
 	let mut p = [0_usize; MINIMUM_SPLIT_DISTANCE - 1];
 	let mut last_best_cost = NonZeroU32::MAX;
-	while MINIMUM_SPLIT_DISTANCE <= rng.len() {
+	while MINIMUM_SPLIT_DISTANCE <= rng.len().get() {
 		let mut best_p_idx = SplitPIdx::S0;
 		for (i, pp) in SplitPIdx::all().zip(p.iter_mut()) {
-			*pp = rng.start + (i as usize + 1) * (rng.len().wrapping_div(MINIMUM_SPLIT_DISTANCE));
+			*pp = rng.start() + (i as usize + 1) * (rng.len().get().wrapping_div(MINIMUM_SPLIT_DISTANCE));
 			let line_cost =
 				if best_idx == *pp { last_best_cost }
-				else { split_cost(store, split_start, *pp, split_end)? };
+				else {
+					let (a, b) = full_rng.split(*pp)?;
+					split_cost(store, a, b)?
+				};
 
 			if (i as usize) == 0 || line_cost < best_cost {
 				best_cost = line_cost;
@@ -410,8 +431,13 @@ fn find_minimum_cost(store: &LZ77Store, mut rng: Range<usize>)
 
 		// Nudge the boundaries and back again.
 		best_idx = p[best_p_idx as usize];
-		if 0 != (best_p_idx as usize) { rng.start = p[best_p_idx as usize - 1]; }
-		if (best_p_idx as usize) + 1 < p.len() { rng.end = p[best_p_idx as usize + 1]; }
+		let new_start =
+			if 0 == (best_p_idx as usize) { rng.start() }
+			else { p[best_p_idx as usize - 1] };
+		let new_end =
+			if (best_p_idx as usize) + 1 < p.len() { p[best_p_idx as usize + 1] }
+			else { rng.end() };
+		rng.set(new_start, new_end)?;
 
 		last_best_cost = best_cost;
 	}
@@ -438,7 +464,7 @@ fn lz77_optimal(
 	if instart >= arr.len() || numiterations < 1 { return Ok(()); }
 
 	// Reset the main cache for the current blocksize.
-	state.init_lmc(arr.len() - instart);
+	state.init_lmc(NonZeroUsize::new(arr.len() - instart).unwrap());
 
 	// Greedy run.
 	state.greedy(arr, instart, scratch_store, Some(instart))?;
@@ -467,7 +493,7 @@ fn lz77_optimal(
 		// This is the cost we actually care about.
 		let current_cost = calculate_block_size_dynamic(
 			scratch_store,
-			0..scratch_store.len(),
+			ZopfliRange::new(0, scratch_store.len())?,
 		)?;
 
 		// We have a new best!
@@ -541,7 +567,10 @@ fn split_points(
 			&mut store3,
 			state,
 		)?;
-		cost1 += calculate_block_size_auto_type(store2, 0..store2.len())?.get();
+		cost1 += calculate_block_size_auto_type(
+			store2,
+			ZopfliRange::new(0, store2.len())?,
+		)?.get();
 
 		// Append its data to our main store.
 		store.steal_entries(store2);
@@ -559,7 +588,10 @@ fn split_points(
 		debug_assert!(split_a[0] == 0); // We don't write to the last byte.
 		let mut cost2 = 0;
 		for pair in split_a[..two_len as usize + 2].windows(2) {
-			cost2 += calculate_block_size_auto_type(store, pair[0]..pair[1])?.get();
+			cost2 += calculate_block_size_auto_type(
+				store,
+				ZopfliRange::new(pair[0], pair[1])?,
+			)?.get();
 		}
 
 		// It's better!
@@ -633,8 +665,8 @@ fn split_points_lz77(
 		lz77size: usize,
 		done: &SplitCache,
 		splitpoints: &[usize],
-		rng: &mut Range<usize>,
-	) -> bool {
+		rng: &mut ZopfliRange,
+	) -> Result<bool, ZopfliError> {
 		let mut best = 0;
 		for i in 0..=splitpoints.len() {
 			let start =
@@ -646,31 +678,30 @@ fn split_points_lz77(
 
 			// We found a match!
 			if best < end - start && done.is_unset(start) {
-				rng.start = start;
-				rng.end = end;
+				rng.set(start, end)?;
 				best = end - start;
 			}
 		}
-		MINIMUM_SPLIT_DISTANCE <= best
+		Ok(MINIMUM_SPLIT_DISTANCE <= best)
 	}
 
 	// This won't work on tiny files.
 	if store.len() < MINIMUM_SPLIT_DISTANCE { return Ok(SplitLen::S00); }
 
 	// Get started!
-	let mut rng = 0..store.len();
-	let done = state.split_cache(rng.end);
+	let mut rng = ZopfliRange::new(0, store.len())?;
+	let done = state.split_cache(rng.len());
 	let mut last = 0;
 	let mut len = SplitLen::S00;
 	loop {
-		let (llpos, llcost) = find_minimum_cost(store, rng.start + 1..rng.end)?;
-		if llpos <= rng.start || llpos >= rng.end {
-			return Err(zopfli_error!());
-		}
+		// Safety: find_minimum_cost will return an error if the block doesn't
+		// have a midpoint.
+		let (llpos, llcost) = find_minimum_cost(store, rng)?;
+		if rng.start() >= llpos || rng.end() <= llpos { crate::unreachable(); }
 
 		// Ignore points we've already covered.
-		if llpos == rng.start + 1 || calculate_block_size_auto_type(store, rng.clone())? < llcost {
-			done.set(rng.start);
+		if llpos == rng.start() + 1 || calculate_block_size_auto_type(store, rng)? < llcost {
+			done.set(rng.start());
 		}
 		else {
 			// Mark it as a split point and add it sorted.
@@ -693,7 +724,7 @@ fn split_points_lz77(
 			done,
 			&split_b[..len as usize],
 			&mut rng,
-		) { break; }
+		)? { break; }
 	}
 
 	Ok(len)
