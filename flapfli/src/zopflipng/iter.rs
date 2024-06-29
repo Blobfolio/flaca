@@ -23,6 +23,11 @@ impl<'a, T> Iterator for ReducingSlices<'a, T> {
 		}
 		else { None }
 	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.0.len();
+		(len, Some(len))
+	}
 }
 
 impl<'a, T> ExactSizeIterator for ReducingSlices<'a, T> {

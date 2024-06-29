@@ -425,6 +425,11 @@ impl<'a> Iterator for DeflateIter<'a> {
 		}
 		else { None }
 	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.len();
+		(len, Some(len))
+	}
 }
 
 impl<'a> ExactSizeIterator for DeflateIter<'a> {

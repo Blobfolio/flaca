@@ -369,6 +369,7 @@ pub(crate) struct {name}Iter({kind});
 
 impl Iterator for {name}Iter {{
 	type Item = {name};
+
 	fn next(&mut self) -> Option<Self::Item> {{
 		let old = self.0;
 		if old < {end} {{
@@ -377,6 +378,11 @@ impl Iterator for {name}Iter {{
 			Some(unsafe {{ std::mem::transmute::<{kind}, {name}>(old) }})
 		}}
 		else {{ None }}
+	}}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {{
+		let len = self.len();
+		(len, Some(len))
 	}}
 }}
 
