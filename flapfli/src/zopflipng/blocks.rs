@@ -336,23 +336,21 @@ fn calculate_block_size_dynamic(store: &LZ77Store, rng: ZopfliRange)
 /// # Calculate Best Block Size (in Bits).
 fn calculate_block_size_auto_type(store: &LZ77Store, rng: ZopfliRange)
 -> Result<NonZeroU32, ZopfliError> {
-	let uncompressed_cost = calculate_block_size_uncompressed(store, rng)?;
+	// Take the smaller of the uncompressed and dynamic costs.
+	let cost = NonZeroU32::min(
+		calculate_block_size_uncompressed(store, rng)?,
+		calculate_block_size_dynamic(store, rng)?,
+	);
 
-	// We can skip the expensive fixed-cost calculations for large blocks since
-	// they're unlikely ever to use it.
-	let fixed_cost =
-		if 1000 < store.len() { uncompressed_cost }
-		else { calculate_block_size_fixed(store, rng) };
-
-	let dynamic_cost = calculate_block_size_dynamic(store, rng)?;
-
-	// If uncompressed is better than everything, return it.
-	if uncompressed_cost < fixed_cost && uncompressed_cost < dynamic_cost {
-		Ok(uncompressed_cost)
+	// Counter-intuitively, we'll usually get better block-splitting decisions
+	// by ignoring fixed costs entirely unless the store is really small. This
+	// condition is also necessary to maintain parity with the original zopfli.
+	if store.len() <= 1000 {
+		let cost2 = calculate_block_size_fixed(store, rng);
+		if cost2 < cost { return Ok(cost2); }
 	}
-	// Otherwise choose the smaller of fixed and dynamic.
-	else if fixed_cost < dynamic_cost { Ok(fixed_cost) }
-	else { Ok(dynamic_cost) }
+
+	Ok(cost)
 }
 
 /// # Minimum Split Cost.
