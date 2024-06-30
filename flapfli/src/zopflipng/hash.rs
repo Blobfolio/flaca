@@ -12,7 +12,6 @@ use std::{
 		Layout,
 	},
 	cell::Cell,
-	num::NonZeroUsize,
 	ptr::{
 		addr_of,
 		addr_of_mut,
@@ -33,13 +32,14 @@ use super::{
 	stats::SymbolStats,
 	SUBLEN_LEN,
 	zopfli_error,
-	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZOPFLI_MAX_MATCH,
 	ZOPFLI_MIN_MATCH,
+	ZOPFLI_WINDOW_SIZE,
+	ZopfliChunk,
 	ZopfliError,
+	ZopfliRange,
 };
 
-const ZOPFLI_WINDOW_SIZE: usize = 32_768;
 const ZOPFLI_WINDOW_MASK: usize = ZOPFLI_WINDOW_SIZE - 1;
 const HASH_SHIFT: i32 = 5;
 const HASH_MASK: i16 = 32_767;
@@ -97,16 +97,14 @@ impl ZopfliState {
 	}
 
 	/// # Initialize LMC/Squeeze Caches.
-	pub(crate) fn init_lmc(&mut self, blocksize: NonZeroUsize) {
-		debug_assert!(blocksize.get() <= ZOPFLI_MASTER_BLOCK_SIZE);
-		self.lmc.init(blocksize);
-		self.squeeze.resize_costs(blocksize.saturating_add(1));
+	pub(crate) fn init_lmc(&mut self, chunk: &ZopfliChunk<'_>) {
+		self.lmc.init(chunk);
+		self.squeeze.resize_costs(chunk);
 	}
 
 	/// # Split Cache.
-	pub(crate) fn split_cache(&mut self, blocksize: NonZeroUsize) -> &mut SplitCache {
-		debug_assert!(blocksize.get() <= ZOPFLI_MASTER_BLOCK_SIZE);
-		self.split.init(blocksize);
+	pub(crate) fn split_cache(&mut self, rng: ZopfliRange) -> &mut SplitCache {
+		self.split.init(rng);
 		&mut self.split
 	}
 }
@@ -116,12 +114,11 @@ impl ZopfliState {
 	/// # Greedy LZ77 Run (No Inlining).
 	pub(crate) fn greedy_cold(
 		&mut self,
-		arr: &[u8],
-		instart: usize,
+		chunk: ZopfliChunk<'_>,
 		store: &mut LZ77Store,
 		cache: Option<usize>,
 	) -> Result<(), ZopfliError> {
-		self.greedy(arr, instart, store, cache)
+		self.greedy(chunk, store, cache)
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
@@ -134,8 +131,7 @@ impl ZopfliState {
 	/// This is one of two entrypoints into the inner `ZopfliHash` data.
 	pub(crate) fn greedy(
 		&mut self,
-		arr: &[u8],
-		instart: usize,
+		chunk: ZopfliChunk<'_>,
 		store: &mut LZ77Store,
 		cache: Option<usize>,
 	) -> Result<(), ZopfliError> {
@@ -147,11 +143,10 @@ impl ZopfliState {
 
 		// Reset the store and hash.
 		store.clear();
-		self.hash.reset(arr, instart);
+		self.hash.reset(chunk);
 
 		// Short circuit.
-		if instart >= arr.len() { return Ok(()); }
-		let mut iter = ReducingSlices::new(&arr[instart..]);
+		let mut iter = chunk.reducing_block_iter();
 
 		// We'll need a few more variables…
 		let mut sublen = ZEROED_SUBLEN;
@@ -160,20 +155,16 @@ impl ZopfliState {
 		let mut prev_length = LitLen::L000;
 		let mut prev_distance: u16 = 0;
 		let mut match_available = false;
+		let mut prev_value = 0_u8;
 
 		// Loop the data!
-		while let Some(arr2) = iter.next() {
-			// Safety: the ReducingSlices iter only returns non-empty slices.
-			if arr2.is_empty() { crate::unreachable(); }
-
-			// Update the hash.
-			let mut pos = arr.len() - arr2.len();
-			self.hash.update_hash(arr2, pos);
+		while let Some(chunk2) = iter.next() {
+			self.hash.update_hash(chunk2);
+			let prev_prev_value = std::mem::replace(&mut prev_value, chunk2.first());
 
 			// Run the finder.
 			self.hash.find(
-				arr, // The full, original array.
-				pos,
+				chunk2,
 				LitLen::MAX_MATCH,
 				&mut Some(&mut sublen),
 				&mut distance,
@@ -189,14 +180,10 @@ impl ZopfliState {
 				match_available = false;
 
 				if length_score > prev_length_score + 1 {
-					// Safety: match_available starts false so even if instart
-					// is zero, we won't reach this part until we've iterated
-					// at least once.
-					#[allow(unsafe_code)]
 					store.push(
-						LitLen::from_u8(unsafe { *arr.get_unchecked(pos - 1) }),
+						LitLen::from_u8(prev_prev_value),
 						0,
-						pos - 1,
+						chunk2.pos() - 1,
 					);
 					if length_score >= ZOPFLI_MIN_MATCH as u16 && ! length.is_max() {
 						match_available = true;
@@ -211,13 +198,12 @@ impl ZopfliState {
 					distance = prev_distance;
 
 					// Write the values!
-					store.push(length, distance, pos - 1);
+					store.push(length, distance, chunk2.pos() - 1);
 
 					// Update the hash up through length and increment the loop
 					// position accordingly.
-					for arr2 in iter.by_ref().take(length as usize - 2) {
-						pos += 1;
-						self.hash.update_hash(arr2, pos);
+					for chunk2 in iter.by_ref().take(length as usize - 2) {
+						self.hash.update_hash(chunk2);
 					}
 					continue;
 				}
@@ -233,24 +219,19 @@ impl ZopfliState {
 
 			// Write the current length/distance.
 			if length_score >= ZOPFLI_MIN_MATCH as u16 {
-				store.push(length, distance, pos);
+				store.push(length, distance, chunk2.pos());
 			}
 			// Write from the source with no distance and reset the length to
 			// one.
 			else {
-				// Safety: the ReducingSlices iter only returns non-empty
-				// slices.
-				if arr2.is_empty() { crate::unreachable(); }
-
 				length = LitLen::L001;
-				store.push(LitLen::from_u8(arr2[0]), 0, pos);
+				store.push(LitLen::from_u8(chunk2.first()), 0, chunk2.pos());
 			}
 
 			// Update the hash up through length and increment the loop
 			// position accordingly.
-			for arr2 in iter.by_ref().take(length as usize - 1) {
-				pos += 1;
-				self.hash.update_hash(arr2, pos);
+			for chunk2 in iter.by_ref().take(length as usize - 1) {
+				self.hash.update_hash(chunk2);
 			}
 		}
 
@@ -263,8 +244,7 @@ impl ZopfliState {
 	/// Same as `ZopfliHash::optimal_run`, but without the histogram stats.
 	pub(crate) fn optimal_run_fixed(
 		&mut self,
-		arr: &[u8],
-		instart: usize,
+		chunk: ZopfliChunk<'_>,
 		store: &mut LZ77Store,
 	) -> Result<(), ZopfliError> {
 		// Reset the store and costs.
@@ -272,15 +252,14 @@ impl ZopfliState {
 		let costs = self.squeeze.reset_costs();
 		if ! costs.is_empty() {
 			// Reset and warm the hash.
-			self.hash.reset(arr, instart);
+			self.hash.reset(chunk);
 
 			// Forward and backward squeeze passes.
-			self.hash.get_best_lengths_fixed(arr, instart, costs, &mut self.lmc)?;
+			self.hash.get_best_lengths_fixed(chunk, costs, &mut self.lmc)?;
 			let paths = self.squeeze.trace_paths()?;
 			if ! paths.is_empty() {
 				self.hash.follow_paths(
-					arr,
-					instart,
+					chunk,
 					paths,
 					store,
 					&mut self.lmc,
@@ -299,8 +278,7 @@ impl ZopfliState {
 	/// match data.
 	pub(crate) fn optimal_run(
 		&mut self,
-		arr: &[u8],
-		instart: usize,
+		chunk: ZopfliChunk<'_>,
 		stats: &SymbolStats,
 		store: &mut LZ77Store,
 	) -> Result<(), ZopfliError> {
@@ -309,15 +287,14 @@ impl ZopfliState {
 		let costs = self.squeeze.reset_costs();
 		if ! costs.is_empty() {
 			// Reset and warm the hash.
-			self.hash.reset(arr, instart);
+			self.hash.reset(chunk);
 
 			// Forward and backward squeeze passes.
-			self.hash.get_best_lengths(arr, instart, stats, costs, &mut self.lmc)?;
+			self.hash.get_best_lengths(chunk, stats, costs, &mut self.lmc)?;
 			let paths = self.squeeze.trace_paths()?;
 			if ! paths.is_empty() {
 				self.hash.follow_paths(
-					arr,
-					instart,
+					chunk,
 					paths,
 					store,
 					&mut self.lmc,
@@ -393,26 +370,21 @@ impl ZopfliHash {
 	/// This sets all values to their defaults, then cycles the first chain's
 	/// hash value once or twice, then hashes the bits between the start of the
 	/// window and the start of the slice we're actually interested in, if any.
-	fn reset(
-		&mut self,
-		arr: &[u8],
-		instart: usize,
-	) {
+	fn reset(&mut self, chunk: ZopfliChunk<'_>) {
 		// Reset the data.
 		self.chain1.reset();
 		self.chain2.reset();
 		self.same.fill(0);
 
 		// Cycle the hash once or twice.
-		if instart >= arr.len() { return; }
-		let windowstart = instart.saturating_sub(ZOPFLI_WINDOW_SIZE);
-		self.update_hash_value(arr[windowstart]);
-		if windowstart + 1 < arr.len() {
-			self.update_hash_value(arr[windowstart + 1]);
-		}
+		let (a, b) = chunk.warmup_values();
+		self.update_hash_value(a);
+		if let Some(b) = b { self.update_hash_value(b); }
 
-		// Process the values between windowstart and instart.
-		for i in windowstart..instart { self.update_hash(&arr[i..], i); }
+		// Process the values between windowstart and instart, if any.
+		if let Some(iter) = chunk.reducing_prelude_iter() {
+			for chunk2 in iter { self.update_hash(chunk2); }
+		}
 	}
 
 	#[allow(
@@ -425,20 +397,23 @@ impl ZopfliHash {
 	/// This updates the hash tables using the data from `arr`. The `pos` value
 	/// marks the position of `arr` within the original block slice. (That is,
 	/// `arr` is pre-sliced to `arr[pos..]` before being passed to this method.)
-	fn update_hash(&mut self, arr: &[u8], pos: usize) {
+	fn update_hash(&mut self, chunk: ZopfliChunk<'_>) {
+		let pos = chunk.pos();
 		let hpos = pos & ZOPFLI_WINDOW_MASK;
 
 		// Cycle the first hash.
+		let arr = chunk.block();
 		self.update_hash_value(arr.get(ZOPFLI_MIN_MATCH - 1).map_or(0, |v| *v));
 		self.chain1.update_hash(pos);
 
 		// Count up the repetitions (and update sameness).
+		let current = chunk.first();
 		let mut amount = self.same[pos.wrapping_sub(1) & ZOPFLI_WINDOW_MASK]
 			.saturating_sub(1);
 		while
 			amount < u16::MAX &&
 			usize::from(amount) + 1 < arr.len() &&
-			arr[0] == arr[usize::from(amount) + 1]
+			current == arr[usize::from(amount) + 1]
 		{
 			amount += 1;
 		}
@@ -470,8 +445,7 @@ impl ZopfliHash {
 	/// to 32 bits for storage, then widened back to 64 bits for comparison.
 	fn get_best_lengths(
 		&mut self,
-		arr: &[u8],
-		instart: usize,
+		chunk: ZopfliChunk<'_>,
 		stats: &SymbolStats,
 		costs: &mut [(f32, LitLen)],
 		lmc: &mut MatchCache,
@@ -510,12 +484,13 @@ impl ZopfliHash {
 
 		// The costs are sized according to the (relevant) array slice; they
 		// should always be exactly one larger.
-		if arr.len() <= instart || costs.len() != arr.len() + 1 - instart {
+		if costs.len() != chunk.block_size().get() + 1 {
 			return Err(zopfli_error!());
 		}
 
 		// Iterators will help us avoid a bunch of unsafe.
-		let mut iter = ReducingSlices::new(&arr[instart..]).zip(
+		let instart = chunk.pos();
+		let mut iter = chunk.reducing_block_iter().zip(
 			ReducingSlices::new(Cell::from_mut(costs).as_slice_of_cells())
 		);
 
@@ -528,26 +503,25 @@ impl ZopfliHash {
 		let min_cost = minimum_cost(stats);
 		let symbol_cost = stats.ll_symbols[285] + stats.d_symbols[0];
 
-		while let Some((mut arr2, mut cost2)) = iter.next() {
-			// Safety: the ReducingSlices iter only returns non-empty slices.
-			if arr2.is_empty() || arr2.len() + 1 != cost2.len() { crate::unreachable(); }
+		while let Some((mut chunk2, mut cost2)) = iter.next() {
+			debug_assert_eq!(chunk2.block_size().get() + 1, cost2.len());
 
 			// Hash the remainder.
-			let mut pos = arr.len() - arr2.len();
-			self.update_hash(arr2, pos);
+			self.update_hash(chunk2);
 
+			let pos = chunk2.pos();
 			if
 				// We have more than ZOPFLI_MAX_MATCH entries behind us, and twice
 				// twice as many ahead of us.
 				pos > instart + ZOPFLI_MAX_MATCH + 1 &&
-				arr2.len() > ZOPFLI_MAX_MATCH * 2 + 1 &&
+				chunk2.block_size().get() > ZOPFLI_MAX_MATCH * 2 + 1 &&
 				// The current and max-match-ago positions have long repetitions.
 				self.same[pos & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16 * 2 &&
 				self.same[(pos - ZOPFLI_MAX_MATCH) & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16
 			{
 				// Fast forward!
 				let before = pos;
-				for (arr3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
+				for (chunk3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
 					// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
 					// remaining entries; cost2.len() will be at least one
 					// more than that.
@@ -558,19 +532,17 @@ impl ZopfliHash {
 					));
 					cost2 = cost3; // The costs are rotated _after_ updating…
 
-					pos += 1;
-					arr2 = arr3;   // …but the array is rotated beforehand.
-					self.update_hash(arr2, pos);
+					chunk2 = chunk3;   // …but the array is rotated beforehand.
+					self.update_hash(chunk2);
 				}
 
-				debug_assert_eq!(pos - before, ZOPFLI_MAX_MATCH);
-				debug_assert_eq!(arr2.len() + 1, cost2.len());
+				debug_assert_eq!(chunk2.pos() - before, ZOPFLI_MAX_MATCH);
+				debug_assert_eq!(chunk2.block_size().get() + 1, cost2.len());
 			}
 
 			// Find the longest remaining match.
 			self.find(
-				arr, // The full, original array.
-				pos,
+				chunk2,
 				LitLen::MAX_MATCH,
 				&mut Some(&mut sublen),
 				&mut distance,
@@ -581,11 +553,11 @@ impl ZopfliHash {
 
 			// Safety: the MAX loop (if it ran at all) only advanced the
 			// slices ZOPFLI_MAX_MATCH; we have more work to do!
-			if arr2.is_empty() || arr2.len() + 1 != cost2.len() { crate::unreachable(); }
+			if cost2.len() < 2 { crate::unreachable(); }
 
 			// Update it if lower.
 			let cost_j = f64::from(cost2[0].get().0);
-			let new_cost = stats.ll_symbols[usize::from(arr2[0])] + cost_j;
+			let new_cost = stats.ll_symbols[usize::from(chunk2.first())] + cost_j;
 			if new_cost < f64::from(cost2[1].get().0) {
 				cost2[1].set((new_cost as f32, LitLen::L001));
 			}
@@ -628,8 +600,7 @@ impl ZopfliHash {
 	/// simpler, fixed costs.
 	fn get_best_lengths_fixed(
 		&mut self,
-		arr: &[u8],
-		instart: usize,
+		chunk: ZopfliChunk<'_>,
 		costs: &mut [(f32, LitLen)],
 		lmc: &mut MatchCache,
 	) -> Result<(), ZopfliError> {
@@ -651,12 +622,13 @@ impl ZopfliHash {
 
 		// The costs are sized according to the (relevant) array slice; they
 		// should always be exactly one larger.
-		if arr.len() <= instart || costs.len() != arr.len() + 1 - instart {
+		if costs.len() != chunk.block_size().get() + 1 {
 			return Err(zopfli_error!());
 		}
 
 		// Iterators will help us avoid a bunch of unsafe.
-		let mut iter = ReducingSlices::new(&arr[instart..]).zip(
+		let instart = chunk.pos();
+		let mut iter = chunk.reducing_block_iter().zip(
 			ReducingSlices::new(Cell::from_mut(costs).as_slice_of_cells())
 		);
 
@@ -664,26 +636,25 @@ impl ZopfliHash {
 		let mut distance = 0_u16;
 		let mut sublen = ZEROED_SUBLEN;
 
-		while let Some((mut arr2, mut cost2)) = iter.next() {
-			// Safety: the ReducingSlices iter only returns non-empty slices.
-			if arr2.is_empty() || arr2.len() + 1 != cost2.len() { crate::unreachable(); }
+		while let Some((mut chunk2, mut cost2)) = iter.next() {
+			debug_assert_eq!(chunk2.block_size().get() + 1, cost2.len());
 
 			// Hash the remainder.
-			let mut pos = arr.len() - arr2.len();
-			self.update_hash(arr2, pos);
+			self.update_hash(chunk2);
 
+			let pos = chunk2.pos();
 			if
 				// We have more than ZOPFLI_MAX_MATCH entries behind us, and twice
 				// twice as many ahead of us.
 				pos > instart + ZOPFLI_MAX_MATCH + 1 &&
-				arr2.len() > ZOPFLI_MAX_MATCH * 2 + 1 &&
+				chunk2.block_size().get() > ZOPFLI_MAX_MATCH * 2 + 1 &&
 				// The current and max-match-ago positions have long repetitions.
 				self.same[pos & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16 * 2 &&
 				self.same[(pos - ZOPFLI_MAX_MATCH) & ZOPFLI_WINDOW_MASK] > ZOPFLI_MAX_MATCH as u16
 			{
 				// Fast forward!
 				let before = pos;
-				for (arr3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
+				for (chunk3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
 					// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
 					// remaining entries; cost2.len() will be at least one
 					// more than that.
@@ -694,19 +665,17 @@ impl ZopfliHash {
 					));
 					cost2 = cost3; // The costs are rotated _after_ updating…
 
-					pos += 1;
-					arr2 = arr3;   // …but the array is rotated beforehand.
-					self.update_hash(arr2, pos);
+					chunk2 = chunk3;   // …but the array is rotated beforehand.
+					self.update_hash(chunk2);
 				}
 
-				debug_assert_eq!(pos - before, ZOPFLI_MAX_MATCH);
-				debug_assert_eq!(arr2.len() + 1, cost2.len());
+				debug_assert_eq!(chunk2.pos() - before, ZOPFLI_MAX_MATCH);
+				debug_assert_eq!(chunk2.block_size().get() + 1, cost2.len());
 			}
 
 			// Find the longest remaining match.
 			self.find(
-				arr, // The full, original array.
-				pos,
+				chunk2,
 				LitLen::MAX_MATCH,
 				&mut Some(&mut sublen),
 				&mut distance,
@@ -717,11 +686,11 @@ impl ZopfliHash {
 
 			// Safety: the MAX loop (if it ran at all) only advanced the
 			// slices ZOPFLI_MAX_MATCH; we have more work to do!
-			if arr2.is_empty() || arr2.len() + 1 != cost2.len() { crate::unreachable(); }
+			if cost2.len() < 2 { crate::unreachable(); }
 
 			// Update it if lower.
 			let cost_j = f64::from(cost2[0].get().0);
-			let new_cost = if arr2[0] <= 143 { 8.0 } else { 9.0 } + cost_j;
+			let new_cost = if chunk2.first() <= 143 { 8.0 } else { 9.0 } + cost_j;
 			if new_cost < f64::from(cost2[1].get().0) {
 				cost2[1].set((new_cost as f32, LitLen::L001));
 			}
@@ -763,29 +732,21 @@ impl ZopfliHash {
 	/// squeeze-based path lengths. The store is updated with the results.
 	fn follow_paths(
 		&mut self,
-		arr: &[u8],
-		instart: usize,
+		chunk: ZopfliChunk<'_>,
 		paths: &[LitLen],
 		store: &mut LZ77Store,
 		lmc: &mut MatchCache,
 	) -> Result<(), ZopfliError> {
-		// Easy abort.
-		if instart >= arr.len() { return Ok(()); }
-
 		// Reset the hash.
-		self.reset(arr, instart);
+		self.reset(chunk);
 
 		// Hash the path symbols.
-		let mut pos = instart;
+		let instart = chunk.pos();
 		let mut len_iter = paths.iter().copied();
-		let mut arr_iter = ReducingSlices::new(&arr[instart..]);
-		while let Some((length, arr2)) = len_iter.next().zip(arr_iter.next()) {
-			// Safety: the ReducingSlices iter only returns non-empty
-			// slices.
-			if arr2.is_empty() { crate::unreachable(); }
-
+		let mut arr_iter = chunk.reducing_block_iter();
+		while let Some((length, chunk2)) = len_iter.next().zip(arr_iter.next()) {
 			// Hash it.
-			self.update_hash(arr2, pos);
+			self.update_hash(chunk2);
 
 			// Follow the matches!
 			if length.is_matchable() {
@@ -795,8 +756,7 @@ impl ZopfliHash {
 				let mut test_length = LitLen::L000;
 				let mut dist = 0;
 				self.find(
-					arr, // The full, original array.
-					pos,
+					chunk2,
 					length,
 					&mut None,
 					&mut dist,
@@ -811,23 +771,17 @@ impl ZopfliHash {
 				}
 
 				// Add it to the store.
-				store.push(length, dist, pos);
+				store.push(length, dist, chunk2.pos());
 
 				// Hash the rest of the match.
-				for arr2 in arr_iter.by_ref().take(length as usize - 1) {
-					pos += 1;
-					self.update_hash(arr2, pos);
+				for chunk2 in arr_iter.by_ref().take(length as usize - 1) {
+					self.update_hash(chunk2);
 				}
 			}
 			// It isn't matchable; add it directly to the store.
 			else {
-				// Safety: the ReducingSlices iter only returns non-empty
-				// slices.
-				if arr2.is_empty() { crate::unreachable(); }
-				store.push(LitLen::from_u8(arr2[0]), 0, pos);
+				store.push(LitLen::from_u8(chunk2.first()), 0, chunk2.pos());
 			}
-
-			pos += 1;
 		}
 
 		Ok(())
@@ -846,8 +800,7 @@ impl ZopfliHash {
 	/// slice.
 	fn find(
 		&self,
-		arr: &[u8],
-		pos: usize,
+		chunk: ZopfliChunk<'_>,
 		mut limit: LitLen,
 		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
 		distance: &mut u16,
@@ -856,6 +809,7 @@ impl ZopfliHash {
 		cache: Option<usize>,
 	) -> Result<(), ZopfliError> {
 		// Check the longest match cache first!
+		let pos = chunk.pos();
 		if let Some(blockstart) = cache {
 			if lmc.find(
 				pos - blockstart,
@@ -864,14 +818,14 @@ impl ZopfliHash {
 				distance,
 				length,
 			)? {
-				if pos + (*length as usize) <= arr.len() { return Ok(()); }
+				if (*length as usize) <= chunk.block_size().get() { return Ok(()); }
 				return Err(zopfli_error!());
 			}
 		}
 
 		// We'll need at least ZOPFLI_MIN_MATCH bytes for a search; if we don't
 		// have it, zero everything out and call it a day.
-		if pos + ZOPFLI_MIN_MATCH > arr.len() {
+		if ZOPFLI_MIN_MATCH > chunk.block_size().get() {
 			*length = LitLen::L000;
 			*distance = 0;
 			return Ok(());
@@ -879,10 +833,10 @@ impl ZopfliHash {
 
 		// Cap the limit to fit if needed. Note that limit will always be at
 		// least one even if capped since pos < size.
-		limit = limit.min_usize(arr.len() - pos);
+		limit = limit.min_usize(chunk.block_size().get());
 
 		// Calculate the best distance and length.
-		let (bestdist, bestlength) = self.find_loop(arr, pos, limit, sublen)?;
+		let (bestdist, bestlength) = self.find_loop(chunk, limit, sublen);
 
 		// Cache the results for next time, maybe.
 		if limit.is_max() {
@@ -896,7 +850,7 @@ impl ZopfliHash {
 		// Update the values.
 		*distance = bestdist;
 		*length = bestlength;
-		if pos + (*length as usize) <= arr.len() { Ok(()) }
+		if (*length as usize) <= chunk.block_size().get() { Ok(()) }
 		else { Err(zopfli_error!()) }
 	}
 
@@ -914,21 +868,21 @@ impl ZopfliHash {
 	/// and length, or `(0, 1)` if none.
 	fn find_loop(
 		&self,
-		arr: &[u8],
-		pos: usize,
+		chunk: ZopfliChunk<'_>,
 		limit: LitLen,
 		sublen: &mut Option<&mut [u16; SUBLEN_LEN]>,
-	) -> Result<(u16, LitLen), ZopfliError> {
+	) -> (u16, LitLen) {
 		/// # Distance Given Positions.
 		const fn ppp_distance(p: usize, pp: usize) -> usize {
 			if p < pp { pp - p }
 			else { ZOPFLI_WINDOW_SIZE + pp - p }
 		}
 
-		// This is asserted by find() too, but it's a good reminder.
-		if arr.len() <= pos { return Err(zopfli_error!()); }
-		let right = &arr[pos..];
+		// Prepopulate some slices to work with directly later on.
+		let arr = chunk.arr();
+		let right = chunk.block();
 
+		let pos = chunk.pos();
 		let hpos = pos & ZOPFLI_WINDOW_MASK;
 
 		// The default distance and length. We'll be wanting 16-bit values for
@@ -1046,8 +1000,8 @@ impl ZopfliHash {
 		} // Thus concludes the long-ass loop!
 
 		// Return the distance and length values.
-		if (bestlength as u16) <= (limit as u16) { Ok((bestdist as u16, bestlength)) }
-		else { Ok((0, LitLen::L001)) }
+		if (bestlength as u16) <= (limit as u16) { (bestdist as u16, bestlength) }
+		else { (0, LitLen::L001) }
 	}
 }
 

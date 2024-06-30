@@ -46,6 +46,7 @@ use zopflipng::{
 	deflate_part,
 	reset_dynamic_length_cache,
 	ZOPFLI_MASTER_BLOCK_SIZE,
+	ZopfliChunk,
 	ZopfliState,
 };
 

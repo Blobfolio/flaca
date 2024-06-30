@@ -5,10 +5,7 @@ This module contains the deflate entrypoint and all of the block-related odds
 and ends that didn't make it into other modules.
 */
 
-use std::num::{
-	NonZeroU32,
-	NonZeroUsize,
-};
+use std::num::NonZeroU32;
 use super::{
 	ArrayD,
 	ArrayLL,
@@ -34,6 +31,7 @@ use super::{
 		SymbolStats,
 	},
 	zopfli_error,
+	ZopfliChunk,
 	ZopfliError,
 	ZopfliOut,
 	ZopfliRange,
@@ -75,8 +73,7 @@ pub(crate) fn deflate_part(
 	state: &mut ZopfliState,
 	numiterations: i32,
 	last_block: bool,
-	arr: &[u8],
-	instart: usize,
+	chunk: ZopfliChunk<'_>,
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
 	let mut store = LZ77Store::new();
@@ -85,8 +82,7 @@ pub(crate) fn deflate_part(
 	// Find the split points.
 	let (best, best_len) = split_points(
 		numiterations,
-		arr,
-		instart,
+		chunk,
 		&mut store,
 		&mut store2,
 		state,
@@ -103,7 +99,7 @@ pub(crate) fn deflate_part(
 				&store,
 				&mut store2,
 				state,
-				arr,
+				chunk,
 				rng,
 				out,
 			)?;
@@ -134,7 +130,7 @@ fn add_lz77_block(
 	store: &LZ77Store,
 	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
-	arr: &[u8],
+	chunk: ZopfliChunk<'_>,
 	rng: ZopfliRange,
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
@@ -217,14 +213,11 @@ fn add_lz77_block(
 		calculate_block_size_fixed(store, rng).saturating_mul(NZ10) <= dynamic_cost.saturating_mul(NZ11)
 	{
 		let rng2 = store.byte_range(rng)?;
-		state.init_lmc(rng2.len());
+		let fixed_chunk = chunk.reslice_rng(rng2)?;
+		state.init_lmc(&fixed_chunk);
 
 		// Perform an optimal run.
-		state.optimal_run_fixed(
-			arr.get(..rng2.end()).ok_or(zopfli_error!())?,
-			rng2.start(),
-			fixed_store,
-		)?;
+		state.optimal_run_fixed(fixed_chunk, fixed_store)?;
 
 		// And finally, the cost!
 		let fixed_rng = ZopfliRange::new(0, fixed_store.len())?;
@@ -245,7 +238,8 @@ fn add_lz77_block(
 	// uncompressed form.
 	else {
 		let rng = store.byte_range(rng)?;
-		out.add_uncompressed_block(last_block, arr, rng.rng());
+		let chunk2 = chunk.reslice_rng(rng)?;
+		out.add_uncompressed_block(last_block, chunk2);
 		Ok(())
 	}
 }
@@ -453,21 +447,20 @@ fn find_minimum_cost(store: &LZ77Store, full_rng: ZopfliRange)
 /// Note: this incorporates the functionality of `ZopfliLZ77OptimalRun`
 /// directly.
 fn lz77_optimal(
-	arr: &[u8],
-	instart: usize,
+	chunk: ZopfliChunk<'_>,
 	numiterations: i32,
 	store: &mut LZ77Store,
 	scratch_store: &mut LZ77Store,
 	state: &mut ZopfliState,
 ) -> Result<(), ZopfliError> {
 	// Easy abort.
-	if instart >= arr.len() || numiterations < 1 { return Ok(()); }
+	if numiterations < 1 { return Ok(()); }
 
 	// Reset the main cache for the current blocksize.
-	state.init_lmc(NonZeroUsize::new(arr.len() - instart).unwrap());
+	state.init_lmc(&chunk);
 
 	// Greedy run.
-	state.greedy(arr, instart, scratch_store, Some(instart))?;
+	state.greedy(chunk, scratch_store, Some(chunk.pos()))?;
 
 	// Set up the PRNG and two sets of stats, populating one with the greedy-
 	// crunched store.
@@ -488,7 +481,7 @@ fn lz77_optimal(
 		current_stats.crunch();
 
 		// Optimal run.
-		state.optimal_run(arr, instart, &current_stats, scratch_store)?;
+		state.optimal_run(chunk, &current_stats, scratch_store)?;
 
 		// This is the cost we actually care about.
 		let current_cost = calculate_block_size_dynamic(
@@ -532,8 +525,7 @@ fn lz77_optimal(
 /// it excludes the absolute start and end points.
 fn split_points(
 	numiterations: i32,
-	arr: &[u8],
-	instart: usize,
+	chunk: ZopfliChunk<'_>,
 	store: &mut LZ77Store,
 	store2: &mut LZ77Store,
 	state: &mut ZopfliState,
@@ -543,7 +535,7 @@ fn split_points(
 	let mut split_b = ZEROED_SPLIT_POINTS;
 
 	// Start by splitting uncompressed.
-	let raw_len = split_points_raw(arr, instart, store2, state, &mut split_a, &mut split_b)?;
+	let raw_len = split_points_raw(chunk, store2, state, &mut split_a, &mut split_b)?;
 	store2.clear();
 
 	// Calculate the costs associated with that split and update the store with
@@ -551,17 +543,12 @@ fn split_points(
 	let mut cost1 = 0;
 	let mut store3 = LZ77Store::new();
 	for i in 0..=raw_len as usize {
-		let start = if i == 0 { instart } else { split_a[i - 1] };
-		let end = if i < (raw_len as usize) { split_a[i] } else { arr.len() };
+		let start = if i == 0 { chunk.pos() } else { split_a[i - 1] };
+		let end = if i < (raw_len as usize) { split_a[i] } else { chunk.total_len().get() };
 
-		// This assertion is redundant as we explicitly check range sanity
-		// earlier and later in the pipeline.
-		debug_assert!(start <= end && end <= arr.len());
-
-		// Make another store.
+		// Crunch this chunk into a clean store.
 		lz77_optimal(
-			arr.get(..end).ok_or(zopfli_error!())?,
-			start,
+			chunk.reslice(start, end)?,
 			numiterations,
 			store2,
 			&mut store3,
@@ -606,8 +593,7 @@ fn split_points(
 #[inline(never)]
 /// # Split Points: Uncompressed.
 fn split_points_raw(
-	arr: &[u8],
-	instart: usize,
+	chunk: ZopfliChunk<'_>,
 	store: &mut LZ77Store,
 	state: &mut ZopfliState,
 	split_a: &mut SplitPoints,
@@ -615,7 +601,7 @@ fn split_points_raw(
 ) -> Result<SplitLen, ZopfliError> {
 	// Populate an LZ77 store from a greedy pass. This results in better
 	// block choices than a full optimal pass.
-	state.greedy_cold(arr, instart, store, None)?;
+	state.greedy_cold(chunk, store, None)?;
 
 	// Do an LZ77 pass.
 	let len = split_points_lz77(state, store, split_b)?;
@@ -623,7 +609,7 @@ fn split_points_raw(
 	// Find the corresponding uncompressed positions.
 	if len.is_zero() { Ok(len) }
 	else {
-		let mut pos = instart;
+		let mut pos = chunk.pos();
 		let mut j = SplitLen::S00;
 		for (i, e) in store.entries.iter().enumerate().take(split_b[len as usize - 1] + 1) {
 			if i == split_b[j as usize] {
@@ -690,7 +676,7 @@ fn split_points_lz77(
 
 	// Get started!
 	let mut rng = ZopfliRange::new(0, store.len())?;
-	let done = state.split_cache(rng.len());
+	let done = state.split_cache(rng);
 	let mut last = 0;
 	let mut len = SplitLen::S00;
 	loop {

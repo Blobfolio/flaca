@@ -21,13 +21,13 @@ use std::{
 	},
 	mem::MaybeUninit,
 	num::NonZeroUsize,
-	ops::Range,
 	sync::atomic::Ordering::Relaxed,
 };
 use super::{
 	deflate_part,
 	EncodedPNG,
 	reset_dynamic_length_cache,
+	ZopfliChunk,
 	ZopfliState,
 	ZOPFLI_MASTER_BLOCK_SIZE,
 };
@@ -77,14 +77,13 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	reset_dynamic_length_cache();
 
 	// Compress in chunks, à la ZopfliDeflate.
-	for (from, chunk) in DeflateIter::new(arr) {
+	for chunk in DeflateIter::new(arr) {
 		#[cfg(not(debug_assertions))]
 		if STATES.with_borrow_mut(|state| deflate_part(
 			state,
 			numiterations,
-			chunk.len() == arr.len(),
+			chunk.total_len().get() == arr.len(),
 			chunk,
-			from,
 			&mut dst,
 		)).is_err() { return 1; };
 
@@ -92,9 +91,8 @@ pub(crate) extern "C" fn flaca_png_deflate(
 		if let Err(e) = STATES.with_borrow_mut(|state| deflate_part(
 			state,
 			numiterations,
-			chunk.len() == arr.len(),
+			chunk.total_len().get() == arr.len(),
 			chunk,
-			from,
 			&mut dst,
 		)) { panic!("{e}"); };
 	}
@@ -202,19 +200,20 @@ impl ZopfliOut {
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
+	#[cold]
 	/// # Add Non-Compressed Block.
 	pub(crate) fn add_uncompressed_block(
 		&mut self,
 		last_block: bool,
-		arr: &[u8],
-		rng: Range<usize>,
+		chunk: ZopfliChunk<'_>,
 	) {
-		let mut pos = rng.start;
-		loop {
-			let mut blocksize = usize::from(u16::MAX);
-			if pos + blocksize > rng.end { blocksize = rng.end - pos; }
-			let really_last_block = pos + blocksize >= rng.end;
+		// We need to proceed u16::MAX bytes at a time.
+		let iter = chunk.block().chunks(usize::from(u16::MAX));
+		let len = iter.len() - 1;
+		for (i, block) in iter.enumerate() {
+			let blocksize = block.len();
 			let nlen = ! blocksize;
+			let really_last_block = i == len;
 
 			self.add_bit(u8::from(last_block && really_last_block));
 
@@ -230,12 +229,7 @@ impl ZopfliOut {
 			self.append_data((nlen % 256) as u8);
 			self.append_data((nlen.wrapping_div(256) % 256) as u8);
 
-			for bit in arr.iter().copied().skip(pos).take(blocksize) {
-				self.append_data(bit);
-			}
-
-			if really_last_block { break; }
-			pos += blocksize;
+			for bit in block.iter().copied() { self.append_data(bit); }
 		}
 	}
 }
@@ -414,14 +408,14 @@ struct DeflateIter<'a> {
 }
 
 impl<'a> Iterator for DeflateIter<'a> {
-	type Item = (usize, &'a [u8]);
+	type Item = ZopfliChunk<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.pos < self.arr.len() {
 			let pos = self.pos;
 			let chunk = self.arr.get(..pos + ZOPFLI_MASTER_BLOCK_SIZE).unwrap_or(self.arr);
 			self.pos = chunk.len();
-			Some((pos, chunk))
+			ZopfliChunk::new(chunk, pos).ok()
 		}
 		else { None }
 	}

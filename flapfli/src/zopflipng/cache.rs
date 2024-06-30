@@ -7,7 +7,6 @@ calling `ZopfliHash::find` a hundred million times in a row. Haha.
 
 use std::{
 	cell::Cell,
-	num::NonZeroUsize,
 	ptr::{
 		addr_of_mut,
 		NonNull,
@@ -19,7 +18,9 @@ use super::{
 	zopfli_error,
 	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZOPFLI_MIN_MATCH,
+	ZopfliChunk,
 	ZopfliError,
+	ZopfliRange,
 	ZopfliStateInit,
 };
 
@@ -33,10 +34,6 @@ const DEFAULT_LD: u32 = u32::from_le_bytes([1, 0, 0, 0]);
 
 /// # Sublength Cache Entries.
 const ZOPFLI_CACHE_LENGTH: usize = 8;
-
-#[allow(unsafe_code)]
-/// # Non-zero Limit.
-const NZ_MASTER_BLOCK_SIZE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(ZOPFLI_MASTER_BLOCK_SIZE) };
 
 /// # Length of Split Cache.
 ///
@@ -82,16 +79,14 @@ impl MatchCache {
 	///
 	/// Because this is a shared buffer, allocations persist for the duration
 	/// of the program run so they can be reused.
-	pub(crate) fn init(&mut self, mut blocksize: NonZeroUsize) {
-		// Lodepng will never pass along more than ZOPFLI_MASTER_BLOCK_SIZE
-		// bytes, but this lets the compiler know we won't go over.
-		if NZ_MASTER_BLOCK_SIZE < blocksize {
-			blocksize = NZ_MASTER_BLOCK_SIZE;
-		}
+	pub(crate) fn init(&mut self, chunk: &ZopfliChunk<'_>) {
+		// Safety: ZopfliChunk verifies the block size is under the limit.
+		let blocksize = chunk.block_size().get();
+		if blocksize > ZOPFLI_MASTER_BLOCK_SIZE { crate::unreachable(); }
 
 		// Lengths default to one, everything else to zero.
-		self.ld[..blocksize.get()].fill(DEFAULT_LD);
-		self.sublen[..blocksize.get() * SUBLEN_CACHED_LEN].fill(0);
+		self.ld[..blocksize].fill(DEFAULT_LD);
+		self.sublen[..blocksize * SUBLEN_CACHED_LEN].fill(0);
 	}
 
 	#[allow(unsafe_code, clippy::cast_possible_truncation)]
@@ -266,14 +261,13 @@ impl SplitCache {
 	/// # Initialize.
 	///
 	/// Clear the first `blocksize`-worth of values.
-	pub(crate) fn init(&mut self, blocksize: NonZeroUsize) {
-		// Lodepng will never pass along more than ZOPFLI_MASTER_BLOCK_SIZE
-		// bytes, but this lets the compiler know we won't go over.
-		let mut bitsize = blocksize.get().div_ceil(8);
-		if SPLIT_CACHE_LEN < bitsize {
-			bitsize = SPLIT_CACHE_LEN;
-		}
+	pub(crate) fn init(&mut self, rng: ZopfliRange) {
+		// Safety: ZopfliRange checks the range is non-empty and within the
+		// limit.
+		let blocksize = rng.len().get();
+		if ZOPFLI_MASTER_BLOCK_SIZE < blocksize { crate::unreachable(); }
 
+		let bitsize = blocksize.div_ceil(8);
 		self.set[..bitsize].fill(0);
 	}
 
@@ -337,8 +331,8 @@ impl SqueezeCache {
 	/// does _not_ reset their values. (Unlike the LMC, which more or less
 	/// persists for the duration of a given block, costs are calculated and
 	/// discarded and recalculated and discarded… several times.)
-	pub(crate) fn resize_costs(&self, blocksize: NonZeroUsize) {
-		self.costs_len.set(blocksize.get());
+	pub(crate) fn resize_costs(&self, chunk: &ZopfliChunk<'_>) {
+		self.costs_len.set(chunk.block_size().get() + 1);
 	}
 
 	/// # Reset Costs.
@@ -349,12 +343,14 @@ impl SqueezeCache {
 	/// Note that only the costs themselves are reset; the lengths and paths
 	/// are dealt with _in situ_ during crunching (without being read).
 	pub(crate) fn reset_costs(&mut self) -> &mut [(f32, LitLen)] {
-		let costs = self.costs.get_mut(..self.costs_len.get()).unwrap_or(&mut []);
-		if ! costs.is_empty() {
-			// The first cost needs to be zero; the rest need to be infinity.
-			costs[0].0 = 0.0;
-			for c in costs.iter_mut().skip(1) { c.0 = f32::INFINITY; }
-		}
+		// Safety: ZopfliChunk verifies the block size is under the limit and
+		// non-empty, and since costs is always blocks+1, the minimum is 2.
+		let len = self.costs_len.get();
+		if ! (2..=ZOPFLI_MASTER_BLOCK_SIZE + 1).contains(&len) { crate::unreachable(); }
+
+		let costs = &mut self.costs[..len];
+		costs[0].0 = 0.0;
+		for c in &mut costs[1..] { c.0 = f32::INFINITY; }
 		costs
 	}
 
@@ -491,7 +487,7 @@ mod tests {
 
 		// If we initialize with a small value, only those bits should be
 		// affected.
-		cache.init(NonZeroUsize::new(32).unwrap());
+		cache.init(ZopfliRange::new(0, 32).unwrap());
 		assert_eq!(cache.set[0], 0);
 		assert_eq!(cache.set[1], 0);
 		assert_eq!(cache.set[2], 0);

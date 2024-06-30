@@ -16,6 +16,7 @@ performant.
 
 mod blocks;
 mod cache;
+mod chunk;
 mod error;
 mod hash;
 mod iter;
@@ -32,6 +33,7 @@ use cache::{
 	SplitCache,
 	SqueezeCache,
 };
+pub(crate) use chunk::ZopfliChunk;
 use error::{
 	zopfli_error,
 	ZopfliError,
@@ -128,8 +130,11 @@ const FIXED_SYMBOLS_D: ArrayD<u32> = [
 	16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
 ];
 
-// This is the biggest chunk-o-data that can be passed to deflate.
+/// # Step Size for Deflate Parts.
 pub(super) const ZOPFLI_MASTER_BLOCK_SIZE: usize = 1_000_000;
+
+/// # Hash Window Size.
+const ZOPFLI_WINDOW_SIZE: usize = 32_768;
 
 // The matchable hash cache range.
 const ZOPFLI_MIN_MATCH: usize = 3;
