@@ -121,6 +121,7 @@ pub(crate) fn deflate_part(
 
 
 #[allow(clippy::cast_precision_loss, clippy::cast_sign_loss)]
+#[inline]
 /// # Add LZ77 Block (Automatic Type).
 ///
 /// This calculates the expected output sizes for all three block types, then
@@ -134,6 +135,7 @@ fn add_lz77_block(
 	rng: ZopfliRange,
 	out: &mut ZopfliOut
 ) -> Result<(), ZopfliError> {
+	#[inline(never)]
 	/// # Add LZ77 Block (Dynamic).
 	fn add_dynamic(
 		last_block: bool,
@@ -145,9 +147,7 @@ fn add_lz77_block(
 		d_lengths: &ArrayD<DeflateSym>,
 	) -> Result<(), ZopfliError> {
 		// Type Bits.
-		out.add_bit(u8::from(last_block));
-		out.add_bit(BLOCK_TYPE_DYNAMIC & 1);
-		out.add_bit((BLOCK_TYPE_DYNAMIC & 2) >> 1);
+		out.add_header(last_block, BLOCK_TYPE_DYNAMIC);
 
 		// Build the lengths first.
 		encode_tree(ll_lengths, d_lengths, extra, out)?;
@@ -157,15 +157,10 @@ fn add_lz77_block(
 		let d_symbols = ArrayD::<u32>::llcl_symbols(d_lengths);
 
 		// Write all the data!
-		add_lz77_data(
-			store, rng, &ll_symbols, ll_lengths, &d_symbols, d_lengths, out
-		)?;
-
-		// Finish up by writting the end symbol.
-		out.add_huffman_bits(ll_symbols[256], ll_lengths[256] as u32);
-		Ok(())
+		add_lz77_data(store, rng, &ll_symbols, ll_lengths, &d_symbols, d_lengths, out)
 	}
 
+	#[inline(never)]
 	/// # Add LZ77 Block (Fixed).
 	fn add_fixed(
 		last_block: bool,
@@ -174,19 +169,30 @@ fn add_lz77_block(
 		out: &mut ZopfliOut,
 	) -> Result<(), ZopfliError> {
 		// Type Bits.
-		out.add_bit(u8::from(last_block));
-		out.add_bit(BLOCK_TYPE_FIXED & 1);
-		out.add_bit((BLOCK_TYPE_FIXED & 2) >> 1);
+		out.add_header(last_block, BLOCK_TYPE_FIXED);
 
 		// Write all the data!
 		add_lz77_data(
 			store, rng,
 			&FIXED_SYMBOLS_LL, &FIXED_TREE_LL, &FIXED_SYMBOLS_D, &FIXED_TREE_D,
 			out
-		)?;
+		)
+	}
 
-		// Finish up by writting the end symbol.
-		out.add_huffman_bits(FIXED_SYMBOLS_LL[256], FIXED_TREE_LL[256] as u32);
+	#[inline(never)]
+	/// # Add Uncompressed.
+	///
+	/// It is extremely unlikely this will ever be called. Haha.
+	fn add_uncompressed(
+		last_block: bool,
+		store: &LZ77Store,
+		chunk: ZopfliChunk<'_>,
+		rng: ZopfliRange,
+		out: &mut ZopfliOut,
+	) -> Result<(), ZopfliError> {
+		let rng = store.byte_range(rng)?;
+		let chunk2 = chunk.reslice_rng(rng)?;
+		out.add_uncompressed_block(last_block, chunk2);
 		Ok(())
 	}
 
@@ -194,11 +200,6 @@ fn add_lz77_block(
 	fn dynamic_details(store: &LZ77Store, rng: ZopfliRange)
 	-> Result<(u8, NonZeroU32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
 		get_dynamic_lengths(store, rng)
-	}
-
-	#[inline(never)]
-	fn fixed_cost_cold(store: &LZ77Store, rng: ZopfliRange) -> NonZeroU32 {
-		calculate_block_size_fixed(store, rng)
 	}
 
 	// Calculate the three costs.
@@ -221,7 +222,7 @@ fn add_lz77_block(
 
 		// And finally, the cost!
 		let fixed_rng = ZopfliRange::new(0, fixed_store.len())?;
-		let fixed_cost = fixed_cost_cold(fixed_store, fixed_rng);
+		let fixed_cost = calculate_block_size_fixed(fixed_store, fixed_rng);
 		if fixed_cost < dynamic_cost && fixed_cost <= uncompressed_cost {
 			return add_fixed(last_block, fixed_store, fixed_rng, out);
 		}
@@ -229,22 +230,17 @@ fn add_lz77_block(
 
 	// Dynamic is best!
 	if dynamic_cost <= uncompressed_cost {
-		add_dynamic(
-			last_block, store, rng, out,
-			dynamic_extra, &dynamic_ll, &dynamic_d,
-		)
+		add_dynamic(last_block, store, rng, out, dynamic_extra, &dynamic_ll, &dynamic_d)
 	}
 	// All the work we did earlier was fruitless; the block works best in an
 	// uncompressed form.
 	else {
-		let rng = store.byte_range(rng)?;
-		let chunk2 = chunk.reslice_rng(rng)?;
-		out.add_uncompressed_block(last_block, chunk2);
-		Ok(())
+		add_uncompressed(last_block, store, chunk, rng, out)
 	}
 }
 
 #[allow(clippy::cast_sign_loss)]
+#[inline]
 /// # Add LZ77 Data.
 ///
 /// This adds all lit/len/dist codes from the lists as huffman symbols, but not
@@ -287,6 +283,9 @@ fn add_lz77_data(
 		// If the distance is zero, the litlen must be a literal.
 		else if (e.litlen as u16) >= 256 { return Err(zopfli_error!()); }
 	}
+
+	// Finish up by writting the end symbol.
+	out.add_huffman_bits(ll_symbols[256], ll_lengths[256] as u32);
 
 	Ok(())
 }

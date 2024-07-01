@@ -27,9 +27,9 @@ use super::{
 	deflate_part,
 	EncodedPNG,
 	reset_dynamic_length_cache,
+	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZopfliChunk,
 	ZopfliState,
-	ZOPFLI_MASTER_BLOCK_SIZE,
 };
 
 
@@ -147,19 +147,25 @@ pub(super) struct ZopfliOut {
 
 impl ZopfliOut {
 	#[allow(unsafe_code)]
-	#[inline(never)]
+	#[inline]
 	/// # Append Data.
 	fn append_data(&mut self, value: u8) {
+		#[cold]
+		/// # Allocate.
+		unsafe fn alloc_cold(ptr: *mut u8, size: usize) -> *mut u8 {
+			flapfli_allocate(
+				ptr,
+				NonZeroUsize::new(size * 2).unwrap_or(NonZeroUsize::MIN),
+			)
+		}
+
 		unsafe {
 			// Dereferencing this size gets annoying quick! Haha.
 			let size = *self.outsize;
 
 			// (Re)allocate if size is a power of two, or empty.
 			if 0 == (size & size.wrapping_sub(1)) {
-				*self.out = flapfli_allocate(
-					*self.out,
-					NonZeroUsize::new(size * 2).unwrap_or(NonZeroUsize::MIN),
-				);
+				*self.out = alloc_cold(*self.out, size);
 			}
 
 			(*self.out).add(size).write(value);
@@ -169,10 +175,11 @@ impl ZopfliOut {
 }
 
 impl ZopfliOut {
-	#[allow(unsafe_code)]
+	#[inline]
 	/// # Add Bit.
 	pub(crate) fn add_bit(&mut self, bit: u8) {
 		if self.bp == 0 { self.append_data(0); }
+		#[allow(unsafe_code)]
 		unsafe {
 			// Safety: `append_data` writes a byte to `outsize` and then
 			// increments it, so to reach and modify that same position we need
@@ -190,6 +197,13 @@ impl ZopfliOut {
 		}
 	}
 
+	/// # Add Type Bits Header.
+	pub(crate) fn add_header(&mut self, last_block: bool, block_bit: u8) {
+		self.add_bit(u8::from(last_block));
+		self.add_bit(block_bit & 1);
+		self.add_bit((block_bit & 2) >> 1);
+	}
+
 	/// # Add Huffman Bits.
 	pub(crate) fn add_huffman_bits(&mut self, symbol: u32, length: u32) {
 		// Same as add_bits, except we're doing it backwards.
@@ -200,7 +214,6 @@ impl ZopfliOut {
 	}
 
 	#[allow(clippy::cast_possible_truncation)]
-	#[cold]
 	/// # Add Non-Compressed Block.
 	pub(crate) fn add_uncompressed_block(
 		&mut self,
@@ -215,13 +228,10 @@ impl ZopfliOut {
 			let nlen = ! blocksize;
 			let really_last_block = i == len;
 
-			self.add_bit(u8::from(last_block && really_last_block));
+			// Each chunk gets its own header.
+			self.add_header(last_block && really_last_block, 0);
 
-			// BTYPE 00.
-			self.add_bit(0);
-			self.add_bit(0);
-
-			// Ignore bits of input up to th enext byte boundary.
+			// Ignore bits of input up to the next byte boundary.
 			self.bp = 0;
 
 			self.append_data((blocksize % 256) as u8);
