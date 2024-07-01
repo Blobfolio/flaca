@@ -152,6 +152,18 @@ impl ZopfliOut {
 	}
 
 	#[inline]
+	/// # Add Multiple Bits.
+	///
+	/// Same as `ZopfliOut::add_bits`, but with lengths known at compile time.
+	pub(crate) fn add_fixed_bits<const N: u8>(&mut self, symbol: u32) {
+		const { assert!(1 < N); }
+		for i in const { 0..N } {
+			let bit = (symbol >> i) & 1;
+			self.add_bit(bit as u8);
+		}
+	}
+
+	#[inline]
 	/// # Add Type Bits Header.
 	pub(crate) fn add_header<const BLOCK_BIT: u8>(&mut self, last_block: bool) {
 		self.add_bit(u8::from(last_block));

@@ -843,13 +843,13 @@ impl TreeScratch {
 		let cl_symbols = <[u32; 19]>::llcl_symbols(&cl_lengths);
 
 		// Write the main lengths.
-		out.add_bits(self.hlit as u32, 5);
-		out.add_bits(self.hdist as u32, 5);
-		out.add_bits(hclen as u32, 4);
+		out.add_fixed_bits::<5>(self.hlit as u32);
+		out.add_fixed_bits::<5>(self.hdist as u32);
+		out.add_fixed_bits::<4>(hclen as u32);
 
 		// Write each cl_length in the jumbled DEFLATE order.
 		for &o in &DeflateSym::TREE[..hclen + 4] {
-			out.add_bits(cl_lengths[o as usize] as u32, 3);
+			out.add_fixed_bits::<3>(cl_lengths[o as usize] as u32);
 		}
 
 		// Write each symbol in order of appearance along with its extra bits,
@@ -860,9 +860,9 @@ impl TreeScratch {
 
 			// Extra bits.
 			match a {
-				DeflateSym::D16 => { out.add_bits(u32::from(b), 2); },
-				DeflateSym::D17 => { out.add_bits(u32::from(b), 3); },
-				DeflateSym::D18 => { out.add_bits(u32::from(b), 7); },
+				DeflateSym::D16 => { out.add_fixed_bits::<2>(u32::from(b)); },
+				DeflateSym::D17 => { out.add_fixed_bits::<3>(u32::from(b)); },
+				DeflateSym::D18 => { out.add_fixed_bits::<7>(u32::from(b)); },
 				_ => {},
 			}
 		}

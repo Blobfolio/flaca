@@ -76,6 +76,12 @@ pub(crate) fn deflate_part(
 	chunk: ZopfliChunk<'_>,
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
+	#[inline(never)]
+	fn empty_fixed(last_block: bool, out: &mut ZopfliOut) {
+		out.add_header::<BLOCK_TYPE_FIXED>(last_block);
+		out.add_fixed_bits::<7>(0);
+	}
+
 	let mut store = LZ77Store::new();
 	let mut store2 = LZ77Store::new();
 
@@ -105,13 +111,11 @@ pub(crate) fn deflate_part(
 			)?;
 		}
 
-		// I don't think empty blocks are possible, but the original zopfli
-		// seems to think they imply a fixed-tree layout, so let's run with it!
+		// This shouldn't be reachable, but the original zopfli seemed to think
+		// empty blocks are possible and imply fixed-tree layouts, so maybe?
 		else {
 			debug_assert_eq!(pair[0], pair[1]);
-			out.add_bits(u32::from(really_last_block), 1);
-			out.add_bits(1, 2);
-			out.add_bits(0, 7);
+			empty_fixed(really_last_block, out);
 		}
 	}
 
@@ -232,8 +236,7 @@ fn add_lz77_block(
 	if dynamic_cost <= uncompressed_cost {
 		add_dynamic(last_block, store, rng, out, dynamic_extra, &dynamic_ll, &dynamic_d)
 	}
-	// All the work we did earlier was fruitless; the block works best in an
-	// uncompressed form.
+	// Nothing is everything!
 	else {
 		add_uncompressed(last_block, store, chunk, rng, out)
 	}
@@ -357,7 +360,7 @@ fn calculate_block_size_auto_type(store: &LZ77Store, rng: ZopfliRange)
 /// Return the index of the smallest split cost between `start..end`.
 fn find_minimum_cost(store: &LZ77Store, full_rng: ZopfliRange)
 -> Result<(usize, NonZeroU32), ZopfliError> {
-	#[inline(never)]
+	#[cold]
 	/// # Small Cost.
 	///
 	/// For small ranges, skip the logic and compare all possible splits. This
