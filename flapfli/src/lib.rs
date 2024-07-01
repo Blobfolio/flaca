@@ -34,13 +34,14 @@ heavily optimized flaca's specific use cases (hence "fla" + "pfli").
 	clippy::redundant_pub_crate,
 )]
 
+mod deflate;
 mod ffi;
 mod lodepng;
 mod zopflipng;
 
-use ffi::EncodedPNG;
 pub use zopflipng::optimize;
 
+use ffi::EncodedPNG;
 use std::sync::atomic::AtomicI32;
 use zopflipng::{
 	deflate_part,

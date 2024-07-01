@@ -147,7 +147,7 @@ fn add_lz77_block(
 		d_lengths: &ArrayD<DeflateSym>,
 	) -> Result<(), ZopfliError> {
 		// Type Bits.
-		out.add_header(last_block, BLOCK_TYPE_DYNAMIC);
+		out.add_header::<BLOCK_TYPE_DYNAMIC>(last_block);
 
 		// Build the lengths first.
 		encode_tree(ll_lengths, d_lengths, extra, out)?;
@@ -169,7 +169,7 @@ fn add_lz77_block(
 		out: &mut ZopfliOut,
 	) -> Result<(), ZopfliError> {
 		// Type Bits.
-		out.add_header(last_block, BLOCK_TYPE_FIXED);
+		out.add_header::<BLOCK_TYPE_FIXED>(last_block);
 
 		// Write all the data!
 		add_lz77_data(
@@ -323,7 +323,7 @@ fn calculate_block_size_fixed(store: &LZ77Store, rng: ZopfliRange) -> NonZeroU32
 	// fall back to an unbeatably large number.
 	NonZeroU32::new(size)
 		.unwrap_or(NonZeroU32::MAX)
-		.saturating_add(FIXED_TREE_LL[256] as u32)
+		.saturating_add(const { FIXED_TREE_LL[256] as u32 })
 }
 
 /// # Calculate Block Size (Dynamic).

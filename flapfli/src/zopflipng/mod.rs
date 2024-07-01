@@ -51,13 +51,13 @@ use rng::ZopfliRange;
 use rle::get_dynamic_lengths;
 pub(crate) use rle::reset_dynamic_length_cache;
 use super::{
+	deflate::ZopfliOut,
 	EncodedPNG,
 	lodepng::{
 		DecodedImage,
 		LodePNGColorType,
 		LodePNGFilterStrategy,
 		LodePNGState,
-		ZopfliOut,
 	},
 };
 use symbols::{
