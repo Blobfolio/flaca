@@ -54,7 +54,6 @@ use dactyl::{
 	NiceElapsed,
 	NiceU64,
 	traits::{
-		BytesToSigned,
 		BytesToUnsigned,
 		NiceInflection,
 	},
@@ -140,9 +139,7 @@ fn _main() -> Result<(), FlacaError> {
 
 	// Zopfli iterations.
 	if let Some(n) = args.option(b"-z") {
-		let n = i32::btoi(n)
-			.filter(|n| n.is_positive())
-			.ok_or(FlacaError::ZopfliIterations)?;
+		let n = u32::btou(n).ok_or(FlacaError::ZopfliIterations)?;
 		flapfli::ZOPFLI_ITERATIONS.store(n, Relaxed);
 	}
 

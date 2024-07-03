@@ -42,7 +42,7 @@ mod zopflipng;
 pub use zopflipng::optimize;
 
 use ffi::EncodedPNG;
-use std::sync::atomic::AtomicI32;
+use std::sync::atomic::AtomicU32;
 use zopflipng::{
 	deflate_part,
 	reset_dynamic_length_cache,
@@ -54,7 +54,7 @@ use zopflipng::{
 
 
 /// # Number of Zopfli Iterations.
-pub static ZOPFLI_ITERATIONS: AtomicI32 = AtomicI32::new(0);
+pub static ZOPFLI_ITERATIONS: AtomicU32 = AtomicU32::new(0);
 
 #[track_caller]
 #[allow(unsafe_code)]

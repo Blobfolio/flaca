@@ -46,7 +46,10 @@ use kat::{
 	encode_tree,
 	LengthLimitedCodeLengths,
 };
-pub(crate) use lz77::LZ77Store;
+use lz77::{
+	LZ77Store,
+	LZ77StoreRange,
+};
 use rng::ZopfliRange;
 use rle::get_dynamic_lengths;
 pub(crate) use rle::reset_dynamic_length_cache;

@@ -3,7 +3,10 @@
 */
 
 use std::{
-	num::NonZeroUsize,
+	num::{
+		NonZeroU32,
+		NonZeroUsize,
+	},
 	ops::Range,
 };
 use super::{
@@ -35,15 +38,6 @@ impl ZopfliRange {
 		else { Err(zopfli_error!()) }
 	}
 
-	/// # Advance.
-	///
-	/// Return a new range starting one spot later, unless that violates the
-	/// constraints.
-	pub(crate) const fn advance(&self) -> Result<Self, ZopfliError> {
-		if 1 < self.end - self.start { Ok(Self { start: self.start + 1, end: self.end }) }
-		else { Err(zopfli_error!()) }
-	}
-
 	/// # Update.
 	///
 	/// Adjust the start and end positions if they uphold the constraints,
@@ -53,20 +47,6 @@ impl ZopfliRange {
 			self.start = start;
 			self.end = end;
 			Ok(())
-		}
-		else { Err(zopfli_error!()) }
-	}
-
-	/// # Split.
-	///
-	/// Split the range into `start..mid` and `mid..end`, unless `mid` is equal
-	/// to one or the other extreme.
-	pub(crate) const fn split(&self, mid: usize) -> Result<(Self, Self), ZopfliError> {
-		if self.start < mid && mid < self.end {
-			Ok((
-				Self { start: self.start, end: mid },
-				Self { start: mid, end: self.end }
-			))
 		}
 		else { Err(zopfli_error!()) }
 	}
@@ -89,45 +69,13 @@ impl ZopfliRange {
 		unsafe { NonZeroUsize::new_unchecked(self.end - self.start) }
 	}
 
-	/// # Splits Iterator.
-	pub(crate) const fn splits(&self) -> ZopfliRangeSplits {
-		ZopfliRangeSplits {
-			start: self.start,
-			splits: self.start + 1..self.end,
-		}
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	/// # Length.
+	pub(crate) const fn len32(&self) -> NonZeroU32 {
+		// Safety: we verified start is less than end during construction, and
+		// the total is within a million.
+		unsafe { NonZeroU32::new_unchecked((self.end - self.start) as u32) }
 	}
-}
-
-
-
-/// # Split Ranges.
-///
-/// This iterator yields all possible non-empty splits for a `ZopfliRange`; it
-/// is used to short-circuit minimum cost calculations.
-pub(crate) struct ZopfliRangeSplits {
-	start: usize,
-	splits: Range<usize>,
-}
-
-impl Iterator for ZopfliRangeSplits {
-	type Item = (ZopfliRange, ZopfliRange);
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let mid = self.splits.next()?;
-		Some((
-			ZopfliRange { start: self.start, end: mid },
-			ZopfliRange { start: mid, end: self.splits.end },
-		))
-	}
-
-	fn size_hint(&self) -> (usize, Option<usize>) {
-		let len = self.splits.len();
-		(len, Some(len))
-	}
-}
-
-impl ExactSizeIterator for ZopfliRangeSplits {
-	fn len(&self) -> usize { self.splits.len() }
 }
 
 
@@ -152,22 +100,5 @@ mod test {
 		assert_eq!(rng.end(), 5);
 		assert_eq!(rng.len(), NonZeroUsize::new(4).unwrap());
 		assert_eq!(rng.rng(), 1..5);
-
-		// Let's make sure splitting works as expected too.
-		let mut splits = rng.splits();
-		assert_eq!(splits.len(), 3);
-		assert_eq!(
-			splits.next().map(|(a, b)| (a.rng(), b.rng())),
-			Some((1..2, 2..5)),
-		);
-		assert_eq!(
-			splits.next().map(|(a, b)| (a.rng(), b.rng())),
-			Some((1..3, 3..5)),
-		);
-		assert_eq!(
-			splits.next().map(|(a, b)| (a.rng(), b.rng())),
-			Some((1..4, 4..5)),
-		);
-		assert!(splits.next().is_none());
 	}
 }

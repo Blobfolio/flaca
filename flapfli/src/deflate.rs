@@ -8,7 +8,10 @@ use std::{
 		c_uchar,
 		c_uint,
 	},
-	num::NonZeroUsize,
+	num::{
+		NonZeroUsize,
+		NonZeroU32,
+	},
 	sync::atomic::Ordering::Relaxed,
 };
 use super::{
@@ -21,6 +24,20 @@ use super::{
 	ZopfliChunk,
 	ZopfliState,
 };
+
+
+
+#[allow(unsafe_code)]
+/// # Twenty is Non-Zero.
+const NZ20: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(20) };
+
+#[allow(unsafe_code)]
+/// # Sixty is Non-Zero.
+const NZ60: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(60) };
+
+#[allow(unsafe_code)]
+/// # Max Iterations.
+const MAX_ITERATIONS: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(i32::MAX as u32) };
 
 
 
@@ -52,10 +69,10 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	let arr = unsafe { std::slice::from_raw_parts(arr, insize) };
 
 	// Figure out how many iterations to use.
-	let mut numiterations = ZOPFLI_ITERATIONS.load(Relaxed);
-	if numiterations <= 0 {
-		numiterations = if arr.len() < 200_000 { 60 } else { 20 };
-	}
+	let numiterations = NonZeroU32::new(ZOPFLI_ITERATIONS.load(Relaxed)).map_or(
+		if arr.len() < 200_000 { NZ60 } else { NZ20 },
+		|custom| NonZeroU32::min(custom, MAX_ITERATIONS)
+	);
 
 	// The RLE cache lives for the duration of the image; let's go ahead and
 	// reset that now.

@@ -21,9 +21,8 @@ use super::{
 	DeflateSym,
 	DISTANCE_BITS,
 	LengthLimitedCodeLengths,
-	LZ77Store,
+	LZ77StoreRange,
 	ZopfliError,
-	ZopfliRange,
 };
 
 
@@ -57,7 +56,7 @@ thread_local!(
 /// smallest output.
 ///
 /// Note: the returned size does not include the 3-bit block header.
-pub(super) fn get_dynamic_lengths(store: &LZ77Store, rng: ZopfliRange)
+pub(super) fn get_dynamic_lengths(store: LZ77StoreRange)
 -> Result<(u8, NonZeroU32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
 	fn fetch(
 		cache: &mut RleCache,
@@ -90,7 +89,7 @@ pub(super) fn get_dynamic_lengths(store: &LZ77Store, rng: ZopfliRange)
 	}
 
 	// Pull the counts from the store.
-	let (mut ll_counts, d_counts) = store.histogram(rng);
+	let (mut ll_counts, d_counts) = store.histogram();
 	ll_counts[256] = 1;
 
 	// Do all the work!
