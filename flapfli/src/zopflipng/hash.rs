@@ -59,9 +59,15 @@ const ZEROED_SUBLEN: [u16; SUBLEN_LEN] = [0; SUBLEN_LEN];
 
 /// # Zopfli State.
 ///
-/// This consolidates the Longest Match, Squeeze, and Hash caches into a single
-/// structure, cutting down on the number of references being bounced around
-/// from method to method.
+/// This consolidates the Longest Match, Squeeze, Split, and Hash caches into a
+/// single gratuitous structure, cutting down on the number of references we
+/// need to bounce from method to method.
+///
+/// Each member is big and terrible in its own right, but on the bright side we
+/// only need a single instance per thread for the duration of the program run,
+/// so the allocations are a one-and-done affair.
+///
+/// (That local lives in `deflate.rs`.)
 pub(crate) struct ZopfliState {
 	lmc: MatchCache,
 	hash: ZopfliHash,
@@ -77,6 +83,15 @@ impl ZopfliState {
 	/// This struct's members are mostly large and terrible arrays. To keep
 	/// them off the stack, it is necessary to initialize everything from raw
 	/// pointers and box them up.
+	///
+	/// This unfortunately requires a lot of upfront unsafe code during
+	/// construction, but everything can be accessed normally thereafter.
+	///
+	/// To cut down on some of the complexity, the manual layout allocation and
+	/// boxing is done once, here, instead of separately for each individual
+	/// member.
+	///
+	/// See `ZopfliStateInit` below for a few more details.
 	pub(crate) fn new() -> Box<Self> {
 		// Reserve the space.
 		const LAYOUT: Layout = Layout::new::<ZopfliState>();
@@ -97,12 +112,18 @@ impl ZopfliState {
 	}
 
 	/// # Initialize LMC/Squeeze Caches.
+	///
+	/// This prepares the Longest Match Cache and Squeeze caches for subsequent
+	/// work on `chunk`, if any.
 	pub(crate) fn init_lmc(&mut self, chunk: &ZopfliChunk<'_>) {
 		self.lmc.init(chunk);
 		self.squeeze.resize_costs(chunk);
 	}
 
 	/// # Split Cache.
+	///
+	/// Clear the split cache and return a mutable reference to it so the
+	/// split points within `rng` can be tracked.
 	pub(crate) fn split_cache(&mut self, rng: ZopfliRange) -> &mut SplitCache {
 		self.split.init(rng);
 		&mut self.split
@@ -112,6 +133,10 @@ impl ZopfliState {
 impl ZopfliState {
 	#[inline(never)]
 	/// # Greedy LZ77 Run (No Inlining).
+	///
+	/// Same as `greedy`, but the compiler is given an `inline(never)` hint to
+	/// (hopefully) keep all this code from affecting its inlining decisions
+	/// about the caller.
 	pub(crate) fn greedy_cold(
 		&mut self,
 		chunk: ZopfliChunk<'_>,
@@ -128,7 +153,8 @@ impl ZopfliState {
 	/// This method looks for best-length matches in the data (and/or cache),
 	/// updating the store with the results.
 	///
-	/// This is one of two entrypoints into the inner `ZopfliHash` data.
+	/// This is very similar to `ZopfliState::optimal_run`, but better suited
+	/// for general-purpose store population.
 	pub(crate) fn greedy(
 		&mut self,
 		chunk: ZopfliChunk<'_>,
@@ -241,7 +267,8 @@ impl ZopfliState {
 	#[inline(never)]
 	/// # Optimal Run (Fixed).
 	///
-	/// Same as `ZopfliHash::optimal_run`, but without the histogram stats.
+	/// Same as `ZopfliHash::optimal_run`, but fixed tree counts and symbols
+	/// are used instead of the store's actual histogram.
 	pub(crate) fn optimal_run_fixed(
 		&mut self,
 		chunk: ZopfliChunk<'_>,
@@ -312,13 +339,15 @@ impl ZopfliState {
 ///
 /// The `ZopfliState` struct is initialized from a raw pointer to prevent
 /// stack allocations. This trait exposes — in as limited a way as possible —
-/// raw initialization methods for its members.
+/// raw initialization methods for its members. (`ZopfliState::new` is the only
+/// place that calls these methods.)
 ///
 /// The `state_init` invocations do not necessarily populate _default_ values
 /// since they'll be re(reset) prior to use anyway, but the values will at
-/// least be valid for the types to prevent accidental UB.
+/// least be valid for their types, preventing accidental UB.
 pub(crate) trait ZopfliStateInit {
 	#[allow(unsafe_code)]
+	/// # State Initialization.
 	unsafe fn state_init(nn: NonNull<Self>);
 }
 
@@ -329,25 +358,25 @@ pub(crate) trait ZopfliStateInit {
 ///
 /// This structure tracks byte values and hashes by position, facilitating
 /// match-finding (length and distance) at various offsets.
-///
-/// It is functionally equivalent to the original `hash.c` structure, but with
-/// more consistent member typing, sizing, and naming.
 struct ZopfliHash {
 	chain1: ZopfliHashChain,
 	chain2: ZopfliHashChain,
 
-	/// Repetitions of the same byte after this.
+	/// # Repetitions of the same byte after this.
 	same: [u16; ZOPFLI_WINDOW_SIZE],
 }
 
 impl ZopfliStateInit for ZopfliHash {
 	#[allow(unsafe_code)]
 	#[inline]
+	/// # State Initialization.
+	///
+	/// See `ZopfliState` for more details.
 	unsafe fn state_init(nn: NonNull<Self>) {
 		let ptr = nn.as_ptr();
 
 		// All the hash/index arrays default to `-1_i16` for `None`, which
-		// we can do efficiently by setting all bits to one.
+		// we can do efficiently by flipping all bits on.
 		addr_of_mut!((*ptr).chain1.hash_idx).write_bytes(u8::MAX, 1);
 		addr_of_mut!((*ptr).chain1.idx_hash).write_bytes(u8::MAX, 1);
 		addr_of_mut!((*ptr).chain1.idx_prev).write_bytes(u8::MAX, 1);
@@ -394,9 +423,7 @@ impl ZopfliHash {
 	)]
 	/// # Update Hash.
 	///
-	/// This updates the hash tables using the data from `arr`. The `pos` value
-	/// marks the position of `arr` within the original block slice. (That is,
-	/// `arr` is pre-sliced to `arr[pos..]` before being passed to this method.)
+	/// This updates the hash tables using the chunk's block data.
 	fn update_hash(&mut self, chunk: ZopfliChunk<'_>) {
 		let pos = chunk.pos();
 		let hpos = pos & ZOPFLI_WINDOW_MASK;
@@ -427,6 +454,8 @@ impl ZopfliHash {
 	/// # Update Hash Value.
 	///
 	/// This updates the rotating (chain1) hash value.
+	///
+	/// Note: the value will always fit within the equivalent of `u15`.
 	fn update_hash_value(&mut self, c: u8) {
 		self.chain1.val = ((self.chain1.val << HASH_SHIFT) ^ i16::from(c)) & HASH_MASK;
 	}
@@ -443,6 +472,7 @@ impl ZopfliHash {
 	///
 	/// Note: the costs really do need to be calculated in 64 bits, truncated
 	/// to 32 bits for storage, then widened back to 64 bits for comparison.
+	/// Zopfli is evil!
 	fn get_best_lengths(
 		&mut self,
 		chunk: ZopfliChunk<'_>,
@@ -596,8 +626,8 @@ impl ZopfliHash {
 	#[inline(never)]
 	/// # Get Best Lengths (Fixed).
 	///
-	/// This does the same thing as `ZopfliHash::get_best_lengths`, but with
-	/// simpler, fixed costs.
+	/// Same as `ZopfliHash::get_best_lengths`, but simpler fixed-tree lengths
+	/// and symbols are used instead of variable store-specific data.
 	fn get_best_lengths_fixed(
 		&mut self,
 		chunk: ZopfliChunk<'_>,
@@ -792,12 +822,12 @@ impl ZopfliHash {
 	#[allow(clippy::too_many_arguments)]
 	/// # Find Longest Match.
 	///
-	/// This finds the longest match in `arr` (and/or the cache), setting the
-	/// passed `sublen`/`distance`/`length` values accordingly.
+	/// This finds the longest match in the chunk (and/or the cache), setting
+	/// the provided `sublen`/`distance`/`length` values accordingly.
 	///
 	/// Lengths will never exceed `limit` nor `ZOPFLI_MAX_MATCH`, but they
-	/// might be _less_ than `ZOPFLI_MIN_MATCH`, especially near the end of a
-	/// slice.
+	/// might be _less_ than `ZOPFLI_MIN_MATCH`, especially as we near the end
+	/// of the block slice.
 	fn find(
 		&self,
 		chunk: ZopfliChunk<'_>,
@@ -863,7 +893,7 @@ impl ZopfliHash {
 	)]
 	/// # Find Longest Match Loop.
 	///
-	/// This method is the (nasty-looking) workhorse of the above
+	/// This method is a (nasty-looking) workhorse for the above
 	/// `ZopfliHash::find` method. It finds and returns the matching distance
 	/// and length, or `(0, 1)` if none.
 	fn find_loop(
@@ -1014,11 +1044,13 @@ impl ZopfliHash {
 /// positions.
 ///
 /// Written values are all in the range of `0..=i16::MAX`, matching the array
-/// sizes, elminating bounds checking on the upper end.
+/// sizes, elminating bounds checking on the upper end. (They're effectively
+/// `u15`.)
 ///
 /// The remaining "sign" bit is logically repurposed to serve as a sort of
-/// `None`, allowing us to cheaply identify unwritten values. (Testing for that
-/// takes care of bounds checking on the lower end.)
+/// `None` flag, allowing us to cheaply identify uninitialized values.
+/// (And by testing for that, we eliminate bounds checks on the lower end of
+/// the range.)
 struct ZopfliHashChain {
 	/// Hash value to (most recent) index.
 	///

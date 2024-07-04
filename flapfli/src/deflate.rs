@@ -1,5 +1,8 @@
 /*!
-# Flapfli: Deflate
+# Flapfli: Deflate.
+
+This module contains the custom lodepng callback (that uses zopfli), and
+supporting components.
 */
 
 use std::{
@@ -45,7 +48,28 @@ const MAX_ITERATIONS: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(i32::MAX a
 #[allow(unsafe_code)]
 /// # Custom PNG Deflate.
 ///
-/// This tells lodepng to use zopfli for encoding.
+/// This is a custom deflate callback for lodepng. When set, image blocks are
+/// compressed using zopfli instead of basic-ass deflate.
+///
+/// Zopfli is a monster, though, so this is only actually used for the final
+/// pass. (Brute force strategizing uses cheaper compression.)
+///
+/// Following C convention, this returns `0` for success, `1` for sadness.
+///
+/// ## Safety
+///
+/// The mutable pointers may or may not initially be null. Allocations are
+/// handled on the Rust side, though, and those methods are aware of the fact
+/// and will later act (or not act) on these pointer accordingly.
+///
+/// The `arr`/`insize` values, on the other hand, _should_ definitely be
+/// initialized and valid. We can't verify that, but their existence is the
+/// whole point of this callback, so it's probably fine…
+///
+/// Flaca processes images in parallel, but the lodepng/zopfli operations are
+/// single-threaded. (All work for a given image happens on a single thread.)
+/// This is why we can leverage local statics like `STATE` without fear of
+/// access contention.
 pub(crate) extern "C" fn flaca_png_deflate(
 	out: *mut *mut c_uchar,
 	outsize: *mut usize,
@@ -54,7 +78,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	_settings: *const LodePNGCompressSettings,
 ) -> c_uint {
 	thread_local!(
-		static STATES: RefCell<Box<ZopfliState>> = RefCell::new(ZopfliState::new())
+		static STATE: RefCell<Box<ZopfliState>> = RefCell::new(ZopfliState::new())
 	);
 
 	// Group the pointer crap to cut down on the number of args being
@@ -81,7 +105,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	// Compress in chunks, à la ZopfliDeflate.
 	for chunk in DeflateIter::new(arr) {
 		#[cfg(not(debug_assertions))]
-		if STATES.with_borrow_mut(|state| deflate_part(
+		if STATE.with_borrow_mut(|state| deflate_part(
 			state,
 			numiterations,
 			chunk.total_len().get() == arr.len(),
@@ -90,7 +114,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 		)).is_err() { return 1; };
 
 		#[cfg(debug_assertions)]
-		if let Err(e) = STATES.with_borrow_mut(|state| deflate_part(
+		if let Err(e) = STATE.with_borrow_mut(|state| deflate_part(
 			state,
 			numiterations,
 			chunk.total_len().get() == arr.len(),
@@ -99,7 +123,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 		)) { panic!("{e}"); };
 	}
 
-	// Errors panic, so if we're here everything must be fine.
+	// All clear!
 	0
 }
 
@@ -107,9 +131,13 @@ pub(crate) extern "C" fn flaca_png_deflate(
 
 /// # Lodepng Output Pointers.
 ///
-/// This struct provides a wrapper around the lingering bit-writing zopfli C
-/// methods, saving us the trouble of having to pass down three different
-/// pointers (and using a bunch of unsafe blocks) just to get the data saved.
+/// This struct serves as a convenience wrapper for the various lodepng/zopfli
+/// output pointers, saving us the trouble of passing each of them individually
+/// down the rabbit hole.
+///
+/// This struct also enables us to centralize the convoluted bit-writing
+/// methods used to record data, minimizing — as much as possible — the use of
+/// `unsafe` everywhere else.
 pub(super) struct ZopfliOut {
 	bp: u8,
 	out: *mut *mut u8,
@@ -120,9 +148,24 @@ impl ZopfliOut {
 	#[allow(unsafe_code)]
 	#[inline]
 	/// # Append Data.
+	///
+	/// This adds a single byte to the output array, re-allocating as
+	/// necessary. The `outsize` value is incremented accordingly.
+	///
+	/// In practice, most data is written bit-by-bite rather than byte-by-byte.
+	/// As such, most calls to this method simply write a zero and bit-OR it a
+	/// few times afterwards.
 	fn append_data(&mut self, value: u8) {
 		#[cold]
 		/// # Allocate.
+		///
+		/// Re/allocation is (potentially) necessary whenever `outsize` reaches
+		/// a power of two, but since that value represents the length written
+		/// rather than the actual capacity, this is often a no-op (after some
+		/// checking).
+		///
+		/// As such, we don't want all this stuff affecting the compiler's
+		/// inlining decisions, hence the cold wrapper.
 		unsafe fn alloc_cold(ptr: *mut u8, size: usize) -> *mut u8 {
 			flapfli_allocate(
 				ptr,
@@ -131,7 +174,7 @@ impl ZopfliOut {
 		}
 
 		unsafe {
-			// Dereferencing this size gets annoying quick! Haha.
+			// Dereference the size once to save some sanity.
 			let size = *self.outsize;
 
 			// (Re)allocate if size is a power of two, or empty.
@@ -139,6 +182,7 @@ impl ZopfliOut {
 				*self.out = alloc_cold(*self.out, size);
 			}
 
+			// Write the value and bump the outside length counter.
 			(*self.out).add(size).write(value);
 			self.outsize.write(size + 1);
 		}
@@ -146,8 +190,13 @@ impl ZopfliOut {
 }
 
 impl ZopfliOut {
+	#[allow(clippy::doc_markdown)]
 	#[inline]
 	/// # Add Bit.
+	///
+	/// This adds a single bit to the output array. When the internal `bp`
+	/// counter is zero that bit gets added on top of a new zero byte,
+	/// otherwise it is ORed on top of the last one.
 	pub(crate) fn add_bit(&mut self, bit: u8) {
 		if self.bp == 0 { self.append_data(0); }
 		#[allow(unsafe_code)]
@@ -161,6 +210,9 @@ impl ZopfliOut {
 	}
 
 	/// # Add Multiple Bits.
+	///
+	/// This method is used to write multiple bits — `length` of them — at
+	/// once, shifting on each pass.
 	pub(crate) fn add_bits(&mut self, symbol: u32, length: u32) {
 		for i in 0..length {
 			let bit = (symbol >> i) & 1;
@@ -171,7 +223,12 @@ impl ZopfliOut {
 	#[inline]
 	/// # Add Multiple Bits.
 	///
-	/// Same as `ZopfliOut::add_bits`, but with lengths known at compile time.
+	/// Same as `ZopfliOut::add_bits`, but optimized for lengths known at
+	/// compile-time.
+	///
+	/// ## Panics
+	///
+	/// This will panic at compile-time if `N` is less than two.
 	pub(crate) fn add_fixed_bits<const N: u8>(&mut self, symbol: u32) {
 		const { assert!(1 < N); }
 		for i in const { 0..N } {
@@ -182,6 +239,12 @@ impl ZopfliOut {
 
 	#[inline]
 	/// # Add Type Bits Header.
+	///
+	/// This writes the three-bit block type header. In practice, there are
+	/// only three possible values:
+	/// * 0 for uncompressed;
+	/// * 1 for fixed;
+	/// * 2 for dynamic;
 	pub(crate) fn add_header<const BLOCK_BIT: u8>(&mut self, last_block: bool) {
 		self.add_bit(u8::from(last_block));
 		self.add_bit(const { BLOCK_BIT & 1 });
@@ -189,6 +252,9 @@ impl ZopfliOut {
 	}
 
 	/// # Add Huffman Bits.
+	///
+	/// Same as `ZopfliOut::add_bits`, but the bits are written in the
+	/// reverse order to keep life interesting.
 	pub(crate) fn add_huffman_bits(&mut self, symbol: u32, length: u32) {
 		// Same as add_bits, except we're doing it backwards.
 		for i in (0..length).rev() {
@@ -199,6 +265,16 @@ impl ZopfliOut {
 
 	#[allow(clippy::cast_possible_truncation)]
 	/// # Add Non-Compressed Block.
+	///
+	/// As one might suspect, uncompressed blocks are virtually never smaller
+	/// than compressed blocks, so this method is included more for
+	/// completeness than anything else.
+	///
+	/// But who knows?
+	///
+	/// Implementation-wise, this requires no statistical data; it merely
+	/// loops through the raw data in chunks of `u16::MAX`, writes some
+	/// header/size data, then copies the bytes over.
 	pub(crate) fn add_uncompressed_block(
 		&mut self,
 		last_block: bool,
@@ -218,12 +294,14 @@ impl ZopfliOut {
 			// Ignore bits of input up to the next byte boundary.
 			self.bp = 0;
 
+			// Some size details.
 			self.append_data((blocksize % 256) as u8);
 			self.append_data((blocksize.wrapping_div(256) % 256) as u8);
 			self.append_data((nlen % 256) as u8);
 			self.append_data((nlen.wrapping_div(256) % 256) as u8);
 
-			for bit in block.iter().copied() { self.append_data(bit); }
+			// And finally the data!
+			for byte in block.iter().copied() { self.append_data(byte); }
 		}
 	}
 }
@@ -232,8 +310,14 @@ impl ZopfliOut {
 
 /// # Deflate Chunk Iterator.
 ///
-/// This yields slices of `arr` from the beginning, increasing the length each
-/// time by `ZOPFLI_MASTER_BLOCK_SIZE`.
+/// Zopfli processes image data in chunks of (up to) a million bytes, but for
+/// some reason it needs to see any previously-seen data on each pass too.
+///
+/// This iterator thus yields increasingly larger slices of `arr`, until
+/// eventually the whole thing is returned. The internal `pos` value tracks the
+/// start of the "active" portion.
+///
+/// See `ZopfliChunk` for more information. Haha.
 struct DeflateIter<'a> {
 	arr: &'a [u8],
 	pos: usize,

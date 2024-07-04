@@ -63,7 +63,11 @@ pub(crate) const LENGTH_SYMBOL_BIT_VALUES: [u8; 259] = [
 ];
 
 /// # Symbol Iterator.
+///
+/// This trait exposes a single `all` method that returns an iterator over the
+/// enum's variants.
 pub(crate) trait SymbolIteration<U: ExactSizeIterator<Item=Self>>: Sized {
+	/// # Iterate All Variants!
 	fn all() -> U;
 }
 
@@ -102,7 +106,7 @@ impl LitLen {
 
 	/// # Is Max?
 	///
-	/// Returns `true` if `self` is `Self::MAX_MATCH`.
+	/// Returns `true` if `self` is exactly `Self::MAX_MATCH`.
 	pub(crate) const fn is_max(self) -> bool { matches!(self, Self::MAX_MATCH) }
 
 	/// # Is Zero?
@@ -171,12 +175,23 @@ impl Lsym {
 
 impl SplitLen {
 	/// # Is Zero?
+	///
+	/// Returns `true` if `self` is zero.
 	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::S00) }
 
 	/// # Is Max?
+	///
+	/// Returns `true` if `self` is the maximum value (`SplitLen::S14`).
 	pub(crate) const fn is_max(self) -> bool { matches!(self, Self::S14) }
 
 	/// # Increment.
+	///
+	/// Returns `self + 1`.
+	///
+	/// ## Safety
+	///
+	/// This would be UB if `self.is_max()`; the caller must explicitly check
+	/// that is not the case before incrementing.
 	pub(crate) const fn increment(self) -> Self {
 		#[allow(unsafe_code)]
 		unsafe {

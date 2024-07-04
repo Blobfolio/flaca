@@ -31,8 +31,10 @@ include!(concat!(env!("OUT_DIR"), "/lodepng-bindgen.rs"));
 #[allow(unsafe_code, clippy::inline_always)]
 /// # Lodepng CRC32.
 ///
-/// Replace lodepng's native CRC32 hashing method with Rust's (faster)
-/// `crc32fast`.
+/// This override allows lodepng to use `crc32fast` for CRC hashing.
+///
+/// Note: this is more about relative safety than performance; CRC processing
+/// times are negligible compared to everything else. Haha.
 pub(crate) extern "C" fn lodepng_crc32(buf: *const c_uchar, len: usize) -> c_uint {
 	let mut h = crc32fast::Hasher::new();
 	h.update(unsafe { std::slice::from_raw_parts(buf, len) });
@@ -43,6 +45,10 @@ pub(crate) extern "C" fn lodepng_crc32(buf: *const c_uchar, len: usize) -> c_uin
 
 #[derive(Debug)]
 /// # Decoded Image.
+///
+/// This is a simple wrapper holding a pointer to a decoded image along with
+/// the image dimensions. It enables us to hold one thing instead of three
+/// while also ensuring the memory is freed correctly on drop.
 pub(super) struct DecodedImage {
 	pub(super) buf: *mut c_uchar,
 	pub(super) w: c_uint,
@@ -102,6 +108,9 @@ impl Drop for LodePNGState {
 impl LodePNGState {
 	#[allow(unsafe_code)]
 	/// # Decode!
+	///
+	/// This attempts to decode a raw image byte slice, returning the details
+	/// if successful.
 	pub(super) fn decode(&mut self, src: &[u8]) -> Option<DecodedImage> {
 		let mut buf = std::ptr::null_mut();
 		let mut w = 0;
@@ -122,7 +131,8 @@ impl LodePNGState {
 	#[allow(unsafe_code)]
 	/// # Encode!
 	///
-	/// Returns true if there were no errors and the result is non-empty.
+	/// Encode the image, returning `true` if lodepng was happy and the output
+	/// is non-empty.
 	pub(super) fn encode(&mut self, img: &DecodedImage, out: &mut EncodedPNG) -> bool {
 		// Reset the size.
 		out.size = 0;
@@ -138,7 +148,9 @@ impl LodePNGState {
 	#[allow(unsafe_code)]
 	/// # Set Up Encoder.
 	///
-	/// This configures and returns a new state for encoding purposes.
+	/// This configures and returns a new state for general encoding purposes.
+	/// As this is recycled across runs, separate methods are used to configure
+	/// the strategy and zopfliness.
 	pub(super) fn encoder(dec: &Self) -> Option<Self> {
 		let mut enc = Self::default();
 
@@ -166,6 +178,10 @@ impl LodePNGState {
 	}
 
 	/// # Prepare for Zopfli.
+	///
+	/// Increase the window size and enable our custom zopfli deflate callback.
+	/// For performance reasons, this is only called before the final
+	/// encoding pass; everything else is run with saner tunings.
 	pub(super) fn set_zopfli(&mut self) {
 		self.encoder.zlibsettings.windowsize = 32_768;
 		self.encoder.zlibsettings.custom_deflate = Some(flaca_png_deflate);
@@ -180,7 +196,7 @@ impl LodePNGState {
 	/// are no errors.
 	///
 	/// Note: the caller will need to check the resulting size to see if
-	/// savings were actually achieved.
+	/// savings were actually achieved, and keep whichever version was better.
 	pub(super) fn try_small(&mut self, img: &DecodedImage) -> Option<EncodedPNG> {
 		// Safety: a non-zero response is an error.
 		let mut stats = LodePNGColorStats::default();

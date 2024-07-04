@@ -37,12 +37,15 @@ use super::{
 
 
 #[allow(unsafe_code)]
-const NZ1: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1) };
+/// # One is Non-Zero.
+const NZ01: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1) };
 
 #[allow(unsafe_code)]
-const NZ2: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
+/// # Two is Non-Zero.
+const NZ02: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
 
 #[allow(unsafe_code)]
+/// # Fourteen is Non-Zero.
 const NZ14: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(14) };
 
 /// # Zero-Filled Tree Counts.
@@ -60,7 +63,8 @@ thread_local!(
 
 	/// # Shared Tree Scratch.
 	///
-	/// Similar idea as above, but for tree sizing/writing.
+	/// Same idea as `KATSCRATCH`, but for tree sizing/writing scratch
+	/// purposes.
 	static TREESCRATCH: RefCell<TreeScratch> = const { RefCell::new(TreeScratch::new()) };
 );
 
@@ -83,7 +87,8 @@ mod sealed {
 		/// # Crunch the Code Lengths.
 		///
 		/// This method serves as the closure for the caller's call to
-		/// `KATSCRATCH.with_borrow_mut()`.
+		/// `KATSCRATCH.with_borrow_mut()`. It does all that needs doing to get
+		/// the desired length-limited data into the provided `bitlengths`.
 		fn _llcl<'a>(
 			frequencies: &'a [u32; N],
 			bitlengths: &'a [Cell<DeflateSym>; N],
@@ -121,6 +126,9 @@ mod sealed {
 
 		#[inline]
 		/// # Write Code Lengths!
+		///
+		/// This is the final stage of the LLCL chain, where the results are
+		/// finally recorded!
 		fn llcl_write(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
 			// Make sure we counted correctly before doing anything else.
 			let mut last_count = node.count;
@@ -255,8 +263,7 @@ pub(crate) fn best_tree_size(
 
 /// # Encode Tree.
 ///
-/// This finds the index that produces the smallest tree size, then writes
-/// that table's bits to the output.
+/// This writes the best-found tree data to `out`.
 pub(crate) fn encode_tree(
 	ll_lengths: &ArrayLL<DeflateSym>,
 	d_lengths: &ArrayD<DeflateSym>,
@@ -274,6 +281,10 @@ pub(crate) fn encode_tree(
 ///
 /// This is a super-cheap arena-like structure for holding all the temporary
 /// data required for length-limited-code-length calculations.
+///
+/// This requires doing some fairly un-Rust-like things, but that would be
+/// equally true of any third-party structure as well, and since we know the
+/// particulars in advance, we can do it leaner and meaner ourselves.
 struct KatScratch {
 	leaves: NonNull<u8>,
 	lists: NonNull<u8>,
@@ -300,7 +311,8 @@ impl KatScratch {
 	/// # Max Nodes.
 	///
 	/// This represents the theoretical maximum number of nodes a length-
-	/// limiting pass might generate.
+	/// limiting pass might generate, though it is unlikely to ever be reached
+	/// in practice. (Better safe than sorry!)
 	const MAX: usize = (2 * ZOPFLI_NUM_LL - 2) * 15;
 
 	/// # Leaves Array Layout.
@@ -315,12 +327,19 @@ impl KatScratch {
 	#[allow(unsafe_code)]
 	/// # New!
 	///
-	/// Return a new instance of self, allocated but uninitialized.
+	/// Return a new instance of self, allocated but **uninitialized**.
 	///
 	/// Similar to other mega-array structures like `ZopfliHash`, its members
 	/// are manually allocated from pointers to keep them off the stack. Unlike
 	/// the others, though, the `KatScratch` members remain in pointer form to
-	/// prevent lifetime/borrow-checker confusion.
+	/// prevent subsequent lifetime/borrow-checker confusion.
+	///
+	/// ## Safety
+	///
+	/// New values are written from pointers without first reading or dropping
+	/// the previous values at that position, and references to the new values
+	/// are only made available after said write, eliminating any UB weirdness
+	/// from possibly-uninitialized data.
 	fn new() -> Self {
 		let leaves: NonNull<u8> = NonNull::new(unsafe { alloc(Self::LEAVES_LAYOUT) })
 			.unwrap_or_else(|| handle_alloc_error(Self::LEAVES_LAYOUT));
@@ -344,7 +363,7 @@ impl KatScratch {
 	/// # Make Leaves.
 	///
 	/// Join the non-zero frequencies with their corresponding bitlengths into
-	/// a collection of leaves, then return it sorted.
+	/// a collection of leaves. That collection is then sorted and returned.
 	///
 	/// ## Safety
 	///
@@ -405,7 +424,7 @@ impl KatScratch {
 		let ptr = self.nodes.cast::<Node>().as_ptr();
 		ptr.write(Node {
 			weight: weight1,
-			count: NZ1,
+			count: NZ01,
 			tail: None,
 		});
 		let lookahead0 = &*ptr;
@@ -414,7 +433,7 @@ impl KatScratch {
 		let ptr = ptr.add(1);
 		ptr.write(Node {
 			weight: weight2,
-			count: NZ2,
+			count: NZ02,
 			tail: None,
 		});
 		let lookahead1 = &*ptr;
@@ -544,7 +563,10 @@ impl<'a> PartialOrd for Leaf<'a> {
 #[derive(Clone, Copy)]
 /// # List.
 ///
-/// This struct holds a pair of recursive node chains.
+/// This struct holds a pair of recursive node chains. The lifetimes are
+/// technically static, but in practice are always scoped to the more limited
+/// lifetime of the borrow. (`List`s are never accessible once the session that
+/// birthed them has closed.)
 struct List {
 	lookahead0: &'static Node,
 	lookahead1: &'static Node,
@@ -553,10 +575,14 @@ struct List {
 impl List {
 	#[inline]
 	/// # Rotate.
+	///
+	/// Replace the first chain with a copy of the second.
 	fn rotate(&mut self) { self.lookahead0 = self.lookahead1; }
 
 	#[inline]
 	/// # Weight Sum.
+	///
+	/// Add and return the sum of the weights of the two chains.
 	const fn weight_sum(&self) -> NonZeroU32 {
 		self.lookahead0.weight.saturating_add(self.lookahead1.weight.get())
 	}
@@ -566,6 +592,12 @@ impl List {
 
 #[derive(Clone, Copy)]
 /// # Node.
+///
+/// This holds a weight and frequency pair, and possibly a reference to the
+/// previous `Node` this one replaced.
+///
+/// As with `List`, the static lifetime is technically true, but in practice
+/// references will never extend beyond the current borrow.
 struct Node {
 	weight: NonZeroU32,
 	count: NonZeroU32,
@@ -576,22 +608,22 @@ impl Node {
 	#[inline]
 	/// # Finish Last Node!
 	///
-	/// This method establishes the final tail that the subsequent writing
-	/// will start with.
+	/// This method creates and returns the final tail to be used as the
+	/// starting point for the subsequent `llcl_write` call.
 	fn last(list_y: &List, list_z: &List, leaves: &[Leaf<'_>]) -> Self {
 		// Figure out the final node!
 		let last_count = list_z.lookahead1.count;
 		let weight_sum = list_y.weight_sum();
 		if (last_count.get() as usize) < leaves.len() && leaves[last_count.get() as usize].frequency < weight_sum {
 			Self {
-				weight: NZ1, // We'll never look at this value.
+				weight: NZ01, // We'll never look at this value.
 				count: last_count.saturating_add(1),
 				tail: list_z.lookahead1.tail,
 			}
 		}
 		else {
 			Self {
-				weight: NZ1, // We'll never look at this value.
+				weight: NZ01, // We'll never look at this value.
 				count: last_count,
 				tail: Some(list_y.lookahead1),
 			}
@@ -615,12 +647,13 @@ struct TreeScratch {
 	hdist: usize,
 
 	// Note: this should really be an array with the same count as `symbols`,
-	// but the compiler doesn't seem to like that, so whatever.
+	// but the compiler doesn't seem to like that very much.
+	// TODO: maybe a dedicated num-enum covering the index range would help?
 	rle: Vec<(DeflateSym, u16)>,
 }
 
 impl TreeScratch {
-	/// The maximum number of symbols.
+	/// The maximum (possible) number of symbols.
 	const MAX: usize = 29 + 257 + 29 + 1;
 
 	/// # New.
@@ -635,11 +668,18 @@ impl TreeScratch {
 
 	/// # Total Length.
 	///
-	/// Returning a slice would be more useful, but Rust's borrow checker
-	/// gets confused because we'll still need to write to RLE.
+	/// Return the total length of the (used) symbols.
+	///
+	/// Note: it would be more useful to return a slice of said symbols, but
+	/// Rust won't let us do that while also holding a mutable reference to
+	/// `self.rle`, even though there's no actual conflict. Boo!
 	const fn len(&self) -> usize { self.hlit + 257 + self.hdist + 1 }
 
 	/// # Load Symbols (and Reset).
+	///
+	/// This builder-style method readies the struct for working with the given
+	/// length and distance symbols, passing through a reference to `self` for
+	/// easy chaining.
 	fn with_symbols(
 		&mut self,
 		ll_lengths: &ArrayLL<DeflateSym>,
@@ -671,6 +711,8 @@ impl TreeScratch {
 	///
 	/// Crunch all special symbol combinations and return the "extra" key
 	/// (0..8) that achieved the smallest output, along with its size.
+	///
+	/// This is what the exported `best_tree_size` method calls under-the-hood.
 	fn best_tree(&self) -> Result<(u8, NonZeroU32), ZopfliError> {
 		let mut best_extra = 0;
 		let mut best_size = NonZeroU32::MAX;
@@ -688,6 +730,9 @@ impl TreeScratch {
 
 	#[allow(clippy::cast_possible_truncation)]
 	/// # Calculate Tree Size.
+	///
+	/// Crunch the data once using the `extra` alphabet symbol(s), if any, and
+	/// return the resulting size.
 	fn crunch_size(&self, extra: u8) -> Result<NonZeroU32, ZopfliError> {
 		let (use_16, use_17, use_18) = extra_bools(extra);
 
@@ -770,6 +815,12 @@ impl TreeScratch {
 impl TreeScratch {
 	#[allow(clippy::cast_possible_truncation)]
 	/// # Write Tree.
+	///
+	/// This runs through the same rigamarole as `TreeScratch::crunch_size`,
+	/// but instead of calculating the size, it actually writes the results to
+	/// `out`.
+	///
+	/// This is what the exported `write_tree` method calls under-the-hood.
 	fn write_tree(&mut self, extra: u8, out: &mut ZopfliOut) -> Result<(), ZopfliError> {
 		let (use_16, use_17, use_18) = extra_bools(extra);
 
@@ -878,7 +929,7 @@ impl TreeScratch {
 ///
 /// Revisualize a mutable array as an array of cells.
 ///
-/// TODO: use `Cell::as_array_of_cells` once stabilized.
+/// TODO: use `Cell::as_array_of_cells` once that method is stabilized.
 fn array_of_cells<T, const N: usize>(arr: &mut [T; N]) -> &[Cell<T>; N] {
 	let cells = Cell::from_mut(arr);
 	// Safety: `Cell<T>` has the same memory layout as `T`.
@@ -887,7 +938,9 @@ fn array_of_cells<T, const N: usize>(arr: &mut [T; N]) -> &[Cell<T>; N] {
 
 /// # Extra Boolification.
 ///
-/// Extra the use-16/17/18 bools (for tree business) from a given byte.
+/// Extract the use-16/17/18 bools (for tree business) from a given byte. This
+/// is easy enough, but easy enough to screw up, so handy to keep in just one
+/// place. ;)
 const fn extra_bools(extra: u8) -> (bool, bool, bool) {
 	(0 != extra & 1, 0 != extra & 2, 0 != extra & 4)
 }
@@ -896,6 +949,11 @@ const fn extra_bools(extra: u8) -> (bool, bool, bool) {
 ///
 /// Add a new chain to the list, using either a leaf or combination of
 /// two chains from the previous list.
+///
+/// Note: it would probably be more appropriate to make this a trait member or
+/// at least scope it to the sealed trait's module, but doing either leads the
+/// compiler to change its inlining decisions for the worse, so best to leave
+/// it where it is!
 fn llcl_boundary_pm(leaves: &[Leaf<'_>], lists: &mut [List], nodes: &KatScratch)
 -> Result<(), ZopfliError> {
 	// This method should never be called with an empty list.

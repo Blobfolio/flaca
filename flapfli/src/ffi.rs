@@ -1,7 +1,7 @@
 /*!
 # Flapfli: FFI Image Wrapper.
 
-This module contains custom allocation wrappers for `lodepng`, allowing Rust
+This module contains custom allocation wrappers for lodepng, allowing Rust
 to (more or less) manage the memory.
 */
 
@@ -29,10 +29,13 @@ const USIZE_SIZE: usize = std::mem::size_of::<usize>();
 #[derive(Debug)]
 /// # Encoded Image.
 ///
-/// This is a convenience wrapper for an image encoded by `lodepng`, allowing
+/// This is a convenience wrapper for an image encoded by lodepng, allowing
 /// for easy slice dereferencing and automatic drop cleanup.
 ///
-/// Note the initial state is null/empty.
+/// Note the initial state will be null/empty.
+///
+/// Allocations are handled by Rust, at least, and are aware of that fact so
+/// will act (or not act) on the pointers accordingly.
 pub struct EncodedPNG {
 	/// # Buffer.
 	pub(crate) buf: *mut u8,
@@ -72,6 +75,12 @@ impl EncodedPNG {
 	}
 
 	/// # Is Null?
+	///
+	/// This is essentially an `is_empty`, returning `true` if the length value
+	/// is zero or the buffer pointer is literally null.
+	///
+	/// (The name was chosen to help avoid conflicts with dereferenced slice
+	/// methods.)
 	pub(crate) fn is_null(&self) -> bool { self.size == 0 || self.buf.is_null() }
 }
 
@@ -82,13 +91,16 @@ impl EncodedPNG {
 /// # (Re)Allocate!
 ///
 /// Allocate (or reallocate) and return a new pointer for `size` bytes that can
-/// be used by the crate or `lodepng` or both.
+/// be used by the crate or lodepng or both.
 ///
 /// Since C can't be trusted to keep track of allocation sizes, we use the same
 /// trick the [`libdeflater`](https://github.com/adamkewley/libdeflater/blob/master/src/malloc_wrapper.rs) crate does;
-/// we over-allocate by `size_of::<usize>()` bytes, use that extra space to
-/// hold the length details, and return the rest so the caller gets what it
-/// expects.
+/// we over-allocate by `size_of::<usize>()` bytes, using that extra space to
+/// hold the length details.
+///
+/// The caller then gets `ptr.add(size_of::<usize>())` sized as they expect it
+/// to be, and when that pointer is returned to us, we can subtract the same
+/// amount to find the length. Rinse and repeat.
 ///
 /// This still requires a lot of unsafe, but at least it lives on this side of
 /// the FFI divide!
@@ -116,16 +128,11 @@ pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> *
 
 #[allow(unsafe_code, clippy::inline_always)]
 #[inline(always)]
-/// # (Re)Allocate!
+/// # Freedom!
 ///
-/// Allocate (or reallocate) and return a new pointer for `size` bytes that can
-/// be used by the crate or C or both.
-///
-/// The trick — courtesy of the [`libdeflater`](https://github.com/adamkewley/libdeflater/blob/master/src/malloc_wrapper.rs) crate —
-/// is we over-allocate by `size_of::<usize>()`, using that extra space to hold
-/// the length so that later on, we can de- or re-allocate correctly.
-///
-/// This still requires a lot of unsafe, but at least that unsafe lives here!
+/// This method deallocates a pointer previously allocated by
+/// `flapfli_allocate`. Refer to that method's documentation for the how and
+/// why.
 pub(crate) unsafe fn flapfli_free(ptr: *mut u8) {
 	if ! ptr.is_null() {
 		let (ptr, size) = size_and_ptr(ptr);
@@ -137,14 +144,18 @@ pub(crate) unsafe fn flapfli_free(ptr: *mut u8) {
 
 #[no_mangle]
 #[allow(unsafe_code)]
-/// # Free Willy.
+/// # Lodepng-specific Free.
+///
+/// This override allows lodepng to use `flapfli_free` for pointer
+/// deallocation.
 unsafe extern "C" fn lodepng_free(ptr: *mut c_void) { flapfli_free(ptr.cast()); }
 
 #[no_mangle]
 #[allow(unsafe_code)]
 /// # Lodepng-specific Malloc.
 ///
-/// This is the same as ours, but casts to `c_void` for the ABI.
+/// This override allows lodepng to use `flapfli_allocate` for pointer
+/// allocation.
 unsafe extern "C" fn lodepng_malloc(size: usize) -> *mut c_void {
 	flapfli_allocate(
 		std::ptr::null_mut(),
@@ -154,7 +165,10 @@ unsafe extern "C" fn lodepng_malloc(size: usize) -> *mut c_void {
 
 #[no_mangle]
 #[allow(unsafe_code)]
-/// # Re-allocate!
+/// # Lodepng-specific Realloc.
+///
+/// This override allows lodepng to use `flapfli_allocate` for pointer
+/// resizing.
 unsafe extern "C" fn lodepng_realloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
 	flapfli_allocate(
 		ptr.cast(),
@@ -179,9 +193,9 @@ const unsafe fn layout_for(size: NonZeroUsize) -> Layout {
 /// # Derive Real Pointer and User Size.
 ///
 /// This method takes the `size`-sized pointer shared with the rest of the
-/// crate (and `lodepng`) and converts it to the "real" one containing the
-/// extra length information, returning it along with said length (the usable
-/// space, i.e. without the extra usize).
+/// crate (and lodepng) and converts it to the "real" one (with the leading
+/// length details), returning it and the logical size (i.e. minus eight bytes
+/// or whatever).
 const unsafe fn size_and_ptr(ptr: *mut u8) -> (*mut u8, NonZeroUsize) {
 	let size_and_data_ptr = ptr.sub(USIZE_SIZE);
 	// Safety: the size is written from a NonZeroUsize.

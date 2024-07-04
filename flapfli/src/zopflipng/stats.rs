@@ -51,12 +51,11 @@ impl RanState {
 #[derive(Clone, Copy)]
 /// # Symbol Stats.
 ///
-/// This holds the length and distance symbols and costs for a given block,
-/// data that can be used to improve compression on subsequent passes.
+/// This hols the length and distance symbols and costs for a given block.
+/// data which can be used to improve compression on subsequent passes.
 pub(crate) struct SymbolStats {
 	ll_counts: ArrayLL<u32>,
 	d_counts:  ArrayD<u32>,
-
 	pub(crate) ll_symbols: ArrayLL<f64>,
 	pub(crate) d_symbols:  ArrayD<f64>,
 }
@@ -77,8 +76,16 @@ impl SymbolStats {
 impl SymbolStats {
 	/// # Crunch Symbols.
 	///
-	/// This calculates the "entropy" of the `ll_counts` and `d_counts`, storing the
-	/// results in the corresponding symbols arrays.
+	/// This calculates the "entropy" of the `ll_counts` and `d_counts` — a
+	/// fancy way of saying the difference between the log2 of everything and
+	/// the log2 of self — storing the results in the corresponding symbol
+	/// arrays.
+	///
+	/// Note: the symbols are only valid for the _current_ counts, but they
+	/// don't need to be rebuilt after each and every little change because
+	/// they're only ever referenced during `ZopfliState::optimal_run` passes;
+	/// so long as they're (re)crunched before that method is called, life is
+	/// grand.
 	pub(crate) fn crunch(&mut self) {
 		// Distances first.
 		let sum = self.d_counts.iter().copied().sum::<u32>();
@@ -105,7 +112,9 @@ impl SymbolStats {
 	/// # Load Statistics.
 	///
 	/// This updates the `ll_counts` and `d_counts` stats using the data from the
-	/// `ZopfliLZ77Store` store, then crunches the results.
+	/// `LZ77Store` store.
+	///
+	/// Note: this does _not_ rebuild the symbol tables.
 	pub(crate) fn load_store(&mut self, store: &LZ77Store) {
 		for e in &store.entries {
 			self.ll_counts[e.ll_symbol as usize] += 1;
@@ -120,6 +129,14 @@ impl SymbolStats {
 	///
 	/// This randomizes the stat frequencies to allow things to maybe turn out
 	/// different on subsequent squeeze passes.
+	///
+	/// For this to work properly, a single `RanState` must be used for all
+	/// iterations, and because shuffling advances the `RanState`, litlens must
+	/// be processed before distances.
+	///
+	/// Yeah… this is super weird. Haha.
+	///
+	/// Note: this does _not_ rebuild the symbol tables.
 	pub(crate) fn randomize(&mut self, state: &mut RanState) {
 		fn shuffle_counts<const N: usize>(counts: &mut [u32; N], state: &mut RanState) {
 			const { assert!(N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL); }
@@ -140,8 +157,10 @@ impl SymbolStats {
 	/// # Reload Store.
 	///
 	/// Like `SymbolStats::load_store`, but reset or halve the counts first.
-	/// (Halving creates a sort of weighted average, useful after a few
-	/// iterations have passed.)
+	/// (Halving creates a sort of weighted average, useful once a few
+	/// iterations have occurred.)
+	///
+	/// Note: this does _not_ rebuild the symbols.
 	pub(crate) fn reload_store(&mut self, store: &LZ77Store, weighted: bool) {
 		if weighted {
 			for c in &mut self.d_counts { *c /= 2; }

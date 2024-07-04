@@ -23,7 +23,7 @@ use super::{
 /// This struct exists primarily to guarantee a range is non-empty and no
 /// larger than `ZOPFLI_MASTER_BLOCK_SIZE`.
 ///
-/// It also implements `Copy`, so there's that. Haha.
+/// It also implements `Copy`, so there's that too! Haha.
 pub(crate) struct ZopfliRange {
 	start: usize,
 	end: usize,
@@ -31,6 +31,9 @@ pub(crate) struct ZopfliRange {
 
 impl ZopfliRange {
 	/// # New.
+	///
+	/// Return a new instance spanning `start..end` so long as the struct's
+	/// requirements are met, otherwise an error.
 	pub(crate) const fn new(start: usize, end: usize) -> Result<Self, ZopfliError> {
 		if start < end && end - start <= ZOPFLI_MASTER_BLOCK_SIZE {
 			Ok(Self { start, end })
@@ -40,8 +43,8 @@ impl ZopfliRange {
 
 	/// # Update.
 	///
-	/// Adjust the start and end positions if they uphold the constraints,
-	/// otherwise return an error.
+	/// Adjust the start and end positions of the range so long as the new
+	/// values satisfy the struct's requirements, otherwise an error.
 	pub(crate) fn set(&mut self, start: usize, end: usize) -> Result<(), ZopfliError> {
 		if start < end && end - start <= ZOPFLI_MASTER_BLOCK_SIZE {
 			self.start = start;
@@ -59,7 +62,7 @@ impl ZopfliRange {
 	/// # End.
 	pub(crate) const fn end(&self) -> usize { self.end }
 
-	/// # As Range.
+	/// # As (Traditional) Range.
 	pub(crate) const fn rng(&self) -> Range<usize> { self.start..self.end }
 
 	#[allow(unsafe_code)]
@@ -70,7 +73,13 @@ impl ZopfliRange {
 	}
 
 	#[allow(unsafe_code, clippy::cast_possible_truncation)]
-	/// # Length.
+	/// # Length (32-bit).
+	///
+	/// Same as `ZopfliRange::len`, but more convenient in cases where 32-bit
+	/// values are needed (such as cost/size calculations).
+	///
+	/// Because our ranges are capped at a million, the lengths will always fit
+	/// without truncation.
 	pub(crate) const fn len32(&self) -> NonZeroU32 {
 		// Safety: we verified start is less than end during construction, and
 		// the total is within a million.
@@ -95,10 +104,22 @@ mod test {
 		assert!(ZopfliRange::new(0, ZOPFLI_MASTER_BLOCK_SIZE).is_ok());
 
 		// Let's test the getters.
-		let rng = ZopfliRange::new(1, 5).expect("Range failed!");
+		let mut rng = ZopfliRange::new(1, 5).expect("Range failed!");
 		assert_eq!(rng.start(), 1);
 		assert_eq!(rng.end(), 5);
 		assert_eq!(rng.len(), NonZeroUsize::new(4).unwrap());
 		assert_eq!(rng.rng(), 1..5);
+
+		// And the setters.
+		assert!(rng.set(2, 6).is_ok());
+		assert_eq!(rng.start(), 2);
+		assert_eq!(rng.end(), 6);
+		assert_eq!(rng.len(), NonZeroUsize::new(4).unwrap());
+		assert_eq!(rng.rng(), 2..6);
+
+		// This should fail.
+		assert!(rng.set(0, 0).is_err());
+		assert!(rng.set(3, 2).is_err());
+		assert!(rng.set(0, ZOPFLI_MASTER_BLOCK_SIZE + 1).is_err());
 	}
 }

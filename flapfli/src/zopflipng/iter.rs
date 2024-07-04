@@ -6,7 +6,11 @@
 
 /// # Reducing Slice Iterator.
 ///
-/// This iterator yields slices spanning `[n..]`, until empty.
+/// This iterator yields all non-empty slices spanning `n..`, incrementing `n`
+/// by one after each cycle.
+///
+/// In other words, this will start by returning the original slice, then `1..`,
+/// `2..`, `3..`, etc., stopping when empty.
 pub(super) struct ReducingSlices<'a, T>(&'a [T]);
 
 impl<'a, T> ReducingSlices<'a, T> {

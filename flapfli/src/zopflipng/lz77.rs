@@ -44,6 +44,12 @@ const NZ08: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(8) };
 
 #[derive(Clone)]
 /// # LZ77 Data Store.
+///
+/// This struct holds litlen, dist, and symbol information for LZ77 block
+/// compression.
+///
+/// This can be thought of as the owned version of `LZ77StoreRange`, useful
+/// while the data is still being gathered and manipulated.
 pub(crate) struct LZ77Store {
 	pub(crate) entries: Vec<LZ77StoreEntry>,
 }
@@ -55,12 +61,18 @@ impl LZ77Store {
 	}
 
 	/// # Ranged.
+	///
+	/// Return an immutable ranged view of the data, or an error if the range
+	/// is invalid.
 	pub(crate) fn ranged(&self, rng: ZopfliRange) -> Result<LZ77StoreRange, ZopfliError> {
 		let entries = self.entries.get(rng.rng()).ok_or(zopfli_error!())?;
 		Ok(LZ77StoreRange { entries })
 	}
 
-	/// # Ranged.
+	/// # Ranged (Full).
+	///
+	/// Same as `LZ77Store::range`, except the range is everything. This will
+	/// return an error if the store is empty or too large.
 	pub(crate) fn ranged_full(&self) -> Result<LZ77StoreRange, ZopfliError> {
 		let entries = self.entries.as_slice();
 		if entries.is_empty() || ZOPFLI_MASTER_BLOCK_SIZE < entries.len() {
@@ -70,19 +82,26 @@ impl LZ77Store {
 	}
 
 	/// # Clear.
+	///
+	/// Remove all previously-collected entries, allowing the store to be
+	/// re-used for a new set of data.
 	pub(crate) fn clear(&mut self) { self.entries.truncate(0); }
 
 	/// # Push Values.
+	///
+	/// Create an entry from the arguments, then insert it into the store.
 	pub(crate) fn push(&mut self, litlen: LitLen, dist: u16, pos: usize) {
 		self.push_entry(LZ77StoreEntry::new(litlen, dist, pos));
 	}
 
 	/// # Push Entry.
+	///
+	/// Push an existing entry directly to the store.
 	fn push_entry(&mut self, entry: LZ77StoreEntry) { self.entries.push(entry); }
 
 	/// # Replace Store.
 	///
-	/// Replace the current content with some other store's content.
+	/// Replace the current store's data with what the other guy's got.
 	pub(crate) fn replace(&mut self, other: &Self) {
 		self.entries.truncate(0);
 		self.entries.extend_from_slice(&other.entries);
@@ -90,7 +109,9 @@ impl LZ77Store {
 
 	/// # Steal/Append Entries.
 	///
-	/// Drain the entires from other and append them to self.
+	/// Drain the entires from `other` and append them to `self`. (This is a
+	/// more efficient alternative to calling `LZ77Store::replace` and
+	/// `LZ77Store::clear` separately.)
 	pub(crate) fn steal_entries(&mut self, other: &mut Self) {
 		self.entries.append(&mut other.entries);
 	}
@@ -98,6 +119,9 @@ impl LZ77Store {
 
 impl LZ77Store {
 	/// # Length.
+	///
+	/// Return the number of entries in the store. Unlike `LZ77StoreRange`,
+	/// this can return zero.
 	pub(crate) fn len(&self) -> usize { self.entries.len() }
 }
 
@@ -107,8 +131,9 @@ impl LZ77Store {
 #[derive(Clone, Copy)]
 /// # Ranged LZ77 Data Store.
 ///
-/// Same as `LZ77Store`, but immutable and non-empty, allowing for more const-
-/// type operations, `Copy`, etc.
+/// Same as `LZ77Store`, but immutable and non-empty, offering a more
+/// const-friendly and performant view into some or all of the former's
+/// data.
 pub(crate) struct LZ77StoreRange<'a> {
 	pub(crate) entries: &'a [LZ77StoreEntry],
 }
@@ -116,7 +141,9 @@ pub(crate) struct LZ77StoreRange<'a> {
 impl<'a> LZ77StoreRange<'a> {
 	/// # Uncompressed Range.
 	///
-	/// Return the original uncompressed range used to build this store.
+	/// Return the original uncompressed range — from e.g. a `ZopfliChunk` —
+	/// used to build this store. If for some reason that range cannot be
+	/// recreated, an error will be returned instead.
 	pub(crate) const fn byte_range(self) -> Result<ZopfliRange, ZopfliError> {
 		// Safety: ranged stores are never empty.
 		let len = self.entries.len();
@@ -128,6 +155,9 @@ impl<'a> LZ77StoreRange<'a> {
 	}
 
 	/// # Histogram.
+	///
+	/// Count up and return the litlen and distance symbols included in this
+	/// range.
 	pub(crate) fn histogram(self) -> (ArrayLL<u32>, ArrayD<u32>) {
 		let mut ll_counts = ZEROED_COUNTS_LL;
 		let mut d_counts = ZEROED_COUNTS_D;
@@ -141,6 +171,10 @@ impl<'a> LZ77StoreRange<'a> {
 	}
 
 	/// # Length.
+	///
+	/// Return the total number of entries included in this store. Unlike
+	/// `LZ77Store`, this cannot be empty, so the result will always be
+	/// non-zero.
 	pub(crate) const fn len(self) -> NonZeroUsize {
 		#[allow(unsafe_code)]
 		// Safety: we verified the store is non-empty at construction.
@@ -149,6 +183,11 @@ impl<'a> LZ77StoreRange<'a> {
 
 	#[allow(unsafe_code)]
 	/// # Split.
+	///
+	/// Split the range into two at `mid`, unless that would leave either side
+	/// empty, in which case an error will be returned instead.
+	///
+	/// Note: this returns two new instances; `self` is left unchanged.
 	pub(crate) const fn split(self, mid: usize) -> Result<(Self, Self), ZopfliError> {
 		if 0 == mid || self.entries.len() <= mid { Err(zopfli_error!()) }
 		else {
@@ -160,6 +199,10 @@ impl<'a> LZ77StoreRange<'a> {
 	}
 
 	/// # Split Iterator.
+	///
+	/// Return an iterator that yields every possible split combination in
+	/// order, unless `self` has only one entry and cannot be split, in which
+	/// case an error is returned instead.
 	pub(crate) const fn splits(self) -> Result<LZ77StoreRangeSplits<'a>, ZopfliError> {
 		let len = self.entries.len();
 		if 1 < len {
@@ -177,6 +220,8 @@ impl<'a> LZ77StoreRange<'a> {
 	/// # Calculate Block Size (Auto).
 	///
 	/// Return the smallest of the uncompressed, fixed, and dynamic sizes.
+	/// (When `try_fixed` is false, only uncompressed and dynamic sizes are
+	/// calculated and compared.)
 	pub(crate) fn block_size_auto(self, try_fixed: bool) -> Result<NonZeroU32, ZopfliError> {
 		// Take the smaller of the uncompressed and dynamic costs.
 		let cost = NonZeroU32::min(
@@ -196,6 +241,8 @@ impl<'a> LZ77StoreRange<'a> {
 	}
 
 	/// # Calculate Block Size (Dynamic).
+	///
+	/// This calculation is… a lot. See the `rle` module for more information.
 	pub(crate) fn block_size_dynamic(self) -> Result<NonZeroU32, ZopfliError> {
 		super::get_dynamic_lengths(self).map(|(_, size, _, _)| size)
 	}
@@ -259,11 +306,16 @@ impl<'a> ExactSizeIterator for LZ77StoreRangeSplits<'a> {
 
 
 #[derive(Clone, Copy)]
+/// # LZ77 Store Entry.
+///
+/// This struct holds all of the relevant details for a given entry, including
+/// its index in the original uncompressed chunk, the length and distance pair,
+/// and the corresponding length and distance symbols.
 pub(crate) struct LZ77StoreEntry {
-	pub(crate) pos: usize,
+	pub(crate) pos: usize,      // The original uncompressed chunk index.
 	pub(crate) litlen: LitLen,
 	pub(crate) dist: i16,
-	pub(crate) ll_symbol: Lsym,
+	pub(crate) ll_symbol: Lsym, // A symbol or literal depending on distance.
 	pub(crate) d_symbol: Dsym,
 }
 
@@ -278,8 +330,9 @@ impl LZ77StoreEntry {
 		debug_assert!(dist < 32_768);
 
 		// Using the signed type helps the compiler understand the upper
-		// range fits ZOPFLI_WINDOW_MAX and wraps (impossible) bad values to
-		// boot.
+		// range fits ZOPFLI_WINDOW_MAX. Impossibly large values would also
+		// get neatly tucked away in negative-land and ignored, but that'd be
+		// impossible!
 		let dist = dist as i16;
 		let (ll_symbol, d_symbol) =
 			if 0 < dist {(

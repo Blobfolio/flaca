@@ -33,6 +33,10 @@ const LENGTH_EXTRA_BITS: [u32; 29] = [
 	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
 ];
 
+/// # RLE Cache.
+///
+/// This map holds previously calculated size/tree data, saving us the trouble
+/// of recalculating them over and over and over again.
 type RleCache = HashMap<u64, CacheEntry, NoHash>;
 
 thread_local!(
@@ -44,6 +48,9 @@ thread_local!(
 	///
 	/// To prevent endless reallocation and minimize lookup times, the cache is
 	/// cleared for each new image.
+	///
+	/// TODO: explore the implications of storing this in `ZopfliState` with
+	/// the other caches.
 	static CACHE: RefCell<RleCache> = RefCell::new(HashMap::default())
 );
 
@@ -55,7 +62,7 @@ thread_local!(
 /// existing and optimized counts, then returns whichever set produces the
 /// smallest output.
 ///
-/// Note: the returned size does not include the 3-bit block header.
+/// Note: the returned size does _not_ include the 3-bit block header.
 pub(super) fn get_dynamic_lengths(store: LZ77StoreRange)
 -> Result<(u8, NonZeroU32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
 	fn fetch(
@@ -98,14 +105,18 @@ pub(super) fn get_dynamic_lengths(store: LZ77StoreRange)
 
 /// # Reset Dynamic Length Cache.
 ///
-/// To prevent endless reallocation and minimize lookup times, the cache is
-/// cleared each time a new image is loaded.
+/// Limiting the cache lifetime to a single image strikes a good balance
+/// between allocation size and hit-worthiness, while also minimizing the risk
+/// of key collision.
 pub(crate) fn reset_dynamic_length_cache() { CACHE.with_borrow_mut(HashMap::clear); }
 
 
 
 #[derive(Clone, Copy)]
 /// # Cache Entry.
+///
+/// This holds the two relevant pieces of information produced from all the
+/// terrible calculations, except for the arrays themselves.
 struct CacheEntry {
 	extra: u8,        // Extended alphabet used.
 	size: NonZeroU32, // Combined tree/data size.
@@ -120,7 +131,8 @@ impl CacheEntry {
 	/// # Fruitless Optimization Mask.
 	///
 	/// The fourth bit is used to indicate when the secondary optimization pass
-	/// failed to result in better output.
+	/// failed to result in better output, saving us the trouble of running
+	/// that pass on subsequent calls.
 	const MASK_NOOP: u8 = 0b0000_1000;
 
 	/// # Extra.
@@ -149,7 +161,7 @@ impl CacheEntry {
 /// `true` for distance codes in a sequence of 5+ zeroes or 7+ (identical)
 /// non-zeroes, `false` otherwise.
 ///
-/// This moots the need to collect such values into a vector in advance and
+/// This moots the need to collect the values into a vector in advance and
 /// reduces the number of passes required to optimize Huffman codes.
 struct GoodForRle<'a> {
 	counts: &'a [Cell<u32>],
@@ -261,6 +273,8 @@ fn calculate_size(
 
 #[inline(never)]
 /// # Calculate Dynamic Data Block Size.
+///
+/// This returns the size of the data itself, basically just a sum of sums.
 fn calculate_size_data(
 	ll_counts: &ArrayLL<u32>,
 	d_counts: &ArrayD<u32>,
@@ -299,18 +313,20 @@ fn d_llcl(d_counts: &ArrayD<u32>)
 -> Result<ArrayD<DeflateSym>, ZopfliError> {
 	let mut d_lengths = d_counts.llcl()?;
 
-	// Buggy decoders require at least two non-zero distances. Let's see
-	// what we've got!
+	// Buggy decoders require at least two non-zero distances. Let's make sure
+	// we have at least that many.
 	let mut one: Option<bool> = None;
 	for (i, dist) in d_lengths.iter().copied().enumerate().take(30) {
 		// We have (at least) two non-zero entries; no patching needed!
 		if ! dist.is_zero() && one.replace(i == 0).is_some() { return Ok(d_lengths); }
 	}
 
+	// If we're here, fewer than two non-zero distances are in the collection;
+	// we'll need to fake the counts to reach our quota. Haha.
 	match one {
 		// The first entry had a code, so patching the second gives us two.
 		Some(true) => { d_lengths[1] = DeflateSym::D01; },
-		// The first entry didn't have a code, so patching it gives us two.
+		// The first entry did not have a code, so patching it gives us two.
 		Some(false) => { d_lengths[0] = DeflateSym::D01; },
 		// There were no codes at all, so we can just patch the first two.
 		None => {
@@ -355,6 +371,8 @@ fn deflate_hash(
 		unsafe { &* arr.as_ptr().cast() }
 	}
 
+	// The seeds don't matter, it's just faster to specify them manually than
+	// inventing them at runtime.
 	let mut h = RandomState::with_seeds(
 		0x8596_cc44_bef0_1aa0,
 		0x98d4_0948_da60_19ae,
