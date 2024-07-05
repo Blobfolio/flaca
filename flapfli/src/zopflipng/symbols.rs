@@ -126,6 +126,15 @@ impl LitLen {
 	}
 
 	#[allow(unsafe_code)]
+	/// # From U8+3.
+	///
+	/// This reverses the work done by `LitLen::to_packed_u8`, returning the
+	/// `LitLen` equivalent of `n + 3`.
+	pub(crate) const fn from_packed_u8(n: u8) -> Self {
+		unsafe { std::mem::transmute::<u16, Self>(n as u16 + 3) }
+	}
+
+	#[allow(unsafe_code)]
 	/// # Min w/ U16.
 	///
 	/// Return the smaller of `self` and `n`.
@@ -159,6 +168,20 @@ impl LitLen {
 	/// Return an iterator beginning with the next litlen, if any.
 	pub(crate) const fn next_iter(after: Self) -> LitLenIter {
 		LitLenIter(after as u16 + 1)
+	}
+
+	#[allow(clippy::cast_possible_truncation)]
+	/// # To Packed U8.
+	///
+	/// This method packs (a matcheable) `LitLen` into a `u8` by subtracting
+	/// three. (This works because `LitLen::MAX_MATCH - 3 == u8::MAX`.)
+	///
+	/// Values less than three shouldn't ever find their way here, but if they
+	/// do zero is returned.
+	pub(crate) const fn to_packed_u8(self) -> u8 {
+		let n = self as u16;
+		if 3 < n { (n - 3) as u8 }
+		else { 0 }
 	}
 }
 

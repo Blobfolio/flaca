@@ -142,18 +142,18 @@ impl MatchCache {
 
 		// Find the max sublength once, if ever.
 		let maxlength =
-			if sublen.is_none() { 0 }
+			if sublen.is_none() { LitLen::L000 }
 			else { max_sublen(cache_sublen) };
 
 		// Proceed if our cached length or max sublength are under the limit.
 		if
 			limit.is_max() ||
 			(cache_len as u16) <= (*limit as u16) ||
-			(sublen.is_some() && maxlength >= (*limit as usize))
+			(sublen.is_some() && (maxlength as u16) >= (*limit as u16))
 		{
 			// Update length and distance if the sublength pointer is null or
 			// the cached sublength is bigger than the cached length.
-			if sublen.is_none() || (cache_len as usize) <= maxlength {
+			if sublen.is_none() || (cache_len as u16) <= (maxlength as u16) {
 				// Cap the length.
 				*length = cache_len;
 				if (*length as u16) > (*limit as u16) { *length = *limit; }
@@ -190,7 +190,7 @@ impl MatchCache {
 		Ok(false)
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
+	#[cold]
 	/// # Set Sublength.
 	///
 	/// Save the provided sublength data to the cache.
@@ -248,12 +248,12 @@ impl MatchCache {
 		// The final value is implicitly "mismatched"; if we haven't hit the
 		// limit we should write it too.
 		if let Some([d0, d1, d2]) = dst.next() {
-			*d0 = (length as u16 - 3) as u8;
+			*d0 = length.to_packed_u8();
 			[*d1, *d2] = slice[slice.len() - 1].to_le_bytes();
 
 			// If we're still below the limit, copy (only) the length to the
 			// last slot to simplify any subsequent max_length lookups.
-			if let Some([d0, _, _]) = dst.last() { *d0 = (length as u16 - 3) as u8; }
+			if let Some([d0, _, _]) = dst.last() { *d0 = length.to_packed_u8(); }
 		}
 
 		Ok(())
@@ -446,13 +446,13 @@ const fn ld_split(ld: u32) -> (LitLen, u16) {
 ///
 /// Each three-byte cache-entry has its length recorded in the first byte; the
 /// last such entry holds the maximum.
-const fn max_sublen(slice: &[u8; SUBLEN_CACHED_LEN]) -> usize {
+const fn max_sublen(slice: &[u8; SUBLEN_CACHED_LEN]) -> LitLen {
 	// If the first chunk has no distance, assume a zero length.
-	if slice[1] == 0 && slice[2] == 0 { 0 }
+	if slice[1] == 0 && slice[2] == 0 { LitLen::L000 }
 	// Otherwise the "max" is stored as the first value of the last chunk.
 	// Since lengths are stored `-3`, we have to add three back to the stored
 	// value to make it a real length.
-	else { slice[SUBLEN_CACHED_LEN - 3] as usize + 3 }
+	else { LitLen::from_packed_u8(slice[SUBLEN_CACHED_LEN - 3]) }
 }
 
 /// # Write Sublength.
@@ -462,13 +462,13 @@ fn write_sublen(src: &[u8; SUBLEN_CACHED_LEN], dst: &mut [u16; SUBLEN_LEN]) {
 	let maxlength = max_sublen(src);
 	let mut old = 0;
 	for chunk in src.chunks_exact(3) {
-		let length = usize::from(chunk[0]) + ZOPFLI_MIN_MATCH;
-		if old <= length {
+		let length = LitLen::from_packed_u8(chunk[0]);
+		if old <= (length as usize) {
 			let value = u16::from_le_bytes([chunk[1], chunk[2]]);
-			dst[old..=length].fill(value);
+			dst[old..=length as usize].fill(value);
 		}
-		if length == maxlength { return; }
-		old = length + 1;
+		if (length as u16) >= (maxlength as u16) { return; }
+		old = (length as usize) + 1;
 	}
 }
 
