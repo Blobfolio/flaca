@@ -2,16 +2,8 @@
 # Flapfli: Huffman RLE Optimization.
 */
 
-use dactyl::NoHash;
 use std::{
-	cell::{
-		Cell,
-		RefCell,
-	},
-	collections::{
-		hash_map::Entry,
-		HashMap,
-	},
+	cell::Cell,
 	num::NonZeroU32,
 };
 use super::{
@@ -33,124 +25,117 @@ const LENGTH_EXTRA_BITS: [u32; 29] = [
 	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
 ];
 
-/// # RLE Cache.
+
+
+/// # Dynamic Lengths.
 ///
-/// This map holds previously calculated size/tree data, saving us the trouble
-/// of recalculating them over and over and over again.
-type RleCache = HashMap<u64, CacheEntry, NoHash>;
-
-thread_local!(
-	/// # Best Tree Cache.
-	///
-	/// The dynamic length calculations are pretty terrible and can wind up
-	/// being repeated several times for a given block. To take out some of the
-	/// sting from that repetition, the results are statically cached.
-	///
-	/// To prevent endless reallocation and minimize lookup times, the cache is
-	/// cleared for each new image.
-	///
-	/// TODO: explore the implications of storing this in `ZopfliState` with
-	/// the other caches.
-	static CACHE: RefCell<RleCache> = RefCell::new(HashMap::default())
-);
-
-
-
-/// # Get Dynamic Lengths.
+/// This struct is used to perform brute-force length-limited-code-length
+/// calculations to determine the best (smallest) DEFLATE configuration for the
+/// data.
 ///
-/// This method calculates the dynamic tree symbols and size using both the
-/// existing and optimized counts, then returns whichever set produces the
-/// smallest output.
-///
-/// Note: the returned size does _not_ include the 3-bit block header.
-pub(super) fn get_dynamic_lengths(store: LZ77StoreRange)
--> Result<(u8, NonZeroU32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
-	fn fetch(
-		cache: &mut RleCache,
-		ll_counts: &ArrayLL<u32>,
-		d_counts: &ArrayD<u32>,
-	) -> Result<(u8, NonZeroU32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
+/// This is done in two passes: the first using the previously-collected LZ77
+/// histogram data, the second using RLE-optimized counts derived from same.
+/// The best of the best is kept, the rest are forgotten.
+pub(crate) struct DynamicLengths {
+	extra: u8,
+	size: NonZeroU32,
+	ll_lengths: ArrayLL<DeflateSym>,
+	d_lengths: ArrayD<DeflateSym>,
+}
+
+impl DynamicLengths {
+	/// # New.
+	pub(crate) fn new(store: LZ77StoreRange) -> Result<Self, ZopfliError> {
+		// Pull the counts from the store.
+		let (mut ll_counts, d_counts) = store.histogram();
+		ll_counts[256] = 1;
+
 		// Pull the symbols, then get the sizes.
 		let ll_lengths = ll_counts.llcl()?;
-		let d_lengths = d_llcl(d_counts)?;
-		let (data1, hash1) = calculate_size(cache, ll_counts, d_counts, &ll_lengths, &d_lengths)?;
+		let d_lengths = d_llcl(&d_counts)?;
 
-		// Unless we've been here before and found optimization useless, repeat
-		// the process using optimized counts and symbols.
-		if ! data1.noop() {
-			let (ll_lengths2, d_lengths2) = optimized_symbols(ll_counts, d_counts)?;
-			let (data2, _) = calculate_size(cache, ll_counts, d_counts, &ll_lengths2, &d_lengths2)?;
+		// Calculate the sizes.
+		let (extra, treesize) = best_tree_size(&ll_lengths, &d_lengths)?;
+		let datasize = calculate_size_data(&ll_counts, &d_counts, &ll_lengths, &d_lengths);
+		let size = treesize.saturating_add(datasize);
 
-			// Return this version if better.
-			if data2.size < data1.size {
-				return Ok((data2.extra(), data2.size, ll_lengths2, d_lengths2));
-			}
+		// Build the response.
+		let mut out = Self { extra, size, ll_lengths, d_lengths };
 
-			// Update the original's cache to reflect that optimization didn't
-			// help so that we can skip all this the next time around.
-			if let Some(e) = cache.get_mut(&hash1) { e.set_noop(); }
-		}
+		// But wait, there's more! Optimize the counts and repeat the process
+		// to see if that helps.
+		out.try_optimized(&ll_counts, &d_counts)?;
 
-		// The first version was better!
-		Ok((data1.extra(), data1.size, ll_lengths, d_lengths))
+		// Done!
+		Ok(out)
 	}
 
-	// Pull the counts from the store.
-	let (mut ll_counts, d_counts) = store.histogram();
-	ll_counts[256] = 1;
+	#[inline(never)]
+	/// # Unique Symbols?
+	///
+	/// Returns true if any of the symbols are different than the ones we
+	/// already have. (They wind up the same often enough that it is worth
+	/// checking to reduce the potential workload.)
+	fn is_unique(&self, ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>) -> bool {
+		#[allow(unsafe_code)]
+		/// # As Bytes.
+		///
+		/// Reimagine a symbol array as raw bytes for more optimal comparison.
+		const fn deflate_bytes<const N: usize>(arr: &[DeflateSym; N]) -> &[u8; N] {
+			// Safety: DeflateSym has the same size and alignment as u8.
+			unsafe { &* arr.as_ptr().cast() }
+		}
 
-	// Do all the work!
-	CACHE.with_borrow_mut(|cache| fetch(cache, &ll_counts, &d_counts))
+		*deflate_bytes(&self.d_lengths) != *deflate_bytes(d_lengths) ||
+		deflate_bytes(&self.ll_lengths) != deflate_bytes(ll_lengths)
+	}
+
+	/// # Try Optimized.
+	///
+	/// Optimize the counts and fetch new symbols, calculate their cost, and
+	/// keep them if better.
+	fn try_optimized(&mut self, ll_counts: &ArrayLL<u32>, d_counts: &ArrayD<u32>)
+	-> Result<(), ZopfliError> {
+		let (ll_lengths2, d_lengths2) = optimized_symbols(ll_counts, d_counts)?;
+
+		// It is only worth calculating the new sizes if the lengths are
+		// different than the ones we already have.
+		if self.is_unique(&ll_lengths2, &d_lengths2) {
+			// Calculate the sizes.
+			let (extra, treesize) = best_tree_size(&ll_lengths2, &d_lengths2)?;
+			let datasize = calculate_size_data(ll_counts, d_counts, &ll_lengths2, &d_lengths2);
+			let size = treesize.saturating_add(datasize);
+
+			// Update our values if the new cost is lower.
+			if size < self.size {
+				self.extra = extra;
+				self.size = size;
+				self.ll_lengths = ll_lengths2;
+				self.d_lengths = d_lengths2;
+			}
+		}
+
+		Ok(())
+	}
 }
 
-/// # Reset Dynamic Length Cache.
-///
-/// Limiting the cache lifetime to a single image strikes a good balance
-/// between allocation size and hit-worthiness, while also minimizing the risk
-/// of key collision.
-pub(crate) fn reset_dynamic_length_cache() { CACHE.with_borrow_mut(HashMap::clear); }
-
-
-
-#[derive(Clone, Copy)]
-/// # Cache Entry.
-///
-/// This holds the two relevant pieces of information produced from all the
-/// terrible calculations, except for the arrays themselves.
-struct CacheEntry {
-	extra: u8,        // Extended alphabet used.
-	size: NonZeroU32, // Combined tree/data size.
-}
-
-impl CacheEntry {
-	/// # Extra Bits.
-	///
-	/// The first three bits comprise the extended alphabet details.
-	const MASK_EXTRA: u8 = 0b0000_0111;
-
-	/// # Fruitless Optimization Mask.
-	///
-	/// The fourth bit is used to indicate when the secondary optimization pass
-	/// failed to result in better output, saving us the trouble of running
-	/// that pass on subsequent calls.
-	const MASK_NOOP: u8 = 0b0000_1000;
+impl DynamicLengths {
+	/// # Cost.
+	pub(crate) const fn cost(&self) -> NonZeroU32 { self.size }
 
 	/// # Extra.
-	///
-	/// Return the true "extra" value, without the noop bit.
-	const fn extra(self) -> u8 { self.extra & Self::MASK_EXTRA }
+	pub(crate) const fn extra(&self) -> u8 { self.extra }
 
-	/// # Fruitless Optimization?
-	///
-	/// Returns true if optimizing the counts made no positive difference
-	/// during the previous pass.
-	const fn noop(self) -> bool { Self::MASK_NOOP == self.extra & Self::MASK_NOOP }
+	/// # Litlen Lengths.
+	pub(crate) const fn ll_lengths(&self) -> &ArrayLL<DeflateSym> { &self.ll_lengths }
 
-	/// # Set Fruitless Optimization.
+	/// # Distance Lengths.
+	pub(crate) const fn d_lengths(&self) -> &ArrayD<DeflateSym> { &self.d_lengths }
+
+	/// # Take Size.
 	///
-	/// This sets the noop flag so the optimization pass can be skipped on
-	/// subsequent calls.
-	fn set_noop(&mut self) { self.extra |= Self::MASK_NOOP; }
+	/// Same as `DynamicLengths::cost`, but drop `self` in the process.
+	pub(crate) const fn take_size(self) -> NonZeroU32 { self.size }
 }
 
 
@@ -240,38 +225,6 @@ impl<'a> ExactSizeIterator for GoodForRle<'a> {
 
 
 
-/// # Calculate Size.
-///
-/// Pull the best tree details from the cache, or calculate them fresh (and
-/// cache them for next time).
-fn calculate_size(
-	cache: &mut RleCache,
-	ll_counts: &ArrayLL<u32>,
-	d_counts: &ArrayD<u32>,
-	ll_lengths: &ArrayLL<DeflateSym>,
-	d_lengths: &ArrayD<DeflateSym>,
-) -> Result<(CacheEntry, u64), ZopfliError> {
-	// Hash the symbols.
-	let hash = deflate_hash(ll_counts, d_counts, ll_lengths, d_lengths);
-
-	// Check the cache first.
-	let entry = match cache.entry(hash) {
-		Entry::Occupied(e) => return Ok((*e.get(), hash)),
-		Entry::Vacant(e) => e,
-	};
-
-	// Calculate the sizes.
-	let (extra, treesize) = best_tree_size(ll_lengths, d_lengths)?;
-	let datasize = calculate_size_data(ll_counts, d_counts, ll_lengths, d_lengths);
-	let size = treesize.saturating_add(datasize);
-	let out = CacheEntry { extra, size };
-
-	// Save to cache for later, then return.
-	entry.insert(out);
-	Ok((out, hash))
-}
-
-#[inline(never)]
 /// # Calculate Dynamic Data Block Size.
 ///
 /// This returns the size of the data itself, basically just a sum of sums.
@@ -337,33 +290,21 @@ fn d_llcl(d_counts: &ArrayD<u32>)
 
 	Ok(d_lengths)
 }
-
-/// # Hash Counts and Symbols.
+/*
+#[inline(never)]
+/// # Compare Two Symbol Sets for Uniqueness.
 ///
-/// Calculate and return a hash for the set. This is done independently of the
-/// map to reduce its signature and enable us to quickly repeat lookups if
-/// necessary.
-///
-/// Note: both passes from a given dynamic lengths call will have the same
-/// counts, but they hash quickly enough there's no performance benefit from
-/// over-complicated the formula.
-fn deflate_hash(
-	ll_counts: &ArrayLL<u32>,
-	d_counts: &ArrayD<u32>,
-	ll_lengths: &ArrayLL<DeflateSym>,
-	d_lengths: &ArrayD<DeflateSym>,
-) -> u64 {
-	use ahash::RandomState;
-	use std::hash::{BuildHasher, Hash, Hasher};
-
+/// This compares two sets of symbols, returning `true` if they're different
+/// from one another.
+fn diff_symbols<const N: usize>(a: &[DeflateSym; N], b: &[DeflateSym; N]) -> bool {
 	#[allow(unsafe_code)]
 	/// # As Bytes.
 	///
-	/// Convert a `DeflateSym` array into an equivalent byte array for faster
-	/// hashing.
+	/// Transform a `DeflateSym` array into an equivalent byte array for more
+	/// efficient comparison. (Bytes get all the love!)
 	const fn deflate_bytes<const N: usize>(arr: &[DeflateSym; N]) -> &[u8; N] {
 		// Safety: DeflateSym has the same size and alignment as u8, and if
-		// for some reason that isn't true, this code won't compile.
+		// for some reason that isn't true, this code won't compile!
 		const {
 			assert!(std::mem::size_of::<[DeflateSym; N]>() == std::mem::size_of::<[u8; N]>());
 			assert!(std::mem::align_of::<[DeflateSym; N]>() == std::mem::align_of::<[u8; N]>());
@@ -371,22 +312,8 @@ fn deflate_hash(
 		unsafe { &* arr.as_ptr().cast() }
 	}
 
-	// The seeds don't matter, it's just faster to specify them manually than
-	// inventing them at runtime.
-	let mut h = RandomState::with_seeds(
-		0x8596_cc44_bef0_1aa0,
-		0x98d4_0948_da60_19ae,
-		0x49f1_3013_c503_a6aa,
-		0xc4d7_82ff_3c9f_7bef,
-	).build_hasher();
-
-	ll_counts.hash(&mut h);
-	d_counts.hash(&mut h);
-	deflate_bytes(ll_lengths).hash(&mut h);
-	deflate_bytes(d_lengths).hash(&mut h);
-
-	h.finish()
-}
+	deflate_bytes(a) != deflate_bytes(b)
+}*/
 
 /// # Get RLE-Optimized Symbols.
 ///

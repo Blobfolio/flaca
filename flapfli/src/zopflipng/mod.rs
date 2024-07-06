@@ -51,8 +51,7 @@ use lz77::{
 	LZ77StoreRange,
 };
 use rng::ZopfliRange;
-use rle::get_dynamic_lengths;
-pub(crate) use rle::reset_dynamic_length_cache;
+use rle::DynamicLengths;
 use super::deflate::ZopfliOut;
 use symbols::{
 	DeflateSym,

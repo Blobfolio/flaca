@@ -12,12 +12,12 @@ use super::{
 	DeflateSym,
 	DISTANCE_BITS,
 	DISTANCE_VALUES,
+	DynamicLengths,
 	encode_tree,
 	FIXED_SYMBOLS_D,
 	FIXED_SYMBOLS_LL,
 	FIXED_TREE_D,
 	FIXED_TREE_LL,
-	get_dynamic_lengths,
 	LENGTH_SYMBOL_BIT_VALUES,
 	LENGTH_SYMBOL_BITS,
 	LengthLimitedCodeLengths,
@@ -204,20 +204,18 @@ fn add_lz77_block(
 
 	#[inline(never)]
 	fn dynamic_details(store: LZ77StoreRange)
-	-> Result<(u8, NonZeroU32, ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
-		get_dynamic_lengths(store)
-	}
+	-> Result<DynamicLengths, ZopfliError> { DynamicLengths::new(store) }
 
 	// Calculate the three costs.
 	let uncompressed_cost = store.block_size_uncompressed()?;
-	let (dynamic_extra, dynamic_cost, dynamic_ll, dynamic_d) = dynamic_details(store)?;
+	let dynamic = dynamic_details(store)?;
 
 	// Most blocks won't benefit from a fixed tree layout, but if we've got a
 	// tiny one or the unoptimized-fixed size is within 10% of the dynamic size
 	// we should check it out.
 	if
 		store_len <= 1000 ||
-		store.block_size_fixed().saturating_mul(NZ10) <= dynamic_cost.saturating_mul(NZ11)
+		store.block_size_fixed().saturating_mul(NZ10) <= dynamic.cost().saturating_mul(NZ11)
 	{
 		let rng = store.byte_range()?;
 		let fixed_chunk = chunk.reslice_rng(rng)?;
@@ -230,14 +228,14 @@ fn add_lz77_block(
 		let fixed_rng = ZopfliRange::new(0, fixed_store.len())?;
 		let fixed_store_rng = fixed_store.ranged(fixed_rng)?;
 		let fixed_cost = fixed_store_rng.block_size_fixed();
-		if fixed_cost < dynamic_cost && fixed_cost <= uncompressed_cost {
+		if fixed_cost < dynamic.cost() && fixed_cost <= uncompressed_cost {
 			return add_fixed(last_block, fixed_store_rng, out);
 		}
 	}
 
 	// Dynamic is best!
-	if dynamic_cost <= uncompressed_cost {
-		add_dynamic(last_block, store, out, dynamic_extra, &dynamic_ll, &dynamic_d)
+	if dynamic.cost() <= uncompressed_cost {
+		add_dynamic(last_block, store, out, dynamic.extra(), dynamic.ll_lengths(), dynamic.d_lengths())
 	}
 	// Nothing is everything!
 	else {

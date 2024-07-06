@@ -17,6 +17,7 @@ use super::{
 	DISTANCE_BITS,
 	DISTANCE_SYMBOLS,
 	Dsym,
+	DynamicLengths,
 	FIXED_TREE_LL,
 	LENGTH_SYMBOL_BITS,
 	LENGTH_SYMBOLS,
@@ -244,7 +245,7 @@ impl<'a> LZ77StoreRange<'a> {
 	///
 	/// This calculation is… a lot. See the `rle` module for more information.
 	pub(crate) fn block_size_dynamic(self) -> Result<NonZeroU32, ZopfliError> {
-		super::get_dynamic_lengths(self).map(|(_, size, _, _)| size)
+		DynamicLengths::new(self).map(DynamicLengths::take_size)
 	}
 
 	/// # Calculate Block Size (Fixed).

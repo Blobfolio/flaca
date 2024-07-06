@@ -21,7 +21,6 @@ use super::{
 	deflate_part,
 	ffi::flapfli_allocate,
 	lodepng::LodePNGCompressSettings,
-	reset_dynamic_length_cache,
 	ZOPFLI_ITERATIONS,
 	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZopfliChunk,
@@ -97,10 +96,6 @@ pub(crate) extern "C" fn flaca_png_deflate(
 		if arr.len() < 200_000 { NZ60 } else { NZ20 },
 		|custom| NonZeroU32::min(custom, MAX_ITERATIONS)
 	);
-
-	// The RLE cache lives for the duration of the image; let's go ahead and
-	// reset that now.
-	reset_dynamic_length_cache();
 
 	// Compress in chunks, à la ZopfliDeflate.
 	for chunk in DeflateIter::new(arr) {

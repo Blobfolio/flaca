@@ -102,7 +102,7 @@ fn build_symbols() {
 
 	let mut out = format!(
 		"{}{}{}{}{}{}",
-		NumEnum::new(0..19_u8, "Whackadoodle Deflate Indices.", "DeflateSym")
+		NumEnum::new(0..19_u8, "Deflate Indices.", "DeflateSym")
 			.with_debug()
 			.with_eq()
 			.with_iter(),
