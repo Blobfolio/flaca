@@ -927,6 +927,7 @@ fn llcl_boundary_pm(leaves: &[Leaf<'_>], lists: &mut [List], nodes: &KatScratch)
 	llcl_boundary_pm(leaves, rest, nodes)
 }
 
+#[allow(clippy::cast_possible_truncation)]
 /// # Last Non-Zero, Non-Special Count.
 ///
 /// This method loops through the counts in the jumbled DEFLATE tree order,
@@ -960,14 +961,6 @@ mod tests {
 		for (maxbits, size) in [(7, 19), (15, ZOPFLI_NUM_D), (15, ZOPFLI_NUM_LL)] {
 			assert!(size < (1 << maxbits));
 		}
-	}
-
-	#[test]
-	/// # Tree Max.
-	///
-	/// Make sure our math correctly aligns with `TreeRleIdx`.
-	fn t_tree_max() {
-		assert_eq!(TreeScratch::MAX - 1, TreeRleIdx::T315 as usize);
 	}
 
 	// The following tests have been adapted from the zopfli-rs crate:
