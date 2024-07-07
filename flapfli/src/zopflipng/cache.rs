@@ -1,16 +1,11 @@
 /*!
-# Flapfli: Longest Match Cache.
+# Flapfli: Caches.
 
-The LMC is used to eleviate some of the burden that would otherwise result from
-calling `ZopfliHash::find` a hundred million times in a row. Haha.
+This module contains the Longest Match cache along with several smaller caching
+structures that aren't big enough to warrant their own dedicated modules.
 */
 
 use std::{
-	alloc::{
-		alloc,
-		handle_alloc_error,
-		Layout,
-	},
 	cell::Cell,
 	ptr::{
 		addr_of_mut,
@@ -23,7 +18,10 @@ use super::{
 	zopfli_error,
 	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZOPFLI_MIN_MATCH,
+	ZopfliChunk,
 	ZopfliError,
+	ZopfliRange,
+	ZopfliStateInit,
 };
 
 
@@ -32,83 +30,97 @@ use super::{
 ///
 /// Length and distance are always fetched/stored together, so are grouped into
 /// a single value to reduce indexing/bounds overhead.
+///
+/// A tuple would be friendlier, but doesn't scale particularly well, so
+/// whatever. The `join_ld` and `split_ld` helper methods fill the ergonomic
+/// gaps.
 const DEFAULT_LD: u32 = u32::from_le_bytes([1, 0, 0, 0]);
 
 /// # Sublength Cache Entries.
+///
+/// This is the total number of "entries" a given sublength cache record
+/// contains.
 const ZOPFLI_CACHE_LENGTH: usize = 8;
 
 /// # Sublength Cache Total Length.
 ///
-/// Each entry uses three bytes, so the total size is…
+/// Each entry uses three bytes, so the total length of a sublength cache
+/// collection is thus…
 const SUBLEN_CACHED_LEN: usize = ZOPFLI_CACHE_LENGTH * 3;
 
+/// # Length of Split Cache.
+///
+/// The split cache is mercifully boolean, so we can pack it into a bit array,
+/// reducing its size to one eighth what it otherwise would be.
+const SPLIT_CACHE_LEN: usize = ZOPFLI_MASTER_BLOCK_SIZE.div_ceil(8);
 
 
+
+#[repr(C)]
 /// # Longest Match Cache.
 ///
 /// This structure holds cached length/distance details for individual
-/// sublengths. Its memory usage is no joke, but the performance savings more
-/// than make up for it.
+/// "sublengths" — chunks of chunks of data processed by `ZopfliHash` —
+/// mitigating the overhead of doing the same shit over and over and over
+/// again.
+///
+/// As with most of this library's caches, the memory usage is no joke, but
+/// trying to get by without without it is downright _miserable_.
+///
+/// On the bright side, we only need one instance per thread for the duration
+/// of the program run, and thanks to some clever boxing, it winds up on the
+/// heap instead of the stack.
 pub(crate) struct MatchCache {
 	ld: [u32; ZOPFLI_MASTER_BLOCK_SIZE],
-	sublen: [[u8; SUBLEN_CACHED_LEN]; ZOPFLI_MASTER_BLOCK_SIZE],
+	sublen: [u8; SUBLEN_CACHED_LEN * ZOPFLI_MASTER_BLOCK_SIZE],
+}
+
+impl ZopfliStateInit for MatchCache {
+	#[allow(unsafe_code)]
+	#[inline]
+	/// # State Initialization.
+	///
+	/// See `ZopfliState` for more details.
+	unsafe fn state_init(nn: NonNull<Self>) {
+		let ptr = nn.as_ptr();
+
+		// The proper defaults for both members are _mostly_ zeroes, so let's
+		// roll with that since it's cheap and easy. (The values will be reset
+		// properly before each use anyway.)
+		addr_of_mut!((*ptr).ld).write_bytes(0, 1);
+		addr_of_mut!((*ptr).sublen).write_bytes(0, 1);
+	}
 }
 
 impl MatchCache {
-	#[allow(unsafe_code)]
-	/// # New.
-	///
-	/// Arrays holding a million elements are obviously less than ideal, but
-	/// because these are referenced repeatedly with different sub-slice sizes,
-	/// it is much better for performance than vectors that have to be
-	/// continuously resized/reallocated.
-	///
-	/// Still, these are too big for the stack, so we're initializing them via
-	/// raw pointers and jamming them straight into a `Box`.
-	pub(super) fn new() -> Box<Self> {
-		// Reserve the space.
-		const LAYOUT: Layout = Layout::new::<MatchCache>();
-		let out = NonNull::new(unsafe { alloc(LAYOUT).cast() })
-			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
-		let ptr: *mut Self = out.as_ptr();
-
-		unsafe {
-			// The arrays can be zero-filled to start with; they'll get reset
-			// prior to use anyway.
-			addr_of_mut!((*ptr).ld).write_bytes(0, 1);
-			addr_of_mut!((*ptr).sublen).write_bytes(0, 1);
-
-			// All set!
-			Box::from_raw(ptr)
-		}
-	}
-
 	/// # Initialize.
 	///
-	/// This resizes the cache buffers and resets their values to their default
-	/// states — one for length, zero for everything else.
+	/// Reset (enough of) the cache to its initial/default state for any
+	/// subsequent processing of `chunk` we might need to do. (Most chunks will
+	/// be smaller than `ZOPFLI_MASTER_BLOCK_SIZE` so we won't normally need to
+	/// reset _everything_.)
 	///
-	/// Because this is a shared buffer, allocations persist for the duration
-	/// of the program run so they can be reused.
-	pub(crate) fn init(&mut self, mut blocksize: usize) {
-		// Lodepng will never pass along more than ZOPFLI_MASTER_BLOCK_SIZE
-		// bytes, but this lets the compiler know we won't go over.
-		if ZOPFLI_MASTER_BLOCK_SIZE < blocksize {
-			blocksize = ZOPFLI_MASTER_BLOCK_SIZE;
-		}
+	/// The length half of `ld` defaults to one; everything else defaults to
+	/// zero.
+	pub(crate) fn init(&mut self, chunk: &ZopfliChunk<'_>) {
+		// Safety: ZopfliChunk verifies the block size is under the limit.
+		let blocksize = chunk.block_size().get();
+		if blocksize > ZOPFLI_MASTER_BLOCK_SIZE { crate::unreachable(); }
 
 		// Lengths default to one, everything else to zero.
 		self.ld[..blocksize].fill(DEFAULT_LD);
-		self.sublen[..blocksize].fill([0; SUBLEN_CACHED_LEN]);
+		self.sublen[..blocksize * SUBLEN_CACHED_LEN].fill(0);
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
 	/// # Find Match.
 	///
-	/// Find the sublength, distance, and length from cache, if possible.
+	/// Find the sublength, distance, and length from cache, if present, and
+	/// (possibly) add it to the cache if not.
 	///
-	/// Values are written directly to the passed arguments. A bool is returned
-	/// to indicate whether or not the find was successful.
+	/// The results are written back to the mutable arguments passed to the
+	/// method. A bool is returned to indicate whether or not the search was
+	/// successful.
 	pub(crate) fn find(
 		&self,
 		pos: usize,
@@ -123,22 +135,25 @@ impl MatchCache {
 		// If we have no distance, we have no cache.
 		let (cache_len, cache_dist) = ld_split(self.ld[pos]);
 		if ! cache_len.is_zero() && cache_dist == 0 { return Ok(false); }
-		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = &self.sublen[pos];
+		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = unsafe {
+			// Safety: the slice has the same length as the array.
+			&* self.sublen[pos * SUBLEN_CACHED_LEN..(pos + 1) * SUBLEN_CACHED_LEN].as_ptr().cast()
+		};
 
 		// Find the max sublength once, if ever.
 		let maxlength =
-			if sublen.is_none() { 0 }
+			if sublen.is_none() { LitLen::L000 }
 			else { max_sublen(cache_sublen) };
 
 		// Proceed if our cached length or max sublength are under the limit.
 		if
 			limit.is_max() ||
 			(cache_len as u16) <= (*limit as u16) ||
-			(sublen.is_some() && maxlength >= (*limit as usize))
+			(sublen.is_some() && (maxlength as u16) >= (*limit as u16))
 		{
 			// Update length and distance if the sublength pointer is null or
 			// the cached sublength is bigger than the cached length.
-			if sublen.is_none() || (cache_len as usize) <= maxlength {
+			if sublen.is_none() || (cache_len as u16) <= (maxlength as u16) {
 				// Cap the length.
 				*length = cache_len;
 				if (*length as u16) > (*limit as u16) { *length = *limit; }
@@ -175,7 +190,7 @@ impl MatchCache {
 		Ok(false)
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
+	#[cold]
 	/// # Set Sublength.
 	///
 	/// Save the provided sublength data to the cache.
@@ -219,7 +234,7 @@ impl MatchCache {
 
 		// The cache gets written three bytes at a time; this iterator will
 		// help us eliminate the bounds checks we'd otherwise run into.
-		let mut dst = self.sublen[pos].chunks_exact_mut(3);
+		let mut dst = self.sublen.chunks_exact_mut(3).skip(pos * ZOPFLI_CACHE_LENGTH).take(ZOPFLI_CACHE_LENGTH);
 
 		// Start by writing all mismatched pairs, up to the limit.
 		for (i, pair) in (0_u8..=u8::MAX).zip(slice.windows(2)) {
@@ -233,15 +248,78 @@ impl MatchCache {
 		// The final value is implicitly "mismatched"; if we haven't hit the
 		// limit we should write it too.
 		if let Some([d0, d1, d2]) = dst.next() {
-			*d0 = (length as u16 - 3) as u8;
+			*d0 = length.to_packed_u8();
 			[*d1, *d2] = slice[slice.len() - 1].to_le_bytes();
 
 			// If we're still below the limit, copy (only) the length to the
 			// last slot to simplify any subsequent max_length lookups.
-			if let Some([d0, _, _]) = dst.last() { *d0 = (length as u16 - 3) as u8; }
+			if let Some([d0, _, _]) = dst.last() { *d0 = length.to_packed_u8(); }
 		}
 
 		Ok(())
+	}
+}
+
+
+
+/// # Split Cache.
+///
+/// This structure holds a sort of bit-array used for keeping track of which
+/// split points (indices) have already been tested to avoid the overhead of
+/// testing them again.
+///
+/// As with `MatchCache`, we only need one instance of this struct per thread
+/// for the duration of the program run.
+pub(crate) struct SplitCache {
+	set: [u8; SPLIT_CACHE_LEN],
+}
+
+impl ZopfliStateInit for SplitCache {
+	#[allow(unsafe_code)]
+	#[inline]
+	/// # State Initialization.
+	///
+	/// See `ZopfliState` for more details.
+	unsafe fn state_init(nn: NonNull<Self>) {
+		// False is zeroes all the way down.
+		addr_of_mut!((*nn.as_ptr()).set).write_bytes(0, 1);
+	}
+}
+
+impl SplitCache {
+	/// # Initialize.
+	///
+	/// Reset the first `rng.len()` bits — these ranges always start at zero —
+	/// to false so we can track a new set of indices.
+	pub(crate) fn init(&mut self, rng: ZopfliRange) {
+		// Safety: ZopfliRange checks the range is non-empty and within the
+		// limit.
+		let blocksize = rng.len().get();
+		if ZOPFLI_MASTER_BLOCK_SIZE < blocksize { crate::unreachable(); }
+
+		// Fill uses bytes rather than bits, so we need to round up to ensure
+		// complete coverage for our range.
+		let bitsize = blocksize.div_ceil(8);
+		self.set[..bitsize].fill(0);
+	}
+
+	#[inline]
+	/// # Not Checked?
+	///
+	/// Returns true if the value is currently _unchecked_. (The caller takes
+	/// action on the negative rather than the positive.)
+	pub(crate) const fn is_unset(&self, pos: usize) -> bool {
+		let idx = pos.wrapping_div(8); // The byte.
+		let mask: u8 = 1 << (pos % 8); // The bit.
+		SPLIT_CACHE_LEN <= idx || 0 == self.set[idx] & mask
+	}
+
+	#[inline]
+	/// # Mark as Checked.
+	pub(crate) fn set(&mut self, pos: usize) {
+		let idx = pos.wrapping_div(8); // The byte.
+		let mask: u8 = 1 << (pos % 8); // The bit.
+		if idx < SPLIT_CACHE_LEN { self.set[idx] |= mask; }
 	}
 }
 
@@ -255,54 +333,43 @@ impl MatchCache {
 /// to-block, but can actually go as high as a million and one!
 ///
 /// Lest that sound like a terrible waste, this struct only exists as part of
-/// a thread-local static so will be reused as many times as needed.
+/// a thread-local static so will be reused as many times as needed. That
+/// static is also boxed to ensure the data winds up on the heap instead of the
+/// stack.
 pub(crate) struct SqueezeCache {
 	costs: [(f32, LitLen); ZOPFLI_MASTER_BLOCK_SIZE + 1],
 	paths: [LitLen; ZOPFLI_MASTER_BLOCK_SIZE],
 	costs_len: Cell<usize>,
 }
 
-impl SqueezeCache {
+impl ZopfliStateInit for SqueezeCache {
 	#[allow(unsafe_code)]
-	/// # New (Boxed) Instance.
+	#[inline]
+	/// # State Initialization.
 	///
-	/// Arrays holding a million+ elements is obviously less than ideal, but
-	/// because these are referenced repeatedly with different sub-slice sizes,
-	/// it is much better for performance than vectors that have to be
-	/// continuously resized/reallocated.
-	///
-	/// Still, these are too big for the stack, so we're initializing them via
-	/// raw pointers and jamming them straight into a `Box`.
-	pub(crate) fn new() -> Box<Self> {
-		// Reserve the space.
-		const LAYOUT: Layout = Layout::new::<SqueezeCache>();
-		let out = NonNull::new(unsafe { alloc(LAYOUT).cast() })
-			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
-		let ptr: *mut Self = out.as_ptr();
+	/// See `ZopfliState` for more details.
+	unsafe fn state_init(nn: NonNull<Self>) {
+		let ptr = nn.as_ptr();
 
-		unsafe {
-			// The arrays can be zero-filled to start with; they'll be reset
-			// or overwritten before use anyway.
-			addr_of_mut!((*ptr).costs).write_bytes(0, 1);
-			addr_of_mut!((*ptr).paths).write_bytes(0, 1);
+		// The arrays can be zero-filled to start with; they'll be reset
+		// or overwritten before each use anyway.
+		addr_of_mut!((*ptr).costs).write_bytes(0, 1);
+		addr_of_mut!((*ptr).paths).write_bytes(0, 1);
 
-			// Zero works equally well for the initial length, especially
-			// because it's true! Haha.
-			addr_of_mut!((*ptr).costs_len).write(Cell::new(0));
-
-			// All set!
-			Box::from_raw(ptr)
-		}
+		// Zero works equally well for the initial length, especially since
+		// that happens to be true!
+		addr_of_mut!((*ptr).costs_len).write(Cell::new(0));
 	}
+}
 
+impl SqueezeCache {
 	/// # Resize Costs.
 	///
-	/// This sets the internal costs length to match the desired blocksize, but
-	/// does _not_ reset their values. (Unlike the LMC, which more or less
-	/// persists for the duration of a given block, costs are calculated and
-	/// discarded and recalculated and discarded… several times.)
-	pub(crate) fn resize_costs(&self, blocksize: usize) {
-		self.costs_len.set(blocksize);
+	/// This method merely sets the internal cost-length variable to match
+	/// `chunk`'s block size (plus one). (It does _not_ reset the actual
+	/// cost data or anything like that.)
+	pub(crate) fn resize_costs(&self, chunk: &ZopfliChunk<'_>) {
+		self.costs_len.set(chunk.block_size().get() + 1);
 	}
 
 	/// # Reset Costs.
@@ -311,14 +378,16 @@ impl SqueezeCache {
 	/// `resize_costs` call.
 	///
 	/// Note that only the costs themselves are reset; the lengths and paths
-	/// are dealt with _in situ_ during crunching (without being read).
+	/// are dealt with _in situ_ during crunching (without first being read).
 	pub(crate) fn reset_costs(&mut self) -> &mut [(f32, LitLen)] {
-		let costs = self.costs.get_mut(..self.costs_len.get()).unwrap_or(&mut []);
-		if ! costs.is_empty() {
-			// The first cost needs to be zero; the rest need to be infinity.
-			costs[0].0 = 0.0;
-			for c in costs.iter_mut().skip(1) { c.0 = f32::INFINITY; }
-		}
+		// Safety: ZopfliChunk verifies the block size is under the limit and
+		// non-empty, and since costs is always blocks+1, the minimum is 2.
+		let len = self.costs_len.get();
+		if ! (2..=ZOPFLI_MASTER_BLOCK_SIZE + 1).contains(&len) { crate::unreachable(); }
+
+		let costs = &mut self.costs[..len];
+		costs[0].0 = 0.0;
+		for c in &mut costs[1..] { c.0 = f32::INFINITY; }
 		costs
 	}
 
@@ -373,12 +442,17 @@ const fn ld_split(ld: u32) -> (LitLen, u16) {
 
 /// # Max Sublength.
 ///
-/// Return the maximum sublength length for a given chunk.
-const fn max_sublen(slice: &[u8; SUBLEN_CACHED_LEN]) -> usize {
+/// Return the maximum sublength length for a given cache chunk.
+///
+/// Each three-byte cache-entry has its length recorded in the first byte; the
+/// last such entry holds the maximum.
+const fn max_sublen(slice: &[u8; SUBLEN_CACHED_LEN]) -> LitLen {
 	// If the first chunk has no distance, assume a zero length.
-	if slice[1] == 0 && slice[2] == 0 { 0 }
+	if slice[1] == 0 && slice[2] == 0 { LitLen::L000 }
 	// Otherwise the "max" is stored as the first value of the last chunk.
-	else { slice[SUBLEN_CACHED_LEN - 3] as usize + 3 }
+	// Since lengths are stored `-3`, we have to add three back to the stored
+	// value to make it a real length.
+	else { LitLen::from_packed_u8(slice[SUBLEN_CACHED_LEN - 3]) }
 }
 
 /// # Write Sublength.
@@ -388,13 +462,13 @@ fn write_sublen(src: &[u8; SUBLEN_CACHED_LEN], dst: &mut [u16; SUBLEN_LEN]) {
 	let maxlength = max_sublen(src);
 	let mut old = 0;
 	for chunk in src.chunks_exact(3) {
-		let length = usize::from(chunk[0]) + ZOPFLI_MIN_MATCH;
-		if old <= length {
+		let length = LitLen::from_packed_u8(chunk[0]);
+		if old <= (length as usize) {
 			let value = u16::from_le_bytes([chunk[1], chunk[2]]);
-			dst[old..=length].fill(value);
+			dst[old..=length as usize].fill(value);
 		}
-		if length == maxlength { return; }
-		old = length + 1;
+		if (length as u16) >= (maxlength as u16) { return; }
+		old = (length as usize) + 1;
 	}
 }
 
@@ -413,5 +487,53 @@ mod tests {
 
 		// Joining should get us back where we started.
 		assert_eq!(DEFAULT_LD, ld_join(len, dist));
+	}
+
+	#[test]
+	fn t_split_mask() {
+		// What we expect our masks to look like.
+		const fn split_cache_mask(pos: usize) -> u8 {
+			match pos % 8 {
+				0 => 0b0000_0001,
+				1 => 0b0000_0010,
+				2 => 0b0000_0100,
+				3 => 0b0000_1000,
+				4 => 0b0001_0000,
+				5 => 0b0010_0000,
+				6 => 0b0100_0000,
+				_ => 0b1000_0000,
+			}
+		}
+
+		for pos in 0..255_usize {
+			let mask: u8 = 1 << (pos % 8);
+			assert_eq!(mask, split_cache_mask(pos));
+		}
+	}
+
+	#[test]
+	fn t_split_cache() {
+		let mut cache = SplitCache {
+			set: [0_u8; SPLIT_CACHE_LEN],
+		};
+
+		// Check that positions are false to start, true after set.
+		for i in 0..ZOPFLI_MASTER_BLOCK_SIZE {
+			assert!(cache.is_unset(i));
+			cache.set(i);
+			assert!(! cache.is_unset(i));
+		}
+
+		// Everything should be set now.
+		assert!(cache.set.iter().all(|&b| b == u8::MAX));
+
+		// If we initialize with a small value, only those bits should be
+		// affected.
+		cache.init(ZopfliRange::new(0, 32).unwrap());
+		assert_eq!(cache.set[0], 0);
+		assert_eq!(cache.set[1], 0);
+		assert_eq!(cache.set[2], 0);
+		assert_eq!(cache.set[3], 0);
+		assert_eq!(cache.set[4], u8::MAX);
 	}
 }

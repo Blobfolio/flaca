@@ -10,16 +10,6 @@ via `build.rs`.
 // terrible DISTANCE_SYMBOLS and DISTANCE_VALUES lookup tables.
 include!(concat!(env!("OUT_DIR"), "/symbols.rs"));
 
-/// # Distance Extra Bits (by Symbol).
-///
-/// Note only the first `30` values have meaning, but the compiler doesn't
-/// understand distances are only using 15 bits. Padding the table to `32`
-/// helps eliminate superfluous bounds checks.
-pub(crate) const DISTANCE_BITS: [u8; 32] = [
-	0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
-	7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 0, 0,
-];
-
 /// # Length Symbols by Litlen.
 pub(crate) const LENGTH_SYMBOLS: [Lsym; 259] = [
 	Lsym::L000, Lsym::L000, Lsym::L000,
@@ -57,21 +47,6 @@ pub(crate) const LENGTH_SYMBOLS: [Lsym; 259] = [
 	Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L284, Lsym::L285,
 ];
 
-/// # Length Symbol Bits by Litlen.
-pub(crate) const LENGTH_SYMBOL_BITS: [u8; 259] = [
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
-	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-	5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 0,
-];
-
 /// # Length Symbol Bit Values by Litlen.
 pub(crate) const LENGTH_SYMBOL_BIT_VALUES: [u8; 259] = [
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1,
@@ -88,7 +63,11 @@ pub(crate) const LENGTH_SYMBOL_BIT_VALUES: [u8; 259] = [
 ];
 
 /// # Symbol Iterator.
+///
+/// This trait exposes a single `all` method that returns an iterator over the
+/// enum's variants.
 pub(crate) trait SymbolIteration<U: ExactSizeIterator<Item=Self>>: Sized {
+	/// # Iterate All Variants!
 	fn all() -> U;
 }
 
@@ -127,7 +106,7 @@ impl LitLen {
 
 	/// # Is Max?
 	///
-	/// Returns `true` if `self` is `Self::MAX_MATCH`.
+	/// Returns `true` if `self` is exactly `Self::MAX_MATCH`.
 	pub(crate) const fn is_max(self) -> bool { matches!(self, Self::MAX_MATCH) }
 
 	/// # Is Zero?
@@ -144,6 +123,15 @@ impl LitLen {
 	/// former into the latter.
 	pub(crate) const fn from_u8(n: u8) -> Self {
 		unsafe { std::mem::transmute::<u16, Self>(n as u16) }
+	}
+
+	#[allow(unsafe_code)]
+	/// # From U8+3.
+	///
+	/// This reverses the work done by `LitLen::to_packed_u8`, returning the
+	/// `LitLen` equivalent of `n + 3`.
+	pub(crate) const fn from_packed_u8(n: u8) -> Self {
+		unsafe { std::mem::transmute::<u16, Self>(n as u16 + 3) }
 	}
 
 	#[allow(unsafe_code)]
@@ -181,6 +169,20 @@ impl LitLen {
 	pub(crate) const fn next_iter(after: Self) -> LitLenIter {
 		LitLenIter(after as u16 + 1)
 	}
+
+	#[allow(clippy::cast_possible_truncation)]
+	/// # To Packed U8.
+	///
+	/// This method packs (a matcheable) `LitLen` into a `u8` by subtracting
+	/// three. (This works because `LitLen::MAX_MATCH - 3 == u8::MAX`.)
+	///
+	/// Values less than three shouldn't ever find their way here, but if they
+	/// do zero is returned.
+	pub(crate) const fn to_packed_u8(self) -> u8 {
+		let n = self as u16;
+		if 3 < n { (n - 3) as u8 }
+		else { 0 }
+	}
 }
 
 impl Lsym {
@@ -196,12 +198,23 @@ impl Lsym {
 
 impl SplitLen {
 	/// # Is Zero?
+	///
+	/// Returns `true` if `self` is zero.
 	pub(crate) const fn is_zero(self) -> bool { matches!(self, Self::S00) }
 
 	/// # Is Max?
+	///
+	/// Returns `true` if `self` is the maximum value (`SplitLen::S14`).
 	pub(crate) const fn is_max(self) -> bool { matches!(self, Self::S14) }
 
 	/// # Increment.
+	///
+	/// Returns `self + 1`.
+	///
+	/// ## Safety
+	///
+	/// This would be UB if `self.is_max()`; the caller must explicitly check
+	/// that is not the case before incrementing.
 	pub(crate) const fn increment(self) -> Self {
 		#[allow(unsafe_code)]
 		unsafe {
@@ -209,7 +222,7 @@ impl SplitLen {
 			// `split_lz77` and `split_raw` — both of which explicitly check
 			// the current value, breaking their loops if/when the maximum is
 			// reached.
-			if self.is_max() { core::hint::unreachable_unchecked(); }
+			if self.is_max() { crate::unreachable(); }
 
 			// Safety: SplitLen has the same size and alignment as u8.
 			std::mem::transmute::<u8, Self>(self as u8 + 1)
@@ -222,6 +235,18 @@ impl SplitLen {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn t_symbol_bits() {
+		// The DISTANCE_BITS/_F and LENGTH_SYMBOL_BITS/_F constants should have
+		// equivalent values.
+		for (f, i) in DISTANCE_BITS_F.iter().copied().zip(DISTANCE_BITS) {
+			assert_eq!(f, f64::from(i));
+		}
+		for (f, i) in LENGTH_SYMBOL_BITS_F.iter().copied().zip(LENGTH_SYMBOL_BITS) {
+			assert_eq!(f, f64::from(i));
+		}
+	}
 
 	#[test]
 	/// # Deflate Symbol Size and Alignment.

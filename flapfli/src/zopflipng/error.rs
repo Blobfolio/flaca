@@ -26,6 +26,9 @@ pub(crate) type ZopfliError = ();
 ///
 /// When debug assertions are _enabled_, error responses panic with the
 /// relevant source details to aid further investigation.
+///
+/// This struct stores those details, allowing us to delay the panicking until
+/// the error has bubbled back to lodepng.
 pub(crate) struct ZopfliError {
 	file: &'static str,
 	line: u32,
@@ -58,9 +61,7 @@ impl fmt::Display for ZopfliError {
 ///
 /// The debug version of this macro panics with a message indicating the file
 /// and line number to aid further investigation.
-macro_rules! zopfli_error {
-	() => (ZopfliError::new(file!(), line!()));
-}
+macro_rules! zopfli_error { () => (ZopfliError::new(file!(), line!())); }
 
 #[cfg(not(debug_assertions))]
 /// # Error Macro (Release).
@@ -68,5 +69,5 @@ macro_rules! zopfli_error {
 /// The non-debug version simply returns a `()`.
 macro_rules! zopfli_error { () => (()); }
 
-/// # Expose it to the rest of the module.
+/// # Expose the macro to the rest of the module.
 pub(super) use zopfli_error;

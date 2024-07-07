@@ -16,53 +16,54 @@ performant.
 
 mod blocks;
 mod cache;
+mod chunk;
 mod error;
 mod hash;
+mod iter;
 mod kat;
 mod lz77;
 mod rle;
+mod rng;
 mod stats;
 mod symbols;
 
-pub(crate) use blocks::{
-	deflate_part,
-	SplitPoints,
-};
+pub(crate) use blocks::deflate_part;
 use cache::{
 	MatchCache,
+	SplitCache,
 	SqueezeCache,
 };
+pub(crate) use chunk::ZopfliChunk;
 use error::{
 	zopfli_error,
 	ZopfliError,
 };
+use hash::ZopfliStateInit;
 pub(crate) use hash::ZopfliState;
+use iter::ReducingSlices;
 use kat::{
 	best_tree_size,
 	encode_tree,
 	LengthLimitedCodeLengths,
 };
-pub(crate) use lz77::LZ77Store;
-use rle::get_dynamic_lengths;
-pub(crate) use rle::reset_dynamic_length_cache;
-use super::{
-	EncodedPNG,
-	lodepng::{
-		DecodedImage,
-		LodePNGColorType,
-		LodePNGFilterStrategy,
-		LodePNGState,
-		ZopfliOut,
-	},
+use lz77::{
+	LZ77Store,
+	LZ77StoreRange,
 };
+use rng::ZopfliRange;
+use rle::DynamicLengths;
+use super::deflate::ZopfliOut;
 use symbols::{
 	DeflateSym,
+	DeflateSymBasic,
 	DISTANCE_BITS,
+	DISTANCE_BITS_F,
 	DISTANCE_SYMBOLS,
 	DISTANCE_VALUES,
 	Dsym,
 	LENGTH_SYMBOL_BIT_VALUES,
 	LENGTH_SYMBOL_BITS,
+	LENGTH_SYMBOL_BITS_F,
 	LENGTH_SYMBOLS,
 	LitLen,
 	Lsym,
@@ -123,16 +124,28 @@ const FIXED_SYMBOLS_D: ArrayD<u32> = [
 	16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
 ];
 
-// This is the biggest chunk-o-data that can be passed to deflate.
+/// # Step Size for Deflate Parts.
+///
+/// The "active" portion of the `ZopfliChunk` passed from lodepng will never
+/// exceed a million bytes.
 pub(super) const ZOPFLI_MASTER_BLOCK_SIZE: usize = 1_000_000;
 
-// The matchable hash cache range.
+/// # Hash/LZ77 Window Size.
+///
+/// This is the window size used by lodepng when zopfli processing is enabled,
+/// and the amount expected by structs like `ZopfliHash`.
+const ZOPFLI_WINDOW_SIZE: usize = 32_768;
+
+/// # Minimum Matchable Distance.
 const ZOPFLI_MIN_MATCH: usize = 3;
+
+/// # Maximum Matchable Distance.
 const ZOPFLI_MAX_MATCH: usize = 258;
 
 /// # Length of Sublength Array.
 ///
-/// This is hardcoded in `squeeze.c`.
+/// The squeeze sublength array slices have indices spanning
+/// `0..=ZOPFLI_MAX_MATCH`.
 const SUBLEN_LEN: usize = ZOPFLI_MAX_MATCH + 1;
 
 /// # Array with `ZOPFLI_NUM_LL` Entries.
@@ -140,82 +153,3 @@ type ArrayLL<T> = [T; ZOPFLI_NUM_LL];
 
 /// # Array with `ZOPFLI_NUM_D` Entries.
 type ArrayD<T> = [T; ZOPFLI_NUM_D];
-
-
-
-#[must_use]
-/// # Optimize!
-///
-/// This will attempt to losslessly recompress the source PNG with the
-/// strongest Zopfli filter strategy, and return a new PNG image if the result
-/// is smaller than the original.
-///
-/// Note: 16-bit transformations are not lossless; such images will have their
-/// bit depths reduced to a more typical 8 bits.
-pub fn optimize(src: &[u8]) -> Option<EncodedPNG> {
-	let mut dec = LodePNGState::default();
-	let img = dec.decode(src)?;
-
-	// Encode!
-	let strategy = best_strategy(&dec, &img);
-	let out = encode(&dec, &img, strategy, true)?;
-
-	// Return it if better and nonzero!
-	if out.size < src.len() { Some(out) }
-	else { None }
-}
-
-
-
-/// # Best Strategy.
-///
-/// This attempts to find the best filtering strategy for the image by trying
-/// all of them in fast mode, and picking whichever produces the smallest
-/// output.
-fn best_strategy(dec: &LodePNGState, img: &DecodedImage) -> LodePNGFilterStrategy {
-	[
-		LodePNGFilterStrategy::LFS_ZERO,
-		LodePNGFilterStrategy::LFS_ONE,
-		LodePNGFilterStrategy::LFS_TWO,
-		LodePNGFilterStrategy::LFS_THREE,
-		LodePNGFilterStrategy::LFS_FOUR,
-		LodePNGFilterStrategy::LFS_MINSUM,
-		LodePNGFilterStrategy::LFS_ENTROPY,
-		LodePNGFilterStrategy::LFS_BRUTE_FORCE,
-	]
-		.into_iter()
-		.filter_map(|s| encode(dec, img, s, false).map(|out| (out.size, s)))
-		.min_by(|a, b| a.0.cmp(&b.0))
-		.map_or(LodePNGFilterStrategy::LFS_ZERO, |(_, s)| s)
-}
-
-/// # Apply Optimizations.
-///
-/// This attempts to re-encode an image using the provided filter strategy,
-/// returning an `EncodedPNG` object if it all works out.
-fn encode(
-	dec: &LodePNGState,
-	img: &DecodedImage,
-	strategy: LodePNGFilterStrategy,
-	slow: bool,
-) -> Option<EncodedPNG> {
-	// Encode and write to the buffer if it worked.
-	let mut enc = LodePNGState::encoder(dec, strategy, slow)?;
-	let out = enc.encode(img)?;
-
-	// We might be able to save a couple bytes by nuking the palette if the
-	// image is already really small.
-	if
-		out.size < 4096 &&
-		LodePNGColorType::LCT_PALETTE.is_match(&out) &&
-		enc.prepare_encoder_small(img)
-	{
-		if let Some(out2) = enc.encode(img) {
-			if out2.size < out.size {
-				return Some(out2);
-			}
-		}
-	}
-
-	Some(out)
-}

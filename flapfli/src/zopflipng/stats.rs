@@ -19,7 +19,8 @@ use super::{
 #[derive(Clone, Copy)]
 /// # Randomness.
 ///
-/// This struct is only used to cheaply randomize stat frequencies.
+/// This struct is only used to cheaply (and predictably) shuffle stat
+/// frequencies.
 pub(crate) struct RanState {
 	m_w: u32,
 	m_z: u32,
@@ -50,12 +51,11 @@ impl RanState {
 #[derive(Clone, Copy)]
 /// # Symbol Stats.
 ///
-/// This holds the length and distance symbols and costs for a given block,
-/// data that can be used to improve compression on subsequent passes.
+/// This hols the length and distance symbols and costs for a given block.
+/// data which can be used to improve compression on subsequent passes.
 pub(crate) struct SymbolStats {
 	ll_counts: ArrayLL<u32>,
 	d_counts:  ArrayD<u32>,
-
 	pub(crate) ll_symbols: ArrayLL<f64>,
 	pub(crate) d_symbols:  ArrayD<f64>,
 }
@@ -74,70 +74,47 @@ impl SymbolStats {
 }
 
 impl SymbolStats {
-	/// # Add Previous Stats (Weighted).
+	/// # Crunch Symbols.
 	///
-	/// This is essentially an `AddAssign` for `ll_counts` and `d_counts`. Each
-	/// previous value is halved and added to the corresponding current value.
-	pub(crate) fn add_last(
-		&mut self,
-		ll_counts: &ArrayLL<u32>,
-		d_counts: &ArrayD<u32>,
-	) {
-		for (l, r) in self.ll_counts.iter_mut().zip(ll_counts.iter().copied()) {
-			*l += r.wrapping_div(2);
-		}
-		for (l, r) in self.d_counts.iter_mut().zip(d_counts.iter().copied()) {
-			*l += r.wrapping_div(2);
-		}
-
-		// Set the end symbol.
-		self.ll_counts[256] = 1;
-	}
-
-	/// # Clear Frequencies.
+	/// This calculates the "entropy" of the `ll_counts` and `d_counts` — a
+	/// fancy way of saying the difference between the log2 of everything and
+	/// the log2 of self — storing the results in the corresponding symbol
+	/// arrays.
 	///
-	/// Set all `ll_counts` and `d_counts` to zero and return the originals.
-	pub(crate) fn clear(&mut self) -> (ArrayLL<u32>, ArrayD<u32>) {
-		(
-			std::mem::replace(&mut self.ll_counts, ZEROED_COUNTS_LL),
-			std::mem::replace(&mut self.d_counts, ZEROED_COUNTS_D),
-		)
-	}
-
-	/// # Calculate/Set Statistics.
-	///
-	/// This calculates the "entropy" of the `ll_counts` and `d_counts`, storing the
-	/// results in the corresponding symbols arrays.
+	/// Note: the symbols are only valid for the _current_ counts, but they
+	/// don't need to be rebuilt after each and every little change because
+	/// they're only ever referenced during `ZopfliState::optimal_run` passes;
+	/// so long as they're (re)crunched before that method is called, life is
+	/// grand.
 	pub(crate) fn crunch(&mut self) {
-		#[allow(clippy::cast_precision_loss)]
-		fn calculate_entropy<const N: usize>(count: &[u32; N], bitlengths: &mut [f64; N]) {
-			let sum = count.iter().sum::<u32>();
-
-			if sum == 0 {
-				let log2sum = (N as f64).log2();
-				bitlengths.fill(log2sum);
-			}
-			else {
-				let log2sum = f64::from(sum).log2();
-
-				for (c, b) in count.iter().copied().zip(bitlengths.iter_mut()) {
-					if c == 0 { *b = log2sum; }
-					else {
-						*b = log2sum - f64::from(c).log2();
-						if b.is_sign_negative() { *b = 0.0; }
-					}
-				}
-			}
+		// Distances first.
+		let sum = self.d_counts.iter().copied().sum::<u32>();
+		let log2sum =
+			if sum == 0 { 5.0 } // 32.log2()
+			else { f64::from(sum).log2() };
+		self.d_symbols.fill(log2sum);
+		for (c, b) in self.d_counts.iter().copied().zip(&mut self.d_symbols) {
+			if c != 0 { *b -= f64::from(c).log2(); }
 		}
 
-		calculate_entropy(&self.ll_counts, &mut self.ll_symbols);
-		calculate_entropy(&self.d_counts, &mut self.d_symbols);
+		// Lengths second.
+		let sum = self.ll_counts.iter().copied().sum::<u32>();
+		// Safety: ll_counts[256] is always 1 — (re)load_store and randomize
+		// both force it — so this sum will always be nonzero.
+		if sum == 0 { crate::unreachable(); }
+		let log2sum = f64::from(sum).log2();
+		self.ll_symbols.fill(log2sum);
+		for (c, b) in self.ll_counts.iter().copied().zip(&mut self.ll_symbols) {
+			if c != 0 { *b -= f64::from(c).log2(); }
+		}
 	}
 
 	/// # Load Statistics.
 	///
 	/// This updates the `ll_counts` and `d_counts` stats using the data from the
-	/// `ZopfliLZ77Store` store, then crunches the results.
+	/// `LZ77Store` store.
+	///
+	/// Note: this does _not_ rebuild the symbol tables.
 	pub(crate) fn load_store(&mut self, store: &LZ77Store) {
 		for e in &store.entries {
 			self.ll_counts[e.ll_symbol as usize] += 1;
@@ -146,26 +123,67 @@ impl SymbolStats {
 
 		// Set the end symbol and crunch.
 		self.ll_counts[256] = 1;
-		self.crunch();
 	}
 
 	/// # Randomize Stat Frequencies.
 	///
 	/// This randomizes the stat frequencies to allow things to maybe turn out
 	/// different on subsequent squeeze passes.
+	///
+	/// For this to work properly, a single `RanState` must be used for all
+	/// iterations, and because shuffling advances the `RanState`, litlens must
+	/// be processed before distances.
+	///
+	/// Yeah… this is super weird. Haha.
+	///
+	/// Note: this does _not_ rebuild the symbol tables.
 	pub(crate) fn randomize(&mut self, state: &mut RanState) {
-		fn randomize_freqs<const N: usize>(freqs: &mut [u32; N], state: &mut RanState) {
-			for i in 0..N {
+		fn shuffle_counts<const N: usize>(counts: &mut [u32; N], state: &mut RanState) {
+			const { assert!(N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL); }
+			for i in const { 0..N } {
 				if (state.randomize() >> 4) % 3 == 0 {
 					let index = state.randomize() as usize % N;
-					freqs[i] = freqs[index];
+					counts[i] = counts[index];
 				}
 			}
 		}
-		randomize_freqs(&mut self.ll_counts, state);
-		randomize_freqs(&mut self.d_counts, state);
+		shuffle_counts(&mut self.ll_counts, state); // Lengths need to go first.
+		shuffle_counts(&mut self.d_counts, state);
 
 		// Set the end symbol.
 		self.ll_counts[256] = 1;
+	}
+
+	/// # Reload Store.
+	///
+	/// Like `SymbolStats::load_store`, but reset or halve the counts first.
+	/// (Halving creates a sort of weighted average, useful once a few
+	/// iterations have occurred.)
+	///
+	/// Note: this does _not_ rebuild the symbols.
+	pub(crate) fn reload_store(&mut self, store: &LZ77Store, weighted: bool) {
+		if weighted {
+			for c in &mut self.d_counts { *c /= 2; }
+			for c in &mut self.ll_counts { *c /= 2; }
+		}
+		else {
+			self.d_counts.fill(0);
+			self.ll_counts.fill(0);
+		}
+
+		self.load_store(store);
+	}
+}
+
+
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn t_d_log2() {
+		// Make sure we precomputed the 32.log2() correctly!
+		assert_eq!((ZOPFLI_NUM_D as f64).log2(), 5.0);
 	}
 }
