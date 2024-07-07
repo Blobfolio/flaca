@@ -101,11 +101,12 @@ fn build_symbols() {
 	use std::fmt::Write;
 
 	let mut out = format!(
-		"{}{}{}{}{}{}",
-		NumEnum::new(0..19_u8, "Deflate Indices.", "DeflateSym")
+		"{}{}{}{}{}{}{}",
+		NumEnum::new(0..19_u8, "Extended Deflate Indices.", "DeflateSym")
 			.with_debug()
 			.with_eq()
 			.with_iter(),
+		NumEnum::new(0..16_u8, "Basic Deflate Indices.", "DeflateSymBasic").with_eq(),
 		NumEnum::new(0..32_u16, "Distance Symbols.", "Dsym"),
 		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq().with_iter(),
 		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),

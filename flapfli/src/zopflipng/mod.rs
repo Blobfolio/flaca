@@ -55,6 +55,7 @@ use rle::DynamicLengths;
 use super::deflate::ZopfliOut;
 use symbols::{
 	DeflateSym,
+	DeflateSymBasic,
 	DISTANCE_BITS,
 	DISTANCE_BITS_F,
 	DISTANCE_SYMBOLS,
