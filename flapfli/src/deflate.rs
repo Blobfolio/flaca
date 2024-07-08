@@ -15,13 +15,11 @@ use std::{
 		NonZeroUsize,
 		NonZeroU32,
 	},
-	sync::atomic::Ordering::Relaxed,
 };
 use super::{
 	deflate_part,
 	ffi::flapfli_allocate,
 	lodepng::LodePNGCompressSettings,
-	ZOPFLI_ITERATIONS,
 	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZopfliChunk,
 	ZopfliState,
@@ -40,6 +38,18 @@ const NZ60: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(60) };
 #[allow(unsafe_code)]
 /// # Max Iterations.
 const MAX_ITERATIONS: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(i32::MAX as u32) };
+
+/// # Number of Zopfli LZ77 Iterations.
+///
+/// `Some` values are capped to `i32::MAX`, though anything above a few
+/// thousand iterations is madness.
+///
+/// If `None`, either twenty or sixty iterations will be performed, depending
+/// on the file size.
+///
+/// Note: This value is only (possibly) set (once) during `flaca`'s
+/// initialization; it won't change after that.
+static mut NUM_ITERATIONS: Option<NonZeroU32> = None;
 
 
 
@@ -92,10 +102,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	let arr = unsafe { std::slice::from_raw_parts(arr, insize) };
 
 	// Figure out how many iterations to use.
-	let numiterations = NonZeroU32::new(ZOPFLI_ITERATIONS.load(Relaxed)).map_or(
-		if arr.len() < 200_000 { NZ60 } else { NZ20 },
-		|custom| NonZeroU32::min(custom, MAX_ITERATIONS)
-	);
+	let numiterations = zopfli_iterations(arr.len());
 
 	// Compress in chunks, à la ZopfliDeflate.
 	for chunk in DeflateIter::new(arr) {
@@ -122,6 +129,21 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	0
 }
 
+/// # Set Iteration Count.
+///
+/// Override the default (size-based) number of Zopfli LZ77 iterations with a
+/// fixed value.
+///
+/// ## Safety
+///
+/// Because this value is only (possibly) written once while `flaca` is parsing
+/// the CLI options — before any multi-threaded encoding happens — we can
+/// safely skip the overhead of atomics or other wrappers and refer to the
+/// static directly.
+pub fn set_zopfli_iterations(n: NonZeroU32) {
+	#[allow(unsafe_code)]
+	unsafe { NUM_ITERATIONS.replace(NonZeroU32::min(n, MAX_ITERATIONS)); }
+}
 
 
 /// # Lodepng Output Pointers.
@@ -348,4 +370,18 @@ impl<'a> DeflateIter<'a> {
 	const fn new(arr: &'a [u8]) -> Self {
 		Self { arr, pos: 0 }
 	}
+}
+
+
+
+#[allow(unsafe_code)]
+/// # Number of Zopfli LZ77 Iterations.
+///
+/// This either returns the user's fixed preference, or a size-based fallback.
+fn zopfli_iterations(len: usize) -> NonZeroU32 {
+	// Safety: this value is only ever set during flaca initialization; there
+	// is no thread contention.
+	unsafe { NUM_ITERATIONS }.unwrap_or(
+		if len < 200_000 { NZ60 } else { NZ20 }
+	)
 }

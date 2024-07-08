@@ -139,8 +139,8 @@ fn _main() -> Result<(), FlacaError> {
 
 	// Zopfli iterations.
 	if let Some(n) = args.option(b"-z") {
-		let n = u32::btou(n).ok_or(FlacaError::ZopfliIterations)?;
-		flapfli::ZOPFLI_ITERATIONS.store(n, Relaxed);
+		let n = NonZeroU32::btou(n).ok_or(FlacaError::ZopfliIterations)?;
+		flapfli::set_zopfli_iterations(n);
 	}
 
 	// Pixel limits.

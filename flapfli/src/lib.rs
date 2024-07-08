@@ -39,6 +39,7 @@ mod ffi;
 mod lodepng;
 mod zopflipng;
 
+pub use deflate::set_zopfli_iterations;
 use ffi::EncodedPNG;
 use lodepng::{
 	DecodedImage,
@@ -46,7 +47,6 @@ use lodepng::{
 	LodePNGFilterStrategy,
 	LodePNGState,
 };
-use std::sync::atomic::AtomicU32;
 use zopflipng::{
 	deflate_part,
 	ZOPFLI_MASTER_BLOCK_SIZE,
@@ -55,17 +55,6 @@ use zopflipng::{
 };
 
 
-
-/// # Number of Zopfli Iterations.
-///
-/// A non-zero value indicates a fixed user preference (capped at `i32::MAX`,
-/// though anything above a few thousand is usually terrible). If zero, the
-/// number of iterations will vary by file size.
-///
-/// This is only actually written to once, if ever, but is atomic to make it
-/// easier to read the value from within the callback. (That callback is Rust,
-/// but called from C.)
-pub static ZOPFLI_ITERATIONS: AtomicU32 = AtomicU32::new(0);
 
 #[must_use]
 /// # Optimize!
