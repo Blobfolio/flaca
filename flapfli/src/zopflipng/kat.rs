@@ -62,97 +62,6 @@ thread_local!(
 
 
 
-#[allow(clippy::wildcard_imports)]
-mod sealed {
-	use super::*;
-
-	#[allow(private_bounds, private_interfaces, unreachable_pub)]
-	/// # Length Limited Code Lengths (Private).
-	///
-	/// This sealed trait provides the core LLCL-related functionality for the
-	/// three different count sizes implementing `LengthLimitedCodeLengths`,
-	/// keeping them from cluttering the public ABI.
-	pub trait LengthLimitedCodeLengthsSealed<const N: usize> {
-		const MAXBITS: NonZeroUsize;
-
-		#[inline]
-		/// # Crunch the Code Lengths.
-		///
-		/// This method serves as the closure for the caller's call to
-		/// `KATSCRATCH.with_borrow_mut()`. It does all that needs doing to get
-		/// the desired length-limited data into the provided `bitlengths`.
-		fn _llcl<'a>(
-			frequencies: &'a [u32; N],
-			bitlengths: &'a [Cell<DeflateSym>; N],
-			nodes: &KatScratch
-		) -> Result<(), ZopfliError> {
-			let leaves = nodes.leaves(frequencies, bitlengths);
-			if leaves.len() <= 2 {
-				for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
-				return Ok(());
-			}
-
-			// Set up the lists.
-			let lists = nodes.lists(
-				usize::min(Self::MAXBITS.get(), leaves.len() - 1),
-				leaves[0].frequency,
-				leaves[1].frequency,
-			);
-			// Safety: `usize::min(MAXBITS, leaves.len() - 1)` (above) is
-			// how many lists we'll have, and since MAXBITS is at least
-			// seven and leaves.len() at least three, we'll always have at
-			// least two lists to work with.
-			if lists.len() < 2 { crate::unreachable(); }
-
-			// In the last list, (2 * len_leaves - 2) active chains need to be
-			// created. We have two already from initialization; each boundary_pm run
-			// will give us another.
-			for _ in 0..2 * leaves.len() - 5 {
-				llcl_boundary_pm(leaves, lists, nodes)?;
-			}
-
-			// Add the last chain and write the results!
-			let node = Node::last(&lists[lists.len() - 2], &lists[lists.len() - 1], leaves);
-			Self::llcl_write(node, leaves)
-		}
-
-		#[inline]
-		/// # Write Code Lengths!
-		///
-		/// This is the final stage of the LLCL chain, where the results are
-		/// finally recorded!
-		fn llcl_write(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
-			// Make sure we counted correctly before doing anything else.
-			let mut last_count = node.count;
-			debug_assert!(leaves.len() >= last_count.get() as usize);
-
-			// Write the changes!
-			let mut writer = leaves.iter().take(last_count.get() as usize).rev();
-			for value in DeflateSym::nonzero_iter().take(Self::MAXBITS.get()) {
-				// Pull the next tail, if any.
-				if let Some(tail) = node.tail.copied() {
-					// Wait for a change in counts to write the values.
-					if tail.count < last_count {
-						for leaf in writer.by_ref().take((last_count.get() - tail.count.get()) as usize) {
-							leaf.bitlength.set(value);
-						}
-						last_count = tail.count;
-					}
-					node = tail;
-				}
-				// Write the remaining entries and quit!
-				else {
-					for leaf in writer { leaf.bitlength.set(value); }
-					return Ok(());
-				}
-			}
-
-			// This shouldn't be reachable.
-			Err(zopfli_error!())
-		}
-	}
-}
-
 /// # Length Limited Code Lengths.
 ///
 /// This trait adds an `llcl` method to symbol count arrays that generates the
@@ -163,80 +72,66 @@ where Self: Sized {
 	fn llcl_symbols(lengths: &[DeflateSym; N]) -> Self;
 }
 
-impl sealed::LengthLimitedCodeLengthsSealed<19> for [u32; 19] {
-	#[allow(unsafe_code)]
-	const MAXBITS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(7) };
-}
-impl sealed::LengthLimitedCodeLengthsSealed<ZOPFLI_NUM_D> for ArrayD<u32> {
-	#[allow(unsafe_code)]
-	const MAXBITS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(15) };
-}
-impl sealed::LengthLimitedCodeLengthsSealed<ZOPFLI_NUM_LL> for ArrayLL<u32> {
-	#[allow(unsafe_code)]
-	const MAXBITS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(15) };
-}
-
 macro_rules! llcl {
-	($maxbits:literal, $size:expr) => (
-		/// # Counts to Symbols.
-		fn llcl(&self) -> Result<[DeflateSym; $size], ZopfliError> {
-			use sealed::LengthLimitedCodeLengthsSealed;
-
-			// Start the bitlengths at zero.
-			let mut bitlengths = [DeflateSym::D00; $size];
-			let bitcells = array_of_cells(&mut bitlengths);
-
-			// Crunch!
-			KATSCRATCH.with(|nodes| Self::_llcl(self, bitcells, nodes)).map(|()| bitlengths)
+	($maxbits:literal, $take:literal, $size:expr) => (
+		impl sealed::LengthLimitedCodeLengthsSealed<$size> for [u32; $size] {
+			#[allow(unsafe_code)]
+			const MAXBITS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked($maxbits) };
 		}
 
-		#[inline]
-		/// # Symbols to Counts.
-		fn llcl_symbols(lengths: &[DeflateSym; $size]) -> Self {
-			// The lengths should have previously been limited.
-			debug_assert!(lengths.iter().all(|&l| (l as usize) < $maxbits));
+		impl LengthLimitedCodeLengths<$size> for [u32; $size] {
+			/// # Counts to Symbols.
+			fn llcl(&self) -> Result<[DeflateSym; $size], ZopfliError> {
+				use sealed::LengthLimitedCodeLengthsSealed;
 
-			// Count up the codes by code length. (Note: the compiler doesn't
-			// understand the lengths have been limited to $maxbits. Of all the
-			// different ways to get it to elide bounds checks, overallocating
-			// scratch to 19 performs best.
-			let mut scratch = ZEROED_COUNTS_TREE;
-			for l in lengths.iter().copied() { scratch[l as usize] += 1; }
+				// Start the bitlengths at zero.
+				let mut bitlengths = [DeflateSym::D00; $size];
+				let bitcells = array_of_cells(&mut bitlengths);
 
-			// Find the numerical value of the smallest code for each code
-			// length (up to $maxbits).
-			let mut code = 0;
-			scratch[0] = 0;
-			for c in scratch.iter_mut().take($maxbits) {
-				let next = (code + *c) << 1;
-				*c = std::mem::replace(&mut code, next);
+				// Crunch!
+				KATSCRATCH.with(|nodes| Self::_llcl(self, bitcells, nodes)).map(|()| bitlengths)
 			}
 
-			// Update the (non-zero) symbol counts accordingly.
-			let mut symbols = [0; $size];
-			for (l, s) in lengths.iter().copied().zip(&mut symbols) {
-				if ! l.is_zero() {
-					*s = scratch[l as usize];
-					scratch[l as usize] += 1;
+			#[inline]
+			/// # Symbols to Counts.
+			fn llcl_symbols(lengths: &[DeflateSym; $size]) -> Self {
+				// The lengths should have previously been limited.
+				debug_assert!(lengths.iter().all(|&l| (l as usize) < $take));
+
+				// Count up the codes by code length. (Note: the compiler doesn't
+				// understand the lengths have been limited to $take. Of all the
+				// different ways to get it to elide bounds checks, overallocating
+				// scratch to 19 performs best.
+				let mut scratch = ZEROED_COUNTS_TREE;
+				for l in lengths.iter().copied() { scratch[l as usize] += 1; }
+
+				// Find the numerical value of the smallest code for each code
+				// length (up to $take).
+				let mut code = 0;
+				scratch[0] = 0;
+				for c in scratch.iter_mut().take($take) {
+					let next = (code + *c) << 1;
+					*c = std::mem::replace(&mut code, next);
 				}
+
+				// Update the (non-zero) symbol counts accordingly.
+				let mut symbols = [0; $size];
+				for (l, s) in lengths.iter().copied().zip(&mut symbols) {
+					if ! l.is_zero() {
+						*s = scratch[l as usize];
+						scratch[l as usize] += 1;
+					}
+				}
+				symbols
 			}
-			symbols
 		}
 	);
 }
 
 // Tree symbols have seven maxbits, while NUM_D and NUM_LL each have 15.
-impl LengthLimitedCodeLengths<19> for [u32; 19] {
-	llcl!(8, 19);
-}
-
-impl LengthLimitedCodeLengths<ZOPFLI_NUM_D> for ArrayD<u32> {
-	llcl!(16, ZOPFLI_NUM_D);
-}
-
-impl LengthLimitedCodeLengths<ZOPFLI_NUM_LL> for ArrayLL<u32> {
-	llcl!(16, ZOPFLI_NUM_LL);
-}
+llcl!(7, 8, 19);
+llcl!(15, 16, ZOPFLI_NUM_D);
+llcl!(15, 16, ZOPFLI_NUM_LL);
 
 
 
@@ -867,67 +762,6 @@ const fn extra_bools(extra: u8) -> (bool, bool, bool) {
 	(0 != extra & 1, 0 != extra & 2, 0 != extra & 4)
 }
 
-/// # Boundary Package-Merge Step.
-///
-/// Add a new chain to the list, using either a leaf or combination of
-/// two chains from the previous list.
-///
-/// Note: it would probably be more appropriate to make this a trait member or
-/// at least scope it to the sealed trait's module, but doing either leads the
-/// compiler to change its inlining decisions for the worse, so best to leave
-/// it where it is!
-fn llcl_boundary_pm(leaves: &[Leaf<'_>], lists: &mut [List], nodes: &KatScratch)
--> Result<(), ZopfliError> {
-	// This method should never be called with an empty list.
-	let [rest @ .., current] = lists else { return Err(zopfli_error!()); };
-	let last_count = current.lookahead1.count;
-
-	// We're at the beginning, which is the end since we're iterating in
-	// reverse.
-	if rest.is_empty() {
-		if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
-			// Shift the lookahead and add a new node.
-			current.rotate();
-			current.lookahead1 = nodes.push(Node {
-				weight: last_leaf.frequency,
-				count: last_count.saturating_add(1),
-				tail: current.lookahead0.tail,
-			})?;
-		}
-		return Ok(());
-	}
-
-	// Shift the lookahead.
-	current.rotate();
-
-	let previous = rest[rest.len() - 1];
-	let weight_sum = previous.weight_sum();
-
-	// Add a leaf and increment the count.
-	if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
-		if last_leaf.frequency < weight_sum {
-			current.lookahead1 = nodes.push(Node {
-				weight: last_leaf.frequency,
-				count: last_count.saturating_add(1),
-				tail: current.lookahead0.tail,
-			})?;
-			return Ok(());
-		}
-	}
-
-	// Update the tail.
-	current.lookahead1 = nodes.push(Node {
-		weight: weight_sum,
-		count: last_count,
-		tail: Some(previous.lookahead1),
-	})?;
-
-	// Replace the used-up lookahead chains by recursing twice.
-	llcl_boundary_pm(leaves, rest, nodes)?;
-	llcl_boundary_pm(leaves, rest, nodes)
-}
-
-#[allow(clippy::cast_possible_truncation)]
 /// # Last Non-Zero, Non-Special Count.
 ///
 /// This method loops through the counts in the jumbled DEFLATE tree order,
@@ -939,9 +773,162 @@ const fn tree_hclen(cl_counts: &[u32; 19]) -> DeflateSymBasic {
 		hclen -= 1;
 		if hclen == 0 { break; }
 	}
-	#[allow(unsafe_code)]
+	#[allow(unsafe_code, clippy::cast_possible_truncation)]
 	// Safety: DeflateSymBasic covers all values between 0..=15.
 	unsafe { std::mem::transmute::<u8, DeflateSymBasic>(hclen as u8) }
+}
+
+
+
+#[allow(clippy::wildcard_imports)]
+mod sealed {
+	use super::*;
+
+	#[allow(private_bounds, private_interfaces, unreachable_pub)]
+	/// # Length Limited Code Lengths (Private).
+	///
+	/// This sealed trait provides the core LLCL-related functionality for the
+	/// three different count sizes implementing `LengthLimitedCodeLengths`,
+	/// keeping them from cluttering the public ABI.
+	pub trait LengthLimitedCodeLengthsSealed<const N: usize> {
+		const MAXBITS: NonZeroUsize;
+
+		#[inline]
+		/// # Crunch the Code Lengths.
+		///
+		/// This method serves as the closure for the caller's call to
+		/// `KATSCRATCH.with_borrow_mut()`. It does all that needs doing to get
+		/// the desired length-limited data into the provided `bitlengths`.
+		fn _llcl<'a>(
+			frequencies: &'a [u32; N],
+			bitlengths: &'a [Cell<DeflateSym>; N],
+			nodes: &KatScratch
+		) -> Result<(), ZopfliError> {
+			let leaves = nodes.leaves(frequencies, bitlengths);
+			if leaves.len() <= 2 {
+				for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
+				return Ok(());
+			}
+
+			// Set up the lists.
+			let lists = nodes.lists(
+				usize::min(Self::MAXBITS.get(), leaves.len() - 1),
+				leaves[0].frequency,
+				leaves[1].frequency,
+			);
+			// Safety: `usize::min(MAXBITS, leaves.len() - 1)` (above) is
+			// how many lists we'll have, and since MAXBITS is at least
+			// seven and leaves.len() at least three, we'll always have at
+			// least two lists to work with.
+			if lists.len() < 2 { crate::unreachable(); }
+
+			// In the last list, (2 * len_leaves - 2) active chains need to be
+			// created. We have two already from initialization; each boundary_pm run
+			// will give us another.
+			for _ in 0..2 * leaves.len() - 5 {
+				llcl_boundary_pm(leaves, lists, nodes)?;
+			}
+
+			// Add the last chain and write the results!
+			let node = Node::last(&lists[lists.len() - 2], &lists[lists.len() - 1], leaves);
+			Self::llcl_write(node, leaves)
+		}
+
+		#[inline]
+		/// # Write Code Lengths!
+		///
+		/// This is the final stage of the LLCL chain, where the results are
+		/// finally recorded!
+		fn llcl_write(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
+			// Make sure we counted correctly before doing anything else.
+			let mut last_count = node.count;
+			debug_assert!(leaves.len() >= last_count.get() as usize);
+
+			// Write the changes!
+			let mut writer = leaves.iter().take(last_count.get() as usize).rev();
+			for value in DeflateSym::nonzero_iter().take(Self::MAXBITS.get()) {
+				// Pull the next tail, if any.
+				if let Some(tail) = node.tail.copied() {
+					// Wait for a change in counts to write the values.
+					if tail.count < last_count {
+						for leaf in writer.by_ref().take((last_count.get() - tail.count.get()) as usize) {
+							leaf.bitlength.set(value);
+						}
+						last_count = tail.count;
+					}
+					node = tail;
+				}
+				// Write the remaining entries and quit!
+				else {
+					for leaf in writer { leaf.bitlength.set(value); }
+					return Ok(());
+				}
+			}
+
+			// This shouldn't be reachable.
+			Err(zopfli_error!())
+		}
+	}
+
+	/// # Boundary Package-Merge Step.
+	///
+	/// Add a new chain to the list, using either a leaf or combination of
+	/// two chains from the previous list.
+	///
+	/// Note: it would probably be more appropriate to make this a trait member or
+	/// at least scope it to the sealed trait's module, but doing either leads the
+	/// compiler to change its inlining decisions for the worse, so best to leave
+	/// it where it is!
+	fn llcl_boundary_pm(leaves: &[Leaf<'_>], lists: &mut [List], nodes: &KatScratch)
+	-> Result<(), ZopfliError> {
+		// This method should never be called with an empty list.
+		let [rest @ .., current] = lists else { return Err(zopfli_error!()); };
+		let last_count = current.lookahead1.count;
+
+		// We're at the beginning, which is the end since we're iterating in
+		// reverse.
+		if rest.is_empty() {
+			if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
+				// Shift the lookahead and add a new node.
+				current.rotate();
+				current.lookahead1 = nodes.push(Node {
+					weight: last_leaf.frequency,
+					count: last_count.saturating_add(1),
+					tail: current.lookahead0.tail,
+				})?;
+			}
+			return Ok(());
+		}
+
+		// Shift the lookahead.
+		current.rotate();
+
+		let previous = rest[rest.len() - 1];
+		let weight_sum = previous.weight_sum();
+
+		// Add a leaf and increment the count.
+		if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
+			if last_leaf.frequency < weight_sum {
+				current.lookahead1 = nodes.push(Node {
+					weight: last_leaf.frequency,
+					count: last_count.saturating_add(1),
+					tail: current.lookahead0.tail,
+				})?;
+				return Ok(());
+			}
+		}
+
+		// Update the tail.
+		current.lookahead1 = nodes.push(Node {
+			weight: weight_sum,
+			count: last_count,
+			tail: Some(previous.lookahead1),
+		})?;
+
+		// Replace the used-up lookahead chains by recursing twice.
+		llcl_boundary_pm(leaves, rest, nodes)?;
+		llcl_boundary_pm(leaves, rest, nodes)
+	}
 }
 
 
