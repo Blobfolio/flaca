@@ -62,15 +62,6 @@ pub(crate) const LENGTH_SYMBOL_BIT_VALUES: [u8; 259] = [
 	8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 0,
 ];
 
-/// # Symbol Iterator.
-///
-/// This trait exposes a single `all` method that returns an iterator over the
-/// enum's variants.
-pub(crate) trait SymbolIteration<U: ExactSizeIterator<Item=Self>>: Sized {
-	/// # Iterate All Variants!
-	fn all() -> U;
-}
-
 impl DeflateSym {
 	/// # Jumbled Tree Symbols.
 	///

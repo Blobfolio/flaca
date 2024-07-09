@@ -5,7 +5,10 @@ This module contains the deflate entrypoint and all of the block-related odds
 and ends that didn't make it into other modules.
 */
 
-use std::num::NonZeroU32;
+use std::num::{
+	NonZeroU32,
+	NonZeroUsize,
+};
 use super::{
 	ArrayD,
 	ArrayLL,
@@ -25,8 +28,6 @@ use super::{
 	LZ77StoreRange,
 	SplitCache,
 	SplitLen,
-	SplitPIdx,
-	SymbolIteration,
 	stats::{
 		RanState,
 		SymbolStats,
@@ -214,7 +215,7 @@ fn add_lz77_block(
 	// tiny one or the unoptimized-fixed size is within 10% of the dynamic size
 	// we should check it out.
 	if
-		store_len <= 1000 ||
+		store_len <= LZ77Store::SMALL_STORE ||
 		store.block_size_fixed().saturating_mul(NZ10) <= dynamic.cost().saturating_mul(NZ11)
 	{
 		let rng = store.byte_range()?;
@@ -225,8 +226,7 @@ fn add_lz77_block(
 		state.optimal_run_fixed(fixed_chunk, fixed_store)?;
 
 		// And finally, the cost!
-		let fixed_rng = ZopfliRange::new(0, fixed_store.len())?;
-		let fixed_store_rng = fixed_store.ranged(fixed_rng)?;
+		let fixed_store_rng = fixed_store.ranged_full()?;
 		let fixed_cost = fixed_store_rng.block_size_fixed();
 		if fixed_cost < dynamic.cost() && fixed_cost <= uncompressed_cost {
 			return add_fixed(last_block, fixed_store_rng, out);
@@ -296,37 +296,17 @@ fn add_lz77_data(
 /// # Calculate Best Block Size (in Bits).
 fn calculate_block_size_auto(store: &LZ77Store, rng: ZopfliRange)
 -> Result<NonZeroU32, ZopfliError> {
-	let small = store.len() <= 1000;
+	let small = store.is_small();
 	let store = store.ranged(rng)?;
 	store.block_size_auto(small)
 }
 
+#[inline(never)]
 /// # Minimum Split Cost.
 ///
 /// Return the index of the smallest split cost between `start..end`.
-fn find_minimum_cost(store: &LZ77Store, full_rng: ZopfliRange)
--> Result<(usize, NonZeroU32), ZopfliError> {
-	#[cold]
-	/// # Small Cost.
-	///
-	/// For small ranges, skip the logic and compare all possible splits. This
-	/// will return an error if no splits are possible.
-	fn small_cost(store: LZ77StoreRange, offset: usize, small: bool)
-	-> Result<(usize, NonZeroU32), ZopfliError> {
-		let mut best_cost = NonZeroU32::MAX;
-		let mut best_idx = 1;
-		let mut mid = 1;
-		for (a, b) in store.splits()? {
-			let cost = split_cost(a, b, small)?;
-			if cost < best_cost {
-				best_cost = cost;
-				best_idx = mid; // The split point.
-			}
-			mid += 1;
-		}
-		Ok((offset + best_idx, best_cost))
-	}
-
+fn find_minimum_cost(store: LZ77StoreRange, small: bool)
+-> Result<(NonZeroUsize, NonZeroU32), ZopfliError> {
 	/// # Split Block Cost.
 	///
 	/// Sum the left and right halves of the range.
@@ -336,52 +316,50 @@ fn find_minimum_cost(store: &LZ77Store, full_rng: ZopfliRange)
 		Ok(a.saturating_add(b.get()))
 	}
 
-	// Break it down a bit.
-	let offset = full_rng.start();
-	let small = store.len() <= 1000;
-	let store_rng = store.ranged(full_rng)?;
-
-	// Short circuit.
-	if store_rng.len().get() <= 1024 { return small_cost(store_rng, offset, small); }
-
-	// Split range, relative to the length of the ranged store.
-	let mut split_rng = 1..store_rng.len().get();
-
-	// Divide and conquer.
-	let mut best_cost = NonZeroU32::MAX;
-	let mut best_idx = 1;
-	let mut p = [0_usize; MINIMUM_SPLIT_DISTANCE - 1];
+	// Some counters.
 	let mut last_best_cost = NonZeroU32::MAX;
-	loop {
-		let mut best_p_idx = SplitPIdx::S0;
-		for (i, pp) in SplitPIdx::all().zip(p.iter_mut()) {
-			*pp = split_rng.start + (i as usize + 1) * (split_rng.len().wrapping_div(MINIMUM_SPLIT_DISTANCE));
-			let line_cost =
-				if best_idx == *pp { last_best_cost }
-				else {
-					let (a, b) = store_rng.split(*pp)?;
-					split_cost(a, b, small)?
-				};
+	let mut best_split = NonZeroUsize::MAX;
 
-			if (i as usize) == 0 || line_cost < best_cost {
-				best_cost = line_cost;
-				best_p_idx = i;
+	// Small ranges can just be iterated exhaustively.
+	if store.len().get() <= 1024 {
+		for (a, b) in store.splits()? {
+			let cost = split_cost(a, b, small)?;
+			if cost < last_best_cost {
+				last_best_cost = cost;
+				best_split = a.len(); // The split point.
 			}
 		}
+	}
+	// Larger stores require more of a divide-and-conquer approach.
+	else {
+		let mut splits = store.splits_chunked().ok_or(zopfli_error!())?;
+		loop {
+			let mut best_cost = NonZeroU32::MAX;
+			let mut best_chunk = 0;
+			for (i, a, b) in splits.by_ref() {
+				let line_cost =
+					if best_split == a.len() { last_best_cost }
+					else { split_cost(a, b, small)? };
 
-		// No improvement; we're done.
-		if last_best_cost < best_cost { break; }
+				if i == 0 || line_cost < best_cost {
+					best_cost = line_cost;
+					best_chunk = i;
+				}
+			}
 
-		// Nudge the boundaries and back again.
-		best_idx = p[best_p_idx as usize];
-		if 0 != (best_p_idx as usize) { split_rng.start = p[best_p_idx as usize - 1]; }
-		if (best_p_idx as usize) + 1 < p.len() { split_rng.end = p[best_p_idx as usize + 1]; }
+			// Stop once we start making things worse.
+			if last_best_cost < best_cost { break; }
 
-		last_best_cost = best_cost;
-		if split_rng.len() < MINIMUM_SPLIT_DISTANCE { break; }
+			// Update the counters.
+			best_split = splits.reset(best_chunk);
+			last_best_cost = best_cost;
+		}
 	}
 
-	Ok((offset + best_idx, last_best_cost))
+	// If this were going to fail it would have failed a million times over
+	// already, but one more check doesn't hurt!
+	if best_split < store.len() { Ok((best_split, last_best_cost)) }
+	else { Err(zopfli_error!()) }
 }
 
 #[inline]
@@ -453,7 +431,7 @@ fn lz77_optimal(
 
 	// Find and return the current (best) cost of the store.
 	let store_rng = store.ranged_full()?;
-	store_rng.block_size_auto(store_rng.len().get() <= 1000)
+	store_rng.block_size_auto(store_rng.is_small())
 }
 
 #[inline(never)]
@@ -585,7 +563,7 @@ fn split_points_lz77(
 	///
 	/// Returns `false` if no blocks are found.
 	fn find_largest(
-		lz77size: usize,
+		lz77size: NonZeroUsize,
 		done: &SplitCache,
 		splitpoints: &[usize],
 		rng: &mut ZopfliRange,
@@ -597,7 +575,7 @@ fn split_points_lz77(
 				else { splitpoints[i - 1] };
 			let end =
 				if i < splitpoints.len() { splitpoints[i] }
-				else { lz77size - 1 };
+				else { lz77size.get() - 1 };
 
 			// We found a match!
 			if best < end - start && done.is_unset(start) {
@@ -609,24 +587,28 @@ fn split_points_lz77(
 	}
 
 	// This won't work on tiny files.
-	if store.len() < MINIMUM_SPLIT_DISTANCE { return Ok(SplitLen::S00); }
+	let store = store.ranged_full()?;
+	if store.len().get() < MINIMUM_SPLIT_DISTANCE { return Ok(SplitLen::S00); }
 
 	// Get started!
-	let mut rng = ZopfliRange::new(0, store.len())?;
+	let mut rng = ZopfliRange::from(store);
+	let small = store.is_small(); // Smallness depends on the original store for some reason.
 	let done = state.split_cache(rng);
 	let mut last = 0;
 	let mut len = SplitLen::S00;
 	loop {
-		// Safety: find_minimum_cost will return an error if the block doesn't
-		// have a midpoint.
-		let (llpos, llcost) = find_minimum_cost(store, rng)?;
-		if rng.start() >= llpos || rng.end() <= llpos { crate::unreachable(); }
+		let store_rng = store.ranged(rng)?;
+		let (llpos, llcost) = find_minimum_cost(store_rng, small)?;
 
 		// Ignore points we've already covered.
-		if llpos == rng.start() + 1 || calculate_block_size_auto(store, rng)? < llcost {
+		if llpos.get() == 1 || store_rng.block_size_auto(small)? < llcost {
 			done.set(rng.start());
 		}
 		else {
+			// The llpos was relative; add it back to start to give it
+			// store-wide context.
+			let llpos = rng.start() + llpos.get();
+
 			// Mark it as a split point and add it sorted.
 			split_b[len as usize] = llpos;
 			len = len.increment();
@@ -669,19 +651,5 @@ mod test {
 			ArrayD::<u32>::llcl_symbols(&FIXED_TREE_D),
 			FIXED_SYMBOLS_D,
 		);
-	}
-
-	#[test]
-	fn t_split_idx() {
-		// Make sure we have the same number of split indices as we do splits.
-		assert_eq!(
-			SplitPIdx::all().len(),
-			MINIMUM_SPLIT_DISTANCE - 1,
-		);
-
-		// Might as well they iterate the same.
-		let split1: Vec<usize> = SplitPIdx::all().map(|s| s as usize).collect();
-		let split2: Vec<usize> = (0..MINIMUM_SPLIT_DISTANCE - 1).collect();
-		assert_eq!(split1, split2);
 	}
 }

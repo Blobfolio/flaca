@@ -101,7 +101,7 @@ fn build_symbols() {
 	use std::fmt::Write;
 
 	let mut out = format!(
-		"{}{}{}{}{}{}{}",
+		"{}{}{}{}{}{}",
 		NumEnum::new(0..19_u8, "Extended Deflate Indices.", "DeflateSym")
 			.with_debug()
 			.with_eq()
@@ -110,7 +110,6 @@ fn build_symbols() {
 		NumEnum::new(0..32_u16, "Distance Symbols.", "Dsym"),
 		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq().with_iter(),
 		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),
-		NumEnum::new(0..9_u16, "Block Splitting Indices.", "SplitPIdx").with_iter(),
 		NumEnum::new(0..15_u8, "Block Split Length.", "SplitLen").with_eq(),
 	);
 
@@ -392,14 +391,9 @@ impl ExactSizeIterator for {name}Iter {{
 		usize::from({end}_{kind}.saturating_sub(self.0))
 	}}
 }}
-
-impl SymbolIteration<{name}Iter> for {name} {{
-	fn all() -> {name}Iter {{ {name}Iter({start}) }}
-}}
 ",
 				name=self.name,
 				end=self.rng.end,
-				start=self.rng.start,
 			)?;
 		}
 

@@ -68,8 +68,6 @@ use symbols::{
 	LitLen,
 	Lsym,
 	SplitLen,
-	SplitPIdx,
-	SymbolIteration,
 };
 
 
