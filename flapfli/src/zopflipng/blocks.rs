@@ -330,7 +330,7 @@ fn find_minimum_cost(store: LZ77StoreRange, small: bool)
 			}
 		}
 	}
-	// Larger stores require more of a divide-and-conquer approach.
+	// Larger ones require more of a divide-and-conquer approach.
 	else {
 		let mut splits = store.splits_chunked().ok_or(zopfli_error!())?;
 		loop {
@@ -403,7 +403,7 @@ fn lz77_optimal(
 		// Optimal run.
 		state.optimal_run(chunk, &current_stats, scratch_store)?;
 
-		// This is the cost we actually care about.
+		// At this point, we only care about the dynamic cost of the chunk.
 		let current_cost = scratch_store.ranged_full()
 			.and_then(LZ77StoreRange::block_size_dynamic)?;
 
@@ -416,7 +416,7 @@ fn lz77_optimal(
 
 		// Repopulate the counts from the current store, and if the randomness
 		// has "warmed up" sufficiently, combine them with half the previous
-		// values to create a sorted of weighted average.
+		// values to create a sort of weighted average.
 		current_stats.reload_store(scratch_store, weighted);
 
 		// If nothing changed, replace the current stats with the best stats,
@@ -487,7 +487,7 @@ fn split_points(
 		let two_len = split_points_lz77_cold(state, store, &mut split_a)?;
 		split_a[two_len as usize] = store.len();
 		split_a.rotate_right(1);
-		debug_assert!(split_a[0] == 0); // We don't write to the last byte.
+		debug_assert!(split_a[0] == 0); // We don't write to the last (now first) byte.
 		let mut cost2 = 0;
 		for pair in split_a[..two_len as usize + 2].windows(2) {
 			cost2 += calculate_block_size_auto(
