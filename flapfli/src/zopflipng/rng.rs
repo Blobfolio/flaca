@@ -135,27 +135,4 @@ mod test {
 		assert!(rng.set(3, 2).is_err());
 		assert!(rng.set(0, ZOPFLI_MASTER_BLOCK_SIZE + 1).is_err());
 	}
-
-	#[test]
-	fn t_range_splits() {
-		let rng = ZopfliRange::new(0, 1000).expect("0..1000 failed");
-
-		let mut splits = rng.splits().expect("No splits!");
-		assert_eq!(splits.len(), 9);
-		assert_eq!(splits.chunk().get(), 100);
-		assert_eq!(splits.next(), Some(100));
-		assert_eq!(splits.next(), Some(200));
-		assert_eq!(splits.next(), Some(300));
-		assert_eq!(splits.next(), Some(400));
-		assert_eq!(splits.next(), Some(500));
-		assert_eq!(splits.next(), Some(600));
-		assert_eq!(splits.next(), Some(700));
-		assert_eq!(splits.next(), Some(800));
-		assert_eq!(splits.next(), Some(900));
-		assert_eq!(splits.next(), None);
-
-		let rng2 = splits.split_rng(2).expect("Unable to split range at 2!");
-		assert_eq!(rng2.start, 200);
-		assert_eq!(rng2.end, 400);
-	}
 }

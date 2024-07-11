@@ -59,7 +59,7 @@ const NZ11: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(11) };
 /// # Block Split Points.
 ///
 /// This array holds up to fourteen middle points as well as the absolute start
-/// and end indices.
+/// and end indices for the chunk/store.
 type SplitPoints = [usize; 16];
 
 /// # Zero-Filled Split Points.
@@ -81,12 +81,6 @@ pub(crate) fn deflate_part(
 	chunk: ZopfliChunk<'_>,
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
-	#[inline(never)]
-	fn empty_fixed(last_block: bool, out: &mut ZopfliOut) {
-		out.add_header::<BLOCK_TYPE_FIXED>(last_block);
-		out.add_fixed_bits::<7>(0);
-	}
-
 	let mut store = LZ77Store::new();
 	let mut store2 = LZ77Store::new();
 
@@ -100,29 +94,19 @@ pub(crate) fn deflate_part(
 	)?;
 
 	// Write the data!
-	let store_len = best[best_len as usize + 1];
-	for pair in best[..best_len as usize + 2].windows(2) {
-		let really_last_block = last_block && pair[1] == store_len;
-
-		if let Ok(rng) = ZopfliRange::new(pair[0], pair[1]) {
-			let store_rng = store.ranged(rng)?;
-			add_lz77_block(
-				really_last_block,
-				store_rng,
-				store_len,
-				&mut store2,
-				state,
-				chunk,
-				out,
-			)?;
-		}
-
-		// This shouldn't be reachable, but the original zopfli seemed to think
-		// empty blocks are possible and imply fixed-tree layouts, so maybe?
-		else {
-			debug_assert_eq!(pair[0], pair[1]);
-			empty_fixed(really_last_block, out);
-		}
+	let store_len = NonZeroUsize::new(best[best_len as usize + 1]).ok_or(zopfli_error!())?;
+	for rng in SplitPointsIter::new(&best, best_len) {
+		let rng = rng?;
+		let store_rng = store.ranged(rng)?;
+		add_lz77_block(
+			last_block && rng.end() == store_len.get(),
+			store_rng,
+			store_len,
+			&mut store2,
+			state,
+			chunk,
+			out,
+		)?;
 	}
 
 	Ok(())
@@ -139,7 +123,7 @@ pub(crate) fn deflate_part(
 fn add_lz77_block(
 	last_block: bool,
 	store: LZ77StoreRange,
-	store_len: usize,
+	store_len: NonZeroUsize,
 	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
 	chunk: ZopfliChunk<'_>,
@@ -215,7 +199,7 @@ fn add_lz77_block(
 	// tiny one or the unoptimized-fixed size is within 10% of the dynamic size
 	// we should check it out.
 	if
-		store_len <= LZ77Store::SMALL_STORE ||
+		store_len.get() <= LZ77Store::SMALL_STORE ||
 		store.block_size_fixed().saturating_mul(NZ10) <= dynamic.cost().saturating_mul(NZ11)
 	{
 		let rng = store.byte_range()?;
@@ -487,13 +471,10 @@ fn split_points(
 		let two_len = split_points_lz77_cold(state, store, &mut split_a)?;
 		split_a[two_len as usize] = store.len();
 		split_a.rotate_right(1);
-		debug_assert!(split_a[0] == 0); // We don't write to the last (now first) byte.
+		debug_assert!(split_a[0] == 0); // SplitLen tops out at 14 so we can't actually write to 15 (now 0); it should be the default value, which was zero.
 		let mut cost2 = 0;
-		for pair in split_a[..two_len as usize + 2].windows(2) {
-			cost2 += calculate_block_size_auto(
-				store,
-				ZopfliRange::new(pair[0], pair[1])?,
-			)?.get();
+		for rng in SplitPointsIter::new(&split_a, two_len) {
+			cost2 += calculate_block_size_auto(store, rng?)?.get();
 		}
 
 		// It's better!
@@ -501,7 +482,7 @@ fn split_points(
 	}
 
 	split_b.rotate_right(1);
-	debug_assert!(split_b[0] == 0); // We don't write to the last byte.
+	debug_assert!(split_b[0] == 0); // SplitLen tops out at 14 so we can't actually write to 15 (now 0); it should be the default value, which was zero.
 	Ok((split_b, raw_len))
 }
 
@@ -637,6 +618,52 @@ fn split_points_lz77(
 
 
 
+/// # Split Range Iterator.
+///
+/// This iterator converts split points into split ranges, functioning kinda
+/// like `slice.windows(2)`, returning between `1..=15` ranges spanning the
+/// length of the chunk/store.
+struct SplitPointsIter<'a> {
+	data: &'a SplitPoints,
+	max: SplitLen, // Inclusive length.
+	pos: usize,
+}
+
+impl<'a> SplitPointsIter<'a> {
+	/// # New Instance.
+	const fn new(data: &'a SplitPoints, max: SplitLen) -> Self {
+		Self { data, max, pos: 0 }
+	}
+}
+
+impl<'a> Iterator for SplitPointsIter<'a> {
+	type Item = Result<ZopfliRange, ZopfliError>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// The
+		if self.pos <= (self.max as usize) {
+			let start = self.data[self.pos];
+			let end = self.data[self.pos + 1];
+			self.pos += 1;
+			Some(ZopfliRange::new(start, end))
+		}
+		else { None }
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.len();
+		(len, Some(len))
+	}
+}
+
+impl<'a> ExactSizeIterator for SplitPointsIter<'a> {
+	fn len(&self) -> usize {
+		(self.max as usize + 1).saturating_sub(self.pos)
+	}
+}
+
+
+
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -651,5 +678,33 @@ mod test {
 			ArrayD::<u32>::llcl_symbols(&FIXED_TREE_D),
 			FIXED_SYMBOLS_D,
 		);
+	}
+
+	#[test]
+	fn t_split_points_iter() {
+		let data: SplitPoints = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+		// Try with no mids.
+		let mut iter = SplitPointsIter::new(&data, SplitLen::S00);
+		assert_eq!(iter.len(), 1);
+		let next = iter.next()
+			.expect("expected Some(range)")
+			.expect("expected Ok(range)");
+		assert_eq!(next.rng(), 0..1);
+		assert_eq!(iter.len(), 0);
+		assert!(iter.next().is_none());
+
+		// Try with two mids.
+		iter = SplitPointsIter::new(&data, SplitLen::S02);
+		let expected = [0..1_usize, 1..2, 2..3];
+		for (i, e) in expected.into_iter().enumerate() {
+			assert_eq!(iter.len(), 3 - i);
+			let next = iter.next()
+				.expect("expected Some(range)")
+				.expect("expected Ok(range)");
+			assert_eq!(next.rng(), e);
+		}
+		assert_eq!(iter.len(), 0);
+		assert!(iter.next().is_none());
 	}
 }
