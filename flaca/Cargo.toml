@@ -133,7 +133,7 @@ version = "=2.2.0"
 features = [ "jpegtran" ]
 
 [dependencies.oxipng]
-version = "=9.1.1"
+version = "=9.1.2"
 default-features = false
 features = [ "freestanding" ]
 
