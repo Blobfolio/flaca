@@ -178,6 +178,9 @@ impl<'a> LZ77StoreRange<'a> {
 			if 0 < e.dist { d_counts[e.d_symbol as usize] += 1; }
 		}
 
+		// This should always be one.
+		ll_counts[256] = 1;
+
 		(ll_counts, d_counts)
 	}
 

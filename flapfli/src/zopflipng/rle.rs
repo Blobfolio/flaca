@@ -11,7 +11,6 @@ use super::{
 	ArrayLL,
 	best_tree_size,
 	DeflateSym,
-	DISTANCE_BITS,
 	LengthLimitedCodeLengths,
 	LZ77StoreRange,
 	ZopfliError,
@@ -19,10 +18,17 @@ use super::{
 
 
 
+/// # Distance Extra Byts (by Symbol).
+const DISTANCE_BITS: &ArrayD<u32> = &[
+	0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+	7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 0, 0,
+];
+
 /// # Length Symbol Extra Bits.
-const LENGTH_EXTRA_BITS: [u32; 29] = [
-	0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
-	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+const LENGTH_EXTRA_BITS: &ArrayLL<u32> = &[
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+	0, 0,
 ];
 
 
@@ -47,8 +53,7 @@ impl DynamicLengths {
 	/// # New.
 	pub(crate) fn new(store: LZ77StoreRange) -> Result<Self, ZopfliError> {
 		// Pull the counts from the store.
-		let (mut ll_counts, d_counts) = store.histogram();
-		ll_counts[256] = 1;
+		let (ll_counts, d_counts) = store.histogram();
 
 		// Pull the symbols, then get the sizes.
 		let ll_lengths = ll_counts.llcl()?;
@@ -140,91 +145,6 @@ impl DynamicLengths {
 
 
 
-/// # RLE-Optimized Stretches.
-///
-/// This iterator yields a boolean value for each entry of the source slice,
-/// `true` for distance codes in a sequence of 5+ zeroes or 7+ (identical)
-/// non-zeroes, `false` otherwise.
-///
-/// This moots the need to collect the values into a vector in advance and
-/// reduces the number of passes required to optimize Huffman codes.
-struct GoodForRle<'a> {
-	counts: &'a [Cell<u32>],
-	good: usize,
-	bad: usize,
-}
-
-impl<'a> GoodForRle<'a> {
-	/// # New Instance.
-	const fn new(counts: &'a [Cell<u32>]) -> Self {
-		Self { counts, good: 0, bad: 0 }
-	}
-}
-
-impl<'a> Iterator for GoodForRle<'a> {
-	type Item = bool;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		// Return good or bad values from the buffer.
-		if self.good != 0 {
-			self.good -= 1;
-			return Some(true);
-		}
-		if self.bad != 0 {
-			self.bad -= 1;
-			return Some(false);
-		}
-
-		// If the slice is empty, we're done!
-		if self.counts.is_empty() { return None; }
-
-		// See how many times the next entry is repeated, if at all, shortening
-		// the slice accordingly.
-		let scratch = self.counts[0].get();
-		let mut stride = 0;
-		while let [count, rest @ ..] = self.counts {
-			// Note the reptition and circle back around. This will always
-			// trigger on the first pass, so stride will always be at least
-			// one.
-			if count.get() == scratch {
-				stride += 1;
-				self.counts = rest;
-			}
-			// We had an optimal stretch.
-			else if stride >= 5 && (scratch == 0 || stride >= 7) {
-				self.good = stride - 1;
-				return Some(true);
-			}
-			// We had a non-optimal stretch.
-			else {
-				self.bad = stride - 1;
-				return Some(false);
-			}
-		}
-
-		// Finish up by qualifying the dangling stride as optimal or not.
-		if stride >= 5 && (scratch == 0 || stride >= 7) {
-			self.good = stride - 1;
-			Some(true)
-		}
-		else {
-			self.bad = stride - 1;
-			Some(false)
-		}
-	}
-
-	fn size_hint(&self) -> (usize, Option<usize>) {
-		let len = self.len();
-		(len, Some(len))
-	}
-}
-
-impl<'a> ExactSizeIterator for GoodForRle<'a> {
-	fn len(&self) -> usize { self.good + self.bad + self.counts.len() }
-}
-
-
-
 /// # Calculate Dynamic Data Block Size.
 ///
 /// This returns the size of the data itself, basically just a sum of sums.
@@ -234,29 +154,13 @@ fn calculate_size_data(
 	ll_lengths: &ArrayLL<DeflateSym>,
 	d_lengths: &ArrayD<DeflateSym>,
 ) -> u32 {
-	// The early lengths and counts.
-	let a = ll_lengths.iter().copied()
-		.zip(ll_counts.iter().copied())
-		.take(256)
-		.map(|(ll, lc)| (ll as u32) * lc)
-		.sum::<u32>();
+	// The histogram these counts come from should ensure this.
+	debug_assert_eq!(ll_counts[256], 1);
 
-	// The lengths and counts with extra bits.
-	let b = ll_lengths[257..].iter().copied()
-		.zip(ll_counts[257..].iter().copied())
-		.zip(LENGTH_EXTRA_BITS)
-		.map(|((ll, lc), lbit)| (ll as u32 + lbit) * lc)
-		.sum::<u32>();
+	let a = DataSizeIter::new(ll_counts, ll_lengths, LENGTH_EXTRA_BITS).sum::<u32>();
+	let b = DataSizeIter::new(d_counts, d_lengths, DISTANCE_BITS).sum::<u32>();
 
-	// The distance lengths, counts, and extra bits.
-	let c = d_lengths.iter().copied()
-		.zip(d_counts.iter().copied())
-		.zip(DISTANCE_BITS)
-		.take(30)
-		.map(|((dl, dc), dbit)| (dl as u32 + u32::from(dbit)) * dc)
-		.sum::<u32>();
-
-	a + b + c + ll_lengths[256] as u32
+	a + b
 }
 
 /// # Dynamic Length-Limited Code Lengths.
@@ -290,30 +194,6 @@ fn d_llcl(d_counts: &ArrayD<u32>)
 
 	Ok(d_lengths)
 }
-/*
-#[inline(never)]
-/// # Compare Two Symbol Sets for Uniqueness.
-///
-/// This compares two sets of symbols, returning `true` if they're different
-/// from one another.
-fn diff_symbols<const N: usize>(a: &[DeflateSym; N], b: &[DeflateSym; N]) -> bool {
-	#[allow(unsafe_code)]
-	/// # As Bytes.
-	///
-	/// Transform a `DeflateSym` array into an equivalent byte array for more
-	/// efficient comparison. (Bytes get all the love!)
-	const fn deflate_bytes<const N: usize>(arr: &[DeflateSym; N]) -> &[u8; N] {
-		// Safety: DeflateSym has the same size and alignment as u8, and if
-		// for some reason that isn't true, this code won't compile!
-		const {
-			assert!(std::mem::size_of::<[DeflateSym; N]>() == std::mem::size_of::<[u8; N]>());
-			assert!(std::mem::align_of::<[DeflateSym; N]>() == std::mem::align_of::<[u8; N]>());
-		}
-		unsafe { &* arr.as_ptr().cast() }
-	}
-
-	deflate_bytes(a) != deflate_bytes(b)
-}*/
 
 /// # Get RLE-Optimized Symbols.
 ///
@@ -395,6 +275,142 @@ fn optimize_huffman_for_rle(mut counts: &mut [u32]) {
 			for c in &counts[from..] { c.set(v); }
 		}
 	}
+}
+
+
+
+/// # Data Size Iterator.
+///
+/// This iterator yields the combined data size for all but the last two
+/// length/count/bit triplets, because why would zopfli ever utilize all of the
+/// data it collects?!
+///
+/// This is only used by `calculate_size_data`. Traditional iterators get a
+/// little clunky with all the zipping and copying and mapping.
+struct DataSizeIter<'a, const N: usize> {
+	counts:  &'a [u32; N],
+	lengths: &'a [DeflateSym; N],
+	bits:    &'a [u32; N],
+	pos: usize,
+}
+
+impl<'a, const N: usize> DataSizeIter<'a, N> {
+	/// # New.
+	const fn new(counts: &'a [u32; N], lengths: &'a [DeflateSym; N], bits: &'a [u32; N])
+	-> Self {
+		const { assert!(2 < N); }
+		Self { counts, lengths, bits, pos: 0 }
+	}
+}
+
+impl<'a, const N: usize> Iterator for DataSizeIter<'a, N> {
+	type Item = u32;
+
+	#[inline]
+	fn next(&mut self) -> Option<Self::Item> {
+		let idx = self.pos;
+		if idx + 2 < N {
+			self.pos += 1;
+			Some(self.counts[idx] * (self.lengths[idx] as u32 + self.bits[idx]))
+		}
+		else { None }
+	}
+
+	#[inline]
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.len();
+		(len, Some(len))
+	}
+}
+
+impl<'a, const N: usize> ExactSizeIterator for DataSizeIter<'a, N> {
+	#[inline]
+	fn len(&self) -> usize { N - 2 - self.pos }
+}
+
+
+
+/// # RLE-Optimized Stretches.
+///
+/// This iterator yields a boolean value for each entry of the source slice,
+/// `true` for distance codes in a sequence of 5+ zeroes or 7+ (identical)
+/// non-zeroes, `false` otherwise.
+///
+/// This moots the need to collect the values into a vector in advance and
+/// reduces the number of passes required to optimize Huffman codes.
+struct GoodForRle<'a> {
+	counts: &'a [Cell<u32>],
+	good: usize,
+	bad: usize,
+}
+
+impl<'a> GoodForRle<'a> {
+	/// # New Instance.
+	const fn new(counts: &'a [Cell<u32>]) -> Self {
+		Self { counts, good: 0, bad: 0 }
+	}
+}
+
+impl<'a> Iterator for GoodForRle<'a> {
+	type Item = bool;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// Return good or bad values from the buffer.
+		if self.good != 0 {
+			self.good -= 1;
+			return Some(true);
+		}
+		if self.bad != 0 {
+			self.bad -= 1;
+			return Some(false);
+		}
+
+		// If the slice is empty, we're done!
+		if self.counts.is_empty() { return None; }
+
+		// See how many times the next entry is repeated, if at all, shortening
+		// the slice accordingly.
+		let scratch = self.counts[0].get();
+		let mut stride = 0;
+		while let [count, rest @ ..] = self.counts {
+			// Note the reptition and circle back around. This will always
+			// trigger on the first pass, so stride will always be at least
+			// one.
+			if count.get() == scratch {
+				stride += 1;
+				self.counts = rest;
+			}
+			// We had an optimal stretch.
+			else if stride >= 5 && (scratch == 0 || stride >= 7) {
+				self.good = stride - 1;
+				return Some(true);
+			}
+			// We had a non-optimal stretch.
+			else {
+				self.bad = stride - 1;
+				return Some(false);
+			}
+		}
+
+		// Finish up by qualifying the dangling stride as optimal or not.
+		if stride >= 5 && (scratch == 0 || stride >= 7) {
+			self.good = stride - 1;
+			Some(true)
+		}
+		else {
+			self.bad = stride - 1;
+			Some(false)
+		}
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.len();
+		(len, Some(len))
+	}
+}
+
+impl<'a> ExactSizeIterator for GoodForRle<'a> {
+	fn len(&self) -> usize { self.good + self.bad + self.counts.len() }
 }
 
 
