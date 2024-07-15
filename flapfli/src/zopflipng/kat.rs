@@ -70,58 +70,102 @@ where Self: Sized {
 }
 
 macro_rules! llcl {
-	($maxbits:literal, $take:literal, $size:expr) => (
-		impl LengthLimitedCodeLengths<$size> for [u32; $size] {
-			/// # Counts to Symbols.
-			fn llcl(&self) -> Result<[DeflateSym; $size], ZopfliError> {
-				// Start the bitlengths at zero.
-				let mut bitlengths = [DeflateSym::D00; $size];
-				let bitcells = array_of_cells(&mut bitlengths);
+	($maxbits:literal, $size:expr) => (
+		/// # Counts to Symbols.
+		fn llcl(&self) -> Result<[DeflateSym; $size], ZopfliError> {
+			// Start the bitlengths at zero.
+			let mut bitlengths = [DeflateSym::D00; $size];
+			let bitcells = array_of_cells(&mut bitlengths);
 
-				// Crunch!
-				KATSCRATCH.with(|nodes| llcl::<$size, $maxbits>(self, bitcells, nodes)).map(|()| bitlengths)
+			// Crunch!
+			KATSCRATCH.with(|nodes| llcl::<$size, $maxbits>(self, bitcells, nodes))?;
+			Ok(bitlengths)
+		}
+	);
+}
+macro_rules! llcl_symbols {
+	($take:literal, $size:expr) => (
+		#[inline]
+		/// # Symbols to Counts.
+		fn llcl_symbols(lengths: &[DeflateSym; $size]) -> Self {
+			// The lengths should have previously been limited.
+			debug_assert!(lengths.iter().all(|&l| (l as usize) < $take));
+
+			// Count up the codes by code length. (Note: the compiler doesn't
+			// understand the lengths have been limited to $take. Of all the
+			// different ways to get it to elide bounds checks, overallocating
+			// scratch to 19 performs best.
+			let mut scratch = ZEROED_COUNTS_TREE;
+			for l in lengths.iter().copied() { scratch[l as usize] += 1; }
+
+			// Find the numerical value of the smallest code for each code
+			// length (up to $take).
+			let mut code = 0;
+			scratch[0] = 0;
+			for c in scratch.iter_mut().take($take) {
+				let next = (code + *c) << 1;
+				*c = std::mem::replace(&mut code, next);
 			}
 
-			#[inline]
-			/// # Symbols to Counts.
-			fn llcl_symbols(lengths: &[DeflateSym; $size]) -> Self {
-				// The lengths should have previously been limited.
-				debug_assert!(lengths.iter().all(|&l| (l as usize) < $take));
-
-				// Count up the codes by code length. (Note: the compiler doesn't
-				// understand the lengths have been limited to $take. Of all the
-				// different ways to get it to elide bounds checks, overallocating
-				// scratch to 19 performs best.
-				let mut scratch = ZEROED_COUNTS_TREE;
-				for l in lengths.iter().copied() { scratch[l as usize] += 1; }
-
-				// Find the numerical value of the smallest code for each code
-				// length (up to $take).
-				let mut code = 0;
-				scratch[0] = 0;
-				for c in scratch.iter_mut().take($take) {
-					let next = (code + *c) << 1;
-					*c = std::mem::replace(&mut code, next);
+			// Update the (non-zero) symbol counts accordingly.
+			let mut symbols = [0; $size];
+			for (l, s) in lengths.iter().copied().zip(&mut symbols) {
+				if ! l.is_zero() {
+					*s = scratch[l as usize];
+					scratch[l as usize] += 1;
 				}
-
-				// Update the (non-zero) symbol counts accordingly.
-				let mut symbols = [0; $size];
-				for (l, s) in lengths.iter().copied().zip(&mut symbols) {
-					if ! l.is_zero() {
-						*s = scratch[l as usize];
-						scratch[l as usize] += 1;
-					}
-				}
-				symbols
 			}
+			symbols
 		}
 	);
 }
 
-// Tree symbols have seven maxbits, while NUM_D and NUM_LL each have 15.
-llcl!(7, 8, 19);
-llcl!(15, 16, ZOPFLI_NUM_D);
-llcl!(15, 16, ZOPFLI_NUM_LL);
+impl LengthLimitedCodeLengths<19> for [u32; 19] {
+	llcl!(7, 19);
+	llcl_symbols!(8, 19);
+}
+
+impl LengthLimitedCodeLengths<ZOPFLI_NUM_D> for ArrayD<u32> {
+	/// # Counts to Symbols.
+	fn llcl(&self) -> Result<ArrayD<DeflateSym>, ZopfliError> {
+		// Start the bitlengths at zero.
+		let mut bitlengths = [DeflateSym::D00; ZOPFLI_NUM_D];
+		let bitcells = array_of_cells(&mut bitlengths);
+
+		// Crunch!
+		let count = KATSCRATCH.with(|nodes| llcl::<ZOPFLI_NUM_D, 15>(self, bitcells, nodes))?;
+
+		// To work around a bug in zlib 1.2.1 — fixed in 2005, haha — we need
+		// to have at least two non-zero distance codes. Evidently assigning
+		// dummy values as needed to the start is good enough, though it will
+		// potentially add a few bytes to the output size.
+		match count {
+			0 => {
+				bitlengths[0] = DeflateSym::D01;
+				bitlengths[1] = DeflateSym::D01;
+			},
+			1 =>
+				// One code needed, patch 0 since it is zero.
+				if bitlengths[0].is_zero() {
+					bitlengths[0] = DeflateSym::D01;
+				}
+				// One code needed, patch 1 since it is zero.
+				else {
+					bitlengths[1] = DeflateSym::D01;
+				},
+			_ => {},
+		}
+
+		Ok(bitlengths)
+	}
+
+	llcl_symbols!(16, ZOPFLI_NUM_D);
+}
+
+impl LengthLimitedCodeLengths<ZOPFLI_NUM_LL> for ArrayLL<u32> {
+	llcl!(15, ZOPFLI_NUM_LL);
+	llcl_symbols!(16, ZOPFLI_NUM_LL);
+}
 
 
 
@@ -757,23 +801,25 @@ const fn extra_bools(extra: u8) -> (bool, bool, bool) {
 ///
 /// This method serves as the closure for the caller's call to
 /// `KATSCRATCH.with_borrow_mut()`. It does all that needs doing to get
-/// the desired length-limited data into the provided `bitlengths`.
+/// the desired length-limited data into the provided `bitlengths`. The number
+/// of non-zero leaves is returned.
 fn llcl<'a, const N: usize, const MAXBITS: usize>(
 	frequencies: &'a [u32; N],
 	bitlengths: &'a [Cell<DeflateSym>; N],
 	nodes: &KatScratch
-) -> Result<(), ZopfliError> {
+) -> Result<usize, ZopfliError> {
 	const { assert!(MAXBITS == 7 || MAXBITS == 15); }
 
 	let leaves = nodes.leaves(frequencies, bitlengths);
-	if leaves.len() <= 2 {
+	let leaves_len = leaves.len();
+	if leaves_len <= 2 {
 		for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
-		return Ok(());
+		return Ok(leaves_len);
 	}
 
 	// Set up the lists.
 	let lists = nodes.lists(
-		usize::min(MAXBITS, leaves.len() - 1),
+		usize::min(MAXBITS, leaves_len - 1),
 		leaves[0].frequency,
 		leaves[1].frequency,
 	);
@@ -785,13 +831,14 @@ fn llcl<'a, const N: usize, const MAXBITS: usize>(
 	// In the last list, (2 * len_leaves - 2) active chains need to be
 	// created. We have two already from initialization; each boundary_pm run
 	// will give us another.
-	for _ in 0..2 * leaves.len() - 5 {
+	for _ in 0..2 * leaves_len - 5 {
 		llcl_boundary_pm(leaves, lists, nodes)?;
 	}
 
 	// Add the last chain and write the results!
 	let node = Node::last(&lists[lists.len() - 2], &lists[lists.len() - 1], leaves);
-	llcl_write::<MAXBITS>(node, leaves)
+	llcl_write::<MAXBITS>(node, leaves)?;
+	Ok(leaves_len)
 }
 
 #[inline]

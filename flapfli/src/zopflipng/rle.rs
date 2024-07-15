@@ -57,7 +57,7 @@ impl DynamicLengths {
 
 		// Pull the symbols, then get the sizes.
 		let ll_lengths = ll_counts.llcl()?;
-		let d_lengths = d_llcl(&d_counts)?;
+		let d_lengths = d_counts.llcl()?;
 
 		// Calculate the sizes.
 		let (extra, treesize) = best_tree_size(&ll_lengths, &d_lengths)?;
@@ -163,38 +163,6 @@ fn calculate_size_data(
 	a + b
 }
 
-/// # Dynamic Length-Limited Code Lengths.
-///
-/// Calculate, patch, and return the distance code length symbols.
-fn d_llcl(d_counts: &ArrayD<u32>)
--> Result<ArrayD<DeflateSym>, ZopfliError> {
-	let mut d_lengths = d_counts.llcl()?;
-
-	// Buggy decoders require at least two non-zero distances. Let's make sure
-	// we have at least that many.
-	let mut one: Option<bool> = None;
-	for (i, dist) in d_lengths.iter().copied().enumerate().take(30) {
-		// We have (at least) two non-zero entries; no patching needed!
-		if ! dist.is_zero() && one.replace(i == 0).is_some() { return Ok(d_lengths); }
-	}
-
-	// If we're here, fewer than two non-zero distances are in the collection;
-	// we'll need to fake the counts to reach our quota. Haha.
-	match one {
-		// The first entry had a code, so patching the second gives us two.
-		Some(true) => { d_lengths[1] = DeflateSym::D01; },
-		// The first entry did not have a code, so patching it gives us two.
-		Some(false) => { d_lengths[0] = DeflateSym::D01; },
-		// There were no codes at all, so we can just patch the first two.
-		None => {
-			d_lengths[0] = DeflateSym::D01;
-			d_lengths[1] = DeflateSym::D01;
-		},
-	}
-
-	Ok(d_lengths)
-}
-
 /// # Get RLE-Optimized Symbols.
 ///
 /// Copy and optimize the counts, then recrunch and return their length-limited
@@ -211,7 +179,7 @@ fn optimized_symbols(ll_counts: &ArrayLL<u32>, d_counts: &ArrayD<u32>)
 	let ll_counts2 = optimized_counts(ll_counts);
 	let d_counts2 = optimized_counts(d_counts);
 	let ll_lengths2 = ll_counts2.llcl()?;
-	let d_lengths2 = d_llcl(&d_counts2)?;
+	let d_lengths2 = d_counts2.llcl()?;
 
 	Ok((ll_lengths2, d_lengths2))
 }
