@@ -620,7 +620,6 @@ struct Node {
 }
 
 impl Node {
-	#[inline]
 	/// # Finish Last Node!
 	///
 	/// This method creates and returns the final tail to be used as the
@@ -796,7 +795,6 @@ const fn extra_bools(extra: u8) -> (bool, bool, bool) {
 	(0 != extra & 1, 0 != extra & 2, 0 != extra & 4)
 }
 
-#[inline]
 /// # Crunch the Code Lengths.
 ///
 /// This method serves as the closure for the caller's call to
@@ -841,7 +839,6 @@ fn llcl<'a, const N: usize, const MAXBITS: usize>(
 	Ok(leaves_len)
 }
 
-#[inline]
 /// # Write Code Lengths!
 ///
 /// This is the final stage of the LLCL chain, where the results are
