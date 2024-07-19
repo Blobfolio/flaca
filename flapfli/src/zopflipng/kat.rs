@@ -22,6 +22,7 @@ use super::{
 	ArrayLL,
 	DeflateSym,
 	DeflateSymBasic,
+	TreeDist,
 	zopfli_error,
 	ZOPFLI_NUM_D,
 	ZOPFLI_NUM_LL,
@@ -177,27 +178,16 @@ pub(crate) fn best_tree_size(
 	ll_lengths: &ArrayLL<DeflateSym>,
 	d_lengths: &ArrayD<DeflateSym>,
 ) -> Result<(u8, NonZeroU32), ZopfliError> {
-	// Drop the last two zeroes plus any trailing zeroes, then merge them
-	// together into a single collection.
-	let all: Vec<DeflateSym> = {
-		let mut ll_lengths = &ll_lengths[..286];
-		while let [rest @ .., DeflateSym::D00] = ll_lengths {
-			ll_lengths = rest;
-			if ll_lengths.len() == 257 { break; } // Keep all literals.
-		}
-
-		let mut d_lengths = &d_lengths[..30];
-		while let [rest @ .., DeflateSym::D00] = d_lengths { d_lengths = rest; }
-
-		[ll_lengths, d_lengths].concat()
-	};
+	// Merge symbols.
+	let (raw_all, _, _) = tree_symbols(ll_lengths, d_lengths);
+	let all: &[DeflateSym] = &raw_all;
 
 	// Our targets!
 	let mut best_extra = 0;
 	let mut best_size = NonZeroU32::MAX;
 
 	for extra in 0..8 {
-		let cl_counts = best_tree_size_counts(&all, extra);
+		let cl_counts = best_tree_size_counts(all, extra);
 		let cl_lengths = cl_counts.llcl()?;
 		let hclen = tree_hclen(&cl_counts);
 
@@ -233,26 +223,8 @@ pub(crate) fn encode_tree(
 	extra: u8,
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
-	// Drop the last two zeroes plus any trailing zeroes, then merge them
-	// together into a single collection.
-	let mut hlit: u32 = 29;
-	let mut hdist: u32 = 29;
-	let all: Vec<DeflateSym> = {
-		let mut ll_lengths = &ll_lengths[..286];
-		while let [rest @ .., DeflateSym::D00] = ll_lengths {
-			ll_lengths = rest;
-			hlit -= 1;
-			if ll_lengths.len() == 257 { break; } // Keep all literals.
-		}
-
-		let mut d_lengths = &d_lengths[..30];
-		while let [rest @ .., DeflateSym::D00] = d_lengths {
-			d_lengths = rest;
-			hdist -= 1;
-		}
-
-		[ll_lengths, d_lengths].concat()
-	};
+	// Merge symbols.
+	let (all, hlit, hdist) = tree_symbols(ll_lengths, d_lengths);
 
 	// We'll need to store some RLE symbols and positions too.
 	let mut rle: Vec<(DeflateSym, u16)> = Vec::new();
@@ -263,8 +235,8 @@ pub(crate) fn encode_tree(
 	let cl_symbols = <[u32; 19]>::llcl_symbols(&cl_lengths);
 
 	// Write the main lengths.
-	out.add_fixed_bits::<5>(hlit);
-	out.add_fixed_bits::<5>(hdist);
+	out.add_fixed_bits::<5>(hlit as u32);
+	out.add_fixed_bits::<5>(hdist as u32);
 	out.add_fixed_bits::<4>(hclen as u32);
 
 	// Write each cl_length in the jumbled DEFLATE order.
@@ -949,6 +921,34 @@ const fn tree_hclen(cl_counts: &[u32; 19]) -> DeflateSymBasic {
 	#[allow(unsafe_code, clippy::cast_possible_truncation)]
 	// Safety: DeflateSymBasic covers all values between 0..=15.
 	unsafe { std::mem::transmute::<u8, DeflateSymBasic>(hclen as u8) }
+}
+
+#[allow(unsafe_code, clippy::cast_possible_truncation)]
+/// # Tree Symbols.
+///
+/// Drop the last two bytes from each symbol set, then up to 29 leading zeroes,
+/// merge them together (lengths then distances), and return the details.
+///
+/// DEFLATE is _evil_! Haha.
+fn tree_symbols(ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>)
+-> (Box<[DeflateSym]>, TreeDist, TreeDist) {
+	let mut hlit: usize = 29;
+	while hlit != 0 && ll_lengths[256 + hlit].is_zero() { hlit -= 1; }
+	// Safety: TreeDist covers 0..30.
+	let hlit = unsafe { std::mem::transmute::<u8, TreeDist>(hlit as u8) };
+
+	let mut hdist: usize = 29;
+	while hdist != 0 && d_lengths[hdist].is_zero() { hdist -= 1; }
+	// Safety: TreeDist covers 0..30.
+	let hdist = unsafe { std::mem::transmute::<u8, TreeDist>(hdist as u8) };
+
+	let ll_lengths = &ll_lengths[..257 + hlit as usize];
+	let d_lengths = &d_lengths[..=hdist as usize];
+	let mut symbols = Vec::with_capacity(ll_lengths.len() + d_lengths.len());
+	symbols.extend_from_slice(ll_lengths);
+	symbols.extend_from_slice(d_lengths);
+
+	(symbols.into_boxed_slice(), hlit, hdist)
 }
 
 

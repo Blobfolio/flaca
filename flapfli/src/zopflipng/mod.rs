@@ -68,6 +68,7 @@ use symbols::{
 	LitLen,
 	Lsym,
 	SplitLen,
+	TreeDist,
 };
 
 
