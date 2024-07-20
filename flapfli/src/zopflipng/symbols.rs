@@ -197,28 +197,6 @@ impl SplitLen {
 	///
 	/// Returns `true` if `self` is the maximum value (`SplitLen::S14`).
 	pub(crate) const fn is_max(self) -> bool { matches!(self, Self::S14) }
-
-	/// # Increment.
-	///
-	/// Returns `self + 1`.
-	///
-	/// ## Safety
-	///
-	/// This would be UB if `self.is_max()`; the caller must explicitly check
-	/// that is not the case before incrementing.
-	pub(crate) const fn increment(self) -> Self {
-		#[allow(unsafe_code)]
-		unsafe {
-			// Safety: this method is called from just two places —
-			// `split_lz77` and `split_raw` — both of which explicitly check
-			// the current value, breaking their loops if/when the maximum is
-			// reached.
-			if self.is_max() { crate::unreachable(); }
-
-			// Safety: SplitLen has the same size and alignment as u8.
-			std::mem::transmute::<u8, Self>(self as u8 + 1)
-		}
-	}
 }
 
 

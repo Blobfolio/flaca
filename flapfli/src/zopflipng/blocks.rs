@@ -510,7 +510,7 @@ fn split_points_raw(
 		for (i, e) in store.entries.iter().enumerate().take(split_b[len as usize - 1] + 1) {
 			if i == split_b[j as usize] {
 				split_a[j as usize] = pos;
-				j = j.increment();
+				j = j.increment().ok_or(zopfli_error!())?;
 				if (j as u8) == (len as u8) { return Ok(len); }
 			}
 			pos += e.length() as usize;
@@ -592,7 +592,7 @@ fn split_points_lz77(
 
 			// Mark it as a split point and add it sorted.
 			split_b[len as usize] = llpos;
-			len = len.increment();
+			len = len.increment().ok_or(zopfli_error!())?;
 
 			// Keep the list sorted.
 			if last > llpos { split_b[..len as usize].sort_unstable(); }

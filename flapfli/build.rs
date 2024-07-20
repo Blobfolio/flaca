@@ -361,6 +361,52 @@ where Range<T>: ExactSizeIterator<Item=T> {
 		// Closing.
 		writeln!(f, "}}\n")?;
 
+		let max = self.rng.clone().last().expect("Range failed.");
+
+		// MIN, MAX, increment, decrement.
+		writeln!(
+			f,
+			"impl {name} {{
+	#[allow(dead_code)]
+	/// # Minimum Value.
+	pub(crate) const MIN: Self = Self::{prefix}{start:0width$};
+
+	#[allow(dead_code)]
+	/// # Maximum Value.
+	pub(crate) const MAX: Self = Self::{prefix}{max:0width$};
+
+	#[allow(unsafe_code, dead_code)]
+	/// # Decrement.
+	///
+	/// Return `self - 1` or None.
+	pub(crate) const fn decrement(self) -> Option<Self> {{
+		let n = self as {kind};
+		if n == {start} {{ None }}
+		else {{
+			// Safety: we aren't at the bottom yet!
+			Some(unsafe {{ std::mem::transmute::<{kind}, Self>(n - 1) }})
+		}}
+	}}
+
+	#[allow(unsafe_code, dead_code)]
+	/// # Increment.
+	///
+	/// Return `self + 1` or None.
+	pub(crate) const fn increment(self) -> Option<Self> {{
+		let n = self as {kind} + 1;
+		if n < {end} {{
+			// Safety: we aren't at the top yet!
+			Some(unsafe {{ std::mem::transmute::<{kind}, Self>(n) }})
+		}}
+		else {{ None }}
+	}}
+}}\n",
+			name=self.name,
+			start=self.rng.start,
+			end=self.rng.end,
+			width=width
+		)?;
+
 		// Symbol iterator?
 		if Self::DERIVE_ITER == self.flags & Self::DERIVE_ITER {
 			writeln!(
