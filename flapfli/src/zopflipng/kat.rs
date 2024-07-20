@@ -33,10 +33,6 @@ use super::{
 
 
 #[allow(unsafe_code)]
-/// # One is Non-Zero.
-const NZ01: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1) };
-
-#[allow(unsafe_code)]
 /// # Two is Non-Zero.
 const NZ02: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
 
@@ -411,7 +407,7 @@ impl KatScratch {
 		let ptr = self.nodes.cast::<Node>().as_ptr();
 		ptr.write(Node {
 			weight: weight1,
-			count: NZ01,
+			count: NonZeroU32::MIN,
 			tail: None,
 		});
 		let lookahead0 = &*ptr;
@@ -602,14 +598,14 @@ impl Node {
 		let weight_sum = list_y.weight_sum();
 		if (last_count.get() as usize) < leaves.len() && leaves[last_count.get() as usize].frequency < weight_sum {
 			Self {
-				weight: NZ01, // We'll never look at this value.
+				weight: NonZeroU32::MIN, // We'll never look at this value.
 				count: last_count.saturating_add(1),
 				tail: list_z.lookahead1.tail,
 			}
 		}
 		else {
 			Self {
-				weight: NZ01, // We'll never look at this value.
+				weight: NonZeroU32::MIN, // We'll never look at this value.
 				count: last_count,
 				tail: Some(list_y.lookahead1),
 			}
