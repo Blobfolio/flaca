@@ -175,7 +175,7 @@ pub(crate) fn best_tree_size(
 	d_lengths: &ArrayD<DeflateSym>,
 ) -> Result<(u8, NonZeroU32), ZopfliError> {
 	// Merge symbols.
-	let (raw_all, _, _) = tree_symbols(ll_lengths, d_lengths);
+	let (raw_all, _, _) = tree_symbols(ll_lengths, d_lengths)?;
 	let all: &[DeflateSym] = &raw_all;
 
 	// Our targets!
@@ -220,7 +220,7 @@ pub(crate) fn encode_tree(
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
 	// Merge symbols.
-	let (all, hlit, hdist) = tree_symbols(ll_lengths, d_lengths);
+	let (all, hlit, hdist) = tree_symbols(ll_lengths, d_lengths)?;
 
 	// We'll need to store some RLE symbols and positions too.
 	let mut rle: Vec<(DeflateSym, u16)> = Vec::new();
@@ -921,24 +921,62 @@ const fn tree_hclen(cl_counts: &[u32; 19]) -> DeflateSymBasic {
 ///
 /// DEFLATE is _evil_! Haha.
 fn tree_symbols(ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>)
--> (Box<[DeflateSym]>, TreeDist, TreeDist) {
+-> Result<(Box<[DeflateSym]>, TreeDist, TreeDist), ZopfliError> {
+	// Trim non-zero symbol lengths from ll_lengths[..286], keeping the leading
+	// litlen literals regardless of value.
+	// literals are always kept.)
 	let mut hlit: usize = 29;
 	while hlit != 0 && ll_lengths[256 + hlit].is_zero() { hlit -= 1; }
 	// Safety: TreeDist covers 0..30.
 	let hlit = unsafe { std::mem::transmute::<u8, TreeDist>(hlit as u8) };
 
+	// Trim non-zero symbol lengths from d_lengths[..30], keeping the first
+	// entry regardless of value.
 	let mut hdist: usize = 29;
 	while hdist != 0 && d_lengths[hdist].is_zero() { hdist -= 1; }
 	// Safety: TreeDist covers 0..30.
 	let hdist = unsafe { std::mem::transmute::<u8, TreeDist>(hdist as u8) };
 
-	let ll_lengths = &ll_lengths[..257 + hlit as usize];
-	let d_lengths = &d_lengths[..=hdist as usize];
-	let mut symbols = Vec::with_capacity(ll_lengths.len() + d_lengths.len());
-	symbols.extend_from_slice(ll_lengths);
-	symbols.extend_from_slice(d_lengths);
+	// The combined length.
+	let ll_len = 257 + hlit as usize;
+	let d_len = 1 + hdist as usize;
+	let len = ll_len + d_len;
 
-	(symbols.into_boxed_slice(), hlit, hdist)
+	// We ultimately want a slice of len symbols. There are a few ways we could
+	// manage this, but the most efficient is to just create a right-sized
+	// layout and populate the data from pointers.
+
+	// Safety: Rust slices and arrays are size_of::<T>() * N and share the
+	// alignment of T. Length is non-zero and can't be bigger than 300ish, so
+	// the layout can't fail.
+	let layout = unsafe {
+		Layout::from_size_align_unchecked(
+			std::mem::size_of::<DeflateSym>() * len,
+			std::mem::align_of::<DeflateSym>(),
+		)
+	};
+
+	// Safety: the checked version of NonNull::new ensures the allocation
+	// worked.
+	let nn: NonNull<DeflateSym> = NonNull::new(unsafe { alloc(layout) })
+		.ok_or(zopfli_error!())?
+		.cast();
+
+	let symbols = unsafe {
+		// Copy the data into place, starting with the lengths.
+		let ptr = nn.as_ptr();
+
+		// Safety: writing 0..ll_len then ll_len..ll_len + d_len covers the
+		// full allocation.
+		std::ptr::copy_nonoverlapping(ll_lengths.as_ptr(), ptr, ll_len);
+		std::ptr::copy_nonoverlapping(d_lengths.as_ptr(), ptr.add(ll_len), d_len);
+
+		// Reimagine the pointer as a slice and box it up so it can be used
+		// normally (and safely) hereafter.
+		Box::from_raw(NonNull::slice_from_raw_parts(nn, len).as_ptr())
+	};
+
+	Ok((symbols, hlit, hdist))
 }
 
 
