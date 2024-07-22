@@ -650,32 +650,29 @@ fn best_tree_size_counts(all: &[DeflateSym], extra: u8) -> [u32; 19] {
 		}
 
 		// Peek ahead to maybe save some iteration!
-		if use_16 || ((use_17 || use_18) && symbol.is_zero()) {
+		let symbol_zero = symbol.is_zero();
+		if use_16 || ((use_17 || use_18) && symbol_zero) {
 			let mut j = i + 1;
 			while j < all.len() && symbol == all[j] {
 				count += 1;
 				j += 1;
 				i += 1;
 			}
-		}
 
-		// Repetitions of zeroes.
-		if symbol.is_zero() && count >= 3 {
-			if use_18 {
-				special!(11, 138, D18);
+			// Repetitions of zeroes.
+			if symbol_zero {
+				if use_18 { special!(11, 138, D18); }
+				if use_17 { special!(3, 10, D17); }
 			}
-			if use_17 {
-				special!(3, 10, D17);
+
+			// Other symbol repetitions.
+			if use_16 && count >= 4 {
+				// Always count the first one as itself.
+				count -= 1;
+				cl_counts[symbol as usize] += 1;
+
+				special!(3, 6, D16);
 			}
-		}
-
-		// Other symbol repetitions.
-		if use_16 && count >= 4 {
-			// Always count the first one as itself.
-			count -= 1;
-			cl_counts[symbol as usize] += 1;
-
-			special!(3, 6, D16);
 		}
 
 		// Count the current symbol and move on.
@@ -715,33 +712,30 @@ fn encode_tree_counts(
 		}
 
 		// Peek ahead to maybe save some iteration!
-		if use_16 || ((use_17 || use_18) && symbol.is_zero()) {
+		let symbol_zero = symbol.is_zero();
+		if use_16 || ((use_17 || use_18) && symbol_zero) {
 			let mut j = i + 1;
 			while j < all.len() && symbol == all[j] {
 				count += 1;
 				j += 1;
 				i += 1;
 			}
-		}
 
-		// Repetitions of zeroes.
-		if count >= 3 && symbol.is_zero() {
-			if use_18 {
-				special!(11, 138, D18);
+			// Repetitions of zeroes.
+			if symbol_zero {
+				if use_18 { special!(11, 138, D18); }
+				if use_17 { special!(3, 10, D17); }
 			}
-			if use_17 {
-				special!(3, 10, D17);
+
+			// Other symbol repetitions.
+			if use_16 && count >= 4 {
+				// Always count the first one as itself.
+				count -= 1;
+				rle.push((symbol, 0));
+				cl_counts[symbol as usize] += 1;
+
+				special!(3, 6, D16);
 			}
-		}
-
-		// Other symbol repetitions.
-		if use_16 && count >= 4 {
-			// Always count the first one as itself.
-			count -= 1;
-			rle.push((symbol, 0));
-			cl_counts[symbol as usize] += 1;
-
-			special!(3, 6, D16);
 		}
 
 		// Count the current symbol and move on.
