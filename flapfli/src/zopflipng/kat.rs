@@ -133,24 +133,18 @@ impl LengthLimitedCodeLengths<ZOPFLI_NUM_D> for ArrayD<u32> {
 		let count = KATSCRATCH.with(|nodes| llcl::<ZOPFLI_NUM_D, 15>(self, bitcells, nodes))?;
 
 		// To work around a bug in zlib 1.2.1 — fixed in 2005, haha — we need
-		// to have at least two non-zero distance codes. Evidently assigning
-		// dummy values as needed to the start is good enough, though it will
-		// potentially add a few bytes to the output size.
-		match count {
-			0 => {
+		// to have at least two non-zero distance codes. Pad the beginning as
+		// needed to reach the quota.
+		if count < 2 {
+			// Everything is zero; patch the first two entries.
+			if count == 0 {
 				bitlengths[0] = DeflateSym::D01;
 				bitlengths[1] = DeflateSym::D01;
-			},
-			1 =>
-				// One code needed, patch 0 since it is zero.
-				if bitlengths[0].is_zero() {
-					bitlengths[0] = DeflateSym::D01;
-				}
-				// One code needed, patch 1 since it is zero.
-				else {
-					bitlengths[1] = DeflateSym::D01;
-				},
-			_ => {},
+			}
+			// The first is zero so patch it.
+			else if bitlengths[0].is_zero() { bitlengths[0] = DeflateSym::D01; }
+			// By process of elimination, the second is zero so patch it.
+			else { bitlengths[1] = DeflateSym::D01; }
 		}
 
 		Ok(bitlengths)
@@ -263,16 +257,21 @@ pub(crate) fn encode_tree(
 /// # Node Scratch.
 ///
 /// This is a super-cheap arena-like structure for holding all the temporary
-/// data required for length-limited-code-length calculations.
+/// data required for length-limited-code-length calculations. (Damn nodes and
+/// their damn self-referential tails!)
 ///
 /// This requires doing some fairly un-Rust-like things, but that would be
 /// equally true of any third-party arena as well, and since we know the
 /// particulars in advance, we can do it leaner and meaner ourselves.
+///
+/// Pre-allocating storage for the worst-case entails some overhead, but like
+/// the library's other caches, this is only ever instantiated as a
+/// thread-local static, so will benefit from lots and lots of reuse. ;)
 struct KatScratch {
 	leaves: NonNull<u8>,
 	lists: NonNull<u8>,
 	nodes: NonNull<u8>,
-	nodes_len: Cell<usize>,
+	nodes_len: Cell<usize>, // The number of nodes written during a given pass.
 }
 
 impl Drop for KatScratch {
@@ -282,6 +281,8 @@ impl Drop for KatScratch {
 	/// We might as well free the memory associated with the backing arrays
 	/// before we go.
 	fn drop(&mut self) {
+		// Safety: dealloc(LAYOUT) is equal and opposite to the alloc(LAYOUT)
+		// calls used to create them.
 		unsafe {
 			std::alloc::dealloc(self.leaves.as_ptr(), Self::LEAVES_LAYOUT);
 			std::alloc::dealloc(self.lists.as_ptr(), Self::LIST_LAYOUT);
@@ -294,8 +295,9 @@ impl KatScratch {
 	/// # Max Nodes.
 	///
 	/// This represents the theoretical maximum number of nodes a length-
-	/// limiting pass might generate, though it is unlikely to ever be reached
-	/// in practice. (Better safe than sorry!)
+	/// limiting pass could generate if every node were passed through here
+	/// and every leaf were used. Neither is strictly true in practice but
+	/// better to go a little over than come up short!
 	const MAX: usize = (2 * ZOPFLI_NUM_LL - 2) * 15;
 
 	/// # Leaves Array Layout.
@@ -322,7 +324,7 @@ impl KatScratch {
 	/// New values are written from pointers without first reading or dropping
 	/// the previous values at that position, and references to the new values
 	/// are only made available after said write, eliminating any UB weirdness
-	/// from possibly-uninitialized data.
+	/// from maybe-uninitialized data.
 	fn new() -> Self {
 		let leaves: NonNull<u8> = NonNull::new(unsafe { alloc(Self::LEAVES_LAYOUT) })
 			.unwrap_or_else(|| handle_alloc_error(Self::LEAVES_LAYOUT));
