@@ -559,12 +559,6 @@ struct List {
 
 impl List {
 	#[inline]
-	/// # Rotate.
-	///
-	/// Replace the first chain with a copy of the second.
-	fn rotate(&mut self) { self.lookahead0 = self.lookahead1; }
-
-	#[inline]
 	/// # Weight Sum.
 	///
 	/// Add and return the sum of the weights of the two chains.
@@ -770,7 +764,12 @@ fn llcl<'a, const N: usize, const MAXBITS: usize>(
 	bitlengths: &'a [Cell<DeflateSym>; N],
 	nodes: &KatScratch
 ) -> Result<usize, ZopfliError> {
-	const { assert!(MAXBITS == 7 || MAXBITS == 15); }
+	const {
+		assert!(
+			(MAXBITS == 7 && N == 19) ||
+			(MAXBITS == 15 && (N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL))
+		);
+	}
 
 	let leaves = nodes.leaves(frequencies, bitlengths);
 	let leaves_len = leaves.len();
@@ -785,21 +784,19 @@ fn llcl<'a, const N: usize, const MAXBITS: usize>(
 		leaves[0].frequency,
 		leaves[1].frequency,
 	);
-	// Safety: `usize::min(MAXBITS, leaves.len() - 1)` (above) is the number of
-	// lists we get back. The smallest MAXBITS is 7 and smallest leaf count is
-	// 3, so we'll always have at least two lists.
-	if lists.len() < 2 { crate::unreachable(); }
 
 	// In the last list, (2 * len_leaves - 2) active chains need to be
 	// created. We have two already from initialization; each boundary_pm run
 	// will give us another.
-	for _ in 0..2 * leaves_len - 5 {
-		llcl_boundary_pm(leaves, lists, nodes)?;
+	for _ in 0..2 * leaves_len - 5 { llcl_boundary_pm(leaves, lists, nodes)?; }
+
+	// Add the last chain and write the results! (Note: this can't fail; we'll
+	// always have at least two lists.)
+	if let Some([list_y, list_z]) = lists.last_chunk::<2>() {
+		let node = Node::last(list_y, list_z, leaves);
+		llcl_write::<MAXBITS>(node, leaves)?;
 	}
 
-	// Add the last chain and write the results!
-	let node = Node::last(&lists[lists.len() - 2], &lists[lists.len() - 1], leaves);
-	llcl_write::<MAXBITS>(node, leaves)?;
 	Ok(leaves_len)
 }
 
@@ -841,43 +838,26 @@ fn llcl_write<const MAXBITS: usize>(mut node: Node, leaves: &[Leaf<'_>]) -> Resu
 
 /// # Boundary Package-Merge Step.
 ///
-/// Add a new chain to the list, using either a leaf or combination of
+/// Add a new chain to the list, using either a leaf or the combination of the
 /// two chains from the previous list.
 ///
-/// Note: it would probably be more appropriate to make this a trait member or
-/// at least scope it to the sealed trait's module, but doing either leads the
-/// compiler to change its inlining decisions for the worse, so best to leave
-/// it where it is!
+/// This typically involves a lot of recursion, starting with the last list,
+/// working its way down to the first. The compiler isn't thrilled about that,
+/// but it likes a loop of loops even less, so it is what it is. ;)
 fn llcl_boundary_pm(leaves: &[Leaf<'_>], lists: &mut [List], nodes: &KatScratch)
 -> Result<(), ZopfliError> {
 	// This method should never be called with an empty list.
 	let [rest @ .., current] = lists else { return Err(zopfli_error!()); };
 	let last_count = current.lookahead1.count;
+	let previous = rest.last();
 
-	// We're at the beginning, which is the end since we're iterating in
-	// reverse.
-	if rest.is_empty() {
-		if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
-			// Shift the lookahead and add a new node.
-			current.rotate();
-			current.lookahead1 = nodes.push(Node {
-				weight: last_leaf.frequency,
-				count: last_count.saturating_add(1),
-				tail: current.lookahead0.tail,
-			})?;
-		}
-		return Ok(());
-	}
-
-	// Shift the lookahead.
-	current.rotate();
-
-	let previous = rest[rest.len() - 1];
-	let weight_sum = previous.weight_sum();
-
-	// Add a leaf and increment the count.
+	// Short circuit: if we've reached the end of the lists or the last leaf
+	// frequency is less than the weighted sum of the previous list, bump the
+	// count and stop the recursion.
 	if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
-		if last_leaf.frequency < weight_sum {
+		if previous.map_or(true, |p| last_leaf.frequency < p.weight_sum()) {
+			// Shift the lookahead and add a new node.
+			current.lookahead0 = current.lookahead1;
 			current.lookahead1 = nodes.push(Node {
 				weight: last_leaf.frequency,
 				count: last_count.saturating_add(1),
@@ -887,16 +867,23 @@ fn llcl_boundary_pm(leaves: &[Leaf<'_>], lists: &mut [List], nodes: &KatScratch)
 		}
 	}
 
-	// Update the tail.
-	current.lookahead1 = nodes.push(Node {
-		weight: weight_sum,
-		count: last_count,
-		tail: Some(previous.lookahead1),
-	})?;
+	// The chains are used up; let's create more work for ourselves by
+	// recusing down the lists!
+	if let Some(previous) = previous {
+		// Shift the lookahead and add a new node.
+		current.lookahead0 = current.lookahead1;
+		current.lookahead1 = nodes.push(Node {
+			weight: previous.weight_sum(),
+			count: last_count,
+			tail: Some(previous.lookahead1),
+		})?;
 
-	// Replace the used-up lookahead chains by recursing twice.
-	llcl_boundary_pm(leaves, rest, nodes)?;
-	llcl_boundary_pm(leaves, rest, nodes)
+		// Repeat from the previous list… twice!
+		llcl_boundary_pm(leaves, rest, nodes)?;
+		llcl_boundary_pm(leaves, rest, nodes)?;
+	}
+
+	Ok(())
 }
 
 /// # Last Non-Zero, Non-Special Count.
