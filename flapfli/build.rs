@@ -186,7 +186,7 @@ pub(crate) const {name}_F: [f64; {N}] = {:?};
 /// These have been manually transcribed into the Rust sources, but this
 /// commented-out code can be re-enabled if they ever need to be updated.
 fn bindings(lodepng_src: &Path) {
-	let bindings = bindgen::Builder::default()
+	bindgen::Builder::default()
 		.clang_args([
 			"-DLODEPNG_NO_COMPILE_ALLOCATORS",
 			"-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS",
@@ -213,55 +213,9 @@ fn bindings(lodepng_src: &Path) {
 		.size_t_is_usize(true)
 		.sort_semantically(true)
 		.generate()
-		.expect("Unable to generate bindings");
-
-	// Save the bindings to a string.
-	let mut out = Vec::new();
-	bindings.write(Box::new(&mut out)).expect("Unable to write bindings.");
-	let mut out = String::from_utf8(out)
-		.expect("Bindings contain invalid UTF-8.")
-		.replace("    ", "\t");
-
-	// Move the tests out into their own string so we can include them in a
-	// test-specific module.
-	let mut tests = String::new();
-	while let Some(from) = out.find("#[test]") {
-		let sub = &out[from..];
-		let Some(to) = sub.find("\n}\n") else { break; };
-		let test = &sub[..to + 3];
-		assert!(
-			test.starts_with("#[test]") && test.ends_with("\n}\n"),
-			"Invalid binding test clip:\n{test:?}\n",
-		);
-
-		tests.push_str(test);
-		out.replace_range(from..from + to + 3, "");
-	}
-
-	// Allow dead code for these two enum variants we aren't using.
-	for i in ["pub enum LodePNGFilterStrategy", "pub enum LodePNGColorType"] {
-		out = out.replace(i, &format!("#[allow(dead_code)]\n{i}"));
-	}
-
-	// Switch from pub to pub(super).
-	out = out.replace("pub ", "pub(super) ");
-
-	// Double-check our replacements were actually for visibility, rather than
-	// an (unlikely) accidental substring match like "mypub = 5". That would
-	// generate a compiler error on its own, but this makes it clearer what
-	// went wrong.
-	for w in out.as_bytes().windows(12) {
-		if w.ends_with(b"pub(super) ") {
-			assert!(
-				w[0].is_ascii_whitespace(),
-				"Invalid bindgen visibility replacement!",
-			);
-		}
-	}
-
-	// Write the bindings and tests.
-	write(&out_path("lodepng-bindgen.rs"), out.as_bytes());
-	write(&out_path("lodepng-bindgen-tests.rs"), tests.as_bytes());
+		.expect("Unable to generate bindings")
+		.write_to_file(out_path("lodepng-bindgen.rs"))
+		.expect("Unable to save bindings");
 }
 
 /// # Output Path.
