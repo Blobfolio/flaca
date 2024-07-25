@@ -15,6 +15,7 @@ use std::{
 		NonZeroUsize,
 		NonZeroU32,
 	},
+	ptr::NonNull,
 };
 use super::{
 	deflate_part,
@@ -183,7 +184,7 @@ impl ZopfliOut {
 		///
 		/// As such, we don't want all this stuff affecting the compiler's
 		/// inlining decisions, hence the cold wrapper.
-		unsafe fn alloc_cold(ptr: *mut u8, size: usize) -> *mut u8 {
+		unsafe fn alloc_cold(ptr: *mut u8, size: usize) -> NonNull<u8> {
 			flapfli_allocate(
 				ptr,
 				NonZeroUsize::new(size * 2).unwrap_or(NonZeroUsize::MIN),
@@ -196,7 +197,7 @@ impl ZopfliOut {
 
 			// (Re)allocate if size is a power of two, or empty.
 			if 0 == (size & size.wrapping_sub(1)) {
-				*self.out = alloc_cold(*self.out, size);
+				*self.out = alloc_cold(*self.out, size).as_ptr();
 			}
 
 			// Write the value and bump the outside length counter.

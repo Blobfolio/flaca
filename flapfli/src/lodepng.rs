@@ -28,6 +28,7 @@ use std::{
 		c_uint,
 	},
 	mem::MaybeUninit,
+	ptr::NonNull,
 };
 use super::{
 	deflate::flaca_png_deflate,
@@ -62,9 +63,14 @@ mod bindings {
 /// Note: this is more about relative safety than performance; CRC processing
 /// times are negligible compared to everything else. Haha.
 pub(crate) extern "C" fn lodepng_crc32(buf: *const c_uchar, len: usize) -> c_uint {
-	let mut h = crc32fast::Hasher::new();
-	h.update(unsafe { std::slice::from_raw_parts(buf, len) });
-	h.finalize()
+	// This should never receive empty data, but let's check anyway because C
+	// can be a confusing place.
+	if len == 0 || buf.is_null() { 0 }
+	else {
+		let mut h = crc32fast::Hasher::new();
+		h.update(unsafe { std::slice::from_raw_parts(buf, len) });
+		h.finalize()
+	}
 }
 
 
@@ -84,8 +90,10 @@ pub(super) struct DecodedImage {
 impl Drop for DecodedImage {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		unsafe { flapfli_free(self.buf); }
-		self.buf = std::ptr::null_mut();
+		if let Some(nn) = NonNull::new(self.buf) {
+			unsafe { flapfli_free(nn); }
+			self.buf = std::ptr::null_mut(); // Is this necessary?
+		}
 	}
 }
 

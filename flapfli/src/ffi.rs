@@ -55,8 +55,13 @@ impl Deref for EncodedPNG {
 impl Drop for EncodedPNG {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		unsafe { flapfli_free(self.buf); }
-		self.buf = std::ptr::null_mut();
+		// This pointer is allocated by lodepng, which uses the allocation
+		// wrappers defined in this module. To free it, we need to call our
+		// method, but only if it actually got allocated.
+		if let Some(nn) = NonNull::new(self.buf) {
+			unsafe { flapfli_free(nn); }
+			self.buf = std::ptr::null_mut(); // Is this necessary?
+		}
 	}
 }
 
@@ -99,22 +104,25 @@ impl EncodedPNG {
 ///
 /// This still requires a lot of unsafe, but at least it lives on this side of
 /// the FFI divide!
-pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> *mut u8 {
+pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> NonNull<u8> {
 	let real_ptr =
-		// If null, allocate it fresh.
-		if ptr.is_null() {
-			let layout = layout_for(new_size);
-			NonNull::new(alloc(layout))
-				.unwrap_or_else(|| handle_alloc_error(layout))
-				.as_ptr()
-		}
-		// Otherwise resize!
-		else {
-			let (real_ptr, old_size) = size_and_ptr(ptr);
+		// If we already have an allocation, resize it if needed.
+		if let Some(nn) = NonNull::new(ptr) {
+			// Get the allocation details.
+			let (real_ptr, old_size) = size_and_ptr(nn);
+
 			// Return it as-was if the allocation is already sufficient.
-			if old_size >= new_size { return ptr; }
-			realloc(real_ptr, layout_for(old_size), size_of::<usize>() + new_size.get())
-		};
+			if old_size >= new_size { return nn; }
+
+			realloc(real_ptr.as_ptr(), layout_for(old_size), size_of::<usize>() + new_size.get())
+		}
+		// Otherwise get the allocation train up and running!
+		else { alloc(layout_for(new_size)) };
+
+	// Make sure we actually achieved allocation; this shouldn't fail, but
+	// might?
+	let real_ptr = NonNull::new(real_ptr)
+		.unwrap_or_else(|| handle_alloc_error(layout_for(new_size)));
 
 	// Safety: the layout is aligned to usize.
 	real_ptr.cast::<usize>().write(new_size.get()); // Write the length.
@@ -128,11 +136,9 @@ pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> *
 /// This method deallocates a pointer previously allocated by
 /// `flapfli_allocate`. Refer to that method's documentation for the how and
 /// why.
-pub(crate) unsafe fn flapfli_free(ptr: *mut u8) {
-	if ! ptr.is_null() {
-		let (ptr, size) = size_and_ptr(ptr);
-		dealloc(ptr, layout_for(size));
-	}
+pub(crate) unsafe fn flapfli_free(ptr: NonNull<u8>) {
+	let (ptr, size) = size_and_ptr(ptr);
+	dealloc(ptr.as_ptr(), layout_for(size));
 }
 
 
@@ -143,7 +149,9 @@ pub(crate) unsafe fn flapfli_free(ptr: *mut u8) {
 ///
 /// This override allows lodepng to use `flapfli_free` for pointer
 /// deallocation.
-unsafe extern "C" fn lodepng_free(ptr: *mut c_void) { flapfli_free(ptr.cast()); }
+unsafe extern "C" fn lodepng_free(ptr: *mut c_void) {
+	if let Some(nn) = NonNull::new(ptr.cast()) { flapfli_free(nn); }
+}
 
 #[no_mangle]
 #[allow(unsafe_code)]
@@ -155,7 +163,7 @@ unsafe extern "C" fn lodepng_malloc(size: usize) -> *mut c_void {
 	flapfli_allocate(
 		std::ptr::null_mut(),
 		NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN),
-	).cast()
+	).as_ptr().cast()
 }
 
 #[no_mangle]
@@ -163,12 +171,13 @@ unsafe extern "C" fn lodepng_malloc(size: usize) -> *mut c_void {
 /// # Lodepng-specific Realloc.
 ///
 /// This override allows lodepng to use `flapfli_allocate` for pointer
-/// resizing.
+/// resizing. For reasons, this will sometimes receive a null pointer, so isn't
+/// really any different than `lodepng_malloc`.
 unsafe extern "C" fn lodepng_realloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
 	flapfli_allocate(
 		ptr.cast(),
 		NonZeroUsize::new(new_size).unwrap_or(NonZeroUsize::MIN),
-	).cast()
+	).as_ptr().cast()
 }
 
 
@@ -189,11 +198,15 @@ const unsafe fn layout_for(size: NonZeroUsize) -> Layout {
 ///
 /// This method takes the `size`-sized pointer shared with the rest of the
 /// crate (and lodepng) and converts it to the "real" one (with the leading
-/// length details), returning it and the logical size (i.e. minus eight bytes
-/// or whatever).
-const unsafe fn size_and_ptr(ptr: *mut u8) -> (*mut u8, NonZeroUsize) {
+/// length details), returning it and the "size" that can be written to
+/// willynilly (i.e. everything minus the extra length-holding portion).
+const unsafe fn size_and_ptr(ptr: NonNull<u8>) -> (NonNull<u8>, NonZeroUsize) {
+	// Subtract our way to the "real" beginning of the pointer.
 	let size_and_data_ptr = ptr.sub(size_of::<usize>());
-	// Safety: the size is written from a NonZeroUsize.
-	let size = NonZeroUsize::new_unchecked(*(size_and_data_ptr as *const usize));
+
+	// Safety: the size comes from a NonZeroUsize so can be turned back into
+	// one.
+	let size = NonZeroUsize::new_unchecked(size_and_data_ptr.cast::<usize>().read());
+
 	(size_and_data_ptr, size)
 }
