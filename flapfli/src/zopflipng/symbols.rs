@@ -223,21 +223,21 @@ mod tests {
 		use super::super::{ArrayD, ArrayLL};
 
 		assert_eq!(
-			std::mem::size_of::<ArrayLL<u8>>(),
-			std::mem::size_of::<ArrayLL<DeflateSym>>(),
+			size_of::<ArrayLL<u8>>(),
+			size_of::<ArrayLL<DeflateSym>>(),
 		);
 		assert_eq!(
-			std::mem::align_of::<ArrayLL<u8>>(),
-			std::mem::align_of::<ArrayLL<DeflateSym>>(),
+			align_of::<ArrayLL<u8>>(),
+			align_of::<ArrayLL<DeflateSym>>(),
 		);
 
 		assert_eq!(
-			std::mem::size_of::<ArrayD<u8>>(),
-			std::mem::size_of::<ArrayD<DeflateSym>>(),
+			size_of::<ArrayD<u8>>(),
+			size_of::<ArrayD<DeflateSym>>(),
 		);
 		assert_eq!(
-			std::mem::align_of::<ArrayD<u8>>(),
-			std::mem::align_of::<ArrayD<DeflateSym>>(),
+			align_of::<ArrayD<u8>>(),
+			align_of::<ArrayD<DeflateSym>>(),
 		);
 	}
 

@@ -21,11 +21,6 @@ use std::{
 
 
 
-/// # Size of Usize.
-const USIZE_SIZE: usize = std::mem::size_of::<usize>();
-
-
-
 #[derive(Debug)]
 /// # Encoded Image.
 ///
@@ -118,12 +113,12 @@ pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> *
 			let (real_ptr, old_size) = size_and_ptr(ptr);
 			// Return it as-was if the allocation is already sufficient.
 			if old_size >= new_size { return ptr; }
-			realloc(real_ptr, layout_for(old_size), USIZE_SIZE + new_size.get())
+			realloc(real_ptr, layout_for(old_size), size_of::<usize>() + new_size.get())
 		};
 
 	// Safety: the layout is aligned to usize.
 	real_ptr.cast::<usize>().write(new_size.get()); // Write the length.
-	real_ptr.add(USIZE_SIZE)                        // Return the rest.
+	real_ptr.add(size_of::<usize>())                // Return the rest.
 }
 
 #[allow(unsafe_code, clippy::inline_always)]
@@ -185,7 +180,7 @@ unsafe extern "C" fn lodepng_realloc(ptr: *mut c_void, new_size: usize) -> *mut 
 /// This returns an appropriately sized and aligned layout with room at the
 /// beginning to hold our "secret" length information.
 const unsafe fn layout_for(size: NonZeroUsize) -> Layout {
-	Layout::from_size_align_unchecked(USIZE_SIZE + size.get(), std::mem::align_of::<usize>())
+	Layout::from_size_align_unchecked(size_of::<usize>() + size.get(), align_of::<usize>())
 }
 
 #[allow(unsafe_code, clippy::cast_ptr_alignment, clippy::inline_always)]
@@ -197,7 +192,7 @@ const unsafe fn layout_for(size: NonZeroUsize) -> Layout {
 /// length details), returning it and the logical size (i.e. minus eight bytes
 /// or whatever).
 const unsafe fn size_and_ptr(ptr: *mut u8) -> (*mut u8, NonZeroUsize) {
-	let size_and_data_ptr = ptr.sub(USIZE_SIZE);
+	let size_and_data_ptr = ptr.sub(size_of::<usize>());
 	// Safety: the size is written from a NonZeroUsize.
 	let size = NonZeroUsize::new_unchecked(*(size_and_data_ptr as *const usize));
 	(size_and_data_ptr, size)

@@ -940,8 +940,8 @@ fn tree_symbols(ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>
 	// the layout can't fail.
 	let layout = unsafe {
 		Layout::from_size_align_unchecked(
-			std::mem::size_of::<DeflateSym>() * len,
-			std::mem::align_of::<DeflateSym>(),
+			size_of::<DeflateSym>() * len,
+			align_of::<DeflateSym>(),
 		)
 	};
 
