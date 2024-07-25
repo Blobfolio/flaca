@@ -62,15 +62,6 @@ pub(crate) const LENGTH_SYMBOL_BIT_VALUES: [u8; 259] = [
 	8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 0,
 ];
 
-/// # Symbol Iterator.
-///
-/// This trait exposes a single `all` method that returns an iterator over the
-/// enum's variants.
-pub(crate) trait SymbolIteration<U: ExactSizeIterator<Item=Self>>: Sized {
-	/// # Iterate All Variants!
-	fn all() -> U;
-}
-
 impl DeflateSym {
 	/// # Jumbled Tree Symbols.
 	///
@@ -206,28 +197,6 @@ impl SplitLen {
 	///
 	/// Returns `true` if `self` is the maximum value (`SplitLen::S14`).
 	pub(crate) const fn is_max(self) -> bool { matches!(self, Self::S14) }
-
-	/// # Increment.
-	///
-	/// Returns `self + 1`.
-	///
-	/// ## Safety
-	///
-	/// This would be UB if `self.is_max()`; the caller must explicitly check
-	/// that is not the case before incrementing.
-	pub(crate) const fn increment(self) -> Self {
-		#[allow(unsafe_code)]
-		unsafe {
-			// Safety: this method is called from just two places —
-			// `split_lz77` and `split_raw` — both of which explicitly check
-			// the current value, breaking their loops if/when the maximum is
-			// reached.
-			if self.is_max() { crate::unreachable(); }
-
-			// Safety: SplitLen has the same size and alignment as u8.
-			std::mem::transmute::<u8, Self>(self as u8 + 1)
-		}
-	}
 }
 
 
@@ -254,21 +223,21 @@ mod tests {
 		use super::super::{ArrayD, ArrayLL};
 
 		assert_eq!(
-			std::mem::size_of::<ArrayLL<u8>>(),
-			std::mem::size_of::<ArrayLL<DeflateSym>>(),
+			size_of::<ArrayLL<u8>>(),
+			size_of::<ArrayLL<DeflateSym>>(),
 		);
 		assert_eq!(
-			std::mem::align_of::<ArrayLL<u8>>(),
-			std::mem::align_of::<ArrayLL<DeflateSym>>(),
+			align_of::<ArrayLL<u8>>(),
+			align_of::<ArrayLL<DeflateSym>>(),
 		);
 
 		assert_eq!(
-			std::mem::size_of::<ArrayD<u8>>(),
-			std::mem::size_of::<ArrayD<DeflateSym>>(),
+			size_of::<ArrayD<u8>>(),
+			size_of::<ArrayD<DeflateSym>>(),
 		);
 		assert_eq!(
-			std::mem::align_of::<ArrayD<u8>>(),
-			std::mem::align_of::<ArrayD<DeflateSym>>(),
+			align_of::<ArrayD<u8>>(),
+			align_of::<ArrayD<DeflateSym>>(),
 		);
 	}
 

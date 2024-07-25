@@ -10,6 +10,7 @@ use std::{
 	ops::Range,
 };
 use super::{
+	LZ77StoreRange,
 	zopfli_error,
 	ZOPFLI_MASTER_BLOCK_SIZE,
 	ZopfliError,
@@ -27,6 +28,18 @@ use super::{
 pub(crate) struct ZopfliRange {
 	start: usize,
 	end: usize,
+}
+
+impl From<LZ77StoreRange<'_>> for ZopfliRange {
+	#[inline]
+	fn from(src: LZ77StoreRange<'_>) -> Self {
+		// Safety: LZ77StoreRange requires slices be non-empty and within a
+		// million, same as ZopfliRange.
+		Self {
+			start: 0,
+			end: src.len().get(),
+		}
+	}
 }
 
 impl ZopfliRange {

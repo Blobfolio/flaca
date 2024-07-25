@@ -56,6 +56,9 @@ pub(crate) struct LZ77Store {
 }
 
 impl LZ77Store {
+	/// # Small Store Limit.
+	pub(crate) const SMALL_STORE: usize = 1000;
+
 	/// # New.
 	pub(crate) const fn new() -> Self {
 		Self { entries: Vec::new() }
@@ -119,6 +122,13 @@ impl LZ77Store {
 }
 
 impl LZ77Store {
+	/// # Is Small?
+	///
+	/// Returns true if there are a thousand or fewer entries.
+	pub(crate) fn is_small(&self) -> bool {
+		self.entries.len() <= Self::SMALL_STORE
+	}
+
 	/// # Length.
 	///
 	/// Return the number of entries in the store. Unlike `LZ77StoreRange`,
@@ -168,7 +178,17 @@ impl<'a> LZ77StoreRange<'a> {
 			if 0 < e.dist { d_counts[e.d_symbol as usize] += 1; }
 		}
 
+		// This should always be one.
+		ll_counts[256] = 1;
+
 		(ll_counts, d_counts)
+	}
+
+	/// # Is Small?
+	///
+	/// Returns true if there are a thousand or fewer entries.
+	pub(crate) const fn is_small(&self) -> bool {
+		self.entries.len() <= LZ77Store::SMALL_STORE
 	}
 
 	/// # Length.
@@ -182,21 +202,21 @@ impl<'a> LZ77StoreRange<'a> {
 		unsafe { NonZeroUsize::new_unchecked(self.entries.len()) }
 	}
 
-	#[allow(unsafe_code)]
-	/// # Split.
+	/// # (re)Ranged.
 	///
-	/// Split the range into two at `mid`, unless that would leave either side
-	/// empty, in which case an error will be returned instead.
+	/// Same as `LZ77Store::ranged`, but for stores that are already ranged.
+	pub(crate) fn ranged(&self, rng: ZopfliRange) -> Result<Self, ZopfliError> {
+		let entries = self.entries.get(rng.rng()).ok_or(zopfli_error!())?;
+		Ok(Self { entries })
+	}
+
+	/// # Split Chunk Iterator.
 	///
-	/// Note: this returns two new instances; `self` is left unchanged.
-	pub(crate) const fn split(self, mid: usize) -> Result<(Self, Self), ZopfliError> {
-		if 0 == mid || self.entries.len() <= mid { Err(zopfli_error!()) }
-		else {
-			// Safety: we have checked mid is between the start and end of our
-			// entries.
-			let (a, b) = unsafe { self.entries.split_at_unchecked(mid) };
-			Ok((Self { entries: a }, Self { entries: b }))
-		}
+	/// Return an iterator that yields nine evenly-divided, non-empty split
+	/// combinations for minimum-cost-testing, unless the store is too small
+	/// to split.
+	pub(crate) const fn splits_chunked(self) -> Option<LZ77StoreRangeSplitsChunked<'a>> {
+		LZ77StoreRangeSplitsChunked::new(self.entries)
 	}
 
 	/// # Split Iterator.
@@ -285,8 +305,9 @@ impl<'a> Iterator for LZ77StoreRangeSplits<'a> {
 	#[allow(unsafe_code)]
 	fn next(&mut self) -> Option<Self::Item> {
 		let mid = self.splits.next()?;
-		// Safety: we verified splits was in between the start and end points
-		// of our entries.
+		// Safety: the split range is 1..entries.len(), and we already verified
+		// (at construction) that 1 < entries.len(). All splits will be in
+		// range, and both halves will be non-empty.
 		let (a, b) = unsafe { self.entries.split_at_unchecked(mid) };
 		Some((
 			LZ77StoreRange { entries: a },
@@ -302,6 +323,122 @@ impl<'a> Iterator for LZ77StoreRangeSplits<'a> {
 
 impl<'a> ExactSizeIterator for LZ77StoreRangeSplits<'a> {
 	fn len(&self) -> usize { self.splits.len() }
+}
+
+
+
+/// # Chunked Ranged Store Splits.
+///
+/// This iterator yields nine evenly-divided, non-empty split pairs of a ranged
+/// store, used for minimum-cost-finding.
+pub(crate) struct LZ77StoreRangeSplitsChunked<'a> {
+	entries: &'a [LZ77StoreEntry],
+	chunk: NonZeroUsize,
+	start: usize,
+	end: usize,
+	pos: usize,
+}
+
+impl<'a> LZ77StoreRangeSplitsChunked<'a> {
+	pub(crate) const SPLIT_MIN: usize = 10;
+	pub(crate) const SPLITS: usize = Self::SPLIT_MIN - 1;
+
+	/// # New Instance.
+	///
+	/// This returns a new chunked split iterator unless the store is too small
+	/// to split.
+	pub(crate) const fn new(entries: &'a [LZ77StoreEntry]) -> Option<Self> {
+		let end = entries.len();
+		if let Some(chunk) = Self::chunk_size(1, end) {
+			Some(Self {
+				entries,
+				chunk,
+				start: 1,
+				end,
+				pos: 0,
+			})
+		}
+		else { None }
+	}
+
+	/// # Chunk Size.
+	///
+	/// Return the chunk size, if any, given the distance between `start..end`.
+	const fn chunk_size(start: usize, end: usize) -> Option<NonZeroUsize> {
+		if start < end {
+			NonZeroUsize::new((end - start).wrapping_div(Self::SPLIT_MIN))
+		}
+		else { None }
+	}
+
+	/// # Position At Chunk.
+	///
+	/// This returns the split point for a given chunk.
+	///
+	/// Note: this does not enforce the chunk count; nonsensical values may
+	/// be pushed out of range.
+	const fn pos_at(&self, n: usize) -> usize {
+		self.start + n * self.chunk.get()
+	}
+
+	#[allow(unsafe_code)]
+	/// # Reset/Resplit the Range.
+	///
+	/// This builds a new range around chunk number `n` — the position of
+	/// that chunk becomes the start, the end becomes +2 chunks — and so long
+	/// as the new range is iterable, resets the counters so this can be looped
+	/// anew.
+	///
+	/// Regardless, the mid point between start and end is returned.
+	pub(crate) fn reset(&mut self, n: usize) -> NonZeroUsize {
+		// Find the midpoint first; the new start and end are relative to it.
+		// Safety: chunk and (n+1) are both non-zero.
+		let mid = unsafe { NonZeroUsize::new_unchecked(self.pos_at(n + 1)) };
+
+		// Tweak the ranges.
+		if 0 != n { self.start = mid.get() - self.chunk.get(); };
+		if n + 1 < Self::SPLITS { self.end = mid.get() + self.chunk.get(); }
+
+		// If we're still chunkable, reset for another round!
+		if let Some(chunk) = Self::chunk_size(self.start, self.end) {
+			self.chunk = chunk;
+			self.pos = 0;
+		}
+
+		mid
+	}
+}
+
+impl<'a> Iterator for LZ77StoreRangeSplitsChunked<'a> {
+	type Item = (usize, LZ77StoreRange<'a>, LZ77StoreRange<'a>);
+
+	#[allow(unsafe_code)]
+	fn next(&mut self) -> Option<Self::Item> {
+		let idx = self.pos;
+		if idx < Self::SPLITS {
+			self.pos = idx + 1;
+			let mid = self.pos_at(self.pos);
+
+			// Safety: we verified the chunk size and entry count at
+			// construction.
+			let (a, b) = unsafe { self.entries.split_at_unchecked(mid) };
+			Some((
+				idx,
+				LZ77StoreRange { entries: a },
+				LZ77StoreRange { entries: b },
+			))
+		}
+		else { None }
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.len();
+		(len, Some(len))
+	}
+}
+
+impl<'a> ExactSizeIterator for LZ77StoreRangeSplitsChunked<'a> {
+	fn len(&self) -> usize { Self::SPLITS.saturating_sub(self.pos) }
 }
 
 

@@ -5,7 +5,10 @@ This module contains the deflate entrypoint and all of the block-related odds
 and ends that didn't make it into other modules.
 */
 
-use std::num::NonZeroU32;
+use std::num::{
+	NonZeroU32,
+	NonZeroUsize,
+};
 use super::{
 	ArrayD,
 	ArrayLL,
@@ -25,8 +28,6 @@ use super::{
 	LZ77StoreRange,
 	SplitCache,
 	SplitLen,
-	SplitPIdx,
-	SymbolIteration,
 	stats::{
 		RanState,
 		SymbolStats,
@@ -58,7 +59,7 @@ const NZ11: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(11) };
 /// # Block Split Points.
 ///
 /// This array holds up to fourteen middle points as well as the absolute start
-/// and end indices.
+/// and end indices for the chunk/store.
 type SplitPoints = [usize; 16];
 
 /// # Zero-Filled Split Points.
@@ -80,12 +81,6 @@ pub(crate) fn deflate_part(
 	chunk: ZopfliChunk<'_>,
 	out: &mut ZopfliOut,
 ) -> Result<(), ZopfliError> {
-	#[inline(never)]
-	fn empty_fixed(last_block: bool, out: &mut ZopfliOut) {
-		out.add_header::<BLOCK_TYPE_FIXED>(last_block);
-		out.add_fixed_bits::<7>(0);
-	}
-
 	let mut store = LZ77Store::new();
 	let mut store2 = LZ77Store::new();
 
@@ -99,29 +94,19 @@ pub(crate) fn deflate_part(
 	)?;
 
 	// Write the data!
-	let store_len = best[best_len as usize + 1];
-	for pair in best[..best_len as usize + 2].windows(2) {
-		let really_last_block = last_block && pair[1] == store_len;
-
-		if let Ok(rng) = ZopfliRange::new(pair[0], pair[1]) {
-			let store_rng = store.ranged(rng)?;
-			add_lz77_block(
-				really_last_block,
-				store_rng,
-				store_len,
-				&mut store2,
-				state,
-				chunk,
-				out,
-			)?;
-		}
-
-		// This shouldn't be reachable, but the original zopfli seemed to think
-		// empty blocks are possible and imply fixed-tree layouts, so maybe?
-		else {
-			debug_assert_eq!(pair[0], pair[1]);
-			empty_fixed(really_last_block, out);
-		}
+	let store_len = NonZeroUsize::new(best[best_len as usize + 1]).ok_or(zopfli_error!())?;
+	for rng in SplitPointsIter::new(&best, best_len) {
+		let rng = rng?;
+		let store_rng = store.ranged(rng)?;
+		add_lz77_block(
+			last_block && rng.end() == store_len.get(),
+			store_rng,
+			store_len,
+			&mut store2,
+			state,
+			chunk,
+			out,
+		)?;
 	}
 
 	Ok(())
@@ -138,7 +123,7 @@ pub(crate) fn deflate_part(
 fn add_lz77_block(
 	last_block: bool,
 	store: LZ77StoreRange,
-	store_len: usize,
+	store_len: NonZeroUsize,
 	fixed_store: &mut LZ77Store,
 	state: &mut ZopfliState,
 	chunk: ZopfliChunk<'_>,
@@ -214,7 +199,7 @@ fn add_lz77_block(
 	// tiny one or the unoptimized-fixed size is within 10% of the dynamic size
 	// we should check it out.
 	if
-		store_len <= 1000 ||
+		store_len.get() <= LZ77Store::SMALL_STORE ||
 		store.block_size_fixed().saturating_mul(NZ10) <= dynamic.cost().saturating_mul(NZ11)
 	{
 		let rng = store.byte_range()?;
@@ -225,8 +210,7 @@ fn add_lz77_block(
 		state.optimal_run_fixed(fixed_chunk, fixed_store)?;
 
 		// And finally, the cost!
-		let fixed_rng = ZopfliRange::new(0, fixed_store.len())?;
-		let fixed_store_rng = fixed_store.ranged(fixed_rng)?;
+		let fixed_store_rng = fixed_store.ranged_full()?;
 		let fixed_cost = fixed_store_rng.block_size_fixed();
 		if fixed_cost < dynamic.cost() && fixed_cost <= uncompressed_cost {
 			return add_fixed(last_block, fixed_store_rng, out);
@@ -296,37 +280,17 @@ fn add_lz77_data(
 /// # Calculate Best Block Size (in Bits).
 fn calculate_block_size_auto(store: &LZ77Store, rng: ZopfliRange)
 -> Result<NonZeroU32, ZopfliError> {
-	let small = store.len() <= 1000;
+	let small = store.is_small();
 	let store = store.ranged(rng)?;
 	store.block_size_auto(small)
 }
 
+#[inline(never)]
 /// # Minimum Split Cost.
 ///
 /// Return the index of the smallest split cost between `start..end`.
-fn find_minimum_cost(store: &LZ77Store, full_rng: ZopfliRange)
--> Result<(usize, NonZeroU32), ZopfliError> {
-	#[cold]
-	/// # Small Cost.
-	///
-	/// For small ranges, skip the logic and compare all possible splits. This
-	/// will return an error if no splits are possible.
-	fn small_cost(store: LZ77StoreRange, offset: usize, small: bool)
-	-> Result<(usize, NonZeroU32), ZopfliError> {
-		let mut best_cost = NonZeroU32::MAX;
-		let mut best_idx = 1;
-		let mut mid = 1;
-		for (a, b) in store.splits()? {
-			let cost = split_cost(a, b, small)?;
-			if cost < best_cost {
-				best_cost = cost;
-				best_idx = mid; // The split point.
-			}
-			mid += 1;
-		}
-		Ok((offset + best_idx, best_cost))
-	}
-
+fn find_minimum_cost(store: LZ77StoreRange, small: bool)
+-> Result<(NonZeroUsize, NonZeroU32), ZopfliError> {
 	/// # Split Block Cost.
 	///
 	/// Sum the left and right halves of the range.
@@ -336,52 +300,50 @@ fn find_minimum_cost(store: &LZ77Store, full_rng: ZopfliRange)
 		Ok(a.saturating_add(b.get()))
 	}
 
-	// Break it down a bit.
-	let offset = full_rng.start();
-	let small = store.len() <= 1000;
-	let store_rng = store.ranged(full_rng)?;
-
-	// Short circuit.
-	if store_rng.len().get() <= 1024 { return small_cost(store_rng, offset, small); }
-
-	// Split range, relative to the length of the ranged store.
-	let mut split_rng = 1..store_rng.len().get();
-
-	// Divide and conquer.
-	let mut best_cost = NonZeroU32::MAX;
-	let mut best_idx = 1;
-	let mut p = [0_usize; MINIMUM_SPLIT_DISTANCE - 1];
+	// Some counters.
 	let mut last_best_cost = NonZeroU32::MAX;
-	loop {
-		let mut best_p_idx = SplitPIdx::S0;
-		for (i, pp) in SplitPIdx::all().zip(p.iter_mut()) {
-			*pp = split_rng.start + (i as usize + 1) * (split_rng.len().wrapping_div(MINIMUM_SPLIT_DISTANCE));
-			let line_cost =
-				if best_idx == *pp { last_best_cost }
-				else {
-					let (a, b) = store_rng.split(*pp)?;
-					split_cost(a, b, small)?
-				};
+	let mut best_split = NonZeroUsize::MAX;
 
-			if (i as usize) == 0 || line_cost < best_cost {
-				best_cost = line_cost;
-				best_p_idx = i;
+	// Small ranges can just be iterated exhaustively.
+	if store.len().get() <= 1024 {
+		for (a, b) in store.splits()? {
+			let cost = split_cost(a, b, small)?;
+			if cost < last_best_cost {
+				last_best_cost = cost;
+				best_split = a.len(); // The split point.
 			}
 		}
+	}
+	// Larger ones require more of a divide-and-conquer approach.
+	else {
+		let mut splits = store.splits_chunked().ok_or(zopfli_error!())?;
+		loop {
+			let mut best_cost = NonZeroU32::MAX;
+			let mut best_chunk = 0;
+			for (i, a, b) in splits.by_ref() {
+				let line_cost =
+					if best_split == a.len() { last_best_cost }
+					else { split_cost(a, b, small)? };
 
-		// No improvement; we're done.
-		if last_best_cost < best_cost { break; }
+				if i == 0 || line_cost < best_cost {
+					best_cost = line_cost;
+					best_chunk = i;
+				}
+			}
 
-		// Nudge the boundaries and back again.
-		best_idx = p[best_p_idx as usize];
-		if 0 != (best_p_idx as usize) { split_rng.start = p[best_p_idx as usize - 1]; }
-		if (best_p_idx as usize) + 1 < p.len() { split_rng.end = p[best_p_idx as usize + 1]; }
+			// Stop once we start making things worse.
+			if last_best_cost < best_cost { break; }
 
-		last_best_cost = best_cost;
-		if split_rng.len() < MINIMUM_SPLIT_DISTANCE { break; }
+			// Update the counters.
+			best_split = splits.reset(best_chunk);
+			last_best_cost = best_cost;
+		}
 	}
 
-	Ok((offset + best_idx, last_best_cost))
+	// If this were going to fail it would have failed a million times over
+	// already, but one more check doesn't hurt!
+	if best_split < store.len() { Ok((best_split, last_best_cost)) }
+	else { Err(zopfli_error!()) }
 }
 
 #[inline]
@@ -425,7 +387,7 @@ fn lz77_optimal(
 		// Optimal run.
 		state.optimal_run(chunk, &current_stats, scratch_store)?;
 
-		// This is the cost we actually care about.
+		// At this point, we only care about the dynamic cost of the chunk.
 		let current_cost = scratch_store.ranged_full()
 			.and_then(LZ77StoreRange::block_size_dynamic)?;
 
@@ -438,7 +400,7 @@ fn lz77_optimal(
 
 		// Repopulate the counts from the current store, and if the randomness
 		// has "warmed up" sufficiently, combine them with half the previous
-		// values to create a sorted of weighted average.
+		// values to create a sort of weighted average.
 		current_stats.reload_store(scratch_store, weighted);
 
 		// If nothing changed, replace the current stats with the best stats,
@@ -453,7 +415,7 @@ fn lz77_optimal(
 
 	// Find and return the current (best) cost of the store.
 	let store_rng = store.ranged_full()?;
-	store_rng.block_size_auto(store_rng.len().get() <= 1000)
+	store_rng.block_size_auto(store_rng.is_small())
 }
 
 #[inline(never)]
@@ -509,13 +471,10 @@ fn split_points(
 		let two_len = split_points_lz77_cold(state, store, &mut split_a)?;
 		split_a[two_len as usize] = store.len();
 		split_a.rotate_right(1);
-		debug_assert!(split_a[0] == 0); // We don't write to the last byte.
+		debug_assert!(split_a[0] == 0); // SplitLen tops out at 14 so we can't actually write to 15 (now 0); it should be the default value, which was zero.
 		let mut cost2 = 0;
-		for pair in split_a[..two_len as usize + 2].windows(2) {
-			cost2 += calculate_block_size_auto(
-				store,
-				ZopfliRange::new(pair[0], pair[1])?,
-			)?.get();
+		for rng in SplitPointsIter::new(&split_a, two_len) {
+			cost2 += calculate_block_size_auto(store, rng?)?.get();
 		}
 
 		// It's better!
@@ -523,7 +482,7 @@ fn split_points(
 	}
 
 	split_b.rotate_right(1);
-	debug_assert!(split_b[0] == 0); // We don't write to the last byte.
+	debug_assert!(split_b[0] == 0); // SplitLen tops out at 14 so we can't actually write to 15 (now 0); it should be the default value, which was zero.
 	Ok((split_b, raw_len))
 }
 
@@ -551,7 +510,7 @@ fn split_points_raw(
 		for (i, e) in store.entries.iter().enumerate().take(split_b[len as usize - 1] + 1) {
 			if i == split_b[j as usize] {
 				split_a[j as usize] = pos;
-				j = j.increment();
+				j = j.increment().ok_or(zopfli_error!())?;
 				if (j as u8) == (len as u8) { return Ok(len); }
 			}
 			pos += e.length() as usize;
@@ -585,7 +544,7 @@ fn split_points_lz77(
 	///
 	/// Returns `false` if no blocks are found.
 	fn find_largest(
-		lz77size: usize,
+		lz77size: NonZeroUsize,
 		done: &SplitCache,
 		splitpoints: &[usize],
 		rng: &mut ZopfliRange,
@@ -597,7 +556,7 @@ fn split_points_lz77(
 				else { splitpoints[i - 1] };
 			let end =
 				if i < splitpoints.len() { splitpoints[i] }
-				else { lz77size - 1 };
+				else { lz77size.get() - 1 };
 
 			// We found a match!
 			if best < end - start && done.is_unset(start) {
@@ -609,27 +568,31 @@ fn split_points_lz77(
 	}
 
 	// This won't work on tiny files.
-	if store.len() < MINIMUM_SPLIT_DISTANCE { return Ok(SplitLen::S00); }
+	let store = store.ranged_full()?;
+	if store.len().get() < MINIMUM_SPLIT_DISTANCE { return Ok(SplitLen::S00); }
 
 	// Get started!
-	let mut rng = ZopfliRange::new(0, store.len())?;
+	let mut rng = ZopfliRange::from(store);
+	let small = store.is_small(); // Smallness depends on the original store for some reason.
 	let done = state.split_cache(rng);
 	let mut last = 0;
 	let mut len = SplitLen::S00;
 	loop {
-		// Safety: find_minimum_cost will return an error if the block doesn't
-		// have a midpoint.
-		let (llpos, llcost) = find_minimum_cost(store, rng)?;
-		if rng.start() >= llpos || rng.end() <= llpos { crate::unreachable(); }
+		let store_rng = store.ranged(rng)?;
+		let (llpos, llcost) = find_minimum_cost(store_rng, small)?;
 
 		// Ignore points we've already covered.
-		if llpos == rng.start() + 1 || calculate_block_size_auto(store, rng)? < llcost {
+		if llpos.get() == 1 || store_rng.block_size_auto(small)? < llcost {
 			done.set(rng.start());
 		}
 		else {
+			// The llpos was relative; add it back to start to give it
+			// store-wide context.
+			let llpos = rng.start() + llpos.get();
+
 			// Mark it as a split point and add it sorted.
 			split_b[len as usize] = llpos;
-			len = len.increment();
+			len = len.increment().ok_or(zopfli_error!())?;
 
 			// Keep the list sorted.
 			if last > llpos { split_b[..len as usize].sort_unstable(); }
@@ -655,6 +618,52 @@ fn split_points_lz77(
 
 
 
+/// # Split Range Iterator.
+///
+/// This iterator converts split points into split ranges, functioning kinda
+/// like `slice.windows(2)`, returning between `1..=15` ranges spanning the
+/// length of the chunk/store.
+struct SplitPointsIter<'a> {
+	data: &'a SplitPoints,
+	max: SplitLen, // Inclusive length.
+	pos: usize,
+}
+
+impl<'a> SplitPointsIter<'a> {
+	/// # New Instance.
+	const fn new(data: &'a SplitPoints, max: SplitLen) -> Self {
+		Self { data, max, pos: 0 }
+	}
+}
+
+impl<'a> Iterator for SplitPointsIter<'a> {
+	type Item = Result<ZopfliRange, ZopfliError>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// The
+		if self.pos <= (self.max as usize) {
+			let start = self.data[self.pos];
+			let end = self.data[self.pos + 1];
+			self.pos += 1;
+			Some(ZopfliRange::new(start, end))
+		}
+		else { None }
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.len();
+		(len, Some(len))
+	}
+}
+
+impl<'a> ExactSizeIterator for SplitPointsIter<'a> {
+	fn len(&self) -> usize {
+		(self.max as usize + 1).saturating_sub(self.pos)
+	}
+}
+
+
+
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -672,16 +681,30 @@ mod test {
 	}
 
 	#[test]
-	fn t_split_idx() {
-		// Make sure we have the same number of split indices as we do splits.
-		assert_eq!(
-			SplitPIdx::all().len(),
-			MINIMUM_SPLIT_DISTANCE - 1,
-		);
+	fn t_split_points_iter() {
+		let data: SplitPoints = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
-		// Might as well they iterate the same.
-		let split1: Vec<usize> = SplitPIdx::all().map(|s| s as usize).collect();
-		let split2: Vec<usize> = (0..MINIMUM_SPLIT_DISTANCE - 1).collect();
-		assert_eq!(split1, split2);
+		// Try with no mids.
+		let mut iter = SplitPointsIter::new(&data, SplitLen::S00);
+		assert_eq!(iter.len(), 1);
+		let next = iter.next()
+			.expect("expected Some(range)")
+			.expect("expected Ok(range)");
+		assert_eq!(next.rng(), 0..1);
+		assert_eq!(iter.len(), 0);
+		assert!(iter.next().is_none());
+
+		// Try with two mids.
+		iter = SplitPointsIter::new(&data, SplitLen::S02);
+		let expected = [0..1_usize, 1..2, 2..3];
+		for (i, e) in expected.into_iter().enumerate() {
+			assert_eq!(iter.len(), 3 - i);
+			let next = iter.next()
+				.expect("expected Some(range)")
+				.expect("expected Ok(range)");
+			assert_eq!(next.rng(), e);
+		}
+		assert_eq!(iter.len(), 0);
+		assert!(iter.next().is_none());
 	}
 }

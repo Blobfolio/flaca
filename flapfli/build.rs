@@ -110,8 +110,8 @@ fn build_symbols() {
 		NumEnum::new(0..32_u16, "Distance Symbols.", "Dsym"),
 		NumEnum::new(0..259_u16, "Lit/Lengths.", "LitLen").with_eq().with_iter(),
 		NumEnum::new(0..286_u16, "Lit/Length Symbols.", "Lsym"),
-		NumEnum::new(0..9_u16, "Block Splitting Indices.", "SplitPIdx").with_iter(),
 		NumEnum::new(0..15_u8, "Block Split Length.", "SplitLen").with_eq(),
+		NumEnum::new(0..30_u8, "Tree Symbol Distances.", "TreeDist").with_eq(),
 	);
 
 	out.push_str(r"/// # Distance Symbols by Distance
@@ -186,7 +186,7 @@ pub(crate) const {name}_F: [f64; {N}] = {:?};
 /// These have been manually transcribed into the Rust sources, but this
 /// commented-out code can be re-enabled if they ever need to be updated.
 fn bindings(lodepng_src: &Path) {
-	let bindings = bindgen::Builder::default()
+	bindgen::Builder::default()
 		.clang_args([
 			"-DLODEPNG_NO_COMPILE_ALLOCATORS",
 			"-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS",
@@ -213,55 +213,9 @@ fn bindings(lodepng_src: &Path) {
 		.size_t_is_usize(true)
 		.sort_semantically(true)
 		.generate()
-		.expect("Unable to generate bindings");
-
-	// Save the bindings to a string.
-	let mut out = Vec::new();
-	bindings.write(Box::new(&mut out)).expect("Unable to write bindings.");
-	let mut out = String::from_utf8(out)
-		.expect("Bindings contain invalid UTF-8.")
-		.replace("    ", "\t");
-
-	// Move the tests out into their own string so we can include them in a
-	// test-specific module.
-	let mut tests = String::new();
-	while let Some(from) = out.find("#[test]") {
-		let sub = &out[from..];
-		let Some(to) = sub.find("\n}\n") else { break; };
-		let test = &sub[..to + 3];
-		assert!(
-			test.starts_with("#[test]") && test.ends_with("\n}\n"),
-			"Invalid binding test clip:\n{test:?}\n",
-		);
-
-		tests.push_str(test);
-		out.replace_range(from..from + to + 3, "");
-	}
-
-	// Allow dead code for these two enum variants we aren't using.
-	for i in ["pub enum LodePNGFilterStrategy", "pub enum LodePNGColorType"] {
-		out = out.replace(i, &format!("#[allow(dead_code)]\n{i}"));
-	}
-
-	// Switch from pub to pub(super).
-	out = out.replace("pub ", "pub(super) ");
-
-	// Double-check our replacements were actually for visibility, rather than
-	// an (unlikely) accidental substring match like "mypub = 5". That would
-	// generate a compiler error on its own, but this makes it clearer what
-	// went wrong.
-	for w in out.as_bytes().windows(12) {
-		if w.ends_with(b"pub(super) ") {
-			assert!(
-				w[0].is_ascii_whitespace(),
-				"Invalid bindgen visibility replacement!",
-			);
-		}
-	}
-
-	// Write the bindings and tests.
-	write(&out_path("lodepng-bindgen.rs"), out.as_bytes());
-	write(&out_path("lodepng-bindgen-tests.rs"), tests.as_bytes());
+		.expect("Unable to generate bindings")
+		.write_to_file(out_path("lodepng-bindgen.rs"))
+		.expect("Unable to save bindings");
 }
 
 /// # Output Path.
@@ -361,6 +315,52 @@ where Range<T>: ExactSizeIterator<Item=T> {
 		// Closing.
 		writeln!(f, "}}\n")?;
 
+		let max = self.rng.clone().last().expect("Range failed.");
+
+		// MIN, MAX, increment, decrement.
+		writeln!(
+			f,
+			"impl {name} {{
+	#[allow(dead_code)]
+	/// # Minimum Value.
+	pub(crate) const MIN: Self = Self::{prefix}{start:0width$};
+
+	#[allow(dead_code)]
+	/// # Maximum Value.
+	pub(crate) const MAX: Self = Self::{prefix}{max:0width$};
+
+	#[allow(unsafe_code, dead_code)]
+	/// # Decrement.
+	///
+	/// Return `self - 1` or None.
+	pub(crate) const fn decrement(self) -> Option<Self> {{
+		let n = self as {kind};
+		if n == {start} {{ None }}
+		else {{
+			// Safety: we aren't at the bottom yet!
+			Some(unsafe {{ std::mem::transmute::<{kind}, Self>(n - 1) }})
+		}}
+	}}
+
+	#[allow(unsafe_code, dead_code)]
+	/// # Increment.
+	///
+	/// Return `self + 1` or None.
+	pub(crate) const fn increment(self) -> Option<Self> {{
+		let n = self as {kind} + 1;
+		if n < {end} {{
+			// Safety: we aren't at the top yet!
+			Some(unsafe {{ std::mem::transmute::<{kind}, Self>(n) }})
+		}}
+		else {{ None }}
+	}}
+}}\n",
+			name=self.name,
+			start=self.rng.start,
+			end=self.rng.end,
+			width=width
+		)?;
+
 		// Symbol iterator?
 		if Self::DERIVE_ITER == self.flags & Self::DERIVE_ITER {
 			writeln!(
@@ -392,14 +392,9 @@ impl ExactSizeIterator for {name}Iter {{
 		usize::from({end}_{kind}.saturating_sub(self.0))
 	}}
 }}
-
-impl SymbolIteration<{name}Iter> for {name} {{
-	fn all() -> {name}Iter {{ {name}Iter({start}) }}
-}}
 ",
 				name=self.name,
 				end=self.rng.end,
-				start=self.rng.start,
 			)?;
 		}
 

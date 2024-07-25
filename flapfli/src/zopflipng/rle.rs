@@ -11,18 +11,26 @@ use super::{
 	ArrayLL,
 	best_tree_size,
 	DeflateSym,
-	DISTANCE_BITS,
 	LengthLimitedCodeLengths,
 	LZ77StoreRange,
+	ZOPFLI_NUM_D,
+	ZOPFLI_NUM_LL,
 	ZopfliError,
 };
 
 
 
+/// # Distance Extra Byts (by Symbol).
+const DISTANCE_BITS: &ArrayD<u32> = &[
+	0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+	7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 0, 0,
+];
+
 /// # Length Symbol Extra Bits.
-const LENGTH_EXTRA_BITS: [u32; 29] = [
-	0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
-	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+const LENGTH_EXTRA_BITS: &ArrayLL<u32> = &[
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+	0, 0,
 ];
 
 
@@ -47,36 +55,40 @@ impl DynamicLengths {
 	/// # New.
 	pub(crate) fn new(store: LZ77StoreRange) -> Result<Self, ZopfliError> {
 		// Pull the counts from the store.
-		let (mut ll_counts, d_counts) = store.histogram();
-		ll_counts[256] = 1;
+		let (ll_counts, d_counts) = store.histogram();
 
 		// Pull the symbols, then get the sizes.
 		let ll_lengths = ll_counts.llcl()?;
-		let d_lengths = d_llcl(&d_counts)?;
+		let d_lengths = d_counts.llcl()?;
 
 		// Calculate the sizes.
-		let (extra, treesize) = best_tree_size(&ll_lengths, &d_lengths)?;
-		let datasize = calculate_size_data(&ll_counts, &d_counts, &ll_lengths, &d_lengths);
-		let size = treesize.saturating_add(datasize);
-
-		// Build the response.
+		let (extra, size) = calculate_size(&ll_counts, &d_counts, &ll_lengths, &d_lengths)?;
 		let mut out = Self { extra, size, ll_lengths, d_lengths };
 
-		// But wait, there's more! Optimize the counts and repeat the process
-		// to see if that helps.
-		out.try_optimized(&ll_counts, &d_counts)?;
+		if let Some((ll_lengths2, d_lengths2)) = out.try_optimized(&ll_counts, &d_counts) {
+			// Calculate the sizes.
+			let (extra2, size2) = calculate_size(&ll_counts, &d_counts, &ll_lengths2, &d_lengths2)?;
+
+			// Update our values if the new cost is lower.
+			if size2 < out.size {
+				out.extra = extra2;
+				out.size = size2;
+				out.ll_lengths = ll_lengths2;
+				out.d_lengths = d_lengths2;
+			}
+		}
 
 		// Done!
 		Ok(out)
 	}
 
-	#[inline(never)]
-	/// # Unique Symbols?
+	#[allow(clippy::option_if_let_else)] // Too many branches!
+	/// # Try Optimized.
 	///
-	/// Returns true if any of the symbols are different than the ones we
-	/// already have. (They wind up the same often enough that it is worth
-	/// checking to reduce the potential workload.)
-	fn is_unique(&self, ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>) -> bool {
+	/// Optimize the counts and fetch new symbols, returning them unless
+	/// neither wind up any different.
+	fn try_optimized(&self, ll_counts: &ArrayLL<u32>, d_counts: &ArrayD<u32>)
+	-> Option<(ArrayLL<DeflateSym>, ArrayD<DeflateSym>)> {
 		#[allow(unsafe_code)]
 		/// # As Bytes.
 		///
@@ -86,36 +98,24 @@ impl DynamicLengths {
 			unsafe { &* arr.as_ptr().cast() }
 		}
 
-		*deflate_bytes(&self.d_lengths) != *deflate_bytes(d_lengths) ||
-		deflate_bytes(&self.ll_lengths) != deflate_bytes(ll_lengths)
-	}
+		// Let's start with the distances because they're cheaper to compare
+		// and copy.
+		let mut unique = false;
+		let d_lengths2 = optimize_huffman_for_rle(d_counts)
+			.map_or(self.d_lengths, |l| {
+				unique = *deflate_bytes(&self.d_lengths) != *deflate_bytes(&l);
+				l
+			});
 
-	/// # Try Optimized.
-	///
-	/// Optimize the counts and fetch new symbols, calculate their cost, and
-	/// keep them if better.
-	fn try_optimized(&mut self, ll_counts: &ArrayLL<u32>, d_counts: &ArrayD<u32>)
-	-> Result<(), ZopfliError> {
-		let (ll_lengths2, d_lengths2) = optimized_symbols(ll_counts, d_counts)?;
-
-		// It is only worth calculating the new sizes if the lengths are
-		// different than the ones we already have.
-		if self.is_unique(&ll_lengths2, &d_lengths2) {
-			// Calculate the sizes.
-			let (extra, treesize) = best_tree_size(&ll_lengths2, &d_lengths2)?;
-			let datasize = calculate_size_data(ll_counts, d_counts, &ll_lengths2, &d_lengths2);
-			let size = treesize.saturating_add(datasize);
-
-			// Update our values if the new cost is lower.
-			if size < self.size {
-				self.extra = extra;
-				self.size = size;
-				self.ll_lengths = ll_lengths2;
-				self.d_lengths = d_lengths2;
+		// And now the lengths!
+		if let Some(l) = optimize_huffman_for_rle(ll_counts) {
+			if unique || deflate_bytes(&self.ll_lengths) != deflate_bytes(&l) {
+				Some((l, d_lengths2))
 			}
+			else { None }
 		}
-
-		Ok(())
+		else if unique { Some((self.ll_lengths, d_lengths2)) }
+		else { None }
 	}
 }
 
@@ -136,6 +136,147 @@ impl DynamicLengths {
 	///
 	/// Same as `DynamicLengths::cost`, but drop `self` in the process.
 	pub(crate) const fn take_size(self) -> NonZeroU32 { self.size }
+}
+
+
+
+/// # Calculate Size and Extra.
+fn calculate_size(
+	ll_counts: &ArrayLL<u32>,
+	d_counts: &ArrayD<u32>,
+	ll_lengths: &ArrayLL<DeflateSym>,
+	d_lengths: &ArrayD<DeflateSym>,
+) -> Result<(u8, NonZeroU32), ZopfliError> {
+	// Tree size.
+	let (extra, treesize) = best_tree_size(ll_lengths, d_lengths)?;
+
+	// Data size.
+	debug_assert_eq!(ll_counts[256], 1); // .histogram() should set this.
+	let a = DataSizeIter::new(ll_counts, ll_lengths, LENGTH_EXTRA_BITS).sum::<u32>();
+	let b = DataSizeIter::new(d_counts, d_lengths, DISTANCE_BITS).sum::<u32>();
+
+	// Total size.
+	let size = treesize.saturating_add(a + b);
+
+	Ok((extra, size))
+}
+
+#[allow(clippy::integer_division)]
+/// # Optimize Huffman RLE Compression.
+///
+/// Change the population counts to potentially improve Huffman tree
+/// compression, particularly the RLE part.
+fn optimize_huffman_for_rle<const N: usize>(counts: &[u32; N]) -> Option<[DeflateSym; N]>
+where [u32; N]: LengthLimitedCodeLengths<N> {
+	const { assert!(N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL); }
+
+	let mut counts2 = *counts;
+	let mut counts = counts2.as_mut_slice();
+
+	// Convert counts to a proper slice with trailing zeroes trimmed.
+	while let [ rest @ .., 0 ] = counts { counts = rest; }
+	if counts.is_empty() { return None; }
+
+	// We need to read and write simultaneously; once again the Cell trick can
+	// keep us safe!
+	let counts = Cell::from_mut(counts).as_slice_of_cells();
+
+	// Find collapseable ranges!
+	let mut stride: u32 = 0;
+	let mut scratch: u32 = counts[0].get();
+	let mut sum: u32 = 0;
+	for (i, (count, good)) in counts.iter().map(Cell::get).zip(GoodForRle::new(counts)).enumerate() {
+		// Time to reset (and maybe collapse).
+		if good || count.abs_diff(scratch) >= 4 {
+			// Collapse the stride if it is as least four and contained
+			// something non-zero.
+			if sum != 0 && stride >= 4 {
+				let v = u32::max((sum + stride / 2) / stride, 1);
+				// This condition just helps the compiler understand the range
+				// won't overflow; it can't, but it doesn't know that.
+				if let Some(from) = i.checked_sub(stride as usize) {
+					for c in &counts[from..i] { c.set(v); }
+				}
+			}
+
+			// Reset!
+			stride = 0;
+			sum = 0;
+
+			// If there are at least three future counts, we can set scratch
+			// to a sorted weighted average, otherwise the current value will
+			// do.
+			scratch = counts.get(i..i + 4).map_or(
+				count,
+				|c| c.iter().fold(2, |a, c| a + c.get()) / 4
+			);
+		}
+
+		stride += 1;
+		sum += count;
+	}
+
+	// Collapse the trailing stride, if any.
+	if sum != 0 && stride >= 4 {
+		let v = u32::max((sum + stride / 2) / stride, 1);
+		// This condition just helps the compiler understand the range won't
+		// overflow; it can't, but it doesn't know that.
+		if let Some(from) = counts.len().checked_sub(stride as usize) {
+			for c in &counts[from..] { c.set(v); }
+		}
+	}
+
+	// LLCL time!
+	counts2.llcl().ok()
+}
+
+
+
+/// # Data Size Iterator.
+///
+/// This iterator yields the combined data size for all but the last two
+/// length/count/bit triplets, because why would zopfli ever utilize all of the
+/// data it collects?!
+///
+/// This is only used by `calculate_size_data`. Traditional iterators get a
+/// little clunky with all the zipping and copying and mapping.
+struct DataSizeIter<'a, const N: usize> {
+	counts:  &'a [u32; N],
+	lengths: &'a [DeflateSym; N],
+	bits:    &'a [u32; N],
+	pos: usize,
+}
+
+impl<'a, const N: usize> DataSizeIter<'a, N> {
+	/// # New.
+	const fn new(counts: &'a [u32; N], lengths: &'a [DeflateSym; N], bits: &'a [u32; N])
+	-> Self {
+		const { assert!(2 < N); }
+		Self { counts, lengths, bits, pos: 0 }
+	}
+}
+
+impl<'a, const N: usize> Iterator for DataSizeIter<'a, N> {
+	type Item = u32;
+
+	#[inline]
+	fn next(&mut self) -> Option<Self::Item> {
+		let idx = self.pos;
+		if idx + 2 < N {
+			self.pos += 1;
+			Some(self.counts[idx] * (self.lengths[idx] as u32 + self.bits[idx]))
+		}
+		else { None }
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.len();
+		(len, Some(len))
+	}
+}
+
+impl<'a, const N: usize> ExactSizeIterator for DataSizeIter<'a, N> {
+	fn len(&self) -> usize { N - 2 - self.pos }
 }
 
 
@@ -221,180 +362,6 @@ impl<'a> Iterator for GoodForRle<'a> {
 
 impl<'a> ExactSizeIterator for GoodForRle<'a> {
 	fn len(&self) -> usize { self.good + self.bad + self.counts.len() }
-}
-
-
-
-/// # Calculate Dynamic Data Block Size.
-///
-/// This returns the size of the data itself, basically just a sum of sums.
-fn calculate_size_data(
-	ll_counts: &ArrayLL<u32>,
-	d_counts: &ArrayD<u32>,
-	ll_lengths: &ArrayLL<DeflateSym>,
-	d_lengths: &ArrayD<DeflateSym>,
-) -> u32 {
-	// The early lengths and counts.
-	let a = ll_lengths.iter().copied()
-		.zip(ll_counts.iter().copied())
-		.take(256)
-		.map(|(ll, lc)| (ll as u32) * lc)
-		.sum::<u32>();
-
-	// The lengths and counts with extra bits.
-	let b = ll_lengths[257..].iter().copied()
-		.zip(ll_counts[257..].iter().copied())
-		.zip(LENGTH_EXTRA_BITS)
-		.map(|((ll, lc), lbit)| (ll as u32 + lbit) * lc)
-		.sum::<u32>();
-
-	// The distance lengths, counts, and extra bits.
-	let c = d_lengths.iter().copied()
-		.zip(d_counts.iter().copied())
-		.zip(DISTANCE_BITS)
-		.take(30)
-		.map(|((dl, dc), dbit)| (dl as u32 + u32::from(dbit)) * dc)
-		.sum::<u32>();
-
-	a + b + c + ll_lengths[256] as u32
-}
-
-/// # Dynamic Length-Limited Code Lengths.
-///
-/// Calculate, patch, and return the distance code length symbols.
-fn d_llcl(d_counts: &ArrayD<u32>)
--> Result<ArrayD<DeflateSym>, ZopfliError> {
-	let mut d_lengths = d_counts.llcl()?;
-
-	// Buggy decoders require at least two non-zero distances. Let's make sure
-	// we have at least that many.
-	let mut one: Option<bool> = None;
-	for (i, dist) in d_lengths.iter().copied().enumerate().take(30) {
-		// We have (at least) two non-zero entries; no patching needed!
-		if ! dist.is_zero() && one.replace(i == 0).is_some() { return Ok(d_lengths); }
-	}
-
-	// If we're here, fewer than two non-zero distances are in the collection;
-	// we'll need to fake the counts to reach our quota. Haha.
-	match one {
-		// The first entry had a code, so patching the second gives us two.
-		Some(true) => { d_lengths[1] = DeflateSym::D01; },
-		// The first entry did not have a code, so patching it gives us two.
-		Some(false) => { d_lengths[0] = DeflateSym::D01; },
-		// There were no codes at all, so we can just patch the first two.
-		None => {
-			d_lengths[0] = DeflateSym::D01;
-			d_lengths[1] = DeflateSym::D01;
-		},
-	}
-
-	Ok(d_lengths)
-}
-/*
-#[inline(never)]
-/// # Compare Two Symbol Sets for Uniqueness.
-///
-/// This compares two sets of symbols, returning `true` if they're different
-/// from one another.
-fn diff_symbols<const N: usize>(a: &[DeflateSym; N], b: &[DeflateSym; N]) -> bool {
-	#[allow(unsafe_code)]
-	/// # As Bytes.
-	///
-	/// Transform a `DeflateSym` array into an equivalent byte array for more
-	/// efficient comparison. (Bytes get all the love!)
-	const fn deflate_bytes<const N: usize>(arr: &[DeflateSym; N]) -> &[u8; N] {
-		// Safety: DeflateSym has the same size and alignment as u8, and if
-		// for some reason that isn't true, this code won't compile!
-		const {
-			assert!(std::mem::size_of::<[DeflateSym; N]>() == std::mem::size_of::<[u8; N]>());
-			assert!(std::mem::align_of::<[DeflateSym; N]>() == std::mem::align_of::<[u8; N]>());
-		}
-		unsafe { &* arr.as_ptr().cast() }
-	}
-
-	deflate_bytes(a) != deflate_bytes(b)
-}*/
-
-/// # Get RLE-Optimized Symbols.
-///
-/// Copy and optimize the counts, then recrunch and return their length-limited
-/// symbols (but not the counts as they serve no further purpose).
-fn optimized_symbols(ll_counts: &ArrayLL<u32>, d_counts: &ArrayD<u32>)
--> Result<(ArrayLL<DeflateSym>, ArrayD<DeflateSym>), ZopfliError> {
-	#[inline(never)]
-	fn optimized_counts<const N: usize>(counts: &[u32; N]) -> [u32; N] {
-		let mut counts2 = *counts;
-		optimize_huffman_for_rle(&mut counts2);
-		counts2
-	}
-
-	let ll_counts2 = optimized_counts(ll_counts);
-	let d_counts2 = optimized_counts(d_counts);
-	let ll_lengths2 = ll_counts2.llcl()?;
-	let d_lengths2 = d_llcl(&d_counts2)?;
-
-	Ok((ll_lengths2, d_lengths2))
-}
-
-#[allow(clippy::inline_always, clippy::integer_division)]
-#[inline(always)]
-/// # Optimize Huffman RLE Compression.
-///
-/// Change the population counts to potentially improve Huffman tree
-/// compression, particularly the RLE part.
-fn optimize_huffman_for_rle(mut counts: &mut [u32]) {
-	// Convert counts to a proper slice with trailing zeroes trimmed.
-	while let [ rest @ .., 0 ] = counts { counts = rest; }
-	if counts.is_empty() { return; }
-
-	// We need to read and write simultaneously; once again the Cell trick can
-	// keep us safe!
-	let counts = Cell::from_mut(counts).as_slice_of_cells();
-
-	// Find collapseable ranges!
-	let mut stride: u32 = 0;
-	let mut scratch: u32 = counts[0].get();
-	let mut sum: u32 = 0;
-	for (i, (count, good)) in counts.iter().map(Cell::get).zip(GoodForRle::new(counts)).enumerate() {
-		// Time to reset (and maybe collapse).
-		if good || count.abs_diff(scratch) >= 4 {
-			// Collapse the stride if it is as least four and contained
-			// something non-zero.
-			if sum != 0 && stride >= 4 {
-				let v = u32::max((sum + stride / 2) / stride, 1);
-				// This condition just helps the compiler understand the range
-				// won't overflow; it can't, but it doesn't know that.
-				if let Some(from) = i.checked_sub(stride as usize) {
-					for c in &counts[from..i] { c.set(v); }
-				}
-			}
-
-			// Reset!
-			stride = 0;
-			sum = 0;
-
-			// If there are at least three future counts, we can set scratch
-			// to a sorted weighted average, otherwise the current value will
-			// do.
-			scratch = counts.get(i..i + 4).map_or(
-				count,
-				|c| c.iter().fold(2, |a, c| a + c.get()) / 4
-			);
-		}
-
-		stride += 1;
-		sum += count;
-	}
-
-	// Collapse the trailing stride, if any.
-	if sum != 0 && stride >= 4 {
-		let v = u32::max((sum + stride / 2) / stride, 1);
-		// This condition just helps the compiler understand the range won't
-		// overflow; it can't, but it doesn't know that.
-		if let Some(from) = counts.len().checked_sub(stride as usize) {
-			for c in &counts[from..] { c.set(v); }
-		}
-	}
 }
 
 
