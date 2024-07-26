@@ -28,6 +28,7 @@ use std::{
 		c_uint,
 	},
 	mem::MaybeUninit,
+	num::NonZeroU32,
 	ptr::NonNull,
 };
 use super::{
@@ -82,9 +83,9 @@ pub(crate) extern "C" fn lodepng_crc32(buf: *const c_uchar, len: usize) -> c_uin
 /// the image dimensions. It enables us to hold one thing instead of three
 /// while also ensuring the memory is freed correctly on drop.
 pub(super) struct DecodedImage {
-	pub(super) buf: NonNull<u8>,
-	pub(super) w: u32,
-	pub(super) h: u32,
+	buf: NonNull<u8>,
+	w: NonZeroU32,
+	h: NonZeroU32,
 }
 
 impl Drop for DecodedImage {
@@ -133,11 +134,14 @@ impl Default for LodePNGState {
 
 impl Drop for LodePNGState {
 	#[allow(unsafe_code)]
-	fn drop(&mut self) { unsafe { lodepng_state_cleanup(self) } }
+	fn drop(&mut self) {
+		unsafe { lodepng_state_cleanup(self) }
+	}
 }
 
 impl LodePNGState {
 	#[allow(unsafe_code)]
+	#[inline]
 	/// # Decode!
 	///
 	/// This attempts to decode a raw image byte slice, returning the details
@@ -148,14 +152,14 @@ impl LodePNGState {
 		let mut h = 0;
 
 		// Safety: a non-zero response is an error.
-		let res = unsafe {
+		if 0 == unsafe {
 			lodepng_decode(&mut buf, &mut w, &mut h, self, src.as_ptr(), src.len())
-		};
-
-		// Return it if we got it.
-		if 0 == res && 0 != w && 0 != h {
-			let buf = NonNull::new(buf)?;
-			Some(DecodedImage { buf, w, h })
+		} {
+			Some(DecodedImage {
+				buf: NonNull::new(buf)?,
+				w: NonZeroU32::new(w)?,
+				h: NonZeroU32::new(h)?,
+			})
 		}
 		else { None }
 	}
@@ -171,7 +175,7 @@ impl LodePNGState {
 
 		// Safety: a non-zero response is an error.
 		let res = unsafe {
-			lodepng_encode(&mut out.buf, &mut out.size, img.buf.as_ptr(), img.w, img.h, self)
+			lodepng_encode(&mut out.buf, &mut out.size, img.buf.as_ptr(), img.w.get(), img.h.get(), self)
 		};
 
 		0 == res && ! out.is_null()
@@ -233,11 +237,11 @@ impl LodePNGState {
 		// Safety: a non-zero response is an error.
 		let mut stats = LodePNGColorStats::default();
 		if 0 != unsafe {
-			lodepng_compute_color_stats(&mut stats, img.buf.as_ptr(), img.w, img.h, &self.info_raw)
+			lodepng_compute_color_stats(&mut stats, img.buf.as_ptr(), img.w.get(), img.h.get(), &self.info_raw)
 		} { return None; }
 
 		// The image is too small for tRNS chunk overhead.
-		if img.w * img.h <= 16 && 0 != stats.key { stats.alpha = 1; }
+		if img.w.checked_mul(img.h)?.get() <= 16 && 0 != stats.key { stats.alpha = 1; }
 
 		// Set the encoding color mode to RGB/RGBA.
 		self.encoder.auto_convert = 0;
