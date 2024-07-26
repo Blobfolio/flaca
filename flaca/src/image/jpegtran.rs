@@ -23,14 +23,15 @@ use mozjpeg_sys::{
 	jpeg_common_struct,
 	jpeg_compress_struct,
 	jpeg_copy_critical_parameters,
-	jpeg_create_compress,
 	jpeg_create_decompress,
+	jpeg_CreateCompress,
 	jpeg_decompress_struct,
 	jpeg_destroy_compress,
 	jpeg_destroy_decompress,
 	jpeg_error_mgr,
 	jpeg_finish_compress,
 	jpeg_finish_decompress,
+	JPEG_LIB_VERSION,
 	jpeg_mem_dest,
 	jpeg_mem_src,
 	jpeg_read_coefficients,
@@ -255,7 +256,6 @@ impl<'a> From<&'a [u8]> for JpegSrcInfo<'a> {
 			// Set up the error, then the struct.
 			out.cinfo.common.err = std::ptr::addr_of_mut!(*out.err);
 			jpeg_create_decompress(&mut out.cinfo);
-			out.cinfo.common.progress = std::ptr::null_mut();
 		}
 
 		out
@@ -296,7 +296,11 @@ impl From<&mut JpegSrcInfo<'_>> for JpegDstInfo {
 		unsafe {
 			// Set up the error, then the struct.
 			out.cinfo.common.err = std::ptr::addr_of_mut!(*out.err);
-			jpeg_create_compress(&mut out.cinfo);
+			jpeg_CreateCompress(&mut out.cinfo, JPEG_LIB_VERSION, size_of_val(&out.cinfo));
+
+			// Note: depending on the compiler/flags, JPEG compression can
+			// segfault if this isn't explicitly made null. Not sure why it
+			// isn't an always/never behavior…
 			out.cinfo.common.progress = std::ptr::null_mut();
 
 			// Sync the source trace level with the destination.
