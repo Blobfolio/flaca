@@ -255,6 +255,7 @@ impl<'a> From<&'a [u8]> for JpegSrcInfo<'a> {
 			// Set up the error, then the struct.
 			out.cinfo.common.err = std::ptr::addr_of_mut!(*out.err);
 			jpeg_create_decompress(&mut out.cinfo);
+			out.cinfo.common.progress = std::ptr::null_mut();
 		}
 
 		out
@@ -296,6 +297,7 @@ impl From<&mut JpegSrcInfo<'_>> for JpegDstInfo {
 			// Set up the error, then the struct.
 			out.cinfo.common.err = std::ptr::addr_of_mut!(*out.err);
 			jpeg_create_compress(&mut out.cinfo);
+			out.cinfo.common.progress = std::ptr::null_mut();
 
 			// Sync the source trace level with the destination.
 			src.err.trace_level = (*out.err).trace_level;
