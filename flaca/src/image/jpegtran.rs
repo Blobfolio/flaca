@@ -78,7 +78,7 @@ impl Deref for EncodedJPEG {
 
 	#[allow(clippy::cast_possible_truncation, unsafe_code)]
 	fn deref(&self) -> &Self::Target {
-		if self.is_empty() { &[] }
+		if self.is_null() { &[] }
 		else {
 			unsafe { std::slice::from_raw_parts(self.buf, self.size as usize) }
 		}
@@ -90,7 +90,7 @@ impl Drop for EncodedJPEG {
 	fn drop(&mut self) {
 		if ! self.buf.is_null() {
 			unsafe { libc::free(self.buf.cast::<c_void>()); }
-			self.buf = std::ptr::null_mut();
+			self.buf = std::ptr::null_mut(); // Is this needed?
 		}
 	}
 }
@@ -104,8 +104,14 @@ impl EncodedJPEG {
 		}
 	}
 
-	/// # Is Empty?
-	fn is_empty(&self) -> bool { self.size == 0 || self.buf.is_null() }
+	/// # Is Null?
+	///
+	/// This is essentially an `is_empty`, returning `true` if the length value
+	/// is zero or the buffer pointer is literally null.
+	///
+	/// (The name was chosen to help avoid conflicts with dereferenced slice
+	/// methods.)
+	fn is_null(&self) -> bool { self.size == 0 || self.buf.is_null() }
 }
 
 
@@ -226,7 +232,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 	unsafe { jpeg_finish_decompress(&mut srcinfo.cinfo); }
 
 	// Return it if we got it!
-	if happy  && ! out.is_empty() && out.size < src_size { Some(out) }
+	if happy  && ! out.is_null() && out.size < src_size { Some(out) }
 	else { None }
 }
 
