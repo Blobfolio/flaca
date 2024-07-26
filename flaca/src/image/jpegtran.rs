@@ -55,6 +55,7 @@ use std::{
 	},
 	marker::PhantomPinned,
 	ops::Deref,
+	ptr::NonNull,
 };
 
 
@@ -286,7 +287,7 @@ impl<'a> Drop for JpegSrcInfo<'a> {
 /// but its error is a raw pointer because `mozjpeg` is really weird. Haha.
 struct JpegDstInfo {
 	cinfo: jpeg_compress_struct,
-	err: *mut jpeg_error_mgr,
+	err: NonNull<jpeg_error_mgr>,
 	_pin: PhantomPinned,
 }
 
@@ -295,13 +296,14 @@ impl From<&mut JpegSrcInfo<'_>> for JpegDstInfo {
 	fn from(src: &mut JpegSrcInfo<'_>) -> Self {
 		let mut out = Self {
 			cinfo: unsafe { std::mem::zeroed() },
-			err: Box::into_raw(new_err()),
+			// Safety: boxes point somewhere!
+			err: unsafe { NonNull::new_unchecked(Box::into_raw(new_err())) },
 			_pin: PhantomPinned,
 		};
 
 		unsafe {
 			// Set up the error, then the struct.
-			out.cinfo.common.err = std::ptr::addr_of_mut!(*out.err);
+			out.cinfo.common.err = out.err.as_ptr();
 			jpeg_CreateCompress(&mut out.cinfo, JPEG_LIB_VERSION, size_of_val(&out.cinfo));
 
 			// Note: depending on the compiler/flags, JPEG compression can
@@ -310,7 +312,7 @@ impl From<&mut JpegSrcInfo<'_>> for JpegDstInfo {
 			out.cinfo.common.progress = std::ptr::null_mut();
 
 			// Sync the source trace level with the destination.
-			src.err.trace_level = (*out.err).trace_level;
+			src.err.trace_level = out.err.as_ref().trace_level;
 		}
 
 		out
@@ -322,9 +324,7 @@ impl Drop for JpegDstInfo {
 	fn drop(&mut self) {
 		unsafe {
 			jpeg_destroy_compress(&mut self.cinfo);
-
-			// The error pointer is no longer accessible.
-			let _ = Box::from_raw(self.err);
+			let _ = Box::from_raw(self.err.as_ptr());
 		}
 	}
 }

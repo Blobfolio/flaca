@@ -82,18 +82,15 @@ pub(crate) extern "C" fn lodepng_crc32(buf: *const c_uchar, len: usize) -> c_uin
 /// the image dimensions. It enables us to hold one thing instead of three
 /// while also ensuring the memory is freed correctly on drop.
 pub(super) struct DecodedImage {
-	pub(super) buf: *mut c_uchar,
-	pub(super) w: c_uint,
-	pub(super) h: c_uint,
+	pub(super) buf: NonNull<u8>,
+	pub(super) w: u32,
+	pub(super) h: u32,
 }
 
 impl Drop for DecodedImage {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		if let Some(nn) = NonNull::new(self.buf) {
-			unsafe { flapfli_free(nn); }
-			self.buf = std::ptr::null_mut(); // Is this necessary?
-		}
+		unsafe { flapfli_free(self.buf); }
 	}
 }
 
@@ -156,7 +153,8 @@ impl LodePNGState {
 		};
 
 		// Return it if we got it.
-		if 0 == res && ! buf.is_null() && 0 != w && 0 != h {
+		if 0 == res && 0 != w && 0 != h {
+			let buf = NonNull::new(buf)?;
 			Some(DecodedImage { buf, w, h })
 		}
 		else { None }
@@ -173,7 +171,7 @@ impl LodePNGState {
 
 		// Safety: a non-zero response is an error.
 		let res = unsafe {
-			lodepng_encode(&mut out.buf, &mut out.size, img.buf, img.w, img.h, self)
+			lodepng_encode(&mut out.buf, &mut out.size, img.buf.as_ptr(), img.w, img.h, self)
 		};
 
 		0 == res && ! out.is_null()
@@ -235,7 +233,7 @@ impl LodePNGState {
 		// Safety: a non-zero response is an error.
 		let mut stats = LodePNGColorStats::default();
 		if 0 != unsafe {
-			lodepng_compute_color_stats(&mut stats, img.buf, img.w, img.h, &self.info_raw)
+			lodepng_compute_color_stats(&mut stats, img.buf.as_ptr(), img.w, img.h, &self.info_raw)
 		} { return None; }
 
 		// The image is too small for tRNS chunk overhead.
