@@ -88,7 +88,7 @@ impl Deref for EncodedJPEG {
 impl Drop for EncodedJPEG {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		if ! self.is_empty() {
+		if ! self.buf.is_null() {
 			unsafe { libc::free(self.buf.cast::<c_void>()); }
 			self.buf = std::ptr::null_mut();
 		}
