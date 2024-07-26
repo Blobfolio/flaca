@@ -122,7 +122,7 @@ pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> N
 	// Make sure we actually achieved allocation; this shouldn't fail, but
 	// might?
 	let real_ptr = NonNull::new(real_ptr)
-		.unwrap_or_else(|| handle_alloc_error(layout_for(new_size)));
+		.unwrap_or_else(#[inline(never)] || handle_alloc_error(layout_for(new_size)));
 
 	// Safety: the layout is aligned to usize.
 	real_ptr.cast::<usize>().write(new_size.get()); // Write the length.
