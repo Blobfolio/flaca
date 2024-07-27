@@ -975,6 +975,22 @@ mod tests {
 	use super::*;
 
 	#[test]
+	/// # No Drop Checks.
+	///
+	/// `KatScratch` manually allocates several data structures, and manually
+	/// deallocates them on drop. It does not, however, perform any
+	/// drop-in-place-type actions on the pointers because it doesn't need to.
+	///
+	/// At least, it doesn't so long as this test works.
+	fn t_nodrop() {
+		use std::mem::needs_drop;
+
+		assert!(! needs_drop::<[Leaf<'_>; ZOPFLI_NUM_LL]>());
+		assert!(! needs_drop::<[List; 15]>());
+		assert!(! needs_drop::<[Node; KatScratch::MAX]>());
+	}
+
+	#[test]
 	/// # Test Maxbits.
 	///
 	/// The original zopfli code included a check to ensure the MAXBITS were

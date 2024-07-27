@@ -91,7 +91,7 @@ impl Drop for EncodedJPEG {
 	fn drop(&mut self) {
 		if ! self.buf.is_null() {
 			unsafe { libc::free(self.buf.cast::<c_void>()); }
-			self.buf = std::ptr::null_mut(); // Is this needed?
+			self.buf = std::ptr::null_mut(); // Probably unnecessary?
 		}
 	}
 }
