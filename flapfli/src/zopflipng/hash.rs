@@ -7,13 +7,12 @@ collective structure bundling all the hash/cache shit together.
 
 use std::{
 	alloc::{
-		alloc,
+		alloc_zeroed,
 		handle_alloc_error,
 		Layout,
 	},
 	cell::Cell,
 	ptr::{
-		addr_of,
 		addr_of_mut,
 		NonNull,
 	},
@@ -84,27 +83,30 @@ impl ZopfliState {
 	/// them off the stack, it is necessary to initialize everything from raw
 	/// pointers and box them up.
 	///
-	/// This unfortunately requires a lot of upfront unsafe code during
+	/// This unfortunately requires a some upfront unsafe code during
 	/// construction, but everything can be accessed normally thereafter.
 	///
 	/// To cut down on some of the complexity, the manual layout allocation and
 	/// boxing is done once, here, instead of separately for each individual
 	/// member.
-	///
-	/// See `ZopfliStateInit` below for a few more details.
 	pub(crate) fn new() -> Box<Self> {
 		// Reserve the space.
 		const LAYOUT: Layout = Layout::new::<ZopfliState>();
-		let out: NonNull<Self> = NonNull::new(unsafe { alloc(LAYOUT).cast() })
+		let out: NonNull<Self> = NonNull::new(unsafe { alloc_zeroed(LAYOUT).cast() })
 			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
 		let ptr = out.as_ptr();
 
 		unsafe {
-			// Initialize the members.
-			MatchCache::state_init(NonNull::new_unchecked(addr_of_mut!((*ptr).lmc)));
-			ZopfliHash::state_init(NonNull::new_unchecked(addr_of_mut!((*ptr).hash)));
-			SplitCache::state_init(NonNull::new_unchecked(addr_of_mut!((*ptr).split)));
-			SqueezeCache::state_init(NonNull::new_unchecked(addr_of_mut!((*ptr).squeeze)));
+			// Safety: zeroes are "valid" for all of the primitives — including
+			// LitLen, which is sized/aligned to u16 —  so alloc_zeroed has
+			// taken care of everything but the Cell in SqueezeCache, which we
+			// can sort out thusly:
+			addr_of_mut!((*ptr).squeeze.costs_len).write(Cell::new(0));
+
+			// Note: zero is not the appropriate _logical_ default in most
+			// cases, but since this struct is designed for reuse, it manually
+			// resets everything when starting a new cycle anyway. At this
+			// stage, validity is sufficient.
 
 			// Done!
 			Box::from_raw(ptr)
@@ -335,24 +337,6 @@ impl ZopfliState {
 
 
 
-/// # State Init.
-///
-/// The `ZopfliState` struct is initialized from a raw pointer to prevent
-/// stack allocations. This trait exposes — in as limited a way as possible —
-/// raw initialization methods for its members. (`ZopfliState::new` is the only
-/// place that calls these methods.)
-///
-/// The `state_init` invocations do not necessarily populate _default_ values
-/// since they'll be re(reset) prior to use anyway, but the values will at
-/// least be valid for their types, preventing accidental UB.
-pub(crate) trait ZopfliStateInit {
-	#[allow(unsafe_code)]
-	/// # State Initialization.
-	unsafe fn state_init(nn: NonNull<Self>);
-}
-
-
-
 #[derive(Clone, Copy)]
 /// # Zopfli Hash.
 ///
@@ -364,33 +348,6 @@ struct ZopfliHash {
 
 	/// # Repetitions of the same byte after this.
 	same: [u16; ZOPFLI_WINDOW_SIZE],
-}
-
-impl ZopfliStateInit for ZopfliHash {
-	#[allow(unsafe_code)]
-	#[inline]
-	/// # State Initialization.
-	///
-	/// See `ZopfliState` for more details.
-	unsafe fn state_init(nn: NonNull<Self>) {
-		let ptr = nn.as_ptr();
-
-		// All the hash/index arrays default to `-1_i16` for `None`, which
-		// we can do efficiently by flipping all bits on.
-		addr_of_mut!((*ptr).chain1.hash_idx).write_bytes(u8::MAX, 1);
-		addr_of_mut!((*ptr).chain1.idx_hash).write_bytes(u8::MAX, 1);
-		addr_of_mut!((*ptr).chain1.idx_prev).write_bytes(u8::MAX, 1);
-
-		// The initial hash value is just plain zero.
-		addr_of_mut!((*ptr).chain1.val).write(0);
-
-		// The second chain is the same as the first, so we can simply copy
-		// it wholesale.
-		addr_of_mut!((*ptr).chain2).copy_from_nonoverlapping(addr_of!((*ptr).chain1), 1);
-
-		// The repetition counts default to zero.
-		addr_of_mut!((*ptr).same).write_bytes(0, 1);
-	}
 }
 
 impl ZopfliHash {
@@ -1075,7 +1032,7 @@ struct ZopfliHashChain {
 impl ZopfliHashChain {
 	/// # Reset.
 	///
-	/// Set everything to its default values so we can begin again.
+	/// (Re)Set all the data to its logical defaults so we can begin again.
 	fn reset(&mut self) {
 		self.hash_idx.fill(-1);
 		self.idx_hash.fill(-1);

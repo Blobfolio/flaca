@@ -956,7 +956,7 @@ fn tree_symbols(ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>
 		let ptr = nn.as_ptr();
 
 		// Safety: writing 0..ll_len then ll_len..ll_len + d_len covers the
-		// full allocation.
+		// full allocation; everything will be initialized afterwards.
 		std::ptr::copy_nonoverlapping(ll_lengths.as_ptr(), ptr, ll_len);
 		std::ptr::copy_nonoverlapping(d_lengths.as_ptr(), ptr.add(ll_len), d_len);
 
