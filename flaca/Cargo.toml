@@ -130,7 +130,8 @@ features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
 version = "=2.2.0"
-features = [ "jpegtran" ]
+default-features = false
+features = [ "jpegtran", "nasm_simd", "unwinding" ]
 
 [dependencies.oxipng]
 version = "=9.1.2"
