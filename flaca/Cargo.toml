@@ -129,7 +129,7 @@ version = "0.13.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
-version = "=2.2.0"
+version = "=2.2.1"
 default-features = false
 features = [ "jpegtran", "nasm_simd", "unwinding" ]
 
