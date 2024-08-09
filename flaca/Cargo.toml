@@ -112,7 +112,7 @@ items = [
 ]
 
 [dependencies]
-argyle = "0.7.*"
+argyle = "0.8.*"
 crossbeam-channel = "=0.5.*"
 ctrlc = "=3.4.4"
 dactyl = "0.7.*"
