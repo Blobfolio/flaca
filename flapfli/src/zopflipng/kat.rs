@@ -905,26 +905,29 @@ const fn tree_hclen(cl_counts: &[u32; 19]) -> DeflateSymBasic {
 #[allow(unsafe_code, clippy::cast_possible_truncation)]
 /// # Tree Symbols.
 ///
-/// Drop the last two bytes from each symbol set, then up to 29 leading zeroes,
-/// merge them together (lengths then distances), and return the details.
-///
-/// DEFLATE is _evil_! Haha.
+/// Drop the last two bytes from each symbol set along with up to 29
+/// trailing zeroes, then merge them together (lengths then distances), and
+/// return the details.
 fn tree_symbols(ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>)
 -> Result<(Box<[DeflateSym]>, TreeDist, TreeDist), ZopfliError> {
 	// Trim non-zero symbol lengths from ll_lengths[..286], keeping the leading
 	// litlen literals regardless of value.
 	// literals are always kept.)
-	let mut hlit: usize = 29;
-	while hlit != 0 && ll_lengths[256 + hlit].is_zero() { hlit -= 1; }
-	// Safety: TreeDist covers 0..30.
-	let hlit = unsafe { std::mem::transmute::<u8, TreeDist>(hlit as u8) };
+	let hlit = ll_lengths[256..286].iter()
+		.rposition(|&b| ! b.is_zero())
+		.map_or(TreeDist::T00, |v| {
+			// Safety: the slice has length 30, and TreeDist covers 0..=29.
+			unsafe { std::mem::transmute::<u8, TreeDist>(v as u8) }
+		});
 
-	// Trim non-zero symbol lengths from d_lengths[..30], keeping the first
-	// entry regardless of value.
-	let mut hdist: usize = 29;
-	while hdist != 0 && d_lengths[hdist].is_zero() { hdist -= 1; }
-	// Safety: TreeDist covers 0..30.
-	let hdist = unsafe { std::mem::transmute::<u8, TreeDist>(hdist as u8) };
+	// Now do the same for the distances, albeit without the literal/symbolic
+	// distinction.
+	let hdist = d_lengths[..30].iter()
+		.rposition(|&b| ! b.is_zero())
+		.map_or(TreeDist::T00, |v| {
+			// Safety: the slice has length 30, and TreeDist covers 0..=29.
+			unsafe { std::mem::transmute::<u8, TreeDist>(v as u8) }
+		});
 
 	// The combined length.
 	let ll_len = 257 + hlit as usize;
@@ -945,8 +948,8 @@ fn tree_symbols(ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>
 		)
 	};
 
-	// Safety: the checked version of NonNull::new ensures the allocation
-	// worked.
+	// Safety: the allocation might fail, though, so we should use the checked
+	// NonNull before trying to use it!
 	let nn: NonNull<DeflateSym> = NonNull::new(unsafe { alloc(layout) })
 		.ok_or(zopfli_error!())?
 		.cast();
@@ -956,7 +959,7 @@ fn tree_symbols(ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>
 		let ptr = nn.as_ptr();
 
 		// Safety: writing 0..ll_len then ll_len..ll_len + d_len covers the
-		// full allocation.
+		// full allocation; everything will be initialized afterwards.
 		std::ptr::copy_nonoverlapping(ll_lengths.as_ptr(), ptr, ll_len);
 		std::ptr::copy_nonoverlapping(d_lengths.as_ptr(), ptr.add(ll_len), d_len);
 
@@ -973,6 +976,22 @@ fn tree_symbols(ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	/// # No Drop Checks.
+	///
+	/// `KatScratch` manually allocates several data structures, and manually
+	/// deallocates them on drop. It does not, however, perform any
+	/// drop-in-place-type actions on the pointers because it doesn't need to.
+	///
+	/// At least, it _shouldn't_ need to. Let's verify that!
+	fn t_nodrop() {
+		use std::mem::needs_drop;
+
+		assert!(! needs_drop::<[Leaf<'_>; ZOPFLI_NUM_LL]>());
+		assert!(! needs_drop::<[List; 15]>());
+		assert!(! needs_drop::<[Node; KatScratch::MAX]>());
+	}
 
 	#[test]
 	/// # Test Maxbits.

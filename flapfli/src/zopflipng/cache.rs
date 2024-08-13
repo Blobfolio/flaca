@@ -5,13 +5,7 @@ This module contains the Longest Match cache along with several smaller caching
 structures that aren't big enough to warrant their own dedicated modules.
 */
 
-use std::{
-	cell::Cell,
-	ptr::{
-		addr_of_mut,
-		NonNull,
-	},
-};
+use std::cell::Cell;
 use super::{
 	LitLen,
 	SUBLEN_LEN,
@@ -21,7 +15,6 @@ use super::{
 	ZopfliChunk,
 	ZopfliError,
 	ZopfliRange,
-	ZopfliStateInit,
 };
 
 
@@ -73,23 +66,6 @@ const SPLIT_CACHE_LEN: usize = ZOPFLI_MASTER_BLOCK_SIZE.div_ceil(8);
 pub(crate) struct MatchCache {
 	ld: [u32; ZOPFLI_MASTER_BLOCK_SIZE],
 	sublen: [u8; SUBLEN_CACHED_LEN * ZOPFLI_MASTER_BLOCK_SIZE],
-}
-
-impl ZopfliStateInit for MatchCache {
-	#[allow(unsafe_code)]
-	#[inline]
-	/// # State Initialization.
-	///
-	/// See `ZopfliState` for more details.
-	unsafe fn state_init(nn: NonNull<Self>) {
-		let ptr = nn.as_ptr();
-
-		// The proper defaults for both members are _mostly_ zeroes, so let's
-		// roll with that since it's cheap and easy. (The values will be reset
-		// properly before each use anyway.)
-		addr_of_mut!((*ptr).ld).write_bytes(0, 1);
-		addr_of_mut!((*ptr).sublen).write_bytes(0, 1);
-	}
 }
 
 impl MatchCache {
@@ -274,18 +250,6 @@ pub(crate) struct SplitCache {
 	set: [u8; SPLIT_CACHE_LEN],
 }
 
-impl ZopfliStateInit for SplitCache {
-	#[allow(unsafe_code)]
-	#[inline]
-	/// # State Initialization.
-	///
-	/// See `ZopfliState` for more details.
-	unsafe fn state_init(nn: NonNull<Self>) {
-		// False is zeroes all the way down.
-		addr_of_mut!((*nn.as_ptr()).set).write_bytes(0, 1);
-	}
-}
-
 impl SplitCache {
 	/// # Initialize.
 	///
@@ -339,27 +303,7 @@ impl SplitCache {
 pub(crate) struct SqueezeCache {
 	costs: [(f32, LitLen); ZOPFLI_MASTER_BLOCK_SIZE + 1],
 	paths: [LitLen; ZOPFLI_MASTER_BLOCK_SIZE],
-	costs_len: Cell<usize>,
-}
-
-impl ZopfliStateInit for SqueezeCache {
-	#[allow(unsafe_code)]
-	#[inline]
-	/// # State Initialization.
-	///
-	/// See `ZopfliState` for more details.
-	unsafe fn state_init(nn: NonNull<Self>) {
-		let ptr = nn.as_ptr();
-
-		// The arrays can be zero-filled to start with; they'll be reset
-		// or overwritten before each use anyway.
-		addr_of_mut!((*ptr).costs).write_bytes(0, 1);
-		addr_of_mut!((*ptr).paths).write_bytes(0, 1);
-
-		// Zero works equally well for the initial length, especially since
-		// that happens to be true!
-		addr_of_mut!((*ptr).costs_len).write(Cell::new(0));
-	}
+	pub(super) costs_len: Cell<usize>,
 }
 
 impl SqueezeCache {

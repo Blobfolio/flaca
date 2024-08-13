@@ -9,19 +9,11 @@ pub(super) mod kind;
 
 use crate::MAX_RESOLUTION;
 use kind::ImageKind;
-use oxipng::Options as OxipngOptions;
 use std::{
 	path::Path,
-	sync::{
-		atomic::Ordering::Relaxed,
-		OnceLock,
-	},
+	sync::atomic::Ordering::Relaxed,
 };
 use super::EncodingError;
-
-
-
-static OXIPNG_OPTIONS: OnceLock<OxipngOptions> = OnceLock::new();
 
 
 
@@ -131,7 +123,47 @@ fn encode_mozjpeg(raw: &mut Vec<u8>) {
 /// oxipng -o 3 -s -a -i 0 --fix
 /// ```
 fn encode_oxipng(raw: &mut Vec<u8>) {
-	if let Ok(mut new) = oxipng::optimize_from_memory(raw, OXIPNG_OPTIONS.get_or_init(oxipng_options)) {
+	use oxipng::{
+		Deflaters,
+		IndexSet,
+		Interlacing,
+		Options,
+		RowFilter,
+		StripChunks,
+	};
+
+	thread_local!(
+		static OXI: Options = Options {
+			fix_errors: true,
+			force: false,
+			filter: IndexSet::from([
+				RowFilter::None,
+				RowFilter::Average,
+				RowFilter::BigEnt,
+				RowFilter::Bigrams,
+				RowFilter::Brute,
+				RowFilter::Entropy,
+				RowFilter::MinSum,
+				RowFilter::Paeth,
+				RowFilter::Sub,
+				RowFilter::Up,
+			]),
+			interlace: Some(Interlacing::None),
+			optimize_alpha: true,
+			bit_depth_reduction: true,
+			color_type_reduction: true,
+			palette_reduction: true,
+			grayscale_reduction: true,
+			idat_recoding: true,
+			scale_16: false,
+			strip: StripChunks::All,
+			deflate: Deflaters::Libdeflater { compression: 12 },
+			fast_evaluation: false,
+			timeout: None,
+		}
+	);
+
+	if let Ok(mut new) = OXI.with(|opts| oxipng::optimize_from_memory(raw, opts)) {
 		if new.len() < raw.len() && ImageKind::is_png(&new) {
 			std::mem::swap(raw, &mut new);
 		}
@@ -153,56 +185,5 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 			raw.truncate(slice.len());
 			raw.copy_from_slice(slice);
 		}
-	}
-}
-
-#[inline(never)]
-/// # Generate Oxipng Options.
-///
-/// This returns the strongest possible Oxipng compression profile (minus
-/// the zopfli bits, which we try in a separate pass).
-///
-/// This is basically just "preset 6", with:
-/// * Error fixing enabled;
-/// * Libdeflater;
-/// * All the alpha optimizations;
-/// * Interlacing disabled;
-/// * All headers stripped;
-fn oxipng_options() -> OxipngOptions {
-	use oxipng::{
-		Deflaters,
-		IndexSet,
-		Interlacing,
-		RowFilter,
-		StripChunks,
-	};
-
-	OxipngOptions {
-		fix_errors: true,
-		force: false,
-		filter: IndexSet::from([
-			RowFilter::None,
-			RowFilter::Average,
-			RowFilter::BigEnt,
-			RowFilter::Bigrams,
-			RowFilter::Brute,
-			RowFilter::Entropy,
-			RowFilter::MinSum,
-			RowFilter::Paeth,
-			RowFilter::Sub,
-			RowFilter::Up,
-		]),
-		interlace: Some(Interlacing::None),
-		optimize_alpha: true,
-		bit_depth_reduction: true,
-		color_type_reduction: true,
-		palette_reduction: true,
-		grayscale_reduction: true,
-		idat_recoding: true,
-		scale_16: false,
-		strip: StripChunks::All,
-		deflate: Deflaters::Libdeflater { compression: 12 },
-		fast_evaluation: false,
-		timeout: None,
 	}
 }

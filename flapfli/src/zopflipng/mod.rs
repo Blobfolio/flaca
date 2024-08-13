@@ -38,7 +38,6 @@ use error::{
 	zopfli_error,
 	ZopfliError,
 };
-use hash::ZopfliStateInit;
 pub(crate) use hash::ZopfliState;
 use iter::ReducingSlices;
 use kat::{

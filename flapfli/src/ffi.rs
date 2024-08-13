@@ -60,7 +60,7 @@ impl Drop for EncodedPNG {
 		// method, but only if it actually got allocated.
 		if let Some(nn) = NonNull::new(self.buf) {
 			unsafe { flapfli_free(nn); }
-			self.buf = std::ptr::null_mut(); // Is this necessary?
+			self.buf = std::ptr::null_mut(); // Probably unnecessary?
 		}
 	}
 }
@@ -209,4 +209,21 @@ const unsafe fn size_and_ptr(ptr: NonNull<u8>) -> (NonNull<u8>, NonZeroUsize) {
 	let size = NonZeroUsize::new_unchecked(size_and_data_ptr.cast::<usize>().read());
 
 	(size_and_data_ptr, size)
+}
+
+
+
+#[cfg(test)]
+mod tests {
+	#[test]
+	/// # No Drop Checks.
+	///
+	/// Prove we aren't missing out by not running drop-in-place or whatever on
+	/// usize/byte slices.
+	fn t_nodrop() {
+		use std::mem::needs_drop;
+
+		assert!(! needs_drop::<[usize]>());
+		assert!(! needs_drop::<[u8]>());
+	}
 }

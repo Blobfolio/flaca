@@ -23,14 +23,15 @@ use mozjpeg_sys::{
 	jpeg_common_struct,
 	jpeg_compress_struct,
 	jpeg_copy_critical_parameters,
-	jpeg_create_compress,
 	jpeg_create_decompress,
+	jpeg_CreateCompress,
 	jpeg_decompress_struct,
 	jpeg_destroy_compress,
 	jpeg_destroy_decompress,
 	jpeg_error_mgr,
 	jpeg_finish_compress,
 	jpeg_finish_decompress,
+	JPEG_LIB_VERSION,
 	jpeg_mem_dest,
 	jpeg_mem_src,
 	jpeg_read_coefficients,
@@ -54,6 +55,7 @@ use std::{
 	},
 	marker::PhantomPinned,
 	ops::Deref,
+	ptr::NonNull,
 };
 
 
@@ -77,7 +79,7 @@ impl Deref for EncodedJPEG {
 
 	#[allow(clippy::cast_possible_truncation, unsafe_code)]
 	fn deref(&self) -> &Self::Target {
-		if self.is_empty() { &[] }
+		if self.is_null() { &[] }
 		else {
 			unsafe { std::slice::from_raw_parts(self.buf, self.size as usize) }
 		}
@@ -87,9 +89,9 @@ impl Deref for EncodedJPEG {
 impl Drop for EncodedJPEG {
 	#[allow(unsafe_code)]
 	fn drop(&mut self) {
-		if ! self.is_empty() {
+		if ! self.buf.is_null() {
 			unsafe { libc::free(self.buf.cast::<c_void>()); }
-			self.buf = std::ptr::null_mut();
+			self.buf = std::ptr::null_mut(); // Probably unnecessary?
 		}
 	}
 }
@@ -103,8 +105,14 @@ impl EncodedJPEG {
 		}
 	}
 
-	/// # Is Empty?
-	fn is_empty(&self) -> bool { self.size == 0 || self.buf.is_null() }
+	/// # Is Null?
+	///
+	/// This is essentially an `is_empty`, returning `true` if the length value
+	/// is zero or the buffer pointer is literally null.
+	///
+	/// (The name was chosen to help avoid conflicts with dereferenced slice
+	/// methods.)
+	fn is_null(&self) -> bool { self.size == 0 || self.buf.is_null() }
 }
 
 
@@ -225,7 +233,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 	unsafe { jpeg_finish_decompress(&mut srcinfo.cinfo); }
 
 	// Return it if we got it!
-	if happy  && ! out.is_empty() && out.size < src_size { Some(out) }
+	if happy  && ! out.is_null() && out.size < src_size { Some(out) }
 	else { None }
 }
 
@@ -255,7 +263,6 @@ impl<'a> From<&'a [u8]> for JpegSrcInfo<'a> {
 			// Set up the error, then the struct.
 			out.cinfo.common.err = std::ptr::addr_of_mut!(*out.err);
 			jpeg_create_decompress(&mut out.cinfo);
-			out.cinfo.common.progress = std::ptr::null_mut();
 		}
 
 		out
@@ -280,7 +287,7 @@ impl<'a> Drop for JpegSrcInfo<'a> {
 /// but its error is a raw pointer because `mozjpeg` is really weird. Haha.
 struct JpegDstInfo {
 	cinfo: jpeg_compress_struct,
-	err: *mut jpeg_error_mgr,
+	err: NonNull<jpeg_error_mgr>,
 	_pin: PhantomPinned,
 }
 
@@ -289,18 +296,23 @@ impl From<&mut JpegSrcInfo<'_>> for JpegDstInfo {
 	fn from(src: &mut JpegSrcInfo<'_>) -> Self {
 		let mut out = Self {
 			cinfo: unsafe { std::mem::zeroed() },
-			err: Box::into_raw(new_err()),
+			// Safety: boxes point somewhere!
+			err: unsafe { NonNull::new_unchecked(Box::into_raw(new_err())) },
 			_pin: PhantomPinned,
 		};
 
 		unsafe {
 			// Set up the error, then the struct.
-			out.cinfo.common.err = std::ptr::addr_of_mut!(*out.err);
-			jpeg_create_compress(&mut out.cinfo);
+			out.cinfo.common.err = out.err.as_ptr();
+			jpeg_CreateCompress(&mut out.cinfo, JPEG_LIB_VERSION, size_of_val(&out.cinfo));
+
+			// Note: depending on the compiler/flags, JPEG compression can
+			// segfault if this isn't explicitly made null. Not sure why it
+			// isn't an always/never behavior…
 			out.cinfo.common.progress = std::ptr::null_mut();
 
 			// Sync the source trace level with the destination.
-			src.err.trace_level = (*out.err).trace_level;
+			src.err.trace_level = out.err.as_ref().trace_level;
 		}
 
 		out
@@ -312,9 +324,7 @@ impl Drop for JpegDstInfo {
 	fn drop(&mut self) {
 		unsafe {
 			jpeg_destroy_compress(&mut self.cinfo);
-
-			// The error pointer is no longer accessible.
-			let _ = Box::from_raw(self.err);
+			let _ = Box::from_raw(self.err.as_ptr());
 		}
 	}
 }
