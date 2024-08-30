@@ -17,7 +17,7 @@ use super::EncodingError;
 
 
 
-#[allow(clippy::inline_always)] // This is the hottest path we've got!
+#[expect(clippy::inline_always, reason = "For performance.")]
 #[inline(always)]
 /// # Encode Image.
 ///
@@ -61,7 +61,7 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 
 		// Encoding checks this explicitly, but debug asserts are nothing if
 		// not redundant!
-		debug_assert!(ImageKind::is_jpeg(&raw));
+		debug_assert!(ImageKind::is_jpeg(&raw), "BUG: raw was unexpectedly corrupted");
 	}
 	// Something else entirely?
 	else { return Err(EncodingError::Format); }

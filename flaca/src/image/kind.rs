@@ -7,7 +7,6 @@ use std::num::NonZeroU32;
 
 
 #[repr(u8)]
-#[allow(clippy::redundant_pub_crate)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// # Image Kind.
 ///
@@ -26,14 +25,14 @@ pub(crate) enum ImageKind {
 }
 
 impl ImageKind {
-	#[allow(clippy::inline_always)]
+	#[expect(clippy::inline_always, reason = "For performance.")]
 	#[inline(always)]
 	/// # Supports JPEG?
 	pub(crate) const fn supports_jpeg(self) -> bool {
 		matches!(self, Self::All | Self::Jpeg)
 	}
 
-	#[allow(clippy::inline_always)]
+	#[expect(clippy::inline_always, reason = "For performance.")]
 	#[inline(always)]
 	/// # Supports PNG?
 	pub(crate) const fn supports_png(self) -> bool {
@@ -42,7 +41,7 @@ impl ImageKind {
 }
 
 impl ImageKind {
-	#[allow(clippy::inline_always)]
+	#[expect(clippy::inline_always, reason = "For performance.")]
 	#[inline(always)]
 	/// # Is JPEG?
 	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
@@ -56,7 +55,7 @@ impl ImageKind {
 		)
 	}
 
-	#[allow(clippy::inline_always)]
+	#[expect(clippy::inline_always, reason = "For performance.")]
 	#[inline(always)]
 	/// # Is PNG?
 	pub(crate) fn is_png(src: &[u8]) -> bool {
@@ -203,12 +202,12 @@ mod tests {
 	}
 
 	#[test]
+	#[expect(clippy::cognitive_complexity, reason = "It is what it is.")]
 	fn t_parse() {
 		macro_rules! test_kind {
 			($($file:literal $ty:expr),+) => ($(
-				let raw = match std::fs::read($file) {
-					Ok(f) => f,
-					Err(_) => panic!("Unable to open {}.", $file),
+				let Ok(raw) = std::fs::read($file) else {
+					panic!("Unable to open {}.", $file);
 				};
 				match $ty {
 					Some(ImageKind::Jpeg) => {

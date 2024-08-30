@@ -33,12 +33,16 @@ use super::{
 
 
 
-#[allow(unsafe_code)]
-/// # Seven is Non-Zero.
+#[expect(unsafe_code, reason = "Seven is non-zero.")]
+/// # Seven.
+///
+/// Safety: seven is non-zero.
 const NZ07: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(7) };
 
-#[allow(unsafe_code)]
-/// # Eight is Non-Zero.
+#[expect(unsafe_code, reason = "Eight is non-zero.")]
+/// # Eight.
+///
+/// Safety: eight is non-zero.
 const NZ08: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(8) };
 
 
@@ -52,6 +56,7 @@ const NZ08: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(8) };
 /// This can be thought of as the owned version of `LZ77StoreRange`, useful
 /// while the data is still being gathered and manipulated.
 pub(crate) struct LZ77Store {
+	/// # Entries.
 	pub(crate) entries: Vec<LZ77StoreEntry>,
 }
 
@@ -107,8 +112,7 @@ impl LZ77Store {
 	///
 	/// Replace the current store's data with what the other guy's got.
 	pub(crate) fn replace(&mut self, other: &Self) {
-		self.entries.truncate(0);
-		self.entries.extend_from_slice(&other.entries);
+		self.entries.clone_from(&other.entries);
 	}
 
 	/// # Steal/Append Entries.
@@ -138,7 +142,6 @@ impl LZ77Store {
 
 
 
-#[repr(transparent)]
 #[derive(Clone, Copy)]
 /// # Ranged LZ77 Data Store.
 ///
@@ -146,6 +149,7 @@ impl LZ77Store {
 /// const-friendly and performant view into some or all of the former's
 /// data.
 pub(crate) struct LZ77StoreRange<'a> {
+	/// # Entries.
 	pub(crate) entries: &'a [LZ77StoreEntry],
 }
 
@@ -197,7 +201,7 @@ impl<'a> LZ77StoreRange<'a> {
 	/// `LZ77Store`, this cannot be empty, so the result will always be
 	/// non-zero.
 	pub(crate) const fn len(self) -> NonZeroUsize {
-		#[allow(unsafe_code)]
+		#[expect(unsafe_code, reason = "Entries are non-empty.")]
 		// Safety: we verified the store is non-empty at construction.
 		unsafe { NonZeroUsize::new_unchecked(self.entries.len()) }
 	}
@@ -295,14 +299,17 @@ impl<'a> LZ77StoreRange<'a> {
 ///
 /// This iterator yields all non-empty split pairs of a ranged store.
 pub(crate) struct LZ77StoreRangeSplits<'a> {
+	/// # Entries.
 	entries: &'a [LZ77StoreEntry],
+
+	/// # Splits.
 	splits: Range<usize>,
 }
 
 impl<'a> Iterator for LZ77StoreRangeSplits<'a> {
 	type Item = (LZ77StoreRange<'a>, LZ77StoreRange<'a>);
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "Entries are non-empty.")]
 	fn next(&mut self) -> Option<Self::Item> {
 		let mid = self.splits.next()?;
 		// Safety: the split range is 1..entries.len(), and we already verified
@@ -332,15 +339,27 @@ impl<'a> ExactSizeIterator for LZ77StoreRangeSplits<'a> {
 /// This iterator yields nine evenly-divided, non-empty split pairs of a ranged
 /// store, used for minimum-cost-finding.
 pub(crate) struct LZ77StoreRangeSplitsChunked<'a> {
+	/// # Entries.
 	entries: &'a [LZ77StoreEntry],
+
+	/// # Chunk Size.
 	chunk: NonZeroUsize,
+
+	/// # Start Index.
 	start: usize,
+
+	/// # End Index.
 	end: usize,
+
+	/// # Current Index.
 	pos: usize,
 }
 
 impl<'a> LZ77StoreRangeSplitsChunked<'a> {
+	/// # Minimum Split Length.
 	pub(crate) const SPLIT_MIN: usize = 10;
+
+	/// # Total Splits.
 	pub(crate) const SPLITS: usize = Self::SPLIT_MIN - 1;
 
 	/// # New Instance.
@@ -381,7 +400,7 @@ impl<'a> LZ77StoreRangeSplitsChunked<'a> {
 		self.start + n * self.chunk.get()
 	}
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "Pos is non-zero.")]
 	/// # Reset/Resplit the Range.
 	///
 	/// This builds a new range around chunk number `n` — the position of
@@ -412,7 +431,7 @@ impl<'a> LZ77StoreRangeSplitsChunked<'a> {
 impl<'a> Iterator for LZ77StoreRangeSplitsChunked<'a> {
 	type Item = (usize, LZ77StoreRange<'a>, LZ77StoreRange<'a>);
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "Entries are non-empty.")]
 	fn next(&mut self) -> Option<Self::Item> {
 		let idx = self.pos;
 		if idx < Self::SPLITS {
@@ -450,22 +469,31 @@ impl<'a> ExactSizeIterator for LZ77StoreRangeSplitsChunked<'a> {
 /// its index in the original uncompressed chunk, the length and distance pair,
 /// and the corresponding length and distance symbols.
 pub(crate) struct LZ77StoreEntry {
-	pub(crate) pos: usize,      // The original uncompressed chunk index.
+	/// # Original (Uncompressed) Index.
+	pub(crate) pos: usize,
+
+	/// # Litlen Symbol.
 	pub(crate) litlen: LitLen,
+
+	/// # Distance.
 	pub(crate) dist: i16,
-	pub(crate) ll_symbol: Lsym, // A symbol or literal depending on distance.
+
+	/// # Length Symbol or Litlen.
+	pub(crate) ll_symbol: Lsym,
+
+	/// # Distance Symbol.
 	pub(crate) d_symbol: Dsym,
 }
 
 impl LZ77StoreEntry {
-	#[allow(
-		clippy::cast_possible_truncation,
+	#[expect(
 		clippy::cast_possible_wrap,
 		clippy::cast_sign_loss,
+		reason = "False positive.",
 	)]
 	/// # New.
 	const fn new(litlen: LitLen, dist: u16, pos: usize) -> Self {
-		debug_assert!(dist < 32_768);
+		debug_assert!(dist < 32_768, "BUG: distance exceeds the WINDOW_SIZE!");
 
 		// Using the signed type helps the compiler understand the upper
 		// range fits ZOPFLI_WINDOW_MAX. Impossibly large values would also
@@ -541,7 +569,7 @@ mod test {
 		/// Most of these types do not implement (or need) `Eq`, but since
 		/// we're only setting `pos` and `dist` uniquely here anyway, we can
 		/// limit matching to those two.
-		fn entry_eq((a, b): (&LZ77StoreEntry, &LZ77StoreEntry)) -> bool {
+		const fn entry_eq((a, b): (&LZ77StoreEntry, &LZ77StoreEntry)) -> bool {
 			a.pos == b.pos && a.dist == b.dist
 		}
 

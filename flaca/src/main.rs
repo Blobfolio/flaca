@@ -2,34 +2,55 @@
 # Flaca
 */
 
-#![deny(unsafe_code)]
+#![deny(
+	clippy::allow_attributes_without_reason,
+	clippy::correctness,
+	unreachable_pub,
+	unsafe_code,
+)]
 
 #![warn(
-	clippy::filetype_is_file,
-	clippy::integer_division,
-	clippy::needless_borrow,
+	clippy::complexity,
 	clippy::nursery,
 	clippy::pedantic,
 	clippy::perf,
-	clippy::suboptimal_flops,
+	clippy::style,
+
+	clippy::allow_attributes,
+	clippy::clone_on_ref_ptr,
+	clippy::create_dir,
+	clippy::filetype_is_file,
+	clippy::format_push_string,
+	clippy::get_unwrap,
+	clippy::impl_trait_in_params,
+	clippy::lossy_float_literal,
+	clippy::missing_assert_message,
+	clippy::missing_docs_in_private_items,
+	clippy::needless_raw_strings,
+	clippy::panic_in_result_fn,
+	clippy::pub_without_shorthand,
+	clippy::rest_pat_in_fully_bound_structs,
+	clippy::semicolon_inside_block,
+	clippy::str_to_string,
+	clippy::string_to_string,
+	clippy::todo,
+	clippy::undocumented_unsafe_blocks,
 	clippy::unneeded_field_pattern,
+	clippy::unseparated_literal_suffix,
+	clippy::unwrap_in_result,
+
 	macro_use_extern_crate,
 	missing_copy_implementations,
-	missing_debug_implementations,
 	missing_docs,
 	non_ascii_idents,
 	trivial_casts,
 	trivial_numeric_casts,
-	unreachable_pub,
 	unused_crate_dependencies,
 	unused_extern_crates,
 	unused_import_braces,
 )]
 
-#![allow(
-	clippy::module_name_repetitions,
-	clippy::redundant_pub_crate,
-)]
+#![expect(clippy::redundant_pub_crate, reason = "Unresolvable.")]
 
 
 
@@ -98,9 +119,13 @@ include!(concat!(env!("OUT_DIR"), "/flaca-extensions.rs"));
 /// # Maximum Resolution.
 pub(crate) static MAX_RESOLUTION: AtomicU32 = AtomicU32::new(0);
 
-/// # Progress Counters.
+/// # Total Skipped.
 static SKIPPED: AtomicU64 = AtomicU64::new(0);
+
+/// # Total Size Before.
 static BEFORE: AtomicU64 = AtomicU64::new(0);
+
+/// # Total Size After.
 static AFTER: AtomicU64 = AtomicU64::new(0);
 
 
@@ -233,8 +258,9 @@ fn _main() -> Result<(), FlacaError> {
 /// image paths and crunches them — and updates the progress bar, etc. —
 /// then quits when the work has dried up.
 fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) {
-	#[allow(clippy::inline_always)]
+	#[expect(clippy::inline_always, reason = "For performance.")]
 	#[inline(always)]
+	/// # Noteworthy Failure?
 	fn noteworthy(kinds: ImageKind, p: &Path) -> bool {
 		if matches!(kinds, ImageKind::All) { true }
 		else if Some(E_PNG) == Extension::try_from3(p) { kinds.supports_png() }

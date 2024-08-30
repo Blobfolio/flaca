@@ -28,16 +28,22 @@ use super::{
 
 
 
-#[allow(unsafe_code)]
-/// # Twenty is Non-Zero.
+#[expect(unsafe_code, reason = "Twenty is non-zero.")]
+/// # Twenty.
+///
+/// Safety: twenty is non-zero.
 const NZ20: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(20) };
 
-#[allow(unsafe_code)]
-/// # Sixty is Non-Zero.
+#[expect(unsafe_code, reason = "Sixty is non-zero.")]
+/// # Sixty.
+///
+/// Safety: sixty is Non-Zero.
 const NZ60: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(60) };
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "`i32::MAX` is non-zero.")]
 /// # Max Iterations.
+///
+/// Safety: `i32::MAX` is non-zero.
 const MAX_ITERATIONS: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(i32::MAX as u32) };
 
 /// # Number of Zopfli LZ77 Iterations.
@@ -55,7 +61,7 @@ static mut NUM_ITERATIONS: Option<NonZeroU32> = None;
 
 
 #[no_mangle]
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "For FFI.")]
 /// # Custom PNG Deflate.
 ///
 /// This is a custom deflate callback for lodepng. When set, image blocks are
@@ -100,6 +106,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	};
 
 	// Make a proper slice out of the data.
+	// Safety: we have to trust that lodepng is giving us accurate information.
 	let arr = unsafe { std::slice::from_raw_parts(arr, insize) };
 
 	// Figure out how many iterations to use.
@@ -134,15 +141,11 @@ pub(crate) extern "C" fn flaca_png_deflate(
 ///
 /// Override the default (size-based) number of Zopfli LZ77 iterations with a
 /// fixed value.
-///
-/// ## Safety
-///
-/// Because this value is only (possibly) written once while `flaca` is parsing
-/// the CLI options — before any multi-threaded encoding happens — we can
-/// safely skip the overhead of atomics or other wrappers and refer to the
-/// static directly.
 pub fn set_zopfli_iterations(n: NonZeroU32) {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For mut static.")]
+	// Safety: this value is only written to once, if that, while the `flaca`
+	// binary is parsing the CLI arguments. There won't be any contention for
+	// this value.
 	unsafe { NUM_ITERATIONS.replace(NonZeroU32::min(n, MAX_ITERATIONS)); }
 }
 
@@ -157,13 +160,18 @@ pub fn set_zopfli_iterations(n: NonZeroU32) {
 /// methods used to record data, minimizing — as much as possible — the use of
 /// `unsafe` everywhere else.
 pub(super) struct ZopfliOut {
+	/// # Bit Pointer.
 	bp: u8,
+
+	/// # Output Buffer.
 	out: *mut *mut u8,
+
+	/// # Output (Written) Length.
 	outsize: *mut usize,
 }
 
 impl ZopfliOut {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For alloc.")]
 	#[inline]
 	/// # Append Data.
 	///
@@ -184,6 +192,9 @@ impl ZopfliOut {
 		///
 		/// As such, we don't want all this stuff affecting the compiler's
 		/// inlining decisions, hence the cold wrapper.
+		///
+		/// Safety: allocation requires unsafe, but this should be safer than
+		/// leaving everything to C!
 		unsafe fn alloc_cold(ptr: *mut u8, size: usize) -> NonNull<u8> {
 			flapfli_allocate(
 				ptr,
@@ -191,6 +202,8 @@ impl ZopfliOut {
 			)
 		}
 
+		// Safety: our allocation wrappers check the pointer is non-null and
+		// properly sized.
 		unsafe {
 			// Dereference the size once to save some sanity.
 			let size = *self.outsize;
@@ -208,7 +221,7 @@ impl ZopfliOut {
 }
 
 impl ZopfliOut {
-	#[allow(clippy::doc_markdown)]
+	#[expect(clippy::doc_markdown, reason = "False positive.")]
 	#[inline]
 	/// # Add Bit.
 	///
@@ -217,11 +230,11 @@ impl ZopfliOut {
 	/// otherwise it is ORed on top of the last one.
 	pub(crate) fn add_bit(&mut self, bit: u8) {
 		if self.bp == 0 { self.append_data(0); }
-		#[allow(unsafe_code)]
+		#[expect(unsafe_code, reason = "For pointer deref.")]
+		// Safety: `append_data` writes a byte to `outsize` and then
+		// increments it, so to reach and modify that same position we need
+		// to use `outsize - 1` instead.
 		unsafe {
-			// Safety: `append_data` writes a byte to `outsize` and then
-			// increments it, so to reach and modify that same position we need
-			// to use `outsize - 1` instead.
 			*(*self.out).add(*self.outsize - 1) |= bit << self.bp;
 		}
 		self.bp = self.bp.wrapping_add(1) & 7;
@@ -248,7 +261,7 @@ impl ZopfliOut {
 	///
 	/// This will panic at compile-time if `N` is less than two.
 	pub(crate) fn add_fixed_bits<const N: u8>(&mut self, symbol: u32) {
-		const { assert!(1 < N); }
+		const { assert!(1 < N, "BUG: fixed bits implies more than one!"); }
 		for i in const { 0..N } {
 			let bit = (symbol >> i) & 1;
 			self.add_bit(bit as u8);
@@ -281,7 +294,7 @@ impl ZopfliOut {
 		}
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
+	#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
 	/// # Add Non-Compressed Block.
 	///
 	/// As one might suspect, uncompressed blocks are virtually never smaller
@@ -337,7 +350,10 @@ impl ZopfliOut {
 ///
 /// See `ZopfliChunk` for more information. Haha.
 struct DeflateIter<'a> {
+	/// # Data.
 	arr: &'a [u8],
+
+	/// # Window Start.
 	pos: usize,
 }
 
@@ -375,7 +391,7 @@ impl<'a> DeflateIter<'a> {
 
 
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "Read mut static.")]
 /// # Number of Zopfli LZ77 Iterations.
 ///
 /// This either returns the user's fixed preference, or a size-based fallback.

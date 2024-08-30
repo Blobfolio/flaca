@@ -42,17 +42,20 @@ use super::{
 
 
 
+/// # Fixed Block Type Header Bit.
 const BLOCK_TYPE_FIXED: u8 = 1;
+
+/// # Dynamic Block Type Header Bit.
 const BLOCK_TYPE_DYNAMIC: u8 = 2;
 
 /// # Minimum Split Distance.
 const MINIMUM_SPLIT_DISTANCE: usize = 10;
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "Ten is non-zero.")]
 /// # Ten is Non-Zero.
 const NZ10: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(10) };
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "Eleven is non-zero.")]
 /// # Eleven is Non-Zero.
 const NZ11: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(11) };
 
@@ -114,7 +117,6 @@ pub(crate) fn deflate_part(
 
 
 
-#[allow(clippy::cast_precision_loss, clippy::cast_sign_loss)]
 #[inline]
 /// # Add LZ77 Block (Automatic Type).
 ///
@@ -188,6 +190,7 @@ fn add_lz77_block(
 	}
 
 	#[inline(never)]
+	/// # Dynamic Details.
 	fn dynamic_details(store: LZ77StoreRange)
 	-> Result<DynamicLengths, ZopfliError> { DynamicLengths::new(store) }
 
@@ -227,7 +230,7 @@ fn add_lz77_block(
 	}
 }
 
-#[allow(clippy::cast_sign_loss)]
+#[expect(clippy::cast_sign_loss, reason = "False positive.")]
 #[inline]
 /// # Add LZ77 Data.
 ///
@@ -471,7 +474,14 @@ fn split_points(
 		let two_len = split_points_lz77_cold(state, store, &mut split_a)?;
 		split_a[two_len as usize] = store.len();
 		split_a.rotate_right(1);
-		debug_assert!(split_a[0] == 0); // SplitLen tops out at 14 so we can't actually write to 15 (now 0); it should be the default value, which was zero.
+
+		// SplitLen tops out at 14 so we can't actually write to 15 (now 0);
+		// it should be the default value, which was zero.
+		debug_assert!(
+			split_a[0] == 0,
+			"BUG: the first split index should always be zero!",
+		);
+
 		let mut cost2 = 0;
 		for rng in SplitPointsIter::new(&split_a, two_len) {
 			cost2 += calculate_block_size_auto(store, rng?)?.get();
@@ -482,7 +492,10 @@ fn split_points(
 	}
 
 	split_b.rotate_right(1);
-	debug_assert!(split_b[0] == 0); // SplitLen tops out at 14 so we can't actually write to 15 (now 0); it should be the default value, which was zero.
+	debug_assert!(
+		split_b[0] == 0,
+		"BUG: the first split index should always be zero!",
+	);
 	Ok((split_b, raw_len))
 }
 
@@ -521,6 +534,7 @@ fn split_points_raw(
 }
 
 #[inline(never)]
+/// # Split Points LZ77 (no inline).
 fn split_points_lz77_cold(
 	state: &mut ZopfliState,
 	store: &LZ77Store,
@@ -624,8 +638,13 @@ fn split_points_lz77(
 /// like `slice.windows(2)`, returning between `1..=15` ranges spanning the
 /// length of the chunk/store.
 struct SplitPointsIter<'a> {
+	/// # Split Points.
 	data: &'a SplitPoints,
-	max: SplitLen, // Inclusive length.
+
+	/// # Inclusive Length.
+	max: SplitLen,
+
+	/// # Current Position.
 	pos: usize,
 }
 

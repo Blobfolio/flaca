@@ -30,7 +30,10 @@ use super::{
 /// and `arr.len() - from` will always be less than or equal to
 /// `ZOPFLI_MASTER_BLOCK_SIZE`, i.e. one million.
 pub(crate) struct ZopfliChunk<'a> {
+	/// # Array.
 	arr: &'a [u8],
+
+	/// # Window Start.
 	from: usize,
 }
 
@@ -95,7 +98,7 @@ impl<'a> ZopfliChunk<'a> {
 	///
 	/// Note: this will never be empty.
 	pub(crate) fn block(&self) -> &[u8] {
-		#[allow(unsafe_code)]
+		#[expect(unsafe_code, reason = "For performance.")]
 		// Safety: from is verified during construction.
 		unsafe { self.arr.get_unchecked(self.from..) }
 	}
@@ -117,7 +120,7 @@ impl<'a> ZopfliChunk<'a> {
 	///
 	/// Return the length of the "active" slice, e.g. its block size.
 	pub(crate) const fn block_size(&self) -> NonZeroUsize {
-		#[allow(unsafe_code)]
+		#[expect(unsafe_code, reason = "For performance.")]
 		// Safety: the length is verified during construction.
 		unsafe { NonZeroUsize::new_unchecked(self.arr.len() - self.from) }
 	}
@@ -132,12 +135,11 @@ impl<'a> ZopfliChunk<'a> {
 	///
 	/// Return the length of the entire data slice, prelude and all.
 	pub(crate) const fn total_len(&self) -> NonZeroUsize {
-		#[allow(unsafe_code)]
+		#[expect(unsafe_code, reason = "For performance.")]
 		// Safety: slices are verified non-empty at construction.
 		unsafe { NonZeroUsize::new_unchecked(self.arr.len()) }
 	}
 
-	#[allow(unsafe_code)]
 	/// # Warmup Values.
 	///
 	/// This returns the first one or two values from `window_start`, used for
@@ -301,8 +303,8 @@ mod test {
 		assert!(chunk.reducing_prelude_iter().is_none());
 
 		// And let's try one that is too big.
-		let arr: &[u8] = &[0; ZOPFLI_MASTER_BLOCK_SIZE + 10];
-		let chunk = ZopfliChunk::new(arr, 10).expect("Chunk failed.");
+		let arr = vec![0_u8; ZOPFLI_MASTER_BLOCK_SIZE + 10];
+		let chunk = ZopfliChunk::new(arr.as_slice(), 10).expect("Chunk failed.");
 		let mut iter = chunk.reducing_prelude_iter().expect("missing prelude iter");
 
 		assert_eq!(iter.len(), 10);

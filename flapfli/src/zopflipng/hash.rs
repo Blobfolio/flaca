@@ -39,9 +39,20 @@ use super::{
 	ZopfliRange,
 };
 
+/// # Window Mask.
 const ZOPFLI_WINDOW_MASK: usize = ZOPFLI_WINDOW_SIZE - 1;
+
+/// # Hash Shift.
 const HASH_SHIFT: i32 = 5;
+
+/// # Hash Mask.
+///
+/// This is the same as the window mask, but represented as an `i16`.
 const HASH_MASK: i16 = 32_767;
+
+/// # Maximum Chain Hits.
+///
+/// This serves as a sort of timeout to prevent indefinite distance traversal.
 const ZOPFLI_MAX_CHAIN_HITS: usize = 8192;
 
 /// # Distance Bits (for minimum cost).
@@ -68,14 +79,21 @@ const ZEROED_SUBLEN: [u16; SUBLEN_LEN] = [0; SUBLEN_LEN];
 ///
 /// (That local lives in `deflate.rs`.)
 pub(crate) struct ZopfliState {
+	/// # Longest Match Cache.
 	lmc: MatchCache,
+
+	/// # Zopfli Hash Cache.
 	hash: ZopfliHash,
+
+	/// # LZ77 Split Cache.
 	split: SplitCache,
+
+	/// # LZ77 Squeeze Cache.
 	squeeze: SqueezeCache,
 }
 
 impl ZopfliState {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For alloc.")]
 	#[inline(never)]
 	/// # New.
 	///
@@ -90,17 +108,21 @@ impl ZopfliState {
 	/// boxing is done once, here, instead of separately for each individual
 	/// member.
 	pub(crate) fn new() -> Box<Self> {
-		// Reserve the space.
+		/// # Layout.
 		const LAYOUT: Layout = Layout::new::<ZopfliState>();
+
+		// Reserve the space.
+		// Safety: alloc requires unsafe, but NonNull makes sure it actually
+		// happened.
 		let out: NonNull<Self> = NonNull::new(unsafe { alloc_zeroed(LAYOUT).cast() })
 			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
 		let ptr = out.as_ptr();
 
+		// Safety: zeroes are "valid" for all of the primitives — including
+		// LitLen, which is sized/aligned to u16 —  so alloc_zeroed has
+		// taken care of everything but the Cell in SqueezeCache, which we
+		// can sort out thusly:
 		unsafe {
-			// Safety: zeroes are "valid" for all of the primitives — including
-			// LitLen, which is sized/aligned to u16 —  so alloc_zeroed has
-			// taken care of everything but the Cell in SqueezeCache, which we
-			// can sort out thusly:
 			addr_of_mut!((*ptr).squeeze.costs_len).write(Cell::new(0));
 
 			// Note: zero is not the appropriate _logical_ default in most
@@ -148,7 +170,7 @@ impl ZopfliState {
 		self.greedy(chunk, store, cache)
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
+	#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
 	#[inline]
 	/// # Greedy LZ77 Run.
 	///
@@ -343,7 +365,10 @@ impl ZopfliState {
 /// This structure tracks byte values and hashes by position, facilitating
 /// match-finding (length and distance) at various offsets.
 struct ZopfliHash {
+	/// # Hashes w/ Algorithm One.
 	chain1: ZopfliHashChain,
+
+	/// # Hashes w/ Algorithm Two.
 	chain2: ZopfliHashChain,
 
 	/// # Repetitions of the same byte after this.
@@ -373,10 +398,10 @@ impl ZopfliHash {
 		}
 	}
 
-	#[allow(
+	#[expect(
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
-		clippy::similar_names,
+		reason = "False positive.",
 	)]
 	/// # Update Hash.
 	///
@@ -419,7 +444,8 @@ impl ZopfliHash {
 }
 
 impl ZopfliHash {
-	#[allow(clippy::cast_possible_truncation)]
+	#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
+	#[expect(clippy::too_many_lines, reason = "Debug assertions pushed us over. Haha.")]
 	#[inline(never)]
 	/// # Get Best Lengths.
 	///
@@ -491,7 +517,10 @@ impl ZopfliHash {
 		let symbol_cost = stats.ll_symbols[285] + stats.d_symbols[0];
 
 		while let Some((mut chunk2, mut cost2)) = iter.next() {
-			debug_assert_eq!(chunk2.block_size().get() + 1, cost2.len());
+			debug_assert!(
+				chunk2.block_size().get() + 1 == cost2.len(),
+				"BUG: the chunk and cost block sizes do not match!",
+			);
 
 			// Hash the remainder.
 			self.update_hash(chunk2);
@@ -523,8 +552,14 @@ impl ZopfliHash {
 					self.update_hash(chunk2);
 				}
 
-				debug_assert_eq!(chunk2.pos() - before, ZOPFLI_MAX_MATCH);
-				debug_assert_eq!(chunk2.block_size().get() + 1, cost2.len());
+				debug_assert!(
+					chunk2.pos() - before == ZOPFLI_MAX_MATCH,
+					"BUG: the chunk position was not advanced ZOPFLI_MAX_MATCH!",
+				);
+				debug_assert!(
+					chunk2.block_size().get() + 1 == cost2.len(),
+					"BUG: the chunk and cost block sizes do not match!",
+				);
 			}
 
 			// Find the longest remaining match.
@@ -575,11 +610,14 @@ impl ZopfliHash {
 		}
 
 		// All costs should have been updated…
-		debug_assert!(costs.iter().all(|(cost, _)| (0.0..1E30).contains(cost)));
+		debug_assert!(
+			costs.iter().all(|(cost, _)| (0.0..1E30).contains(cost)),
+			"BUG: one or more costs were not calculated!",
+		);
 		Ok(())
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
+	#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
 	#[inline(never)]
 	/// # Get Best Lengths (Fixed).
 	///
@@ -624,7 +662,10 @@ impl ZopfliHash {
 		let mut sublen = ZEROED_SUBLEN;
 
 		while let Some((mut chunk2, mut cost2)) = iter.next() {
-			debug_assert_eq!(chunk2.block_size().get() + 1, cost2.len());
+			debug_assert!(
+				chunk2.block_size().get() + 1 == cost2.len(),
+				"BUG: the chunk and cost block sizes do not match!",
+			);
 
 			// Hash the remainder.
 			self.update_hash(chunk2);
@@ -656,8 +697,14 @@ impl ZopfliHash {
 					self.update_hash(chunk2);
 				}
 
-				debug_assert_eq!(chunk2.pos() - before, ZOPFLI_MAX_MATCH);
-				debug_assert_eq!(chunk2.block_size().get() + 1, cost2.len());
+				debug_assert!(
+					chunk2.pos() - before == ZOPFLI_MAX_MATCH,
+					"BUG: the chunk position was not advanced ZOPFLI_MAX_MATCH!",
+				);
+				debug_assert!(
+					chunk2.block_size().get() + 1 == cost2.len(),
+					"BUG: the chunk and cost block sizes do not match!",
+				);
 			}
 
 			// Find the longest remaining match.
@@ -708,11 +755,13 @@ impl ZopfliHash {
 		}
 
 		// All costs should have been updated…
-		debug_assert!(costs.iter().all(|(cost, _)| (0.0..1E30).contains(cost)));
+		debug_assert!(
+			costs.iter().all(|(cost, _)| (0.0..1E30).contains(cost)),
+			"BUG: one or more costs were not calculated!",
+		);
 		Ok(())
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
 	/// # Follow Paths.
 	///
 	/// This method repopulates the hash tables by following the provided
@@ -776,7 +825,7 @@ impl ZopfliHash {
 }
 
 impl ZopfliHash {
-	#[allow(clippy::too_many_arguments)]
+	#[expect(clippy::too_many_arguments, reason = "It is what it is.")]
 	/// # Find Longest Match.
 	///
 	/// This finds the longest match in the chunk (and/or the cache), setting
@@ -841,13 +890,13 @@ impl ZopfliHash {
 		else { Err(zopfli_error!()) }
 	}
 
-	#[allow(
-		unsafe_code,
+	#[expect(
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
 		clippy::cast_sign_loss,
-		clippy::similar_names,
+		reason = "False positive.",
 	)]
+	#[expect(unsafe_code, reason = "For unchecked indexing.")]
 	/// # Find Longest Match Loop.
 	///
 	/// This method is a (nasty-looking) workhorse for the above
@@ -883,7 +932,10 @@ impl ZopfliHash {
 		let mut switched = false;
 		let mut chain = &self.chain1;
 
-		debug_assert_eq!(chain.hash_idx[chain.val as usize], hpos as i16);
+		debug_assert!(
+			chain.hash_idx[chain.val as usize] == (hpos as i16),
+			"BUG: hash_idx and hpos do not match!",
+		);
 
 		// Keep track of the current and previous matches, if any.
 		let mut pp = hpos;
@@ -901,8 +953,14 @@ impl ZopfliHash {
 			// These are simple sanity assertions; the values are only ever
 			// altered via ZopfliHashChain::update_hash so there isn't much
 			// room for mistake.
-			debug_assert!(p as i16 == chain.idx_prev[pp] || p == pp);
-			debug_assert_eq!(chain.idx_hash[p], chain.val);
+			debug_assert!(
+				p as i16 == chain.idx_prev[pp] || p == pp,
+				"BUG: the previous chain does not match the cached index.",
+			);
+			debug_assert!(
+				chain.idx_hash[p] == chain.val,
+				"BUG: the chain value does not match the cached value at this position.",
+			);
 
 			// If we have distance, we can check the length of the match. The
 			// logic here is extremely convoluted, but essentially we'll
@@ -1040,11 +1098,11 @@ impl ZopfliHashChain {
 		self.val = 0;
 	}
 
-	#[allow(
+	#[expect(
 		clippy::cast_possible_truncation,
 		clippy::cast_possible_wrap,
 		clippy::cast_sign_loss,
-		clippy::similar_names,
+		reason = "False positive.",
 	)]
 	/// # Update Hash.
 	///

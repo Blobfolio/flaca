@@ -77,19 +77,23 @@ pub(super) struct EncodedJPEG {
 impl Deref for EncodedJPEG {
 	type Target = [u8];
 
-	#[allow(clippy::cast_possible_truncation, unsafe_code)]
+	#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
+	#[expect(unsafe_code, reason = "For slice from raw.")]
 	fn deref(&self) -> &Self::Target {
 		if self.is_null() { &[] }
 		else {
+			// Safety: the pointer is non-null.
 			unsafe { std::slice::from_raw_parts(self.buf, self.size as usize) }
 		}
 	}
 }
 
 impl Drop for EncodedJPEG {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For FFI.")]
 	fn drop(&mut self) {
 		if ! self.buf.is_null() {
+			// Safety: the pointer is non-null and was created by C, so if
+			// anybody knows what to do with it, C should!
 			unsafe { libc::free(self.buf.cast::<c_void>()); }
 			self.buf = std::ptr::null_mut(); // Probably unnecessary?
 		}
@@ -117,7 +121,8 @@ impl EncodedJPEG {
 
 
 
-#[allow(unsafe_code, clippy::inline_always)]
+#[expect(clippy::inline_always, reason = "For performance.")]
+#[expect(unsafe_code, reason = "For FFI.")]
 #[inline(always)]
 /// # Jpegtran (Memory Mode)
 ///
@@ -162,6 +167,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 	let mut srcinfo = JpegSrcInfo::from(src);
 	let mut dstinfo = JpegDstInfo::from(&mut srcinfo);
 
+	// Safety: these are FFI calls…
 	unsafe {
 		// Load the source file.
 		jpeg_mem_src(&mut srcinfo.cinfo, srcinfo.raw.as_ptr(), src_size);
@@ -179,15 +185,18 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 	}
 
 	// Read source file as DCT coefficients.
+	// Safety: this is an FFI call…
 	let src_coef_arrays: *mut jvirt_barray_ptr = unsafe {
 		jpeg_read_coefficients(&mut srcinfo.cinfo)
 	};
 
 	// Initialize destination compression parameters from source values.
+	// Safety: this is an FFI call…
 	unsafe { jpeg_copy_critical_parameters(&srcinfo.cinfo, &mut dstinfo.cinfo); }
 
 	// Adjust destination parameters if required by transform options, and sync
 	// the coefficient arrays.
+	// Safety: this is an FFI call…
 	let dst_coef_arrays: *mut jvirt_barray_ptr = unsafe {
 		jtransform_adjust_parameters(
 			&mut srcinfo.cinfo,
@@ -202,6 +211,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 
 	// Compress!
 	let mut out = EncodedJPEG::new();
+	// Safety: these are FFI calls…
 	unsafe {
 		// Enable "progressive".
 		jpeg_simple_progression(&mut dstinfo.cinfo);
@@ -230,6 +240,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 	// The decompression will have finished much earlier, but we had to wait
 	// to call this deconstructor until now because of all the shared
 	// references.
+	// Safety: this is an FFI call…
 	unsafe { jpeg_finish_decompress(&mut srcinfo.cinfo); }
 
 	// Return it if we got it!
@@ -245,20 +256,27 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 /// The abstraction is primarily used to ensure the C-related resources are
 /// correctly broken down on drop.
 struct JpegSrcInfo<'a> {
+	/// # Source Data.
 	raw: &'a [u8],
+
+	/// # Decompressor.
 	cinfo: jpeg_decompress_struct,
+
+	/// # Error Instance.
 	err: Box<jpeg_error_mgr>,
 }
 
 impl<'a> From<&'a [u8]> for JpegSrcInfo<'a> {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For FFI.")]
 	fn from(raw: &'a [u8]) -> Self {
 		let mut out = Self {
 			raw,
+			// Safety: the subsequent FFI call expects zeroed memory.
 			cinfo: unsafe { std::mem::zeroed() },
 			err: new_err(),
 		};
 
+		// Safety: and here is that FFI call…
 		unsafe {
 			// Set up the error, then the struct.
 			out.cinfo.common.err = std::ptr::addr_of_mut!(*out.err);
@@ -270,8 +288,9 @@ impl<'a> From<&'a [u8]> for JpegSrcInfo<'a> {
 }
 
 impl<'a> Drop for JpegSrcInfo<'a> {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For FFI.")]
 	fn drop(&mut self) {
+		// Safety: mozjpeg handles deallocation itself.
 		unsafe { jpeg_destroy_decompress(&mut self.cinfo); }
 	}
 }
@@ -286,21 +305,28 @@ impl<'a> Drop for JpegSrcInfo<'a> {
 /// On the surface, this looks almost exactly like the `JpegSrcInfo` wrapper,
 /// but its error is a raw pointer because `mozjpeg` is really weird. Haha.
 struct JpegDstInfo {
+	/// # Compressor.
 	cinfo: jpeg_compress_struct,
+
+	/// # Error Instance.
 	err: NonNull<jpeg_error_mgr>,
+
+	/// # Pinned Data.
 	_pin: PhantomPinned,
 }
 
 impl From<&mut JpegSrcInfo<'_>> for JpegDstInfo {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For FFI.")]
 	fn from(src: &mut JpegSrcInfo<'_>) -> Self {
 		let mut out = Self {
+			// Safety: the subsequent FFI call requires zeroed memory.
 			cinfo: unsafe { std::mem::zeroed() },
 			// Safety: boxes point somewhere!
 			err: unsafe { NonNull::new_unchecked(Box::into_raw(new_err())) },
 			_pin: PhantomPinned,
 		};
 
+		// Safety: these are FFI calls…
 		unsafe {
 			// Set up the error, then the struct.
 			out.cinfo.common.err = out.err.as_ptr();
@@ -320,8 +346,9 @@ impl From<&mut JpegSrcInfo<'_>> for JpegDstInfo {
 }
 
 impl Drop for JpegDstInfo {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For FFI.")]
 	fn drop(&mut self) {
+		// Safety: mozjpeg handles deallocation itself.
 		unsafe {
 			jpeg_destroy_compress(&mut self.cinfo);
 			let _ = Box::from_raw(self.err.as_ptr());
@@ -330,7 +357,7 @@ impl Drop for JpegDstInfo {
 }
 
 impl JpegDstInfo {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For FFI.")]
 	/// # Finish Compression!
 	///
 	/// This finishes writing the new image, consuming the details struct in
@@ -339,6 +366,7 @@ impl JpegDstInfo {
 	/// A simple `true`/`false` boolean is returned to indicate (likely)
 	/// success.
 	fn finish(mut self) -> bool {
+		// Safety: mozjpeg handles deallocation itself.
 		unsafe {
 			jpeg_finish_compress(&mut self.cinfo);
 			0 == (*self.cinfo.common.err).msg_code
@@ -348,7 +376,8 @@ impl JpegDstInfo {
 
 
 
-#[allow(clippy::unnecessary_box_returns, unsafe_code)]
+#[expect(clippy::unnecessary_box_returns, reason = "We want a box.")]
+#[expect(unsafe_code, reason = "For FFI.")]
 /// # New Unwinding Error.
 ///
 /// Mozjpeg is largely designed to panic anytime there's an error instead of
@@ -360,6 +389,7 @@ impl JpegDstInfo {
 /// Shout out to the [mozjpeg](https://github.com/ImageOptim/mozjpeg-rust/blob/main/src/errormgr.rs)
 /// crate for the inspiration!
 fn new_err() -> Box<jpeg_error_mgr> {
+	// Safety: the FFI call requires zeroed memory to start from.
 	unsafe {
 		let mut err = Box::new(std::mem::zeroed());
 		jpeg_std_error(&mut err);
@@ -376,7 +406,6 @@ fn new_err() -> Box<jpeg_error_mgr> {
 extern "C-unwind" fn silence_message(_cinfo: &mut jpeg_common_struct, _msg_level: c_int) {}
 
 #[cold]
-#[allow(unsafe_code)]
 /// # Error Exit.
 ///
 /// Emit an unwinding panic so we can recover somewhat gracefully from mozjpeg

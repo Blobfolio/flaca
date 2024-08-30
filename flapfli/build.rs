@@ -287,7 +287,7 @@ impl<T: Copy + fmt::Display> fmt::Display for NumEnum<T>
 where Range<T>: ExactSizeIterator<Item=T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		// Allow dead code.
-		writeln!(f, "#[allow(dead_code)]")?;
+		writeln!(f, "#[allow(dead_code, clippy::allow_attributes, clippy::missing_docs_in_private_items, reason = \"Code is auto-generated.\")]")?;
 
 		// Representation.
 		let kind = std::any::type_name::<T>();
@@ -321,15 +321,15 @@ where Range<T>: ExactSizeIterator<Item=T> {
 		writeln!(
 			f,
 			"impl {name} {{
-	#[allow(dead_code)]
+	#[allow(dead_code, clippy::allow_attributes, reason = \"Code is auto-generated.\")]
 	/// # Minimum Value.
 	pub(crate) const MIN: Self = Self::{prefix}{start:0width$};
 
-	#[allow(dead_code)]
+	#[allow(dead_code, clippy::allow_attributes, reason = \"Code is auto-generated.\")]
 	/// # Maximum Value.
 	pub(crate) const MAX: Self = Self::{prefix}{max:0width$};
 
-	#[allow(unsafe_code, dead_code)]
+	#[allow(unsafe_code, clippy::allow_attributes, dead_code, reason = \"Code is auto-generated.\")]
 	/// # Decrement.
 	///
 	/// Return `self - 1` or None.
@@ -342,7 +342,7 @@ where Range<T>: ExactSizeIterator<Item=T> {
 		}}
 	}}
 
-	#[allow(unsafe_code, dead_code)]
+	#[allow(unsafe_code, clippy::allow_attributes, dead_code, reason = \"Code is auto-generated.\")]
 	/// # Increment.
 	///
 	/// Return `self + 1` or None.
@@ -375,7 +375,8 @@ impl Iterator for {name}Iter {{
 		let old = self.0;
 		if old < {end} {{
 			self.0 += 1;
-			#[allow(unsafe_code)]
+			#[expect(unsafe_code, reason = \"For transmute.\")]
+			// Safety: {kind} has the same size and alignment as {name}.
 			Some(unsafe {{ std::mem::transmute::<{kind}, {name}>(old) }})
 		}}
 		else {{ None }}

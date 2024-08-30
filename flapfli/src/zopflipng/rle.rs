@@ -45,9 +45,16 @@ const LENGTH_EXTRA_BITS: &ArrayLL<u32> = &[
 /// histogram data, the second using RLE-optimized counts derived from same.
 /// The best of the best is kept, the rest are forgotten.
 pub(crate) struct DynamicLengths {
+	/// # Extra Deflate Symbols Used.
 	extra: u8,
+
+	/// # Total Size.
 	size: NonZeroU32,
+
+	/// # Litlen Counts.
 	ll_lengths: ArrayLL<DeflateSym>,
+
+	/// # Distance Counts.
 	d_lengths: ArrayD<DeflateSym>,
 }
 
@@ -82,14 +89,14 @@ impl DynamicLengths {
 		Ok(out)
 	}
 
-	#[allow(clippy::option_if_let_else)] // Too many branches!
+	#[expect(clippy::option_if_let_else, reason = "Too messy.")]
 	/// # Try Optimized.
 	///
 	/// Optimize the counts and fetch new symbols, returning them unless
 	/// neither wind up any different.
 	fn try_optimized(&self, ll_counts: &ArrayLL<u32>, d_counts: &ArrayD<u32>)
 	-> Option<(ArrayLL<DeflateSym>, ArrayD<DeflateSym>)> {
-		#[allow(unsafe_code)]
+		#[expect(unsafe_code, reason = "For pointer deref.")]
 		/// # As Bytes.
 		///
 		/// Reimagine a symbol array as raw bytes for more optimal comparison.
@@ -151,7 +158,7 @@ fn calculate_size(
 	let (extra, treesize) = best_tree_size(ll_lengths, d_lengths)?;
 
 	// Data size.
-	debug_assert_eq!(ll_counts[256], 1); // .histogram() should set this.
+	debug_assert!(ll_counts[256] == 1, "BUG: symbol 256 is not one?!"); // .histogram() should set this.
 	let a = DataSizeIter::new(ll_counts, ll_lengths, LENGTH_EXTRA_BITS).sum::<u32>();
 	let b = DataSizeIter::new(d_counts, d_lengths, DISTANCE_BITS).sum::<u32>();
 
@@ -161,14 +168,19 @@ fn calculate_size(
 	Ok((extra, size))
 }
 
-#[allow(clippy::integer_division)]
+#[expect(clippy::integer_division, reason = "We want this.")]
 /// # Optimize Huffman RLE Compression.
 ///
 /// Change the population counts to potentially improve Huffman tree
 /// compression, particularly the RLE part.
 fn optimize_huffman_for_rle<const N: usize>(counts: &[u32; N]) -> Option<[DeflateSym; N]>
 where [u32; N]: LengthLimitedCodeLengths<N> {
-	const { assert!(N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL); }
+	const {
+		assert!(
+			N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL,
+			"BUG: counts must have a length of 32 or 288.",
+		);
+	}
 
 	let mut counts2 = *counts;
 	let mut counts = counts2.as_mut_slice();
@@ -191,7 +203,7 @@ where [u32; N]: LengthLimitedCodeLengths<N> {
 			// Collapse the stride if it is as least four and contained
 			// something non-zero.
 			if sum != 0 && stride >= 4 {
-				let v = u32::max((sum + stride / 2) / stride, 1);
+				let v = u32::max((sum + stride.wrapping_div(2)).wrapping_div(stride), 1);
 				// This condition just helps the compiler understand the range
 				// won't overflow; it can't, but it doesn't know that.
 				if let Some(from) = i.checked_sub(stride as usize) {
@@ -208,7 +220,7 @@ where [u32; N]: LengthLimitedCodeLengths<N> {
 			// do.
 			scratch = counts.get(i..i + 4).map_or(
 				count,
-				|c| c.iter().fold(2, |a, c| a + c.get()) / 4
+				|c| c.iter().fold(2, |a, c| a + c.get()).wrapping_div(4)
 			);
 		}
 
@@ -241,9 +253,16 @@ where [u32; N]: LengthLimitedCodeLengths<N> {
 /// This is only used by `calculate_size_data`. Traditional iterators get a
 /// little clunky with all the zipping and copying and mapping.
 struct DataSizeIter<'a, const N: usize> {
+	/// # Counts.
 	counts:  &'a [u32; N],
+
+	/// # Lengths.
 	lengths: &'a [DeflateSym; N],
+
+	/// # Bits.
 	bits:    &'a [u32; N],
+
+	/// # Current Index.
 	pos: usize,
 }
 
@@ -251,7 +270,7 @@ impl<'a, const N: usize> DataSizeIter<'a, N> {
 	/// # New.
 	const fn new(counts: &'a [u32; N], lengths: &'a [DeflateSym; N], bits: &'a [u32; N])
 	-> Self {
-		const { assert!(2 < N); }
+		const { assert!(2 < N, "BUG: there must be at least two leaves."); }
 		Self { counts, lengths, bits, pos: 0 }
 	}
 }
@@ -290,8 +309,17 @@ impl<'a, const N: usize> ExactSizeIterator for DataSizeIter<'a, N> {
 /// This moots the need to collect the values into a vector in advance and
 /// reduces the number of passes required to optimize Huffman codes.
 struct GoodForRle<'a> {
+	/// # Counts.
 	counts: &'a [Cell<u32>],
+
+	/// # Good Buffer.
+	///
+	/// Leftover results from previous iterations, returned when non-zero.
 	good: usize,
+
+	/// # Bad Buffer.
+	///
+	/// Leftover results from previous iterations, returned when non-zero.
 	bad: usize,
 }
 
@@ -388,9 +416,8 @@ mod test {
 			);
 
 			// And make sure we actually collect that count!
-			let good = good.collect::<Vec<bool>>();
 			assert_eq!(
-				good.len(),
+				good.count(),
 				c.len(),
 				"Collected GoodForRle iterator count does not match source.",
 			);
