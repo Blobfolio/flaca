@@ -203,7 +203,7 @@ fn _main() -> Result<(), FlacaError> {
 	// Boot up a progress bar, if desired.
 	let progress =
 		if args.switch2(b"-p", b"--progress") {
-			Progless::try_from(total.get()).ok().map(|p| p.with_reticulating_splines("Flaca"))
+			Progless::try_from(total).ok().map(|p| p.with_reticulating_splines("Flaca"))
 		}
 		else { None };
 
