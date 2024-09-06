@@ -107,25 +107,27 @@ impl LitLen {
 }
 
 impl LitLen {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For transmute.")]
 	/// # From U8.
 	///
 	/// `LitLen` covers the full `u8` range, so we can safely convert the
 	/// former into the latter.
 	pub(crate) const fn from_u8(n: u8) -> Self {
+		// Safety: litlen covers the full range of `u8`.
 		unsafe { std::mem::transmute::<u16, Self>(n as u16) }
 	}
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For transmute.")]
 	/// # From U8+3.
 	///
 	/// This reverses the work done by `LitLen::to_packed_u8`, returning the
 	/// `LitLen` equivalent of `n + 3`.
 	pub(crate) const fn from_packed_u8(n: u8) -> Self {
+		// Safety: litlen covers the full range of `u8::MAX + 3`.
 		unsafe { std::mem::transmute::<u16, Self>(n as u16 + 3) }
 	}
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For transmute.")]
 	/// # Min w/ U16.
 	///
 	/// Return the smaller of `self` and `n`.
@@ -137,7 +139,8 @@ impl LitLen {
 		else { self }
 	}
 
-	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
+	#[expect(unsafe_code, reason = "For transmute.")]
 	/// # Min w/ Usize.
 	///
 	/// Return the smaller of `self` and `n`.
@@ -161,7 +164,7 @@ impl LitLen {
 		LitLenIter(after as u16 + 1)
 	}
 
-	#[allow(clippy::cast_possible_truncation)]
+	#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
 	/// # To Packed U8.
 	///
 	/// This method packs (a matcheable) `LitLen` into a `u8` by subtracting
@@ -177,12 +180,13 @@ impl LitLen {
 }
 
 impl Lsym {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For transmute.")]
 	/// # From `LitLen`.
 	///
 	/// The full range of `LitLen` is covered by `Lsym`, so the latter can
 	/// always represent the former.
 	pub(crate) const fn from_litlen(litlen: LitLen) -> Self {
+		// Safety: lsym covers the full range of litlen.
 		unsafe { std::mem::transmute::<LitLen, Self>(litlen) }
 	}
 }
@@ -206,6 +210,7 @@ mod tests {
 	use super::*;
 
 	#[test]
+	#[expect(clippy::float_cmp, reason = "It is what it is.")]
 	fn t_symbol_bits() {
 		// The DISTANCE_BITS/_F and LENGTH_SYMBOL_BITS/_F constants should have
 		// equivalent values.
@@ -251,14 +256,14 @@ mod tests {
 	/// # Test Distance Symbols (Shortcut).
 	fn t_dsym_fast() {
 		for (i, sym1) in DISTANCE_SYMBOLS.iter().copied().enumerate() {
-			let i = i as u16;
+			let i = u16::try_from(i).unwrap(); // This can't fail.
 
 			let sym2 =
 				if i < 5 { i.saturating_sub(1) }
 				else {
 					let d_log = (i - 1).ilog2();
-					let r = ((i as u32 - 1) >> (d_log - 1)) & 1;
-					(d_log * 2 + r) as u16
+					let r = ((u32::from(i) - 1) >> (d_log - 1)) & 1;
+					u16::try_from(d_log * 2 + r).expect("distance bits overflowed")
 				};
 
 			assert_eq!(
@@ -270,10 +275,11 @@ mod tests {
 	}
 
 	#[test]
+	#[expect(clippy::cognitive_complexity, reason = "It is what it is.")]
 	/// # Test Distance Symbols (Fallback).
 	fn t_dsym_slow() {
 		for (i, sym1) in DISTANCE_SYMBOLS.iter().copied().enumerate() {
-			let i = i as u16;
+			let i = u16::try_from(i).unwrap(); // This can't fail.
 
 			let sym2 =
 			if i < 193 {
@@ -285,16 +291,14 @@ mod tests {
 					else { 6 }
 				}
 				// 13..193
-				else {
-					if i < 17 { 7 }
-					else if i < 25 { 8 }
-					else if i < 33 { 9 }
-					else if i < 49 { 10 }
-					else if i < 65 { 11 }
-					else if i < 97 { 12 }
-					else if i < 129 { 13 }
-					else { 14 }
-				}
+				else if i < 17 { 7 }
+				else if i < 25 { 8 }
+				else if i < 33 { 9 }
+				else if i < 49 { 10 }
+				else if i < 65 { 11 }
+				else if i < 97 { 12 }
+				else if i < 129 { 13 }
+				else { 14 }
 			}
 			else {
 				// 193..2049
@@ -308,16 +312,14 @@ mod tests {
 					else { 21 }
 				}
 				// 2049..32768
-				else {
-					if i < 3073 { 22 }
-					else if i < 4097 { 23 }
-					else if i < 6145 { 24 }
-					else if i < 8193 { 25 }
-					else if i < 12289 { 26 }
-					else if i < 16385 { 27 }
-					else if i < 24577 { 28 }
-					else { 29 }
-				}
+				else if i < 3073 { 22 }
+				else if i < 4097 { 23 }
+				else if i < 6145 { 24 }
+				else if i < 8193 { 25 }
+				else if i < 12289 { 26 }
+				else if i < 16385 { 27 }
+				else if i < 24577 { 28 }
+				else { 29 }
 			};
 
 			assert_eq!(
@@ -333,13 +335,13 @@ mod tests {
 	fn t_distance_bits_fast() {
 		// The last two positions are unused.
 		for (i, sym1) in DISTANCE_SYMBOLS.iter().copied().enumerate() {
-			let i = i as u16;
+			let i = u16::try_from(i).unwrap(); // This can't fail.
 			let bits1 = DISTANCE_BITS[sym1 as usize];
 
 			let bits2 =
 				if i < 5 { 0 }
 				else {
-					((i - 1).ilog2() - 1) as u8
+					u8::try_from((i - 1).ilog2() - 1).expect("distance bits overflowed")
 				};
 
 			assert_eq!(
@@ -355,7 +357,7 @@ mod tests {
 	fn t_distance_bits_slow() {
 		// The last two positions are unused.
 		for (i, sym1) in DISTANCE_SYMBOLS.iter().copied().enumerate() {
-			let i = i as u16;
+			let i = u16::try_from(i).unwrap(); // This can't fail.
 			let bits1 = DISTANCE_BITS[sym1 as usize];
 
 			let bits2 =
@@ -386,12 +388,13 @@ mod tests {
 	/// # Distance Bit Values (Shortcut).
 	fn t_distance_values_fast() {
 		for (i, val1) in DISTANCE_VALUES.iter().copied().enumerate() {
-			let i = i as u16;
+			let i = u16::try_from(i).unwrap(); // This can't fail.
 			let val2 =
 				if i < 5 { 0 }
 				else {
 					let log2 = (i - 1).ilog2();
-					((i as u32 - (1 + (1 << log2))) & ((1 << (log2 - 1)) - 1)) as u16
+					u16::try_from((u32::from(i) - (1 + (1 << log2))) & ((1 << (log2 - 1)) - 1))
+						.expect("distance values overflowed")
 				};
 
 			assert_eq!(
@@ -406,7 +409,7 @@ mod tests {
 	/// # Distance Bit Values (Fallback).
 	fn t_distance_values_slow() {
 		for (i, val1) in DISTANCE_VALUES.iter().copied().enumerate() {
-			let i = i as u16;
+			let i = u16::try_from(i).unwrap(); // This can't fail.
 			let val2 =
 				if i < 5 { 0 }
 				else if i < 9 { (i - 5) & 1 }

@@ -16,6 +16,7 @@ use super::{
 
 
 
+#[expect(clippy::missing_docs_in_private_items, reason = "Unimportant.")]
 #[derive(Clone, Copy)]
 /// # Randomness.
 ///
@@ -54,9 +55,16 @@ impl RanState {
 /// This hols the length and distance symbols and costs for a given block.
 /// data which can be used to improve compression on subsequent passes.
 pub(crate) struct SymbolStats {
+	/// # Litlen Symbol Counts.
 	ll_counts: ArrayLL<u32>,
+
+	/// # Distance Symbol Counts.
 	d_counts:  ArrayD<u32>,
+
+	/// # Litlen Symbols.
 	pub(crate) ll_symbols: ArrayLL<f64>,
+
+	/// # Distance Symbols.
 	pub(crate) d_symbols:  ArrayD<f64>,
 }
 
@@ -138,8 +146,14 @@ impl SymbolStats {
 	///
 	/// Note: this does _not_ rebuild the symbol tables.
 	pub(crate) fn randomize(&mut self, state: &mut RanState) {
+		/// # Shuffle Counts.
 		fn shuffle_counts<const N: usize>(counts: &mut [u32; N], state: &mut RanState) {
-			const { assert!(N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL); }
+			const {
+				assert!(
+					N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL,
+					"BUG: counts must have a length of 32 or 288.",
+				);
+			}
 			for i in const { 0..N } {
 				if (state.randomize() >> 4) % 3 == 0 {
 					let index = state.randomize() as usize % N;
@@ -182,6 +196,11 @@ mod test {
 	use super::*;
 
 	#[test]
+	#[expect(
+		clippy::cast_precision_loss,
+		clippy::float_cmp,
+		reason = "It is what it is.",
+	)]
 	fn t_d_log2() {
 		// Make sure we precomputed the 32.log2() correctly!
 		assert_eq!((ZOPFLI_NUM_D as f64).log2(), 5.0);

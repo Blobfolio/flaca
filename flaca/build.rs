@@ -32,8 +32,13 @@ pub fn main() {
 fn build_exts() {
 	let out = format!(
 		r"
+/// # Extension: JPEG.
 const E_JPEG: Extension = {};
+
+/// # Extension: JPG.
 const E_JPG: Extension = {};
+
+/// # Extension: PNG.
 const E_PNG: Extension = {};
 ",
 		Extension::codegen(b"jpeg"),

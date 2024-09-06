@@ -26,7 +26,10 @@ use super::{
 ///
 /// It also implements `Copy`, so there's that too! Haha.
 pub(crate) struct ZopfliRange {
+	/// # Start Index.
 	start: usize,
+
+	/// # End Index (Exclusive).
 	end: usize,
 }
 
@@ -78,14 +81,18 @@ impl ZopfliRange {
 	/// # As (Traditional) Range.
 	pub(crate) const fn rng(&self) -> Range<usize> { self.start..self.end }
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "Length is non-empty.")]
 	/// # Length.
 	pub(crate) const fn len(&self) -> NonZeroUsize {
 		// Safety: we verified start is less than end during construction.
 		unsafe { NonZeroUsize::new_unchecked(self.end - self.start) }
 	}
 
-	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[expect(
+		clippy::cast_possible_truncation,
+		unsafe_code,
+		reason = "Length is non-empty and at most a million.",
+	)]
 	/// # Length (32-bit).
 	///
 	/// Same as `ZopfliRange::len`, but more convenient in cases where 32-bit

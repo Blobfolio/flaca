@@ -42,23 +42,25 @@ pub struct EncodedPNG {
 impl Deref for EncodedPNG {
 	type Target = [u8];
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For slice from raw.")]
 	#[inline]
 	fn deref(&self) -> &Self::Target {
 		if self.is_null() { &[] }
 		else {
+			// Safety: the pointer is non-null.
 			unsafe { std::slice::from_raw_parts(self.buf, self.size) }
 		}
 	}
 }
 
 impl Drop for EncodedPNG {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For alloc.")]
 	fn drop(&mut self) {
 		// This pointer is allocated by lodepng, which uses the allocation
 		// wrappers defined in this module. To free it, we need to call our
 		// method, but only if it actually got allocated.
 		if let Some(nn) = NonNull::new(self.buf) {
+			// Safety: the pointer is non-null.
 			unsafe { flapfli_free(nn); }
 			self.buf = std::ptr::null_mut(); // Probably unnecessary?
 		}
@@ -86,7 +88,8 @@ impl EncodedPNG {
 
 
 
-#[allow(unsafe_code, clippy::cast_ptr_alignment, clippy::inline_always)]
+#[expect(unsafe_code, reason = "For alloc.")]
+#[expect(clippy::inline_always, reason = "For performance.")]
 #[inline(always)]
 /// # (Re)Allocate!
 ///
@@ -129,7 +132,8 @@ pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> N
 	real_ptr.add(size_of::<usize>())                // Return the rest.
 }
 
-#[allow(unsafe_code, clippy::inline_always)]
+#[expect(unsafe_code, reason = "For alloc.")]
+#[expect(clippy::inline_always, reason = "For performance.")]
 #[inline(always)]
 /// # Freedom!
 ///
@@ -144,7 +148,7 @@ pub(crate) unsafe fn flapfli_free(ptr: NonNull<u8>) {
 
 
 #[no_mangle]
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "For FFI.")]
 /// # Lodepng-specific Free.
 ///
 /// This override allows lodepng to use `flapfli_free` for pointer
@@ -154,7 +158,7 @@ unsafe extern "C" fn lodepng_free(ptr: *mut c_void) {
 }
 
 #[no_mangle]
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "For FFI.")]
 /// # Lodepng-specific Malloc.
 ///
 /// This override allows lodepng to use `flapfli_allocate` for pointer
@@ -167,7 +171,7 @@ unsafe extern "C" fn lodepng_malloc(size: usize) -> *mut c_void {
 }
 
 #[no_mangle]
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "For FFI.")]
 /// # Lodepng-specific Realloc.
 ///
 /// This override allows lodepng to use `flapfli_allocate` for pointer
@@ -182,7 +186,8 @@ unsafe extern "C" fn lodepng_realloc(ptr: *mut c_void, new_size: usize) -> *mut 
 
 
 
-#[allow(unsafe_code, clippy::inline_always)]
+#[expect(unsafe_code, reason = "For alloc.")]
+#[expect(clippy::inline_always, reason = "For performance.")]
 #[inline(always)]
 /// # Generate Layout.
 ///
@@ -192,7 +197,8 @@ const unsafe fn layout_for(size: NonZeroUsize) -> Layout {
 	Layout::from_size_align_unchecked(size_of::<usize>() + size.get(), align_of::<usize>())
 }
 
-#[allow(unsafe_code, clippy::cast_ptr_alignment, clippy::inline_always)]
+#[expect(unsafe_code, reason = "For alloc.")]
+#[expect(clippy::inline_always, reason = "For performance.")]
 #[inline(always)]
 /// # Derive Real Pointer and User Size.
 ///

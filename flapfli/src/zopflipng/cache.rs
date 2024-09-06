@@ -64,7 +64,13 @@ const SPLIT_CACHE_LEN: usize = ZOPFLI_MASTER_BLOCK_SIZE.div_ceil(8);
 /// of the program run, and thanks to some clever boxing, it winds up on the
 /// heap instead of the stack.
 pub(crate) struct MatchCache {
+	/// # Length and Distance.
+	///
+	/// Each pair consists of two sixteen-bit values, joined into a single
+	/// little endian `u32`.
 	ld: [u32; ZOPFLI_MASTER_BLOCK_SIZE],
+
+	/// # Sublength Cache.
 	sublen: [u8; SUBLEN_CACHED_LEN * ZOPFLI_MASTER_BLOCK_SIZE],
 }
 
@@ -88,7 +94,7 @@ impl MatchCache {
 		self.sublen[..blocksize * SUBLEN_CACHED_LEN].fill(0);
 	}
 
-	#[allow(unsafe_code, clippy::cast_possible_truncation)]
+	#[expect(unsafe_code, reason = "For array cast.")]
 	/// # Find Match.
 	///
 	/// Find the sublength, distance, and length from cache, if present, and
@@ -111,8 +117,8 @@ impl MatchCache {
 		// If we have no distance, we have no cache.
 		let (cache_len, cache_dist) = ld_split(self.ld[pos]);
 		if ! cache_len.is_zero() && cache_dist == 0 { return Ok(false); }
+		// Safety: the slice has the same length as the array.
 		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = unsafe {
-			// Safety: the slice has the same length as the array.
 			&* self.sublen[pos * SUBLEN_CACHED_LEN..(pos + 1) * SUBLEN_CACHED_LEN].as_ptr().cast()
 		};
 
@@ -247,6 +253,7 @@ impl MatchCache {
 /// As with `MatchCache`, we only need one instance of this struct per thread
 /// for the duration of the program run.
 pub(crate) struct SplitCache {
+	/// # Set.
 	set: [u8; SPLIT_CACHE_LEN],
 }
 
@@ -301,8 +308,13 @@ impl SplitCache {
 /// static is also boxed to ensure the data winds up on the heap instead of the
 /// stack.
 pub(crate) struct SqueezeCache {
+	/// # Costs and Symbols.
 	costs: [(f32, LitLen); ZOPFLI_MASTER_BLOCK_SIZE + 1],
+
+	/// # Paths.
 	paths: [LitLen; ZOPFLI_MASTER_BLOCK_SIZE],
+
+	/// # Block Size (+1).
 	pub(super) costs_len: Cell<usize>,
 }
 
@@ -372,7 +384,7 @@ const fn ld_join(length: LitLen, distance: u16) -> u32 {
 	u32::from_le_bytes([l1, l2, d1, d2])
 }
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "For transmute.")]
 /// # Split Length Distance.
 const fn ld_split(ld: u32) -> (LitLen, u16) {
 	let [l1, l2, d1, d2] = ld.to_le_bytes();

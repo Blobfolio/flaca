@@ -32,11 +32,11 @@ use super::{
 
 
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "Two is non-zero.")]
 /// # Two is Non-Zero.
 const NZ02: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "Fourteen is non-zero.")]
 /// # Fourteen is Non-Zero.
 const NZ14: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(14) };
 
@@ -62,10 +62,14 @@ thread_local!(
 /// appropriate deflate symbols (bitlengths).
 pub(crate) trait LengthLimitedCodeLengths<const N: usize>
 where Self: Sized {
+	/// # Counts to Symbols.
 	fn llcl(&self) -> Result<[DeflateSym; N], ZopfliError>;
+
+	/// # Symbols to Counts.
 	fn llcl_symbols(lengths: &[DeflateSym; N]) -> Self;
 }
 
+/// # Helper: Generate LLCL method.
 macro_rules! llcl {
 	($maxbits:literal, $size:expr) => (
 		/// # Counts to Symbols.
@@ -80,6 +84,8 @@ macro_rules! llcl {
 		}
 	);
 }
+
+/// # Helper: Generate LLCL symbols method.
 macro_rules! llcl_symbols {
 	($take:literal, $size:expr) => (
 		#[inline]
@@ -268,14 +274,24 @@ pub(crate) fn encode_tree(
 /// the library's other caches, this is only ever instantiated as a
 /// thread-local static, so will benefit from lots and lots of reuse. ;)
 struct KatScratch {
+	/// # Leaf Buffer.
 	leaves: NonNull<u8>,
+
+	/// # List Buffer.
 	lists: NonNull<u8>,
+
+	/// # Node Buffer.
 	nodes: NonNull<u8>,
-	nodes_len: Cell<usize>, // The number of nodes written during a given pass.
+
+	/// # Written Nodes.
+	///
+	/// This holds the current number of nodes, allowing us to add entries to
+	/// the right spot as we go along.
+	nodes_len: Cell<usize>,
 }
 
 impl Drop for KatScratch {
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For alloc.")]
 	/// # Drop.
 	///
 	/// We might as well free the memory associated with the backing arrays
@@ -309,7 +325,7 @@ impl KatScratch {
 	/// # Node Array Layout.
 	const NODE_LAYOUT: Layout = Layout::new::<[Node; Self::MAX]>();
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For alloc.")]
 	/// # New!
 	///
 	/// Return a new instance of self, allocated but **uninitialized**.
@@ -326,12 +342,18 @@ impl KatScratch {
 	/// are only made available after said write, eliminating any UB weirdness
 	/// from maybe-uninitialized data.
 	fn new() -> Self {
+		// Safety: alloc requires unsafe, but NonNull makes sure it actually
+		// happened.
 		let leaves: NonNull<u8> = NonNull::new(unsafe { alloc(Self::LEAVES_LAYOUT) })
 			.unwrap_or_else(|| handle_alloc_error(Self::LEAVES_LAYOUT));
 
+		// Safety: alloc requires unsafe, but NonNull makes sure it actually
+		// happened.
 		let lists: NonNull<u8> = NonNull::new(unsafe { alloc(Self::LIST_LAYOUT) })
 			.unwrap_or_else(|| handle_alloc_error(Self::LIST_LAYOUT));
 
+		// Safety: alloc requires unsafe, but NonNull makes sure it actually
+		// happened.
 		let nodes: NonNull<u8> = NonNull::new(unsafe { alloc(Self::NODE_LAYOUT) })
 			.unwrap_or_else(|| handle_alloc_error(Self::NODE_LAYOUT));
 
@@ -343,7 +365,7 @@ impl KatScratch {
 		}
 	}
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For pointer fuckery.")]
 	#[inline]
 	/// # Make Leaves.
 	///
@@ -369,16 +391,16 @@ impl KatScratch {
 		const {
 			// Abort with a compilation error if for some reason we try to
 			// pass more leaves than we've got room for.
-			assert!(N <= ZOPFLI_NUM_LL);
+			assert!(N <= ZOPFLI_NUM_LL, "BUG: frequencies must have a length of 32 or 288.");
 		}
 
 		let mut len = 0;
 		let ptr = self.leaves.cast::<Leaf<'_>>().as_ptr();
 		for (frequency, bitlength) in frequencies.iter().copied().zip(bitlengths) {
 			if let Some(frequency) = NonZeroU32::new(frequency) {
+				// Safety: the maximum N is ZOPFLI_NUM_LL, so this will
+				// always be in range.
 				unsafe {
-					// Safety: the maximum N is ZOPFLI_NUM_LL, so this will
-					// always be in range.
 					ptr.add(len).write(Leaf { frequency, bitlength });
 				}
 				len += 1;
@@ -392,7 +414,7 @@ impl KatScratch {
 		slice
 	}
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For pointer fuckery.")]
 	/// # Starter List.
 	///
 	/// This resets the internal node count, adds two new starter nodes, then
@@ -427,7 +449,7 @@ impl KatScratch {
 		List { lookahead0, lookahead1 }
 	}
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For pointer fuckery.")]
 	#[inline]
 	/// # Make Lists.
 	///
@@ -450,14 +472,15 @@ impl KatScratch {
 		// Fifteen is the max MAXBITS used by the program so length will never
 		// actually be out of range, but there's no harm in verifying that
 		// during debug runs.
-		debug_assert!(len <= 15);
+		debug_assert!(len <= 15, "BUG: MAXBITS must be 7 or 15.");
 
 		// Create a `List` with two starting `Node`s, then copy it `len` times
 		// into our backing array.
+
+		// Safety: we verified the length is in range, and since we're
+		// writing before reading, the return value will have been
+		// initialized.
 		unsafe {
-			// Safety: we verified the length is in range, and since we're
-			// writing before reading, the return value will have been
-			// initialized.
 			let list = self.init_list(weight1, weight2);
 			let ptr = self.lists.cast::<List>().as_ptr();
 			for i in 0..len {
@@ -469,7 +492,7 @@ impl KatScratch {
 		}
 	}
 
-	#[allow(unsafe_code)]
+	#[expect(unsafe_code, reason = "For pointer fuckery.")]
 	#[inline]
 	/// # Push.
 	///
@@ -499,10 +522,10 @@ impl KatScratch {
 			// Increment the length for next time.
 			self.nodes_len.set(len + 1);
 
+			// Safety: we just verified the length is in range, and because
+			// we're writing before reading, we know our return will have
+			// been initialized.
 			unsafe {
-				// Safety: we just verified the length is in range, and because
-				// we're writing before reading, we know our return will have
-				// been initialized.
 				let ptr = self.nodes.cast::<Node>().as_ptr().add(len);
 				ptr.write(node); // Copy the value into position.
 				Ok(&*ptr)        // Return a reference to it.
@@ -522,7 +545,10 @@ impl KatScratch {
 /// This is a simple tuple containing a non-zero frequency and its companion
 /// bitlength.
 struct Leaf<'a> {
+	/// # Frequency.
 	frequency: NonZeroU32,
+
+	/// # Bitlength.
 	bitlength: &'a Cell<DeflateSym>,
 }
 
@@ -553,7 +579,10 @@ impl<'a> PartialOrd for Leaf<'a> {
 /// lifetime of the borrow. (`List`s are never accessible once the session that
 /// birthed them has closed.)
 struct List {
+	/// # Chain One.
 	lookahead0: &'static Node,
+
+	/// # Chain Two.
 	lookahead1: &'static Node,
 }
 
@@ -578,8 +607,13 @@ impl List {
 /// As with `List`, the static lifetime is technically true, but in practice
 /// references will never extend beyond the current borrow.
 struct Node {
+	/// # Weight (Frequency).
 	weight: NonZeroU32,
+
+	/// # Count.
 	count: NonZeroU32,
+
+	/// # Tail (Previous Node).
 	tail: Option<&'static Node>,
 }
 
@@ -611,7 +645,7 @@ impl Node {
 
 
 
-#[allow(unsafe_code)]
+#[expect(unsafe_code, reason = "For array recast.")]
 /// Array of Cells.
 ///
 /// Revisualize a mutable array as an array of cells.
@@ -635,6 +669,7 @@ fn best_tree_size_counts(all: &[DeflateSym], extra: u8) -> [u32; 19] {
 		let mut count = 1_u32;
 		let symbol = all[i];
 
+		/// # Helper: Special Alphabet Peekahead.
 		macro_rules! special {
 			($step:literal, $max:literal, $symbol:ident) => (
 				while count >= $step {
@@ -696,6 +731,7 @@ fn encode_tree_counts(
 		let mut count = 1_u16;
 		let symbol = all[i];
 
+		/// # Helper: Special Alphabet Peekahead.
 		macro_rules! special {
 			($step:literal, $max:literal, $symbol:ident) => (
 				while count >= $step {
@@ -753,6 +789,7 @@ const fn extra_bools(extra: u8) -> (bool, bool, bool) {
 	(0 != extra & 1, 0 != extra & 2, 0 != extra & 4)
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "It's constant.")]
 /// # Crunch the Code Lengths.
 ///
 /// This method serves as the closure for the caller's call to
@@ -767,7 +804,8 @@ fn llcl<'a, const N: usize, const MAXBITS: usize>(
 	const {
 		assert!(
 			(MAXBITS == 7 && N == 19) ||
-			(MAXBITS == 15 && (N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL))
+			(MAXBITS == 15 && (N == ZOPFLI_NUM_D || N == ZOPFLI_NUM_LL)),
+			"BUG: invalid MAXBITS / N combination.",
 		);
 	}
 
@@ -800,16 +838,22 @@ fn llcl<'a, const N: usize, const MAXBITS: usize>(
 	Ok(leaves_len)
 }
 
+#[expect(clippy::panic_in_result_fn, reason = "It's constant.")]
 /// # Write Code Lengths!
 ///
 /// This is the final stage of the LLCL chain, where the results are
 /// finally recorded!
 fn llcl_write<const MAXBITS: usize>(mut node: Node, leaves: &[Leaf<'_>]) -> Result<(), ZopfliError> {
-	const { assert!(MAXBITS == 7 || MAXBITS == 15); }
+	const {
+		assert!(MAXBITS == 7 || MAXBITS == 15, "BUG: MAXBITS must be 7 or 15.");
+	}
 
 	// Make sure we counted correctly before doing anything else.
 	let mut last_count = node.count;
-	debug_assert!(leaves.len() >= last_count.get() as usize);
+	debug_assert!(
+		leaves.len() >= last_count.get() as usize,
+		"BUG: the count exceeds the leaf length?!",
+	);
 
 	// Write the changes!
 	let mut writer = leaves.iter().take(last_count.get() as usize).rev();
@@ -886,6 +930,8 @@ fn llcl_boundary_pm(leaves: &[Leaf<'_>], lists: &mut [List], nodes: &KatScratch)
 	Ok(())
 }
 
+#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
+#[expect(unsafe_code, reason = "For transmute.")]
 /// # Last Non-Zero, Non-Special Count.
 ///
 /// This method loops through the counts in the jumbled DEFLATE tree order,
@@ -897,12 +943,12 @@ const fn tree_hclen(cl_counts: &[u32; 19]) -> DeflateSymBasic {
 		hclen -= 1;
 		if hclen == 0 { break; }
 	}
-	#[allow(unsafe_code, clippy::cast_possible_truncation)]
 	// Safety: DeflateSymBasic covers all values between 0..=15.
 	unsafe { std::mem::transmute::<u8, DeflateSymBasic>(hclen as u8) }
 }
 
-#[allow(unsafe_code, clippy::cast_possible_truncation)]
+#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
+#[expect(unsafe_code, reason = "For transmute.")]
 /// # Tree Symbols.
 ///
 /// Drop the last two bytes from each symbol set along with up to 29
@@ -954,6 +1000,7 @@ fn tree_symbols(ll_lengths: &ArrayLL<DeflateSym>, d_lengths: &ArrayD<DeflateSym>
 		.ok_or(zopfli_error!())?
 		.cast();
 
+	// Safety: see inline notes.
 	let symbols = unsafe {
 		// Copy the data into place, starting with the lengths.
 		let ptr = nn.as_ptr();

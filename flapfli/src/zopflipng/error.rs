@@ -30,7 +30,10 @@ pub(crate) type ZopfliError = ();
 /// This struct stores those details, allowing us to delay the panicking until
 /// the error has bubbled back to lodepng.
 pub(crate) struct ZopfliError {
+	/// # Source File.
 	file: &'static str,
+
+	/// # Source Line.
 	line: u32,
 }
 
