@@ -212,6 +212,7 @@ fn _main() -> Result<(), FlacaError> {
 	sigint(Arc::clone(&killed), progress.clone());
 
 	// Now onto the thread business!
+	let mut undone: Vec<&Path> = Vec::new();
 	let (tx, rx) = crossbeam_channel::bounded::<&Path>(threads.get());
 	thread::scope(#[inline(always)] |s| {
 		// Set up the worker threads, either with or without progress.
@@ -233,7 +234,8 @@ fn _main() -> Result<(), FlacaError> {
 
 		// Queue up all the image paths, unless CTRL+C is pressed.
 		for path in &paths {
-			if killed.load(Acquire) || tx.send(path).is_err() { break; }
+			if killed.load(Acquire) { undone.push(path); }
+			else if tx.send(path).is_err() { break; }
 		}
 
 		// Disconnect and wait for the threads to finish!
@@ -247,7 +249,10 @@ fn _main() -> Result<(), FlacaError> {
 	}
 
 	// Early abort?
-	if killed.load(Acquire) { Err(FlacaError::Killed) }
+	if killed.load(Acquire) {
+		dump_undone(&undone);
+		Err(FlacaError::Killed)
+	}
 	else { Ok(()) }
 }
 
@@ -301,6 +306,33 @@ fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) 
 /// paths and crunches them, then quits when the work has dried up.
 fn crunch_quiet(rx: &Receiver::<&Path>, kinds: ImageKind) {
 	while let Ok(p) = rx.recv() { let _res = crate::image::encode(p, kinds); }
+}
+
+#[cold]
+/// # Dump Undone.
+///
+/// When aborting early, the unprocessed entries get dumped to a temporary
+/// file, potentially.
+fn dump_undone(undone: &[&Path]) {
+	// Nothing undone?
+	if undone.is_empty() { return; }
+
+	// Merge the paths into a line-separated list, if we can.
+	let mut dump = String::new();
+	for p in undone {
+		let Some(p) = p.to_str() else { return; };
+		dump.push_str(p);
+		dump.push('\n');
+	}
+
+	// Save it if we can.
+	let path = format!("flaca-{}.txt", utc2k::unixtime());
+	if write_atomic::write_file(&path, dump.as_bytes()).is_ok() {
+		Msg::info(format!(
+			"The {} have been exported to \x1b[2m{path}\x1b[0m for reference.",
+			undone.len().nice_inflect("unprocessed image path", "unprocessed image paths"),
+		)).eprint();
+	}
 }
 
 #[cold]
