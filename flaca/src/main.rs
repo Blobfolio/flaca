@@ -212,7 +212,7 @@ fn _main() -> Result<(), FlacaError> {
 	sigint(Arc::clone(&killed), progress.clone());
 
 	// Now onto the thread business!
-	let mut undone: Vec<&Path> = Vec::new();
+	let mut undone: Vec<&Path> = Vec::new(); // Skipped because of CTRL+C or tx fail.
 	let (tx, rx) = crossbeam_channel::bounded::<&Path>(threads.get());
 	thread::scope(#[inline(always)] |s| {
 		// Set up the worker threads, either with or without progress.
@@ -232,10 +232,32 @@ fn _main() -> Result<(), FlacaError> {
 			}
 		}
 
-		// Queue up all the image paths, unless CTRL+C is pressed.
+		// Queue up all the image paths!
+		let mut already_dead = false;
 		for path in &paths {
-			if killed.load(Acquire) { undone.push(path); }
-			else if tx.send(path).is_err() { break; }
+			// Early abort in progress; mark as skipped instead of giving it
+			// to a worker.
+			if killed.load(Acquire) {
+				// Skip this path for sure.
+				let mut skipped = 1_u64;
+				undone.push(path);
+
+				// But also skip anything still in the queue.
+				if ! already_dead {
+					already_dead = true;
+					let before = undone.len();
+					undone.extend(rx.try_iter());
+					skipped += (undone.len() - before) as u64;
+				}
+
+				SKIPPED.fetch_add(skipped, Relaxed);
+			}
+			// Add the path to the queue; this shouldn't fail, but if it does
+			// add it to our list so we can let the user know at the end.
+			else if tx.send(path).is_err() {
+				SKIPPED.fetch_add(1, Relaxed);
+				undone.push(path);
+			}
 		}
 
 		// Disconnect and wait for the threads to finish!
@@ -248,11 +270,11 @@ fn _main() -> Result<(), FlacaError> {
 		summarize(&progress, total.get() as u64);
 	}
 
+	// Did anything get missed?
+	if ! undone.is_empty() { dump_undone(&undone); }
+
 	// Early abort?
-	if killed.load(Acquire) {
-		dump_undone(&undone);
-		Err(FlacaError::Killed)
-	}
+	if killed.load(Acquire) { Err(FlacaError::Killed) }
 	else { Ok(()) }
 }
 
@@ -314,9 +336,6 @@ fn crunch_quiet(rx: &Receiver::<&Path>, kinds: ImageKind) {
 /// When aborting early, the unprocessed entries get dumped to a temporary
 /// file, potentially.
 fn dump_undone(undone: &[&Path]) {
-	// Nothing undone?
-	if undone.is_empty() { return; }
-
 	// Merge the paths into a line-separated list, if we can.
 	let mut dump = String::new();
 	for p in undone {
@@ -326,11 +345,13 @@ fn dump_undone(undone: &[&Path]) {
 	}
 
 	// Save it if we can.
-	let path = format!("flaca-{}.txt", utc2k::unixtime());
+	let path = std::env::temp_dir().join(format!("flaca-{}.txt", utc2k::unixtime()));
 	if write_atomic::write_file(&path, dump.as_bytes()).is_ok() {
-		Msg::info(format!(
-			"The {} have been exported to \x1b[2m{path}\x1b[0m for reference.",
-			undone.len().nice_inflect("unprocessed image path", "unprocessed image paths"),
+		Msg::notice(format!(
+			"{} missed during the run; their paths have
+        been exported to \x1b[95;1m{}\x1b[0m for reference.",
+			undone.len().nice_inflect("image was", "images were"),
+			path.to_string_lossy(),
 		)).eprint();
 	}
 }
