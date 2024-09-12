@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.1.7"
+version = "3.1.8"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -118,6 +118,7 @@ ctrlc = "=3.4.5"
 dactyl = "0.7.*"
 dowser = "0.9.*"
 libc = "0.2.*"
+utc2k = "0.9.*"
 write_atomic = "0.5.*"
 
 [dependencies.flapfli]

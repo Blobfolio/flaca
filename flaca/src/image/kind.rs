@@ -154,6 +154,7 @@ mod tests {
 			("../skel/assets/jpg/21.jpg", 720, 462),
 			("../skel/assets/jpg/22.jpg", 267, 150),
 			("../skel/assets/jpg/23.jpg", 330, 313),
+			("../skel/assets/jpg/24.jpg", 1076, 1500),
 			("../skel/assets/wolf.png", 600, 800),
 
 			// And because JPEGs are so weird, let's double-check our work
@@ -253,6 +254,7 @@ mod tests {
 			"../skel/assets/jpg/21.jpg" Some(ImageKind::Jpeg),
 			"../skel/assets/jpg/22.jpg" Some(ImageKind::Jpeg),
 			"../skel/assets/jpg/23.jpg" Some(ImageKind::Jpeg),
+			"../skel/assets/jpg/24.jpg" Some(ImageKind::Jpeg),
 			"../skel/assets/png/01.png" Some(ImageKind::Png),
 			"../skel/assets/png/02.png" Some(ImageKind::Png),
 			"../skel/assets/png/03.png" Some(ImageKind::Png),

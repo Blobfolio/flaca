@@ -1,7 +1,7 @@
 # Project Dependencies
     Package:   flaca
-    Version:   3.1.7
-    Generated: 2024-09-06 03:07:10 UTC
+    Version:   3.1.8
+    Generated: 2024-09-12 18:28:44 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -19,7 +19,7 @@
 | [dowser](https://github.com/Blobfolio/dowser) | 0.9.3 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [equivalent](https://github.com/cuviper/equivalent) | 1.0.1 |  | Apache-2.0 or MIT |
 | [fastrand](https://github.com/smol-rs/fastrand) | 2.1.1 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 or MIT |
-| flapfli | 3.1.7 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
+| flapfli | 3.1.8 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
 | [funty](https://github.com/myrrlyn/funty) | 2.0.0 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
 | [fyi_msg](https://github.com/Blobfolio/fyi) | 0.14.0 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.14.5 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | Apache-2.0 or MIT |
@@ -38,6 +38,7 @@
 | [tempfile](https://github.com/Stebalien/tempfile) | 3.12.0 | [Steven Allen](mailto:steven@stebalien.com), The Rust Project Developers, [Ashley Mannix](mailto:ashleymannix@live.com.au), and [Jason White](mailto:me@jasonwhite.io) | Apache-2.0 or MIT |
 | [terminal_size](https://github.com/eminence/terminal-size) | 0.3.0 | [Andrew Chin](mailto:achin@eminence32.net) | Apache-2.0 or MIT |
 | [unicode-width](https://github.com/unicode-rs/unicode-width) | 0.1.13 | [kwantam](mailto:kwantam@gmail.com) and [Manish Goregaokar](mailto:manishsmail@gmail.com) | Apache-2.0 or MIT |
+| [utc2k](https://github.com/Blobfolio/utc2k) | 0.9.1 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [write_atomic](https://github.com/Blobfolio/write_atomic) | 0.5.1 | [Blobfolio, LLC.](mailto:hello@blobfolio.com) | WTFPL |
 | [wyz](https://github.com/myrrlyn/wyz) | 0.5.1 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
 | [zerocopy](https://github.com/google/zerocopy) | 0.7.35 | [Joshua Liebow-Feeser](mailto:joshlf@google.com) | Apache-2.0, BSD-2-Clause, or MIT |
