@@ -2,6 +2,7 @@
 # Flaca: Image Kind
 */
 
+use crate::FlacaError;
 use std::num::NonZeroU32;
 
 
@@ -25,6 +26,18 @@ pub(crate) enum ImageKind {
 }
 
 impl ImageKind {
+	/// # Return the Difference.
+	///
+	/// Subtract `other` from `self`, returning an error if that leaves
+	/// nothing.
+	pub(crate) const fn diff(self, other: Self) -> Result<Self, FlacaError> {
+		match other {
+			Self::Jpeg if matches!(self, Self::All | Self::Png) => Ok(Self::Png),
+			Self::Png if matches!(self, Self::All | Self::Jpeg) => Ok(Self::Jpeg),
+			_ => Err(FlacaError::NoImages),
+		}
+	}
+
 	#[expect(clippy::inline_always, reason = "For performance.")]
 	#[inline(always)]
 	/// # Supports JPEG?
