@@ -63,7 +63,7 @@ pub(crate) use error::{
 };
 pub(crate) use image::kind::ImageKind;
 
-use argyle::stream::Argument;
+use argyle::Argument;
 use crossbeam_channel::Receiver;
 use dactyl::{
 	NiceElapsed,
@@ -144,20 +144,8 @@ fn main() {
 /// This is the actual main, allowing us to easily bubble errors.
 fn _main() -> Result<(), FlacaError> {
 	// Parse CLI arguments.
-	let args = argyle::stream::args()
-		.with_switches([
-			"-h", "--help",
-			"--no-jpg", "--no-jpeg",
-			"--no-png",
-			"-p", "--progress",
-			"-V", "--version",
-		])?
-		.with_options([
-			"-j",
-			"-l", "--list",
-			"--max-resolution",
-			"-z",
-		])?;
+	let args = argyle::args()
+		.with_keywords(include!(concat!(env!("OUT_DIR"), "/argyle.rs")));
 
 	let mut kinds = ImageKind::All;
 	let mut threads = None;

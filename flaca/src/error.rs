@@ -2,7 +2,6 @@
 # Flaca: Errors
 */
 
-use argyle::stream::ArgyleError;
 use fyi_msg::ProglessError;
 use std::{
 	error::Error,
@@ -125,9 +124,6 @@ impl EncodingError {
 #[derive(Debug, Copy, Clone)]
 /// # General/Deal-Breaking Errors.
 pub(super) enum FlacaError {
-	/// # Argyle Passthrough.
-	Argue(ArgyleError),
-
 	/// # Killed Early.
 	Killed,
 
@@ -164,11 +160,6 @@ impl fmt::Display for FlacaError {
 	}
 }
 
-impl From<ArgyleError> for FlacaError {
-	#[inline]
-	fn from(err: ArgyleError) -> Self { Self::Argue(err) }
-}
-
 impl From<ProglessError> for FlacaError {
 	#[inline]
 	fn from(err: ProglessError) -> Self { Self::Progress(err) }
@@ -179,7 +170,6 @@ impl FlacaError {
 	/// # As Str.
 	pub(super) const fn as_str(self) -> &'static str {
 		match self {
-			Self::Argue(e) => e.as_str(),
 			Self::Killed => "The process was aborted early.",
 			Self::NoImages => "No images were found.",
 			Self::MaxResolution => "Pixel limits must be between 1..=4_294_967_295.",

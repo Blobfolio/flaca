@@ -111,8 +111,12 @@ items = [
 	[ "Zopflipng", "<https://github.com/google/zopfli>" ]
 ]
 
+[build-dependencies]
+argyle = "0.10.*"
+dowser = "0.9.*"
+
 [dependencies]
-argyle = "0.9.*"
+argyle = "0.10.*"
 crossbeam-channel = "=0.5.*"
 ctrlc = "=3.4.5"
 dactyl = "0.7.*"
@@ -138,6 +142,3 @@ features = [ "jpegtran", "nasm_simd", "unwinding" ]
 version = "=9.1.2"
 default-features = false
 features = [ "freestanding" ]
-
-[build-dependencies]
-dowser = "0.9.*"
