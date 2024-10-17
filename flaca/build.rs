@@ -2,6 +2,7 @@
 # Flaca - Build
 */
 
+use argyle::KeyWordsBuilder;
 use dowser::Extension;
 use std::{
 	fs::File,
@@ -23,7 +24,27 @@ pub fn main() {
 	#[cfg(not(target_pointer_width = "64"))]
 	panic!("Flaca requires a 64-bit CPU architecture.");
 
+	build_cli();
 	build_exts();
+}
+
+/// # Build CLI Arguments.
+fn build_cli() {
+	let mut builder = KeyWordsBuilder::default();
+	builder.push_keys([
+		"-h", "--help",
+		"--no-jpg", "--no-jpeg",
+		"--no-png",
+		"-p", "--progress",
+		"-V", "--version",
+	]);
+	builder.push_keys_with_values([
+		"-j",
+		"-l", "--list",
+		"--max-resolution",
+		"-z",
+	]);
+	builder.save(out_path("argyle.rs"));
 }
 
 /// # Pre-Compute Extensions.

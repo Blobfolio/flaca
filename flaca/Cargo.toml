@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.1.8"
+version = "3.1.9"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -111,14 +111,18 @@ items = [
 	[ "Zopflipng", "<https://github.com/google/zopfli>" ]
 ]
 
+[build-dependencies]
+argyle = "0.10.*"
+dowser = "0.9.*"
+
 [dependencies]
-argyle = "0.8.*"
+argyle = "0.10.*"
 crossbeam-channel = "=0.5.*"
 ctrlc = "=3.4.5"
 dactyl = "0.7.*"
 dowser = "0.9.*"
 libc = "0.2.*"
-utc2k = "0.9.*"
+utc2k = "0.10.*"
 write_atomic = "0.5.*"
 
 [dependencies.flapfli]
@@ -126,7 +130,7 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.fyi_msg]
-version = "0.14.*"
+version = "1.1.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
@@ -138,6 +142,3 @@ features = [ "jpegtran", "nasm_simd", "unwinding" ]
 version = "=9.1.2"
 default-features = false
 features = [ "freestanding" ]
-
-[build-dependencies]
-dowser = "0.9.*"

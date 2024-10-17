@@ -63,13 +63,7 @@ pub(crate) use error::{
 };
 pub(crate) use image::kind::ImageKind;
 
-use argyle::{
-	Argue,
-	ArgyleError,
-	FLAG_HELP,
-	FLAG_REQUIRED,
-	FLAG_VERSION,
-};
+use argyle::Argument;
 use crossbeam_channel::Receiver;
 use dactyl::{
 	NiceElapsed,
@@ -137,10 +131,9 @@ static AFTER: AtomicU64 = AtomicU64::new(0);
 fn main() {
 	match _main() {
 		Ok(()) => {},
-		Err(FlacaError::Argue(ArgyleError::WantsVersion)) => {
-			println!(concat!("Flaca v", env!("CARGO_PKG_VERSION")));
+		Err(e @ (FlacaError::PrintHelp | FlacaError::PrintVersion)) => {
+			println!("{e}");
 		},
-		Err(FlacaError::Argue(ArgyleError::WantsHelp)) => { helper(); },
 		Err(e) => { Msg::error(e).die(1); },
 	}
 }
@@ -151,58 +144,64 @@ fn main() {
 /// This is the actual main, allowing us to easily bubble errors.
 fn _main() -> Result<(), FlacaError> {
 	// Parse CLI arguments.
-	let args = Argue::new(FLAG_HELP | FLAG_REQUIRED | FLAG_VERSION)?
-		.with_list();
+	let args = argyle::args()
+		.with_keywords(include!(concat!(env!("OUT_DIR"), "/argyle.rs")));
 
-	// Figure out which kinds we're doing.
-	let kinds = match (args.switch2(b"--no-jpeg", b"--no-jpg"), args.switch(b"--no-png")) {
-		(false, false) => ImageKind::All,
-		(true, false) => ImageKind::Png,
-		(false, true) => ImageKind::Jpeg,
-		(true, true) => return Err(FlacaError::NoImages),
-	};
+	let mut kinds = ImageKind::All;
+	let mut threads = None;
+	let mut paths = Dowser::default();
+	let mut progress = false;
+	for arg in args {
+		match arg {
+			Argument::Key("-h" | "--help") => return Err(FlacaError::PrintHelp),
+			Argument::Key("--no-jpg" | "--no-jpeg") => { kinds = kinds.diff(ImageKind::Jpeg)?; },
+			Argument::Key("--no-png") => { kinds = kinds.diff(ImageKind::Png)?; },
+			Argument::Key("-p" | "--progress") => { progress = true; },
+			Argument::Key("-V" | "--version") => return Err(FlacaError::PrintVersion),
 
-	// Zopfli iterations.
-	if let Some(n) = args.option(b"-z") {
-		let n = NonZeroU32::btou(n).ok_or(FlacaError::ZopfliIterations)?;
-		flapfli::set_zopfli_iterations(n);
-	}
+			Argument::KeyWithValue("-j", s) => { threads.replace(s); },
 
-	// Pixel limits.
-	if let Some(n) = args.option(b"--max-resolution") { set_pixel_limit(n)?; }
+			Argument::KeyWithValue("-l" | "--list", s) => if let Ok(s) = std::fs::read_to_string(s) {
+				paths = paths.with_paths(s.lines().filter_map(|line| {
+					let line = line.trim();
+					if line.is_empty() { None }
+					else { Some(line) }
+				}));
+			},
 
-	// Figure out the maximum number of threads to use…
-	let mut threads = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
-	if let Some(t) = args.option(b"-j") {
-		if let Some(t) = t.strip_prefix(b"-").and_then(NonZeroUsize::btou) {
-			threads = threads.get().checked_sub(t.get())
-				.and_then(NonZeroUsize::new)
-				.unwrap_or(NonZeroUsize::MIN);
-		}
-		else if let Some(t) = NonZeroUsize::btou(t) {
-			if t < threads { threads = t; }
+			Argument::KeyWithValue("--max-resolution", s) => {
+				set_pixel_limit(s.trim().as_bytes())?;
+			},
+
+			Argument::KeyWithValue("-z", s) => {
+				let s = NonZeroU32::btou(s.trim().as_bytes())
+					.ok_or(FlacaError::ZopfliIterations)?;
+				flapfli::set_zopfli_iterations(s);
+			},
+
+			// Assume these are paths.
+			Argument::Other(s) => { paths = paths.with_path(s); },
+			Argument::InvalidUtf8(s) => { paths = paths.with_path(s); },
+
+			// Nothing else is relevant.
+			_ => {},
 		}
 	}
 
 	// Find and sort the images!
-	let mut paths = Dowser::default()
-		.with_paths(args.args_os())
-		.into_vec_filtered(|p| Extension::try_from3(p).map_or_else(
-			|| Some(E_JPEG) == Extension::try_from4(p),
-			|e| e == E_JPG || e == E_PNG
-		));
+	let mut paths = paths.into_vec_filtered(dowser_filter);
 
 	// Make sure we have paths, and if we only have a few, reduce the
 	// number of threads accordingly.
 	let total = NonZeroUsize::new(paths.len()).ok_or(FlacaError::NoImages)?;
-	if total < threads { threads = total; }
+	let threads = max_threads(threads, total);
 
 	// Sort the paths for reproduceability.
 	paths.sort();
 
 	// Boot up a progress bar, if desired.
 	let progress =
-		if args.switch2(b"-p", b"--progress") {
+		if progress {
 			Progless::try_from(total).ok().map(|p| p.with_reticulating_splines("Flaca"))
 		}
 		else { None };
@@ -266,9 +265,7 @@ fn _main() -> Result<(), FlacaError> {
 	});
 
 	// Summarize!
-	if let Some(progress) = progress {
-		summarize(&progress, total.get() as u64);
-	}
+	if let Some(progress) = progress { summarize(&progress, total.get() as u64); }
 
 	// Did anything get missed?
 	if ! undone.is_empty() { dump_undone(&undone); }
@@ -330,6 +327,15 @@ fn crunch_quiet(rx: &Receiver::<&Path>, kinds: ImageKind) {
 	while let Ok(p) = rx.recv() { let _res = crate::image::encode(p, kinds); }
 }
 
+#[inline]
+/// # Dowser Filter.
+fn dowser_filter(p: &Path) -> bool {
+	Extension::try_from3(p).map_or_else(
+		|| Some(E_JPEG) == Extension::try_from4(p),
+		|e| e == E_JPG || e == E_PNG
+	)
+}
+
 #[cold]
 /// # Dump Undone.
 ///
@@ -356,76 +362,29 @@ fn dump_undone(undone: &[&Path]) {
 	}
 }
 
-#[cold]
-#[inline(never)]
-/// # Print Help.
-fn helper() {
-	println!(concat!(
-		r"
-             ,--._,--.
-           ,'  ,'   ,-`.
-(`-.__    /  ,'   /
- `.   `--'        \__,--'-.
-   `--/       ,-.  ______/
-     (o-.     ,o- /
-      `. ;        \    ", "\x1b[38;5;199mFlaca\x1b[0;38;5;69m v", env!("CARGO_PKG_VERSION"), "\x1b[0m", r#"
-       |:          \   Brute-force, lossless
-      ,'`       ,   \  JPEG and PNG compression.
-     (o o ,  --'     :
-      \--','.        ;
-       `;;  :       /
-        ;'  ;  ,' ,'
-        ,','  :  '
-        \ \   :
-         `
+/// # Max Threads.
+///
+/// Given the hardware, user preference, and total number of jobs, calculate
+/// and return the maximum number of threads to spawn.
+fn max_threads(user: Option<String>, jobs: NonZeroUsize) -> NonZeroUsize {
+	// The default number.
+	let mut threads = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
 
-USAGE:
-    flaca [FLAGS] [OPTIONS] <PATH(S)>...
+	// Lower it if the user wants differently.
+	if let Some(t) = user {
+		let t = t.trim().as_bytes();
+		if let Some(t) = t.strip_prefix(b"-").and_then(NonZeroUsize::btou) {
+			threads = threads.get().checked_sub(t.get())
+				.and_then(NonZeroUsize::new)
+				.unwrap_or(NonZeroUsize::MIN);
+		}
+		else if let Some(t) = NonZeroUsize::btou(t) {
+			if t < threads { threads = t; }
+		}
+	}
 
-FLAGS:
-    -h, --help        Print help information and exit.
-        --no-jpeg     Skip JPEG images.
-        --no-png      Skip PNG images.
-    -p, --progress    Show pretty progress while minifying.
-    -V, --version     Print version information and exit.
-
-OPTIONS:
-    -j <NUM>          Limit parallelization to this many threads (instead of
-                      giving each logical core its own image to work on). If
-                      negative, the value will be subtracted from the total
-                      number of logical cores.
-    -l, --list <FILE> Read (absolute) image and/or directory paths from this
-                      text file — or STDIN if "-" — one entry per line, instead
-                      of or in addition to (actually trailing) <PATH(S)>.
-        --max-resolution <NUM>
-                      Skip images containing more than <NUM> total pixels to
-                      avoid potential OOM errors during decompression.
-                      [default: ~4.29 billion]
-    -z <NUM>          Run NUM lz77 backward/forward iterations during zopfli
-                      PNG encoding passes. More iterations yield better
-                      compression (up to a point), but require *significantly*
-                      longer processing times. In practice, values beyond 500
-                      are unlikely to save more than a few bytes, and could
-                      take *days* to complete! Haha. [default: 20 or 60,
-                      depending on the file size]
-ARGS:
-    <PATH(S)>...      One or more image and/or directory paths to losslessly
-                      compress.
-
-EARLY EXIT:
-    Press "#, "\x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m once to quit as soon as the already-in-progress operations
-    have finished (ignoring any pending images still in the queue).
-
-    Press \x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m a second time if you need to exit IMMEDIATELY, but note that
-    doing so may leave artifacts (temporary files) behind, and in rare cases,
-    lead to image corruption.
-
-OPTIMIZERS USED:
-    MozJPEG   <https://github.com/mozilla/mozjpeg>
-    Oxipng    <https://github.com/shssoichiro/oxipng>
-    Zopflipng <https://github.com/google/zopfli>
-"
-	));
+	// Return the smaller of the user/machine and job counts.
+	NonZeroUsize::min(threads, jobs)
 }
 
 /// # Set Pixel Limit.
