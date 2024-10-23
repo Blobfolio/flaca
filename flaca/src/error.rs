@@ -127,6 +127,9 @@ pub(super) enum FlacaError {
 	/// # Killed Early.
 	Killed,
 
+	/// # List File.
+	ListFile,
+
 	/// # No Images.
 	NoImages,
 
@@ -171,6 +174,7 @@ impl FlacaError {
 	pub(super) const fn as_str(self) -> &'static str {
 		match self {
 			Self::Killed => "The process was aborted early.",
+			Self::ListFile => "Invalid -l/--list text file.",
 			Self::NoImages => "No images were found.",
 			Self::MaxResolution => "Pixel limits must be between 1..=4_294_967_295.",
 			Self::Progress(e) => e.as_str(),

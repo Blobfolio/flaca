@@ -113,14 +113,14 @@ items = [
 
 [build-dependencies]
 argyle = "0.10.*"
-dowser = "0.9.*"
+dowser = "0.10.*"
 
 [dependencies]
 argyle = "0.10.*"
 crossbeam-channel = "=0.5.*"
 ctrlc = "=3.4.5"
 dactyl = "0.7.*"
-dowser = "0.9.*"
+dowser = "0.10.*"
 libc = "0.2.*"
 utc2k = "0.10.*"
 write_atomic = "0.5.*"

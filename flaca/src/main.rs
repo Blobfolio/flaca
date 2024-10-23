@@ -161,12 +161,8 @@ fn _main() -> Result<(), FlacaError> {
 
 			Argument::KeyWithValue("-j", s) => { threads.replace(s); },
 
-			Argument::KeyWithValue("-l" | "--list", s) => if let Ok(s) = std::fs::read_to_string(s) {
-				paths = paths.with_paths(s.lines().filter_map(|line| {
-					let line = line.trim();
-					if line.is_empty() { None }
-					else { Some(line) }
-				}));
+			Argument::KeyWithValue("-l" | "--list", s) => {
+				paths.read_paths_from_file(s).map_err(|_| FlacaError::ListFile)?;
 			},
 
 			Argument::KeyWithValue("--max-resolution", s) => {
