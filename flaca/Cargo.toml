@@ -5,7 +5,7 @@ license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
 description = "Brute-force, lossless JPEG and PNG compression."
-readme = "README.md"
+readme = "../README.md"
 publish = false
 exclude = [
 	".gitignore",
@@ -16,7 +16,7 @@ exclude = [
 ]
 
 [package.metadata.deb]
-maintainer = "Josh Stoik <hello@blobfolio.com>"
+maintainer = "Josh Stoik <josh@blobfolio.com>"
 copyright = "2024, Blobfolio, LLC <hello@blobfolio.com>"
 license-file = ["../LICENSE", "0"]
 extended-description = """\n\
@@ -110,6 +110,13 @@ items = [
 	[ "Oxipng", "<https://github.com/shssoichiro/oxipng>" ],
 	[ "Zopflipng", "<https://github.com/google/zopfli>" ]
 ]
+
+[[package.metadata.bashman.credits]]
+name = "lodepng"
+version = "2024.10.15"
+license = "Zlib"
+authors = [ "Lode Vandevenne" ]
+repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
 argyle = "0.10.*"
