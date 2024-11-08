@@ -302,7 +302,7 @@ fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) 
 				SKIPPED.fetch_add(1, Relaxed);
 
 				if ! matches!(e, EncodingError::Skipped) && noteworthy(kinds, p) {
-					progress.push_msg(Msg::custom("Skipped", 11, &format!(
+					progress.push_msg(Msg::skipped(format!(
 						"{name} \x1b[2m({})\x1b[0m",
 						e.as_str(),
 					)), true);
