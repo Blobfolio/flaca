@@ -20,7 +20,7 @@ crc32fast = "=1.4.*"
 
 [build-dependencies]
 bindgen = "0.70.*"
-cc = "1.1.*"
+cc = "1.2.*"
 
 [lib]
 name = "flapfli"
