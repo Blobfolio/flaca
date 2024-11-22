@@ -16,6 +16,7 @@ use std::{
 		NonZeroU32,
 	},
 	ptr::NonNull,
+	sync::OnceLock,
 };
 use super::{
 	deflate_part,
@@ -56,7 +57,7 @@ const MAX_ITERATIONS: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(i32::MAX a
 ///
 /// Note: This value is only (possibly) set (once) during `flaca`'s
 /// initialization; it won't change after that.
-static mut NUM_ITERATIONS: Option<NonZeroU32> = None;
+static NUM_ITERATIONS: OnceLock<NonZeroU32> = OnceLock::new();
 
 
 
@@ -110,7 +111,9 @@ pub(crate) extern "C" fn flaca_png_deflate(
 	let arr = unsafe { std::slice::from_raw_parts(arr, insize) };
 
 	// Figure out how many iterations to use.
-	let numiterations = zopfli_iterations(arr.len());
+	let numiterations = NUM_ITERATIONS.get().copied().unwrap_or(
+		if arr.len() < 200_000 { NZ60 } else { NZ20 }
+	);
 
 	// Compress in chunks, à la ZopfliDeflate.
 	for chunk in DeflateIter::new(arr) {
@@ -141,12 +144,8 @@ pub(crate) extern "C" fn flaca_png_deflate(
 ///
 /// Override the default (size-based) number of Zopfli LZ77 iterations with a
 /// fixed value.
-pub fn set_zopfli_iterations(n: NonZeroU32) {
-	#[expect(unsafe_code, reason = "For mut static.")]
-	// Safety: this value is only written to once, if that, while the `flaca`
-	// binary is parsing the CLI arguments. There won't be any contention for
-	// this value.
-	unsafe { NUM_ITERATIONS.replace(NonZeroU32::min(n, MAX_ITERATIONS)); }
+pub fn set_zopfli_iterations(n: NonZeroU32) -> bool {
+	NUM_ITERATIONS.set(NonZeroU32::min(n, MAX_ITERATIONS)).is_ok()
 }
 
 
@@ -376,7 +375,7 @@ impl<'a> Iterator for DeflateIter<'a> {
 	}
 }
 
-impl<'a> ExactSizeIterator for DeflateIter<'a> {
+impl ExactSizeIterator for DeflateIter<'_> {
 	fn len(&self) -> usize {
 		(self.arr.len() - self.pos).div_ceil(ZOPFLI_MASTER_BLOCK_SIZE)
 	}
@@ -387,18 +386,4 @@ impl<'a> DeflateIter<'a> {
 	const fn new(arr: &'a [u8]) -> Self {
 		Self { arr, pos: 0 }
 	}
-}
-
-
-
-#[expect(unsafe_code, reason = "Read mut static.")]
-/// # Number of Zopfli LZ77 Iterations.
-///
-/// This either returns the user's fixed preference, or a size-based fallback.
-fn zopfli_iterations(len: usize) -> NonZeroU32 {
-	// Safety: this value is only ever set during flaca initialization; there
-	// is no thread contention.
-	unsafe { NUM_ITERATIONS }.unwrap_or(
-		if len < 200_000 { NZ60 } else { NZ20 }
-	)
 }

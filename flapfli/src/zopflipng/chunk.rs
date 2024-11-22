@@ -83,7 +83,7 @@ impl<'a> ZopfliChunk<'a> {
 	}
 }
 
-impl<'a> ZopfliChunk<'a> {
+impl ZopfliChunk<'_> {
 	/// # Full Slice.
 	///
 	/// Return the entire data slice, including the prelude, if any.
@@ -248,7 +248,7 @@ impl<'a> Iterator for ZopfliChunkIter<'a> {
 	}
 }
 
-impl<'a> ExactSizeIterator for ZopfliChunkIter<'a> {
+impl ExactSizeIterator for ZopfliChunkIter<'_> {
 	fn len(&self) -> usize { self.0.arr.len() - self.0.from }
 }
 

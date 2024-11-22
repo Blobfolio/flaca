@@ -142,6 +142,9 @@ pub(super) enum FlacaError {
 	/// # Invalid Zopfli Iterations.
 	ZopfliIterations,
 
+	/// # Duplicate Zopfli Iterations.
+	ZopfliIterations2,
+
 	/// # Print Help (Not an Error).
 	PrintHelp,
 
@@ -179,6 +182,7 @@ impl FlacaError {
 			Self::MaxResolution => "Pixel limits must be between 1..=4_294_967_295.",
 			Self::Progress(e) => e.as_str(),
 			Self::ZopfliIterations => "The number of (zopfli) lz77 iterations must be between 1..=2_147_483_647.",
+			Self::ZopfliIterations2 => "The -z option can only be set once.",
 			Self::PrintHelp => HELP,
 			Self::PrintVersion => concat!("Flaca v", env!("CARGO_PKG_VERSION")),
 		}

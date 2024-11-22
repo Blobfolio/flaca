@@ -34,7 +34,7 @@ impl<'a, T> Iterator for ReducingSlices<'a, T> {
 	}
 }
 
-impl<'a, T> ExactSizeIterator for ReducingSlices<'a, T> {
+impl<T> ExactSizeIterator for ReducingSlices<'_, T> {
 	#[inline]
 	fn len(&self) -> usize { self.0.len() }
 }

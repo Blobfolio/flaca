@@ -287,7 +287,7 @@ impl<'a> From<&'a [u8]> for JpegSrcInfo<'a> {
 	}
 }
 
-impl<'a> Drop for JpegSrcInfo<'a> {
+impl Drop for JpegSrcInfo<'_> {
 	#[expect(unsafe_code, reason = "For FFI.")]
 	fn drop(&mut self) {
 		// Safety: mozjpeg handles deallocation itself.

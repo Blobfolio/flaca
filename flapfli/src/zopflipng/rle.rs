@@ -275,7 +275,7 @@ impl<'a, const N: usize> DataSizeIter<'a, N> {
 	}
 }
 
-impl<'a, const N: usize> Iterator for DataSizeIter<'a, N> {
+impl<const N: usize> Iterator for DataSizeIter<'_, N> {
 	type Item = u32;
 
 	#[inline]
@@ -294,7 +294,7 @@ impl<'a, const N: usize> Iterator for DataSizeIter<'a, N> {
 	}
 }
 
-impl<'a, const N: usize> ExactSizeIterator for DataSizeIter<'a, N> {
+impl<const N: usize> ExactSizeIterator for DataSizeIter<'_, N> {
 	fn len(&self) -> usize { N - 2 - self.pos }
 }
 
@@ -330,7 +330,7 @@ impl<'a> GoodForRle<'a> {
 	}
 }
 
-impl<'a> Iterator for GoodForRle<'a> {
+impl Iterator for GoodForRle<'_> {
 	type Item = bool;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -388,7 +388,7 @@ impl<'a> Iterator for GoodForRle<'a> {
 	}
 }
 
-impl<'a> ExactSizeIterator for GoodForRle<'a> {
+impl ExactSizeIterator for GoodForRle<'_> {
 	fn len(&self) -> usize { self.good + self.bad + self.counts.len() }
 }
 
