@@ -241,7 +241,7 @@ impl<'a> LZ77StoreRange<'a> {
 	}
 }
 
-impl<'a> LZ77StoreRange<'a> {
+impl LZ77StoreRange<'_> {
 	/// # Calculate Block Size (Auto).
 	///
 	/// Return the smallest of the uncompressed, fixed, and dynamic sizes.
@@ -328,7 +328,7 @@ impl<'a> Iterator for LZ77StoreRangeSplits<'a> {
 	}
 }
 
-impl<'a> ExactSizeIterator for LZ77StoreRangeSplits<'a> {
+impl ExactSizeIterator for LZ77StoreRangeSplits<'_> {
 	fn len(&self) -> usize { self.splits.len() }
 }
 
@@ -456,7 +456,7 @@ impl<'a> Iterator for LZ77StoreRangeSplitsChunked<'a> {
 	}
 }
 
-impl<'a> ExactSizeIterator for LZ77StoreRangeSplitsChunked<'a> {
+impl ExactSizeIterator for LZ77StoreRangeSplitsChunked<'_> {
 	fn len(&self) -> usize { Self::SPLITS.saturating_sub(self.pos) }
 }
 

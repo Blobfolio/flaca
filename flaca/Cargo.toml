@@ -1,11 +1,11 @@
 [package]
 name = "flaca"
-version = "3.1.9"
+version = "3.1.10"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
 description = "Brute-force, lossless JPEG and PNG compression."
-readme = "README.md"
+readme = "../README.md"
 publish = false
 exclude = [
 	".gitignore",
@@ -16,7 +16,7 @@ exclude = [
 ]
 
 [package.metadata.deb]
-maintainer = "Josh Stoik <hello@blobfolio.com>"
+maintainer = "Josh Stoik <josh@blobfolio.com>"
 copyright = "2024, Blobfolio, LLC <hello@blobfolio.com>"
 license-file = ["../LICENSE", "0"]
 extended-description = """\n\
@@ -111,18 +111,25 @@ items = [
 	[ "Zopflipng", "<https://github.com/google/zopfli>" ]
 ]
 
+[[package.metadata.bashman.credits]]
+name = "lodepng"
+version = "2024.10.15"
+license = "Zlib"
+authors = [ "Lode Vandevenne" ]
+repository = "https://github.com/lvandeve/lodepng"
+
 [build-dependencies]
 argyle = "0.10.*"
-dowser = "0.9.*"
+dowser = "0.10.*"
 
 [dependencies]
 argyle = "0.10.*"
 crossbeam-channel = "=0.5.*"
 ctrlc = "=3.4.5"
-dactyl = "0.7.*"
-dowser = "0.9.*"
+dactyl = "0.8.*"
+dowser = "0.10.*"
 libc = "0.2.*"
-utc2k = "0.10.*"
+utc2k = "0.11.*"
 write_atomic = "0.5.*"
 
 [dependencies.flapfli]
@@ -130,7 +137,7 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.fyi_msg]
-version = "1.1.*"
+version = "1.3.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]

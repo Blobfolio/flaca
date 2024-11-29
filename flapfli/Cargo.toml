@@ -1,6 +1,6 @@
 [package]
 name = "flapfli"
-version = "3.1.9"
+version = "3.1.10"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -20,7 +20,7 @@ crc32fast = "=1.4.*"
 
 [build-dependencies]
 bindgen = "0.70.*"
-cc = "1.1.*"
+cc = "1.2.*"
 
 [lib]
 name = "flapfli"

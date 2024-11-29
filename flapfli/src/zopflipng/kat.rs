@@ -552,19 +552,19 @@ struct Leaf<'a> {
 	bitlength: &'a Cell<DeflateSym>,
 }
 
-impl<'a> Eq for Leaf<'a> {}
+impl Eq for Leaf<'_> {}
 
-impl<'a> Ord for Leaf<'a> {
+impl Ord for Leaf<'_> {
 	#[inline]
 	fn cmp(&self, other: &Self) -> Ordering { self.frequency.cmp(&other.frequency) }
 }
 
-impl<'a> PartialEq for Leaf<'a> {
+impl PartialEq for Leaf<'_> {
 	#[inline]
 	fn eq(&self, other: &Self) -> bool { self.frequency == other.frequency }
 }
 
-impl<'a> PartialOrd for Leaf<'a> {
+impl PartialOrd for Leaf<'_> {
 	#[inline]
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
@@ -789,7 +789,6 @@ const fn extra_bools(extra: u8) -> (bool, bool, bool) {
 	(0 != extra & 1, 0 != extra & 2, 0 != extra & 4)
 }
 
-#[expect(clippy::panic_in_result_fn, reason = "It's constant.")]
 /// # Crunch the Code Lengths.
 ///
 /// This method serves as the closure for the caller's call to
@@ -838,7 +837,6 @@ fn llcl<'a, const N: usize, const MAXBITS: usize>(
 	Ok(leaves_len)
 }
 
-#[expect(clippy::panic_in_result_fn, reason = "It's constant.")]
 /// # Write Code Lengths!
 ///
 /// This is the final stage of the LLCL chain, where the results are
@@ -899,7 +897,7 @@ fn llcl_boundary_pm(leaves: &[Leaf<'_>], lists: &mut [List], nodes: &KatScratch)
 	// frequency is less than the weighted sum of the previous list, bump the
 	// count and stop the recursion.
 	if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
-		if previous.map_or(true, |p| last_leaf.frequency < p.weight_sum()) {
+		if previous.is_none_or(|p| last_leaf.frequency < p.weight_sum()) {
 			// Shift the lookahead and add a new node.
 			current.lookahead0 = current.lookahead1;
 			current.lookahead1 = nodes.push(Node {

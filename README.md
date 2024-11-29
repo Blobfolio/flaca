@@ -115,27 +115,3 @@ Of course, file names are totally arbitrary, so during processing, it analyzes t
 In cases where a JPEG image is accidentally assigned a PNG extension, or vice versa, Flaca _will_ still correctly process the image for you, but _won't_ correct the file name. In other words, a PNG incorrectly named `image.jpg` will still be a PNG incorrectly named `image.jpg` after recompression; it might just be a bit smaller.
 
 This is also true when using the `--no-jpeg` or `--no-png` flags, except the true type must match the not-no type or it will be skipped.
-
-
-
-## License
-
-See also: [CREDITS.md](CREDITS.md)
-
-Copyright © 2024 [Blobfolio, LLC](https://blobfolio.com) &lt;hello@blobfolio.com&gt;
-
-This work is free. You can redistribute it and/or modify it under the terms of the Do What The Fuck You Want To Public License, Version 2.
-
-    DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
-    Version 2, December 2004
-
-    Copyright (C) 2004 Sam Hocevar <sam@hocevar.net>
-
-    Everyone is permitted to copy and distribute verbatim or modified
-    copies of this license document, and changing it is allowed as long
-    as the name is changed.
-
-    DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
-    TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
-
-    0. You just DO WHAT THE FUCK YOU WANT TO.

@@ -655,7 +655,7 @@ impl<'a> SplitPointsIter<'a> {
 	}
 }
 
-impl<'a> Iterator for SplitPointsIter<'a> {
+impl Iterator for SplitPointsIter<'_> {
 	type Item = Result<ZopfliRange, ZopfliError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -675,7 +675,7 @@ impl<'a> Iterator for SplitPointsIter<'a> {
 	}
 }
 
-impl<'a> ExactSizeIterator for SplitPointsIter<'a> {
+impl ExactSizeIterator for SplitPointsIter<'_> {
 	fn len(&self) -> usize {
 		(self.max as usize + 1).saturating_sub(self.pos)
 	}

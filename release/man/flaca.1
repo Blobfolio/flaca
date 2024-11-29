@@ -1,6 +1,6 @@
-.TH "FLACA" "1" "October 2024" "flaca v3.1.9" "User Commands"
+.TH "FLACA" "1" "November 2024" "flaca v3.1.10" "User Commands"
 .SH NAME
-FLACA \- Manual page for flaca v3.1.9.
+FLACA \- Manual page for flaca v3.1.10.
 .SH DESCRIPTION
 Brute\-force, lossless JPEG and PNG compression.
 .SS USAGE:
@@ -35,8 +35,9 @@ Skip images containing more than <NUM> total pixels to avoid potential OOM error
 .TP
 \fB\-z\fR <NUM>
 Run NUM lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. In practice, values beyond 500 are unlikely to save more than a few bytes, and could take *days* to complete! Haha. [default: 20 or 60, depending on the file size]
-.SS <PATH(S)…>:
+.SS TRAILING:
 .TP
+\fB<PATH(s)…>\fR
 One or more image and/or directory paths to losslessly compress.
 .SH EARLY EXIT
 Press CTRL+C once to quit as soon as the already\-in\-progress operations have

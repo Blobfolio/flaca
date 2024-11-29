@@ -127,9 +127,9 @@ static AFTER: AtomicU64 = AtomicU64::new(0);
 /// # Main.
 ///
 /// This shell provides us a way to easily handle error responses. Actual
-/// processing is done by `_main()`.
+/// processing is done by `main__()`.
 fn main() {
-	match _main() {
+	match main__() {
 		Ok(()) => {},
 		Err(e @ (FlacaError::PrintHelp | FlacaError::PrintVersion)) => {
 			println!("{e}");
@@ -142,7 +142,7 @@ fn main() {
 /// # Actual Main.
 ///
 /// This is the actual main, allowing us to easily bubble errors.
-fn _main() -> Result<(), FlacaError> {
+fn main__() -> Result<(), FlacaError> {
 	// Parse CLI arguments.
 	let args = argyle::args()
 		.with_keywords(include!(concat!(env!("OUT_DIR"), "/argyle.rs")));
@@ -161,12 +161,8 @@ fn _main() -> Result<(), FlacaError> {
 
 			Argument::KeyWithValue("-j", s) => { threads.replace(s); },
 
-			Argument::KeyWithValue("-l" | "--list", s) => if let Ok(s) = std::fs::read_to_string(s) {
-				paths = paths.with_paths(s.lines().filter_map(|line| {
-					let line = line.trim();
-					if line.is_empty() { None }
-					else { Some(line) }
-				}));
+			Argument::KeyWithValue("-l" | "--list", s) => {
+				paths.read_paths_from_file(s).map_err(|_| FlacaError::ListFile)?;
 			},
 
 			Argument::KeyWithValue("--max-resolution", s) => {
@@ -176,7 +172,9 @@ fn _main() -> Result<(), FlacaError> {
 			Argument::KeyWithValue("-z", s) => {
 				let s = NonZeroU32::btou(s.trim().as_bytes())
 					.ok_or(FlacaError::ZopfliIterations)?;
-				flapfli::set_zopfli_iterations(s);
+				if ! flapfli::set_zopfli_iterations(s) {
+					return Err(FlacaError::ZopfliIterations2);
+				}
 			},
 
 			// Assume these are paths.
@@ -306,7 +304,7 @@ fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) 
 				SKIPPED.fetch_add(1, Relaxed);
 
 				if ! matches!(e, EncodingError::Skipped) && noteworthy(kinds, p) {
-					progress.push_msg(Msg::custom("Skipped", 11, &format!(
+					progress.push_msg(Msg::skipped(format!(
 						"{name} \x1b[2m({})\x1b[0m",
 						e.as_str(),
 					)), true);
@@ -357,7 +355,7 @@ fn dump_undone(undone: &[&Path]) {
 			"{} missed during the run; their paths have
         been exported to \x1b[95;1m{}\x1b[0m for reference.",
 			undone.len().nice_inflect("image was", "images were"),
-			path.to_string_lossy(),
+			path.display(),
 		)).eprint();
 	}
 }
