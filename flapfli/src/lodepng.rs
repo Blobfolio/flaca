@@ -181,18 +181,18 @@ impl LodePNGState {
 	#[expect(unsafe_code, reason = "For FFI.")]
 	/// # Encode!
 	///
-	/// Encode the image, returning `true` if lodepng was happy and the output
-	/// is non-empty.
-	pub(super) fn encode(&mut self, img: &DecodedImage, out: &mut EncodedPNG) -> bool {
-		// Reset the size.
-		out.size = 0;
+	/// Encode the image, returning it if lodepng was happy and the output is
+	/// non-empty.
+	pub(super) fn encode(&mut self, img: &DecodedImage) -> Option<EncodedPNG> {
+		let mut out = EncodedPNG::new();
 
 		// Safety: a non-zero response is an error.
 		let res = unsafe {
 			lodepng_encode(&mut out.buf, &mut out.size, img.buf.as_ptr(), img.w.get(), img.h.get(), self)
 		};
 
-		0 == res && ! out.is_null()
+		if 0 == res && ! out.is_null() { Some(out) }
+		else { None }
 	}
 
 	#[expect(unsafe_code, reason = "For FFI.")]
@@ -277,9 +277,7 @@ impl LodePNGState {
 		else { self.info_png.color.key_defined = 0; }
 
 		// Re-encode it and see what happens!
-		let mut out = EncodedPNG::new();
-		if self.encode(img, &mut out) { Some(out) }
-		else { None }
+		self.encode(img)
 	}
 }
 
