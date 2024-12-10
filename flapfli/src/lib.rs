@@ -93,29 +93,27 @@ pub fn optimize(src: &[u8]) -> Option<EncodedPNG> {
 
 	// Find the right strategy.
 	let mut enc = LodePNGState::encoder(&dec)?;
-	let mut out = EncodedPNG::new();
-	let strategy = best_strategy(&img, &mut enc, &mut out);
+	let strategy = best_strategy(&img, &mut enc);
 
 	// Now re-re-encode with zopfli and the best strategy.
 	enc.set_strategy(strategy);
 	enc.set_zopfli();
-	if enc.encode(&img, &mut out) {
-		// For really small images, we might be able to save even more by
-		// nuking the palette.
-		if out.size < 4096 && LodePNGColorType::LCT_PALETTE.is_match(&out) {
-			if let Some(out2) = enc.try_small(&img) {
-				if out2.size < out.size && out2.size < src.len() {
-					// We improved again!
-					return Some(out2);
-				}
+	let out = enc.encode(&img)?;
+
+	// For really small images, we might be able to save even more by
+	// nuking the palette.
+	if out.size < 4096 && LodePNGColorType::LCT_PALETTE.is_match(&out) {
+		if let Some(out2) = enc.try_small(&img) {
+			if out2.size < out.size && out2.size < src.len() {
+				// We improved again!
+				return Some(out2);
 			}
 		}
-
-		// We improved!
-		if out.size < src.len() { return Some(out); }
 	}
 
-	None
+	// We improved!
+	if out.size < src.len() { Some(out) }
+	else { None }
 }
 
 #[track_caller]
@@ -146,11 +144,7 @@ pub(crate) const fn unreachable() {
 ///
 /// Skipping zopfli here saves _a ton_ of processing time and (almost) never
 /// changes the answer, so it's a shortcut worth taking.
-fn best_strategy(
-	img: &DecodedImage,
-	enc: &mut LodePNGState,
-	out: &mut EncodedPNG,
-) -> LodePNGFilterStrategy {
+fn best_strategy(img: &DecodedImage, enc: &mut LodePNGState) -> LodePNGFilterStrategy {
 	let mut best_size = usize::MAX;
 	let mut best_strategy = LodePNGFilterStrategy::LFS_ZERO;
 
@@ -165,9 +159,11 @@ fn best_strategy(
 		LodePNGFilterStrategy::LFS_BRUTE_FORCE,
 	] {
 		enc.set_strategy(strategy);
-		if enc.encode(img, out) && out.size < best_size {
-			best_size = out.size;
-			best_strategy = strategy;
+		if let Some(out) = enc.encode(img) {
+			if out.size < best_size {
+				best_size = out.size;
+				best_strategy = strategy;
+			}
 		}
 	}
 
