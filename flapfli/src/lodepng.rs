@@ -169,13 +169,19 @@ impl LodePNGState {
 		if 0 == unsafe {
 			lodepng_decode(&mut buf, &mut w, &mut h, self, src.as_ptr(), src.len())
 		} {
-			Some(DecodedImage {
-				buf: NonNull::new(buf)?,
-				w: NonZeroU32::new(w)?,
-				h: NonZeroU32::new(h)?,
-			})
+			let buf = NonNull::new(buf)?;
+			if let Some(w) = NonZeroU32::new(w) {
+				if let Some(h) = NonZeroU32::new(h) {
+					return Some(DecodedImage { buf, w, h });
+				}
+			}
+
+			// Safety: this may not actually be reachable, but if it is we'll
+			// have to manually free the pointer before leaving.
+			unsafe { flapfli_free(buf); }
 		}
-		else { None }
+
+		None
 	}
 
 	#[expect(unsafe_code, reason = "For FFI.")]
