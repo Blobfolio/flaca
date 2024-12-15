@@ -896,7 +896,6 @@ impl ZopfliHash {
 		clippy::cast_sign_loss,
 		reason = "False positive.",
 	)]
-	#[expect(unsafe_code, reason = "For unchecked indexing.")]
 	/// # Find Longest Match Loop.
 	///
 	/// This method is a (nasty-looking) workhorse for the above
@@ -972,10 +971,9 @@ impl ZopfliHash {
 			// * (same <= limit), so…
 			// * (pos + same <= arr.len()) too
 			if 0 != dist && dist <= pos {
-				// Safety: we (safely) sliced right to arr[pos..] earlier and
-				// verified it was non-empty, but the compiler will have
-				// forgotten that by now.
-				let left = unsafe { arr.get_unchecked(pos - dist..pos - dist + right.len()) };
+				// We (safely) sliced right to arr[pos..] earlier and verified
+				// it was non-empty, but the compiler will have forgotten that.
+				let Some(left) = arr.get(pos - dist..pos - dist + right.len()) else { break; };
 				if right.is_empty() || left.len() != right.len() { break; }
 
 				// Check to see if we can do better than we've already done.

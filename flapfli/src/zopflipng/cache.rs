@@ -92,7 +92,6 @@ impl MatchCache {
 		self.sublen[..blocksize * SUBLEN_CACHED_LEN].fill(0);
 	}
 
-	#[expect(unsafe_code, reason = "For array cast.")]
 	/// # Find Match.
 	///
 	/// Find the sublength, distance, and length from cache, if present, and
@@ -115,10 +114,9 @@ impl MatchCache {
 		// If we have no distance, we have no cache.
 		let (cache_len, cache_dist) = ld_split(self.ld[pos]);
 		if ! cache_len.is_zero() && cache_dist == 0 { return Ok(false); }
-		// Safety: the slice has the same length as the array.
-		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = unsafe {
-			&* self.sublen[pos * SUBLEN_CACHED_LEN..(pos + 1) * SUBLEN_CACHED_LEN].as_ptr().cast()
-		};
+		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = self.sublen[pos * SUBLEN_CACHED_LEN..(pos + 1) * SUBLEN_CACHED_LEN]
+			.first_chunk::<SUBLEN_CACHED_LEN>()
+			.ok_or(zopfli_error!())?;
 
 		// Find the max sublength once, if ever.
 		let maxlength =
