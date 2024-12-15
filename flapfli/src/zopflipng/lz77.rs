@@ -33,17 +33,11 @@ use super::{
 
 
 
-#[expect(unsafe_code, reason = "Seven is non-zero.")]
-/// # Seven.
-///
-/// Safety: seven is non-zero.
-const NZ07: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(7) };
+/// # Seven is Non-Zero.
+const NZ07: NonZeroU32 = NonZeroU32::new(7).unwrap();
 
-#[expect(unsafe_code, reason = "Eight is non-zero.")]
-/// # Eight.
-///
-/// Safety: eight is non-zero.
-const NZ08: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(8) };
+/// # Eight is Non-Zero.
+const NZ08: NonZeroU32 = NonZeroU32::new(8).unwrap();
 
 
 

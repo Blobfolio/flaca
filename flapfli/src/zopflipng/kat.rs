@@ -32,13 +32,11 @@ use super::{
 
 
 
-#[expect(unsafe_code, reason = "Two is non-zero.")]
 /// # Two is Non-Zero.
-const NZ02: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2) };
+const NZ02: NonZeroU32 = NonZeroU32::new(2).unwrap();
 
-#[expect(unsafe_code, reason = "Fourteen is non-zero.")]
 /// # Fourteen is Non-Zero.
-const NZ14: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(14) };
+const NZ14: NonZeroU32 = NonZeroU32::new(14).unwrap();
 
 /// # Zero-Filled Tree Counts.
 const ZEROED_COUNTS_TREE: [u32; 19] = [0; 19];
