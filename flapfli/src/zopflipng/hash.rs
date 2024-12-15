@@ -538,10 +538,10 @@ impl ZopfliHash {
 				// Fast forward!
 				let before = pos;
 				for (chunk3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
-					// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
-					// remaining entries; cost2.len() will be at least one
-					// more than that.
-					if cost2.len() <= ZOPFLI_MAX_MATCH { crate::unreachable(); }
+					// arr2.len() has at least ZOPFLI_MAX_MATCH*2+1 remaining
+					// entries; cost2.len() should be at least one more than
+					// that.
+					if cost2.len() <= ZOPFLI_MAX_MATCH { return Err(zopfli_error!()); }
 					cost2[ZOPFLI_MAX_MATCH].set((
 						(f64::from(cost2[0].get().0) + symbol_cost) as f32,
 						LitLen::MAX_MATCH,
@@ -573,9 +573,9 @@ impl ZopfliHash {
 				Some(instart),
 			)?;
 
-			// Safety: the MAX loop (if it ran at all) only advanced the
-			// slices ZOPFLI_MAX_MATCH; we have more work to do!
-			if cost2.len() < 2 { crate::unreachable(); }
+			// The MAX loop (if it ran at all) only advanced the slices
+			// ZOPFLI_MAX_MATCH; we should have more work to do!
+			if cost2.len() < 2 { return Err(zopfli_error!()); }
 
 			// Update it if lower.
 			let cost_j = f64::from(cost2[0].get().0);
@@ -591,8 +591,8 @@ impl ZopfliHash {
 			if limit.is_matchable() {
 				let min_cost_add = min_cost + cost_j;
 
-				// Safety: limit is capped to cost2.len() - 1.
-				if cost2.len() <= (limit as usize) { crate::unreachable(); }
+				// Limit is capped to cost2.len() - 1.
+				if cost2.len() <= (limit as usize) { return Err(zopfli_error!()); }
 
 				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter()
 					.copied()
@@ -683,10 +683,10 @@ impl ZopfliHash {
 				// Fast forward!
 				let before = pos;
 				for (chunk3, cost3) in iter.by_ref().take(ZOPFLI_MAX_MATCH) {
-					// Safety: arr2.len() has at least ZOPFLI_MAX_MATCH*2+1
-					// remaining entries; cost2.len() will be at least one
-					// more than that.
-					if cost2.len() <= ZOPFLI_MAX_MATCH { crate::unreachable(); }
+					// arr2.len() has at least ZOPFLI_MAX_MATCH*2+1 remaining
+					// entries; cost2.len() should be at least one more than
+					// that.
+					if cost2.len() <= ZOPFLI_MAX_MATCH { return Err(zopfli_error!()); }
 					cost2[ZOPFLI_MAX_MATCH].set((
 						(f64::from(cost2[0].get().0) + 13.0) as f32,
 						LitLen::MAX_MATCH,
@@ -718,9 +718,9 @@ impl ZopfliHash {
 				Some(instart),
 			)?;
 
-			// Safety: the MAX loop (if it ran at all) only advanced the
-			// slices ZOPFLI_MAX_MATCH; we have more work to do!
-			if cost2.len() < 2 { crate::unreachable(); }
+			// The MAX loop (if it ran at all) only advanced the slices
+			// ZOPFLI_MAX_MATCH; we should have more work to do!
+			if cost2.len() < 2 { return Err(zopfli_error!()); }
 
 			// Update it if lower.
 			let cost_j = f64::from(cost2[0].get().0);
@@ -736,8 +736,8 @@ impl ZopfliHash {
 			if limit.is_matchable() {
 				let min_cost_add = 8.0 + cost_j;
 
-				// Safety: limit is capped to cost2.len() - 1.
-				if cost2.len() <= (limit as usize) { crate::unreachable(); }
+				// Limit is capped to cost2.len() - 1.
+				if cost2.len() <= (limit as usize) { return Err(zopfli_error!()); }
 
 				for ((dist, c), k) in sublen[ZOPFLI_MIN_MATCH..=limit as usize].iter()
 					.copied()
@@ -976,7 +976,7 @@ impl ZopfliHash {
 				// verified it was non-empty, but the compiler will have
 				// forgotten that by now.
 				let left = unsafe { arr.get_unchecked(pos - dist..pos - dist + right.len()) };
-				if right.is_empty() || left.len() != right.len() { crate::unreachable(); }
+				if right.is_empty() || left.len() != right.len() { break; }
 
 				// Check to see if we can do better than we've already done.
 				if (bestlength as usize) >= right.len() || right[bestlength as usize] == left[bestlength as usize] {

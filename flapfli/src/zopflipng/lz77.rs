@@ -154,9 +154,8 @@ impl<'a> LZ77StoreRange<'a> {
 	/// used to build this store. If for some reason that range cannot be
 	/// recreated, an error will be returned instead.
 	pub(crate) const fn byte_range(self) -> Result<ZopfliRange, ZopfliError> {
-		// Safety: ranged stores are never empty.
 		let len = self.entries.len();
-		if 0 == len { crate::unreachable(); }
+		if 0 == len { return Err(zopfli_error!()); } // Ranged stores are never empty.
 
 		let first = self.entries[0];
 		let last = self.entries[len - 1];

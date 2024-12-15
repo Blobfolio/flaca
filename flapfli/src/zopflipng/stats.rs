@@ -4,6 +4,7 @@
 This module defines the squeeze stats structure and its companion PRNG.
 */
 
+use std::num::NonZeroU32;
 use super::{
 	ArrayD,
 	ArrayLL,
@@ -105,12 +106,10 @@ impl SymbolStats {
 			if c != 0 { *b -= f64::from(c).log2(); }
 		}
 
-		// Lengths second.
-		let sum = self.ll_counts.iter().copied().sum::<u32>();
-		// Safety: ll_counts[256] is always 1 — (re)load_store and randomize
-		// both force it — so this sum will always be nonzero.
-		if sum == 0 { crate::unreachable(); }
-		let log2sum = f64::from(sum).log2();
+		// Lengths second. (Note to future self: ll_counts[256] is always 1, so
+		// the sum should never be zero, and the log2 should always be normal.)
+		let log2sum = NonZeroU32::new(self.ll_counts.iter().copied().sum::<u32>())
+			.map_or(0.0, |sum| f64::from(sum.get()).log2());
 		self.ll_symbols.fill(log2sum);
 		for (c, b) in self.ll_counts.iter().copied().zip(&mut self.ll_symbols) {
 			if c != 0 { *b -= f64::from(c).log2(); }
