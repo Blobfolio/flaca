@@ -67,15 +67,22 @@ macro_rules! llcl {
 			let mut bitlengths = [DeflateSym::D00; $size];
 			let bitcells = array_of_cells(&mut bitlengths);
 
-			// First build up the leaves.
-			let mut leaves: Box<[Leaf]> = self.iter()
-				.copied()
-				.zip(bitcells)
-				.filter_map(|(f, bitlength)|
-					NonZeroU32::new(f).map(|frequency| Leaf { frequency, bitlength })
-				)
-				.collect();
-			let leaves_len = leaves.len();
+			// First build up the leaves by joining non-zero frequencies with
+			// their corresponding bitlengths. There will almost certainly be
+			// fewer than N leaves, but copy is cheap; we'll fix the sizing in
+			// post. Haha.
+			let mut leaves_len = 0_usize;
+			let mut raw_leaves = [
+				Leaf { frequency: NonZeroU32::MIN, bitlength: &bitcells[0] };
+				$size
+			];
+			for (frequency, bitlength) in self.iter().copied().zip(bitcells) {
+				if let Some(frequency) = NonZeroU32::new(frequency) {
+					raw_leaves[leaves_len] = Leaf { frequency, bitlength };
+					leaves_len += 1;
+				}
+			}
+			let leaves: &mut [Leaf] = &mut raw_leaves[..leaves_len]; // Actual leaves.
 			if leaves_len <= 2 {
 				for leaf in leaves { leaf.bitlength.set(DeflateSym::D01); }
 				return Ok(bitlengths);
@@ -96,11 +103,11 @@ macro_rules! llcl {
 
 			// We ultimately want (2 * len_leaves - 2) active chains in the last list.
 			// Initialization gave us two; each PM pass will give us another.
-			for _ in 0..2 * leaves_len - 5 { llcl_boundary_pm(&leaves, sized_lists)?; }
+			for _ in 0..2 * leaves_len - 5 { llcl_boundary_pm(leaves, sized_lists)?; }
 
 			// Fetch the final count and tail, then write the results!
-			let (count, tail) = llcl_boundary_finish(&leaves, &lists);
-			llcl_write(&leaves, count, tail)?;
+			let (count, tail) = llcl_boundary_finish(leaves, &lists);
+			llcl_write(leaves, count, tail)?;
 
 			Ok(bitlengths)
 		}
@@ -157,15 +164,22 @@ impl LengthLimitedCodeLengths<ZOPFLI_NUM_D> for ArrayD<u32> {
 		let mut bitlengths = [DeflateSym::D00; ZOPFLI_NUM_D];
 		let bitcells = array_of_cells(&mut bitlengths);
 
-		// First build up the leaves.
-		let mut leaves: Box<[Leaf]> = self.iter()
-			.copied()
-			.zip(bitcells)
-			.filter_map(|(f, bitlength)|
-				NonZeroU32::new(f).map(|frequency| Leaf { frequency, bitlength })
-			)
-			.collect();
-		let leaves_len = leaves.len();
+		// First build up the leaves by joining non-zero frequencies with
+		// their corresponding bitlengths. There will almost certainly be
+		// fewer than N leaves, but copy is cheap; we'll fix the sizing in
+		// post. Haha.
+		let mut leaves_len = 0_usize;
+		let mut raw_leaves = [
+			Leaf { frequency: NonZeroU32::MIN, bitlength: &bitcells[0] };
+			ZOPFLI_NUM_D
+		];
+		for (frequency, bitlength) in self.iter().copied().zip(bitcells) {
+			if let Some(frequency) = NonZeroU32::new(frequency) {
+				raw_leaves[leaves_len] = Leaf { frequency, bitlength };
+				leaves_len += 1;
+			}
+		}
+		let leaves: &mut [Leaf] = &mut raw_leaves[..leaves_len]; // Actual leaves.
 		if leaves_len <= 2 {
 			// To work around a bug in zlib 1.2.1 — fixed in 2005, haha — we
 			// need to have at least two non-zero distance codes. Pad the
@@ -202,11 +216,11 @@ impl LengthLimitedCodeLengths<ZOPFLI_NUM_D> for ArrayD<u32> {
 
 		// We ultimately want (2 * len_leaves - 2) active chains in the last list.
 		// Initialization gave us two; each PM pass will give us another.
-		for _ in 0..2 * leaves_len - 5 { llcl_boundary_pm(&leaves, sized_lists)?; }
+		for _ in 0..2 * leaves_len - 5 { llcl_boundary_pm(leaves, sized_lists)?; }
 
 		// Fetch the final count and tail, then write the results!
-		let (count, tail) = llcl_boundary_finish(&leaves, &lists);
-		llcl_write(&leaves, count, tail)?;
+		let (count, tail) = llcl_boundary_finish(leaves, &lists);
+		llcl_write(leaves, count, tail)?;
 
 		Ok(bitlengths)
 	}
