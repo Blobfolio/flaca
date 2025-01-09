@@ -51,13 +51,11 @@ const BLOCK_TYPE_DYNAMIC: u8 = 2;
 /// # Minimum Split Distance.
 const MINIMUM_SPLIT_DISTANCE: usize = 10;
 
-#[expect(unsafe_code, reason = "Ten is non-zero.")]
 /// # Ten is Non-Zero.
-const NZ10: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(10) };
+const NZ10: NonZeroU32 = NonZeroU32::new(10).unwrap();
 
-#[expect(unsafe_code, reason = "Eleven is non-zero.")]
 /// # Eleven is Non-Zero.
-const NZ11: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(11) };
+const NZ11: NonZeroU32 = NonZeroU32::new(11).unwrap();
 
 /// # Block Split Points.
 ///

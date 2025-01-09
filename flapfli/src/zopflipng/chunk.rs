@@ -111,9 +111,8 @@ impl ZopfliChunk<'_> {
 	/// Because the current block may never be empty, there will always be at
 	/// least one value.
 	pub(crate) const fn first(&self) -> u8 {
-		// Safety: from is verified during construction.
-		if self.from >= self.arr.len() { crate::unreachable(); }
-		self.arr[self.from]
+		if self.arr.len() < self.from { 0 } // Impossible.
+		else { self.arr[self.from] }
 	}
 
 	/// # Active Length.
@@ -149,10 +148,8 @@ impl ZopfliChunk<'_> {
 	/// since we don't explicitly require lengths of two, it's safer to treat
 	/// it as optional.
 	pub(crate) const fn warmup_values(&self) -> (u8, Option<u8>) {
-		// Safety: from (and by association window_start) is verified at
-		// construction.
 		let window_start = self.window_start();
-		if window_start >= self.arr.len() { crate::unreachable(); }
+		if window_start >= self.arr.len() { return (0, None); } // Impossible.
 
 		let a = self.arr[window_start];
 
@@ -191,10 +188,8 @@ impl<'a> ZopfliChunk<'a> {
 		// If we're at the start of the slice, there is no prelude.
 		if self.from == 0 { None }
 		else {
-			// Safety: from (and by association window_start) is verified at
-			// construction.
 			let window_start = self.window_start();
-			if window_start >= self.arr.len() { crate::unreachable(); }
+			if window_start >= self.arr.len() { return None; } // Impossible.
 
 			let arr =
 				if self.arr.len() - window_start <= ZOPFLI_MASTER_BLOCK_SIZE { self.arr }

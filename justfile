@@ -54,6 +54,7 @@ skel_dir    := justfile_directory() + "/skel"
 	# Build the deb.
 	cargo-deb \
 		--no-build \
+		--quiet \
 		-p {{ pkg_id1 }} \
 		-o "{{ release_dir }}"
 

@@ -116,25 +116,6 @@ pub fn optimize(src: &[u8]) -> Option<EncodedPNG> {
 	else { None }
 }
 
-#[track_caller]
-/// # Unreachable Hint.
-///
-/// This is a simple unreachability wrapper that calls `unreachable!` when
-/// debug assertions are enabled, or the quieter `hint::unreachable_unchecked`
-/// when not.
-///
-/// Especially since the latter is unsafe, this helps prevent the compiler
-/// from making stupid inlining decisions in hot blocks. Haha.
-pub(crate) const fn unreachable() {
-	#[cfg(debug_assertions)] unreachable!();
-	#[cfg(not(debug_assertions))]
-	#[expect(unsafe_code, reason = "For hint.")]
-	// Safety: calls to this method are preceded by debug assertions verifying
-	// unreachability, or are merely reminding the compiler what it already
-	// knew to be true (but forgot because of convoluted flows).
-	unsafe { core::hint::unreachable_unchecked(); }
-}
-
 
 
 /// # Best Strategy.

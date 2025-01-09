@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.2.0"
+version = "3.2.1"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2021"
@@ -17,7 +17,7 @@ exclude = [
 
 [package.metadata.deb]
 maintainer = "Josh Stoik <josh@blobfolio.com>"
-copyright = "2024, Blobfolio, LLC <hello@blobfolio.com>"
+copyright = "2025, Blobfolio, LLC <hello@blobfolio.com>"
 license-file = ["../LICENSE", "0"]
 extended-description = """\n\
 Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of losslessly compressing JPEG and PNG images for use on the web.\n\
@@ -113,7 +113,7 @@ items = [
 
 [[package.metadata.bashman.credits]]
 name = "lodepng"
-version = "2024.10.15"
+version = "2024.12.28"
 license = "Zlib"
 authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
@@ -137,11 +137,11 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.fyi_msg]
-version = "1.4.*"
+version = "1.5.*"
 features = [ "progress" ]
 
 [dependencies.mozjpeg-sys]
-version = "=2.2.1"
+version = "=2.2.2"
 default-features = false
 features = [ "jpegtran", "nasm_simd", "unwinding" ]
 

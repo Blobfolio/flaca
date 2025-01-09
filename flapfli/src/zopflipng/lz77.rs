@@ -33,17 +33,11 @@ use super::{
 
 
 
-#[expect(unsafe_code, reason = "Seven is non-zero.")]
-/// # Seven.
-///
-/// Safety: seven is non-zero.
-const NZ07: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(7) };
+/// # Seven is Non-Zero.
+const NZ07: NonZeroU32 = NonZeroU32::new(7).unwrap();
 
-#[expect(unsafe_code, reason = "Eight is non-zero.")]
-/// # Eight.
-///
-/// Safety: eight is non-zero.
-const NZ08: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(8) };
+/// # Eight is Non-Zero.
+const NZ08: NonZeroU32 = NonZeroU32::new(8).unwrap();
 
 
 
@@ -160,9 +154,8 @@ impl<'a> LZ77StoreRange<'a> {
 	/// used to build this store. If for some reason that range cannot be
 	/// recreated, an error will be returned instead.
 	pub(crate) const fn byte_range(self) -> Result<ZopfliRange, ZopfliError> {
-		// Safety: ranged stores are never empty.
 		let len = self.entries.len();
-		if 0 == len { crate::unreachable(); }
+		if 0 == len { return Err(zopfli_error!()); } // Ranged stores are never empty.
 
 		let first = self.entries[0];
 		let last = self.entries[len - 1];
@@ -309,13 +302,11 @@ pub(crate) struct LZ77StoreRangeSplits<'a> {
 impl<'a> Iterator for LZ77StoreRangeSplits<'a> {
 	type Item = (LZ77StoreRange<'a>, LZ77StoreRange<'a>);
 
-	#[expect(unsafe_code, reason = "Entries are non-empty.")]
 	fn next(&mut self) -> Option<Self::Item> {
 		let mid = self.splits.next()?;
-		// Safety: the split range is 1..entries.len(), and we already verified
-		// (at construction) that 1 < entries.len(). All splits will be in
-		// range, and both halves will be non-empty.
-		let (a, b) = unsafe { self.entries.split_at_unchecked(mid) };
+		// The split range is 1..entries.len() and we already verified that
+		// 1 < entries.len() at construction, so this should never fail.
+		let (a, b) = self.entries.split_at_checked(mid)?;
 		Some((
 			LZ77StoreRange { entries: a },
 			LZ77StoreRange { entries: b },
@@ -431,16 +422,15 @@ impl<'a> LZ77StoreRangeSplitsChunked<'a> {
 impl<'a> Iterator for LZ77StoreRangeSplitsChunked<'a> {
 	type Item = (usize, LZ77StoreRange<'a>, LZ77StoreRange<'a>);
 
-	#[expect(unsafe_code, reason = "Entries are non-empty.")]
 	fn next(&mut self) -> Option<Self::Item> {
 		let idx = self.pos;
 		if idx < Self::SPLITS {
 			self.pos = idx + 1;
 			let mid = self.pos_at(self.pos);
 
-			// Safety: we verified the chunk size and entry count at
-			// construction.
-			let (a, b) = unsafe { self.entries.split_at_unchecked(mid) };
+			// We verified the chunk size and entry count at construction so
+			// this shouldn't fail.
+			let (a, b) = self.entries.split_at_checked(mid)?;
 			Some((
 				idx,
 				LZ77StoreRange { entries: a },

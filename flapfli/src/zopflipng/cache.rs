@@ -85,16 +85,13 @@ impl MatchCache {
 	/// The length half of `ld` defaults to one; everything else defaults to
 	/// zero.
 	pub(crate) fn init(&mut self, chunk: &ZopfliChunk<'_>) {
-		// Safety: ZopfliChunk verifies the block size is under the limit.
-		let blocksize = chunk.block_size().get();
-		if blocksize > ZOPFLI_MASTER_BLOCK_SIZE { crate::unreachable(); }
+		let blocksize = usize::min(chunk.block_size().get(), ZOPFLI_MASTER_BLOCK_SIZE);
 
 		// Lengths default to one, everything else to zero.
 		self.ld[..blocksize].fill(DEFAULT_LD);
 		self.sublen[..blocksize * SUBLEN_CACHED_LEN].fill(0);
 	}
 
-	#[expect(unsafe_code, reason = "For array cast.")]
 	/// # Find Match.
 	///
 	/// Find the sublength, distance, and length from cache, if present, and
@@ -117,10 +114,9 @@ impl MatchCache {
 		// If we have no distance, we have no cache.
 		let (cache_len, cache_dist) = ld_split(self.ld[pos]);
 		if ! cache_len.is_zero() && cache_dist == 0 { return Ok(false); }
-		// Safety: the slice has the same length as the array.
-		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = unsafe {
-			&* self.sublen[pos * SUBLEN_CACHED_LEN..(pos + 1) * SUBLEN_CACHED_LEN].as_ptr().cast()
-		};
+		let cache_sublen: &[u8; SUBLEN_CACHED_LEN] = self.sublen[pos * SUBLEN_CACHED_LEN..(pos + 1) * SUBLEN_CACHED_LEN]
+			.first_chunk::<SUBLEN_CACHED_LEN>()
+			.ok_or(zopfli_error!())?;
 
 		// Find the max sublength once, if ever.
 		let maxlength =
@@ -263,10 +259,7 @@ impl SplitCache {
 	/// Reset the first `rng.len()` bits — these ranges always start at zero —
 	/// to false so we can track a new set of indices.
 	pub(crate) fn init(&mut self, rng: ZopfliRange) {
-		// Safety: ZopfliRange checks the range is non-empty and within the
-		// limit.
-		let blocksize = rng.len().get();
-		if ZOPFLI_MASTER_BLOCK_SIZE < blocksize { crate::unreachable(); }
+		let blocksize = usize::min(rng.len().get(), ZOPFLI_MASTER_BLOCK_SIZE);
 
 		// Fill uses bytes rather than bits, so we need to round up to ensure
 		// complete coverage for our range.
@@ -336,10 +329,10 @@ impl SqueezeCache {
 	/// Note that only the costs themselves are reset; the lengths and paths
 	/// are dealt with _in situ_ during crunching (without first being read).
 	pub(crate) fn reset_costs(&mut self) -> &mut [(f32, LitLen)] {
-		// Safety: ZopfliChunk verifies the block size is under the limit and
-		// non-empty, and since costs is always blocks+1, the minimum is 2.
-		let len = self.costs_len.get();
-		if ! (2..=ZOPFLI_MASTER_BLOCK_SIZE + 1).contains(&len) { crate::unreachable(); }
+		// Clamping shouldn't be necessary as ZopfliChunk verifies the block
+		// size is under the limit and non-empty, and since costs is always
+		// blocks+1, there'll be at least two.
+		let len = self.costs_len.get().clamp(2, ZOPFLI_MASTER_BLOCK_SIZE + 1);
 
 		let costs = &mut self.costs[..len];
 		costs[0].0 = 0.0;

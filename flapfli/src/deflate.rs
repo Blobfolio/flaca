@@ -29,23 +29,14 @@ use super::{
 
 
 
-#[expect(unsafe_code, reason = "Twenty is non-zero.")]
-/// # Twenty.
-///
-/// Safety: twenty is non-zero.
-const NZ20: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(20) };
+/// # Twenty is Non-Zero.
+const NZ20: NonZeroU32 = NonZeroU32::new(20).unwrap();
 
-#[expect(unsafe_code, reason = "Sixty is non-zero.")]
-/// # Sixty.
-///
-/// Safety: sixty is Non-Zero.
-const NZ60: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(60) };
+/// # Sixty is Non-Zero.
+const NZ60: NonZeroU32 = NonZeroU32::new(60).unwrap();
 
-#[expect(unsafe_code, reason = "`i32::MAX` is non-zero.")]
 /// # Max Iterations.
-///
-/// Safety: `i32::MAX` is non-zero.
-const MAX_ITERATIONS: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(i32::MAX as u32) };
+const MAX_ITERATIONS: NonZeroU32 = NonZeroU32::new(i32::MAX as u32).unwrap();
 
 /// # Number of Zopfli LZ77 Iterations.
 ///
