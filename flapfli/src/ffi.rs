@@ -83,7 +83,7 @@ impl EncodedPNG {
 	///
 	/// (The name was chosen to help avoid conflicts with dereferenced slice
 	/// methods.)
-	pub(crate) fn is_null(&self) -> bool { self.size == 0 || self.buf.is_null() }
+	pub(crate) const fn is_null(&self) -> bool { self.size == 0 || self.buf.is_null() }
 }
 
 
