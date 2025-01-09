@@ -208,6 +208,11 @@ fn main__() -> Result<(), FlacaError> {
 	let killed = Arc::new(AtomicBool::new(false));
 	sigint(Arc::clone(&killed), progress.clone());
 
+	// Hide cursor if we've got a progress bar.
+	let hide_cursor =
+		if progress.is_some() { Some(HideCursor::new()) }
+		else { None };
+
 	// Now onto the thread business!
 	let mut undone: Vec<&Path> = Vec::new(); // Skipped because of CTRL+C or tx fail.
 	let (tx, rx) = crossbeam_channel::bounded::<&Path>(threads.get());
@@ -269,6 +274,7 @@ fn main__() -> Result<(), FlacaError> {
 	if ! undone.is_empty() { dump_undone(&undone); }
 
 	// Early abort?
+	drop(hide_cursor);
 	if killed.load(Acquire) { Err(FlacaError::Killed) }
 	else { Ok(()) }
 }
@@ -413,7 +419,11 @@ fn sigint(killed: Arc<AtomicBool>, progress: Option<Progless>) {
 		if killed.compare_exchange(false, true, SeqCst, Relaxed).is_ok() {
 			if let Some(p) = &progress { p.sigint(); }
 		}
-		else { std::process::exit(1); }
+		else {
+			// Manually unhide the cursor; the drop glue probably won't run.
+			if progress.is_some() { eprint!("{}", Progless::CURSOR_UNHIDE); }
+			std::process::exit(1);
+		}
 	);
 }
 
@@ -438,4 +448,26 @@ fn summarize(progress: &Progless, total: u64) {
 			AFTER.load(Acquire),
 		)))
 		.eprint();
+}
+
+/// # Hide Cursor.
+///
+/// This helps control the hiding and showing of the cursor during progress
+/// render. (The drop glue is key.)
+struct HideCursor(());
+
+impl Drop for HideCursor {
+	fn drop(&mut self) {
+		// Unhide the cursor.
+		eprint!("{}", Progless::CURSOR_UNHIDE);
+	}
+}
+
+impl HideCursor {
+	/// # New!
+	fn new() -> Self {
+		// Hide the cursor.
+		eprint!("{}", Progless::CURSOR_HIDE);
+		Self(())
+	}
 }
