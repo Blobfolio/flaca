@@ -125,7 +125,6 @@ dowser = "0.11.*"
 [dependencies]
 argyle = "0.10.*"
 crossbeam-channel = "=0.5.*"
-ctrlc = "=3.4.5"
 dactyl = "0.9.*"
 dowser = "0.11.*"
 libc = "0.2.*"
@@ -137,8 +136,8 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.fyi_msg]
-version = "1.5.*"
-features = [ "progress" ]
+version = "1.6.*"
+features = [ "signals" ]
 
 [dependencies.mozjpeg-sys]
 version = "=2.2.2"

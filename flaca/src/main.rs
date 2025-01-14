@@ -89,18 +89,10 @@ use std::{
 		NonZeroUsize,
 	},
 	path::Path,
-	sync::{
-		Arc,
-		atomic::{
-			AtomicBool,
-			AtomicU32,
-			AtomicU64,
-			Ordering::{
-				Acquire,
-				Relaxed,
-				SeqCst,
-			},
-		},
+	sync::atomic::{
+		AtomicU32,
+		AtomicU64,
+		Ordering::SeqCst,
 	},
 	thread,
 };
@@ -197,20 +189,14 @@ fn main__() -> Result<(), FlacaError> {
 	// Sort the paths for reproduceability.
 	paths.sort();
 
+	// Set up the killswitch.
+	let killed = Progless::sigint_two_strike();
+
 	// Boot up a progress bar, if desired.
 	let progress =
 		if progress {
 			Progless::try_from(total).ok().map(|p| p.with_reticulating_splines("Flaca"))
 		}
-		else { None };
-
-	// Set up the killswitch.
-	let killed = Arc::new(AtomicBool::new(false));
-	sigint(Arc::clone(&killed), progress.clone());
-
-	// Hide cursor if we've got a progress bar.
-	let hide_cursor =
-		if progress.is_some() { Some(HideCursor::new()) }
 		else { None };
 
 	// Now onto the thread business!
@@ -239,7 +225,7 @@ fn main__() -> Result<(), FlacaError> {
 		for path in &paths {
 			// Early abort in progress; mark as skipped instead of giving it
 			// to a worker.
-			if killed.load(Acquire) {
+			if killed.load(SeqCst) {
 				// Skip this path for sure.
 				let mut skipped = 1_u64;
 				undone.push(path);
@@ -252,12 +238,12 @@ fn main__() -> Result<(), FlacaError> {
 					skipped += (undone.len() - before) as u64;
 				}
 
-				SKIPPED.fetch_add(skipped, Relaxed);
+				SKIPPED.fetch_add(skipped, SeqCst);
 			}
 			// Add the path to the queue; this shouldn't fail, but if it does
 			// add it to our list so we can let the user know at the end.
 			else if tx.send(path).is_err() {
-				SKIPPED.fetch_add(1, Relaxed);
+				SKIPPED.fetch_add(1, SeqCst);
 				undone.push(path);
 			}
 		}
@@ -274,8 +260,7 @@ fn main__() -> Result<(), FlacaError> {
 	if ! undone.is_empty() { dump_undone(&undone); }
 
 	// Early abort?
-	drop(hide_cursor);
-	if killed.load(Acquire) { Err(FlacaError::Killed) }
+	if killed.load(SeqCst) { Err(FlacaError::Killed) }
 	else { Ok(()) }
 }
 
@@ -302,12 +287,12 @@ fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) 
 		match crate::image::encode(p, kinds) {
 			// Happy.
 			Ok((b, a)) => {
-				BEFORE.fetch_add(b, Relaxed);
-				AFTER.fetch_add(a, Relaxed);
+				BEFORE.fetch_add(b, SeqCst);
+				AFTER.fetch_add(a, SeqCst);
 			},
 			// Skipped.
 			Err(e) => {
-				SKIPPED.fetch_add(1, Relaxed);
+				SKIPPED.fetch_add(1, SeqCst);
 
 				if ! matches!(e, EncodingError::Skipped) && noteworthy(kinds, p) {
 					let _res = progress.push_msg(Msg::skipped(format!(
@@ -407,30 +392,14 @@ fn set_pixel_limit(raw: &[u8]) -> Result<(), FlacaError> {
 		.and_then(|n| n.get().checked_mul(multiplier))
 		.ok_or(FlacaError::MaxResolution)?;
 
-	MAX_RESOLUTION.store(limit, Relaxed);
+	MAX_RESOLUTION.store(limit, SeqCst);
 	Ok(())
-}
-
-/// # Hook Up CTRL+C.
-///
-/// Once stops processing new items, twice forces immediate shutdown.
-fn sigint(killed: Arc<AtomicBool>, progress: Option<Progless>) {
-	let _res = ctrlc::set_handler(move ||
-		if killed.compare_exchange(false, true, SeqCst, Relaxed).is_ok() {
-			if let Some(p) = &progress { p.sigint(); }
-		}
-		else {
-			// Manually unhide the cursor; the drop glue probably won't run.
-			if progress.is_some() { eprint!("{}", Progless::CURSOR_UNHIDE); }
-			std::process::exit(1);
-		}
-	);
 }
 
 /// # Summarize Results.
 fn summarize(progress: &Progless, total: u64) {
 	let elapsed = progress.finish();
-	let skipped = SKIPPED.load(Acquire);
+	let skipped = SKIPPED.load(SeqCst);
 	if skipped == 0 {
 		progress.summary(MsgKind::Crunched, "image", "images")
 	}
@@ -444,30 +413,8 @@ fn summarize(progress: &Progless, total: u64) {
 		))
 	}
 		.with_bytes_saved(BeforeAfter::from((
-			BEFORE.load(Acquire),
-			AFTER.load(Acquire),
+			BEFORE.load(SeqCst),
+			AFTER.load(SeqCst),
 		)))
 		.eprint();
-}
-
-/// # Hide Cursor.
-///
-/// This helps control the hiding and showing of the cursor during progress
-/// render. (The drop glue is key.)
-struct HideCursor(());
-
-impl Drop for HideCursor {
-	fn drop(&mut self) {
-		// Unhide the cursor.
-		eprint!("{}", Progless::CURSOR_UNHIDE);
-	}
-}
-
-impl HideCursor {
-	/// # New!
-	fn new() -> Self {
-		// Hide the cursor.
-		eprint!("{}", Progless::CURSOR_HIDE);
-		Self(())
-	}
 }
