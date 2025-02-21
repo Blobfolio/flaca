@@ -29,24 +29,16 @@ As a general rule, you should _not_ try to feed your entire personal media libra
 
 Debian and Ubuntu users can just grab the pre-built `.deb` package from the [latest release](https://github.com/Blobfolio/flaca/releases/latest).
 
-This application is written in [Rust](https://www.rust-lang.org/) and can alternatively be built from source using [Cargo](https://github.com/rust-lang/cargo):
+This application is written in [Rust](https://www.rust-lang.org/) and can alternatively be built/installed from source using [Cargo](https://github.com/rust-lang/cargo):
 
 ```bash
-# Clone the source.
-git clone https://github.com/Blobfolio/flaca.git
-
-# Go to it.
-cd flaca
-
-# Build as usual.
-cargo build \
-    --bin flaca \
-    --release
+# See "cargo install --help" for more options.
+cargo install \
+    --git https://github.com/Blobfolio/flaca.git \
+    --bin flaca
 ```
 
-(This should work under other 64-bit Unix environments too, like MacOS.)
-
-In addition to up-to-date `Rust`/`Cargo`, you'll also need `gcc`/`clang`, `make`, `nasm`, and the dev libraries for `libjpeg` and `libpng`.
+Note that when building from source, you'll need to have `make`, `nasm`, and the development headers for `libjpeg` and `libpng` installed beforehand or Cargo will pop an error. (If that happens, just install the missing thing and try again.)
 
 
 
