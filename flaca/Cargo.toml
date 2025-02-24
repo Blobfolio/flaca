@@ -119,17 +119,20 @@ authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
-argyle = "0.10.*"
+argyle = "0.11.*"
 dowser = "0.11.*"
 
 [dependencies]
-argyle = "0.10.*"
 crossbeam-channel = "=0.5.*"
 dactyl = "0.9.*"
 dowser = "0.11.*"
 libc = "0.2.*"
 utc2k = "0.11.*"
 write_atomic = "0.5.*"
+
+[dependencies.argyle]
+version = "0.11.*"
+features = [ "try_paths" ]
 
 [dependencies.flapfli]
 version = "*"

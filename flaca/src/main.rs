@@ -129,7 +129,7 @@ fn main() -> ExitCode {
 			ExitCode::SUCCESS
 		},
 		Err(e) => {
-			Msg::error(e).eprint();
+			Msg::error(e.to_string()).eprint();
 			ExitCode::FAILURE
 		},
 	}
@@ -174,9 +174,11 @@ fn main__() -> Result<(), FlacaError> {
 				}
 			},
 
-			// Assume these are paths.
-			Argument::Other(s) => { paths = paths.with_path(s); },
-			Argument::InvalidUtf8(s) => { paths = paths.with_path(s); },
+			Argument::Path(s) => { paths = paths.with_path(s); },
+
+			// Mistakes?
+			Argument::Other(s) => return Err(FlacaError::InvalidCli(s)),
+			Argument::InvalidUtf8(s) => return Err(FlacaError::InvalidCli(s.to_string_lossy().into_owned())),
 
 			// Nothing else is relevant.
 			_ => {},
