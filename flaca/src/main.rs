@@ -89,6 +89,7 @@ use std::{
 		NonZeroUsize,
 	},
 	path::Path,
+	process::ExitCode,
 	sync::atomic::{
 		AtomicU32,
 		AtomicU64,
@@ -120,13 +121,17 @@ static AFTER: AtomicU64 = AtomicU64::new(0);
 ///
 /// This shell provides us a way to easily handle error responses. Actual
 /// processing is done by `main__()`.
-fn main() {
+fn main() -> ExitCode {
 	match main__() {
-		Ok(()) => {},
+		Ok(()) => ExitCode::SUCCESS,
 		Err(e @ (FlacaError::PrintHelp | FlacaError::PrintVersion)) => {
 			println!("{e}");
+			ExitCode::SUCCESS
 		},
-		Err(e) => { Msg::error(e).die(1); },
+		Err(e) => {
+			Msg::error(e).eprint();
+			ExitCode::FAILURE
+		},
 	}
 }
 
