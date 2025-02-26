@@ -88,7 +88,10 @@ use std::{
 		NonZeroU32,
 		NonZeroUsize,
 	},
-	path::Path,
+	path::{
+		Path,
+		PathBuf,
+	},
 	process::ExitCode,
 	sync::atomic::{
 		AtomicU32,
@@ -186,7 +189,7 @@ fn main__() -> Result<(), FlacaError> {
 	}
 
 	// Find and sort the images!
-	let mut paths = paths.into_vec_filtered(dowser_filter);
+	let mut paths = paths.filter(dowser_filter).collect::<Vec<_>>();
 
 	// Make sure we have paths, and if we only have a few, reduce the
 	// number of threads accordingly.
@@ -325,7 +328,7 @@ fn crunch_quiet(rx: &Receiver::<&Path>, kinds: ImageKind) {
 
 #[inline]
 /// # Dowser Filter.
-fn dowser_filter(p: &Path) -> bool {
+fn dowser_filter(p: &PathBuf) -> bool {
 	Extension::try_from3(p).map_or_else(
 		|| Some(E_JPEG) == Extension::try_from4(p),
 		|e| e == E_JPG || e == E_PNG
