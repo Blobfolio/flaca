@@ -112,24 +112,38 @@ pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> N
 		// If we already have an allocation, resize it if needed.
 		if let Some(nn) = NonNull::new(ptr) {
 			// Get the allocation details.
-			let (real_ptr, old_size) = size_and_ptr(nn);
+			// Safety: see the other side.
+			let (real_ptr, old_size) = unsafe { size_and_ptr(nn) };
 
 			// Return it as-was if the allocation is already sufficient.
 			if old_size >= new_size { return nn; }
 
-			realloc(real_ptr.as_ptr(), layout_for(old_size), size_of::<usize>() + new_size.get())
+			// Safety: old and new should match.
+			unsafe {
+				realloc(
+					real_ptr.as_ptr(),
+					layout_for(old_size),
+					size_of::<usize>() + new_size.get(),
+				)
+			}
 		}
 		// Otherwise get the allocation train up and running!
-		else { alloc(layout_for(new_size)) };
+		else {
+			// Safety: the layout is valid.
+			unsafe { alloc(layout_for(new_size)) }
+		};
 
+	#[expect(clippy::undocumented_unsafe_blocks, reason = "Doesn't fit. Haha.")]
 	// Make sure we actually achieved allocation; this shouldn't fail, but
 	// might?
 	let real_ptr = NonNull::new(real_ptr)
-		.unwrap_or_else(#[inline(never)] || handle_alloc_error(layout_for(new_size)));
+		.unwrap_or_else(#[inline(never)] || handle_alloc_error(unsafe { layout_for(new_size) }));
 
 	// Safety: the layout is aligned to usize.
-	real_ptr.cast::<usize>().write(new_size.get()); // Write the length.
-	real_ptr.add(size_of::<usize>())                // Return the rest.
+	unsafe {
+		real_ptr.cast::<usize>().write(new_size.get()); // Write the length.
+		real_ptr.add(size_of::<usize>())                // Return the rest.
+	}
 }
 
 #[expect(unsafe_code, reason = "For alloc.")]
@@ -141,36 +155,46 @@ pub(crate) unsafe fn flapfli_allocate(ptr: *mut u8, new_size: NonZeroUsize) -> N
 /// `flapfli_allocate`. Refer to that method's documentation for the how and
 /// why.
 pub(crate) unsafe fn flapfli_free(ptr: NonNull<u8>) {
-	let (ptr, size) = size_and_ptr(ptr);
-	dealloc(ptr.as_ptr(), layout_for(size));
+	// Safety: C sucks; we have to have some trust that they're giving us our
+	// own pointers back. Haha.
+	unsafe {
+		let (ptr, size) = size_and_ptr(ptr);
+		dealloc(ptr.as_ptr(), layout_for(size));
+	}
 }
 
 
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[expect(unsafe_code, reason = "For FFI.")]
 /// # Lodepng-specific Free.
 ///
 /// This override allows lodepng to use `flapfli_free` for pointer
 /// deallocation.
 unsafe extern "C" fn lodepng_free(ptr: *mut c_void) {
-	if let Some(nn) = NonNull::new(ptr.cast()) { flapfli_free(nn); }
+	if let Some(nn) = NonNull::new(ptr.cast()) {
+		// Safety: it's non-null at least.
+		unsafe { flapfli_free(nn); }
+	}
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[expect(unsafe_code, reason = "For FFI.")]
 /// # Lodepng-specific Malloc.
 ///
 /// This override allows lodepng to use `flapfli_allocate` for pointer
 /// allocation.
 unsafe extern "C" fn lodepng_malloc(size: usize) -> *mut c_void {
-	flapfli_allocate(
-		std::ptr::null_mut(),
-		NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN),
-	).as_ptr().cast()
+	// Safety: see flapfli_allocate.
+	unsafe {
+		flapfli_allocate(
+			std::ptr::null_mut(),
+			NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN),
+		).as_ptr().cast()
+	}
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[expect(unsafe_code, reason = "For FFI.")]
 /// # Lodepng-specific Realloc.
 ///
@@ -178,10 +202,13 @@ unsafe extern "C" fn lodepng_malloc(size: usize) -> *mut c_void {
 /// resizing. For reasons, this will sometimes receive a null pointer, so isn't
 /// really any different than `lodepng_malloc`.
 unsafe extern "C" fn lodepng_realloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
-	flapfli_allocate(
-		ptr.cast(),
-		NonZeroUsize::new(new_size).unwrap_or(NonZeroUsize::MIN),
-	).as_ptr().cast()
+	// Safety: see flapfli_allocate.
+	unsafe {
+		flapfli_allocate(
+			ptr.cast(),
+			NonZeroUsize::new(new_size).unwrap_or(NonZeroUsize::MIN),
+		).as_ptr().cast()
+	}
 }
 
 
@@ -194,7 +221,13 @@ unsafe extern "C" fn lodepng_realloc(ptr: *mut c_void, new_size: usize) -> *mut 
 /// This returns an appropriately sized and aligned layout with room at the
 /// beginning to hold our "secret" length information.
 const unsafe fn layout_for(size: NonZeroUsize) -> Layout {
-	Layout::from_size_align_unchecked(size_of::<usize>() + size.get(), align_of::<usize>())
+	// Safety: size is non-zero.
+	unsafe {
+		Layout::from_size_align_unchecked(
+			size_of::<usize>() + size.get(),
+			align_of::<usize>(),
+		)
+	}
 }
 
 #[expect(unsafe_code, reason = "For alloc.")]
@@ -207,14 +240,18 @@ const unsafe fn layout_for(size: NonZeroUsize) -> Layout {
 /// length details), returning it and the "size" that can be written to
 /// willynilly (i.e. everything minus the extra length-holding portion).
 const unsafe fn size_and_ptr(ptr: NonNull<u8>) -> (NonNull<u8>, NonZeroUsize) {
-	// Subtract our way to the "real" beginning of the pointer.
-	let size_and_data_ptr = ptr.sub(size_of::<usize>());
+	// Safety: the pointer is non-null and assuming it's ours, is properly
+	// aligned and advanced one usize. C sucks. Haha.
+	unsafe {
+		// Subtract our way to the "real" beginning of the pointer.
+		let size_and_data_ptr = ptr.sub(size_of::<usize>());
 
-	// Safety: the size comes from a NonZeroUsize so can be turned back into
-	// one.
-	let size = NonZeroUsize::new_unchecked(size_and_data_ptr.cast::<usize>().read());
+		// Safety: the size comes from a NonZeroUsize so can be turned back into
+		// one.
+		let size = NonZeroUsize::new_unchecked(size_and_data_ptr.cast::<usize>().read());
 
-	(size_and_data_ptr, size)
+		(size_and_data_ptr, size)
+	}
 }
 
 

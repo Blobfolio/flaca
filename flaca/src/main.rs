@@ -54,6 +54,7 @@
 
 
 
+mod crawl;
 mod error;
 mod image;
 
@@ -64,6 +65,7 @@ pub(crate) use error::{
 pub(crate) use image::kind::ImageKind;
 
 use argyle::Argument;
+use crawl::Crawler;
 use crossbeam_channel::Receiver;
 use dactyl::{
 	NiceElapsed,
@@ -73,10 +75,7 @@ use dactyl::{
 		NiceInflection,
 	},
 };
-use dowser::{
-	Dowser,
-	Extension,
-};
+use dowser::Extension;
 use fyi_msg::{
 	BeforeAfter,
 	Msg,
@@ -89,6 +88,7 @@ use std::{
 		NonZeroUsize,
 	},
 	path::Path,
+	process::ExitCode,
 	sync::atomic::{
 		AtomicU32,
 		AtomicU64,
@@ -120,13 +120,17 @@ static AFTER: AtomicU64 = AtomicU64::new(0);
 ///
 /// This shell provides us a way to easily handle error responses. Actual
 /// processing is done by `main__()`.
-fn main() {
+fn main() -> ExitCode {
 	match main__() {
-		Ok(()) => {},
+		Ok(()) => ExitCode::SUCCESS,
 		Err(e @ (FlacaError::PrintHelp | FlacaError::PrintVersion)) => {
 			println!("{e}");
+			ExitCode::SUCCESS
 		},
-		Err(e) => { Msg::error(e).die(1); },
+		Err(e) => {
+			Msg::error(e.to_string()).eprint();
+			ExitCode::FAILURE
+		},
 	}
 }
 
@@ -141,21 +145,20 @@ fn main__() -> Result<(), FlacaError> {
 
 	let mut kinds = ImageKind::All;
 	let mut threads = None;
-	let mut paths = Dowser::default();
+	let mut paths = Crawler::new();
 	let mut progress = false;
 	for arg in args {
 		match arg {
 			Argument::Key("-h" | "--help") => return Err(FlacaError::PrintHelp),
 			Argument::Key("--no-jpg" | "--no-jpeg") => { kinds = kinds.diff(ImageKind::Jpeg)?; },
 			Argument::Key("--no-png") => { kinds = kinds.diff(ImageKind::Png)?; },
+			Argument::Key("--no-symlinks") => { paths.no_symlinks(); },
 			Argument::Key("-p" | "--progress") => { progress = true; },
 			Argument::Key("-V" | "--version") => return Err(FlacaError::PrintVersion),
 
 			Argument::KeyWithValue("-j", s) => { threads.replace(s); },
 
-			Argument::KeyWithValue("-l" | "--list", s) => {
-				paths.read_paths_from_file(s).map_err(|_| FlacaError::ListFile)?;
-			},
+			Argument::KeyWithValue("-l" | "--list", s) => { paths.push_list(s); },
 
 			Argument::KeyWithValue("--max-resolution", s) => {
 				set_pixel_limit(s.trim().as_bytes())?;
@@ -169,25 +172,22 @@ fn main__() -> Result<(), FlacaError> {
 				}
 			},
 
-			// Assume these are paths.
-			Argument::Other(s) => { paths = paths.with_path(s); },
-			Argument::InvalidUtf8(s) => { paths = paths.with_path(s); },
+			Argument::Path(s) => { paths.push_path(s); },
+
+			// Mistakes?
+			Argument::Other(s) => return Err(FlacaError::InvalidCli(s)),
+			Argument::InvalidUtf8(s) => return Err(FlacaError::InvalidCli(s.to_string_lossy().into_owned())),
 
 			// Nothing else is relevant.
 			_ => {},
 		}
 	}
 
-	// Find and sort the images!
-	let mut paths = paths.into_vec_filtered(dowser_filter);
-
 	// Make sure we have paths, and if we only have a few, reduce the
 	// number of threads accordingly.
+	let paths = paths.crawl()?;
 	let total = NonZeroUsize::new(paths.len()).ok_or(FlacaError::NoImages)?;
 	let threads = max_threads(threads, total);
-
-	// Sort the paths for reproduceability.
-	paths.sort();
 
 	// Set up the killswitch.
 	let killed = Progless::sigint_two_strike();
@@ -314,15 +314,6 @@ fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) 
 /// paths and crunches them, then quits when the work has dried up.
 fn crunch_quiet(rx: &Receiver::<&Path>, kinds: ImageKind) {
 	while let Ok(p) = rx.recv() { let _res = crate::image::encode(p, kinds); }
-}
-
-#[inline]
-/// # Dowser Filter.
-fn dowser_filter(p: &Path) -> bool {
-	Extension::try_from3(p).map_or_else(
-		|| Some(E_JPEG) == Extension::try_from4(p),
-		|e| e == E_JPG || e == E_PNG
-	)
 }
 
 #[cold]

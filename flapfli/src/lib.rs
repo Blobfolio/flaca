@@ -140,11 +140,10 @@ fn best_strategy(img: &DecodedImage, enc: &mut LodePNGState) -> LodePNGFilterStr
 		LodePNGFilterStrategy::LFS_BRUTE_FORCE,
 	] {
 		enc.set_strategy(strategy);
-		if let Some(out) = enc.encode(img) {
-			if out.size < best_size {
-				best_size = out.size;
-				best_strategy = strategy;
-			}
+		let Some(out) = enc.encode(img) else { continue; };
+		if out.size < best_size {
+			best_size = out.size;
+			best_strategy = strategy;
 		}
 	}
 

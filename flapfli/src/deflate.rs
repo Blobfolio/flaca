@@ -52,7 +52,7 @@ static NUM_ITERATIONS: OnceLock<NonZeroU32> = OnceLock::new();
 
 
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[expect(unsafe_code, reason = "For FFI.")]
 /// # Custom PNG Deflate.
 ///
@@ -186,10 +186,13 @@ impl ZopfliOut {
 		/// Safety: allocation requires unsafe, but this should be safer than
 		/// leaving everything to C!
 		unsafe fn alloc_cold(ptr: *mut u8, size: usize) -> NonNull<u8> {
-			flapfli_allocate(
-				ptr,
-				NonZeroUsize::new(size * 2).unwrap_or(NonZeroUsize::MIN),
-			)
+			// Safety: see above.
+			unsafe {
+				flapfli_allocate(
+					ptr,
+					NonZeroUsize::new(size * 2).unwrap_or(NonZeroUsize::MIN),
+				)
+			}
 		}
 
 		// Safety: our allocation wrappers check the pointer is non-null and

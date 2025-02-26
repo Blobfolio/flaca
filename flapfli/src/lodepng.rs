@@ -58,7 +58,7 @@ mod bindings {
 
 
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[expect(unsafe_code, reason = "For FFI.")]
 #[expect(clippy::inline_always, reason = "For performance.")]
 #[inline(always)]

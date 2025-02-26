@@ -52,10 +52,13 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 
 		// Mozjpeg usually panics on error, so we have to do a weird little
 		// dance to keep it from killing the whole thread.
-		if let Ok(r) = std::panic::catch_unwind(move || {
+		let raw2 = std::panic::catch_unwind(move || {
 			encode_mozjpeg(&mut raw);
 			raw
-		}) { raw = r; }
+		});
+
+		// Move it back.
+		if let Ok(r) = raw2 { raw = r; }
 		// Abort without changing anything; raw might be tainted.
 		else { return Ok((before, before)); }
 
