@@ -56,6 +56,7 @@ The following flags and options are available:
 | | `--max-resolution` | `<NUM>` | Skip images containing more than `<NUM>` total pixels. |
 | | `--no-jpeg` | | Skip JPEG images. |
 | | `--no-png` | | Skip PNG Images. |
+| | `--no-symlinks` | | Ignore symlinks (rather than following them). |
 | `-z` | `--zopfli-iterations` | `<NUM>` | Override the number of zopfli iterations when compressing PNGs. |
 | `-p` | `--progress` | | Show pretty progress while minifying. |
 | `-V` | `--version` | | Print version information and exit. |

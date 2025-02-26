@@ -35,6 +35,7 @@ fn build_cli() {
 		"-h", "--help",
 		"--no-jpg", "--no-jpeg",
 		"--no-png",
+		"--no-symlinks",
 		"-p", "--progress",
 		"-V", "--version",
 	]);

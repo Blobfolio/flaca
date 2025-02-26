@@ -36,6 +36,7 @@ FLAGS:
     -h, --help        Print help information and exit.
         --no-jpeg     Skip JPEG images.
         --no-png      Skip PNG images.
+        --no-symlinks Ignore symlinks (rather than following them).
     -p, --progress    Show pretty progress while minifying.
     -V, --version     Print version information and exit.
 

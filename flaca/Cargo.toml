@@ -52,6 +52,10 @@ long = "--no-png"
 description = "Skip PNG images."
 
 [[package.metadata.bashman.switches]]
+long = "--no-symlinks"
+description = "Ignore symlinks (rather than following them)."
+
+[[package.metadata.bashman.switches]]
 short = "-p"
 long = "--progress"
 description = "Show pretty progress while minifying."
