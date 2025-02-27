@@ -205,19 +205,10 @@ fn main__() -> Result<(), FlacaError> {
 	thread::scope(#[inline(always)] |s| {
 		// Set up the worker threads, either with or without progress.
 		let mut workers = Vec::with_capacity(threads.get());
-		if let Some(p) = progress.as_ref() {
-			for _ in 0..threads.get() {
-				workers.push(
-					s.spawn(#[inline(always)] || crunch_pretty(&rx, p, kinds))
-				);
-			}
-		}
-		else {
-			for _ in 0..threads.get() {
-				workers.push(
-					s.spawn(#[inline(always)] || crunch_quiet(&rx, kinds))
-				);
-			}
+		for _ in 0..threads.get() {
+			workers.push(
+				s.spawn(#[inline(always)] || crunch(&rx, kinds, progress.as_ref()))
+			);
 		}
 
 		// Queue up all the image paths!
@@ -265,12 +256,12 @@ fn main__() -> Result<(), FlacaError> {
 }
 
 #[inline(never)]
-/// # Worker Callback (Pretty).
+/// # Worker Callback.
 ///
-/// This is the worker callback for pretty crunching. It listens for "new"
-/// image paths and crunches them — and updates the progress bar, etc. —
-/// then quits when the work has dried up.
-fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) {
+/// This is the worker callback for image crunching. It listens for "new" image
+/// paths and crunches them — and maybe updates the progress bar, etc. — then
+/// quits as soon as the work has dried up.
+fn crunch(rx: &Receiver::<&Path>, kinds: ImageKind, progress: Option<&Progless>) {
 	#[expect(clippy::inline_always, reason = "For performance.")]
 	#[inline(always)]
 	/// # Noteworthy Failure?
@@ -279,6 +270,12 @@ fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) 
 		else if Some(E_PNG) == Extension::try_from3(p) { kinds.supports_png() }
 		else { kinds.supports_jpeg() }
 	}
+
+	// We might not need to do all the fancy pretty business.
+	let Some(progress) = progress else {
+		while let Ok(p) = rx.recv() { let _res = crate::image::encode(p, kinds); }
+		return;
+	};
 
 	while let Ok(p) = rx.recv() {
 		let name = p.to_string_lossy();
@@ -305,15 +302,6 @@ fn crunch_pretty(rx: &Receiver::<&Path>, progress: &Progless, kinds: ImageKind) 
 
 		progress.remove(&name);
 	}
-}
-
-#[inline(never)]
-/// # Worker Callback (Quiet).
-///
-/// This is the worker callback for quiet crunching. It listens for "new" image
-/// paths and crunches them, then quits when the work has dried up.
-fn crunch_quiet(rx: &Receiver::<&Path>, kinds: ImageKind) {
-	while let Ok(p) = rx.recv() { let _res = crate::image::encode(p, kinds); }
 }
 
 #[cold]
