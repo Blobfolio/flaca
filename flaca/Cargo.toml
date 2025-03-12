@@ -143,7 +143,7 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.fyi_msg]
-version = "1.7.*"
+version = "1.8.*"
 features = [ "signals" ]
 
 [dependencies.mozjpeg-sys]
