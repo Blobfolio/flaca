@@ -403,7 +403,7 @@ fn new_err() -> Box<jpeg_error_mgr> {
 /// # Error Message.
 ///
 /// This is a noop method; no error message is printed.
-extern "C-unwind" fn silence_message(_cinfo: &mut jpeg_common_struct, _msg_level: c_int) {}
+const extern "C-unwind" fn silence_message(_cinfo: &mut jpeg_common_struct, _msg_level: c_int) {}
 
 #[cold]
 /// # Error Exit.

@@ -229,7 +229,7 @@ impl LodePNGState {
 	}
 
 	/// # Change Strategies.
-	pub(super) fn set_strategy(&mut self, strategy: LodePNGFilterStrategy) {
+	pub(super) const fn set_strategy(&mut self, strategy: LodePNGFilterStrategy) {
 		self.encoder.filter_strategy = strategy;
 	}
 
