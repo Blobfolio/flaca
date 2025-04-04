@@ -231,7 +231,7 @@ impl MatchCache {
 
 			// If we're still below the limit, copy (only) the length to the
 			// last slot to simplify any subsequent max_length lookups.
-			if let Some([d0, _, _]) = dst.last() { *d0 = length.to_packed_u8(); }
+			if let Some([d0, _, _]) = dst.next_back() { *d0 = length.to_packed_u8(); }
 		}
 
 		Ok(())
@@ -280,7 +280,7 @@ impl SplitCache {
 
 	#[inline]
 	/// # Mark as Checked.
-	pub(crate) fn set(&mut self, pos: usize) {
+	pub(crate) const fn set(&mut self, pos: usize) {
 		let idx = pos.wrapping_div(8); // The byte.
 		let mask: u8 = 1 << (pos % 8); // The bit.
 		if idx < SPLIT_CACHE_LEN { self.set[idx] |= mask; }

@@ -115,7 +115,7 @@ pub(crate) extern "C" fn flaca_png_deflate(
 			chunk.total_len().get() == arr.len(),
 			chunk,
 			&mut dst,
-		)).is_err() { return 1; };
+		)).is_err() { return 1; }
 
 		#[cfg(debug_assertions)]
 		if let Err(e) = STATE.with_borrow_mut(|state| deflate_part(

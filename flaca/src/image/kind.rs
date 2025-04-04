@@ -103,7 +103,7 @@ impl ImageKind {
 					if depth < 0 { return None; }
 				},
 				_ => {},
-			};
+			}
 
 			// Fast forward through the remainder of the section.
 			if 2 < rest.len() {

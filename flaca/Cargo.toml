@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.3.0"
+version = "3.3.1"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -123,7 +123,7 @@ authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
-argyle = "0.11.*"
+argyle = "0.12.*"
 dowser = "0.12.*"
 
 [dependencies]
@@ -135,7 +135,7 @@ utc2k = "0.12.*"
 write_atomic = "0.6.*"
 
 [dependencies.argyle]
-version = "0.11.*"
+version = "0.12.*"
 features = [ "try_paths" ]
 
 [dependencies.flapfli]
@@ -143,7 +143,7 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.fyi_msg]
-version = "1.7.*"
+version = "2.0.*"
 features = [ "signals" ]
 
 [dependencies.mozjpeg-sys]

@@ -41,7 +41,7 @@ impl RanState {
 	///
 	/// A simple, repeatable [MWC PRNG](https://en.wikipedia.org/wiki/Multiply-with-carry_pseudorandom_number_generator),
 	/// used to shuffle frequencies between runs.
-	fn randomize(&mut self) -> u32 {
+	const fn randomize(&mut self) -> u32 {
 		self.m_z = 36_969 * (self.m_z & 65_535) + (self.m_z >> 16);
 		self.m_w = 18_000 * (self.m_w & 65_535) + (self.m_w >> 16);
 		(self.m_z << 16).wrapping_add(self.m_w)

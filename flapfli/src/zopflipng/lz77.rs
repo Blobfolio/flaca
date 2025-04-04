@@ -400,13 +400,13 @@ impl<'a> LZ77StoreRangeSplitsChunked<'a> {
 	/// anew.
 	///
 	/// Regardless, the mid point between start and end is returned.
-	pub(crate) fn reset(&mut self, n: usize) -> NonZeroUsize {
+	pub(crate) const fn reset(&mut self, n: usize) -> NonZeroUsize {
 		// Find the midpoint first; the new start and end are relative to it.
 		// Safety: chunk and (n+1) are both non-zero.
 		let mid = unsafe { NonZeroUsize::new_unchecked(self.pos_at(n + 1)) };
 
 		// Tweak the ranges.
-		if 0 != n { self.start = mid.get() - self.chunk.get(); };
+		if 0 != n { self.start = mid.get() - self.chunk.get(); }
 		if n + 1 < Self::SPLITS { self.end = mid.get() + self.chunk.get(); }
 
 		// If we're still chunkable, reset for another round!

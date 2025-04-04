@@ -61,7 +61,7 @@ impl ZopfliRange {
 	///
 	/// Adjust the start and end positions of the range so long as the new
 	/// values satisfy the struct's requirements, otherwise an error.
-	pub(crate) fn set(&mut self, start: usize, end: usize) -> Result<(), ZopfliError> {
+	pub(crate) const fn set(&mut self, start: usize, end: usize) -> Result<(), ZopfliError> {
 		if start < end && end - start <= ZOPFLI_MASTER_BLOCK_SIZE {
 			self.start = start;
 			self.end = end;
