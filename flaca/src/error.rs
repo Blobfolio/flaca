@@ -180,7 +180,7 @@ impl FlacaError {
 	pub(super) const fn as_str(&self) -> &'static str {
 		match self {
 			Self::InvalidCli(_) => "Invalid/unknown argument:",
-			Self::Killed => "The process was aborted early.",
+			Self::Killed => "The process was killed. 🕱",
 			Self::ListFile => "Invalid -l/--list text file.",
 			Self::NoImages => "No images were found.",
 			Self::MaxResolution => "Pixel limits must be between 1..=4_294_967_295.",

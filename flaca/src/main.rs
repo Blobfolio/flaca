@@ -127,6 +127,10 @@ fn main() -> ExitCode {
 			println!("{e}");
 			ExitCode::SUCCESS
 		},
+		Err(FlacaError::Killed) => {
+			Msg::aborted(FlacaError::Killed.as_str()).eprint();
+			ExitCode::FAILURE
+		},
 		Err(e) => {
 			Msg::error(e.to_string()).eprint();
 			ExitCode::FAILURE
