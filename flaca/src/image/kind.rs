@@ -59,20 +59,14 @@ impl ImageKind {
 	/// # Is JPEG?
 	pub(crate) fn is_jpeg(src: &[u8]) -> bool {
 		12 < src.len() &&
-		src[..3] == [0xFF, 0xD8, 0xFF] &&
-		(
-			(src[3] == 0xE0 && src[6..11] == [b'J', b'F', b'I', b'F', 0x00]) ||
-			(src[3] == 0xE1 && src[6..11] == [b'E', b'x', b'i', b'f', 0x00]) ||
-			(src[3] == 0xE8 && src[6..12] == [b'S', b'P', b'I', b'F', b'F', 0x00]) ||
-			(matches!(src[3], 0xDB | 0xE0..=0xEF) && src[src.len() - 2..] == [0xFF, 0xD9])
-		)
+		src[..3] == [0xFF, 0xD8, 0xFF]
 	}
 
 	#[expect(clippy::inline_always, reason = "For performance.")]
 	#[inline(always)]
 	/// # Is PNG?
 	pub(crate) fn is_png(src: &[u8]) -> bool {
-		8 < src.len() && src[..8] == [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n']
+		12 < src.len() && src[..8] == [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n']
 	}
 }
 
@@ -168,6 +162,7 @@ mod tests {
 			("../skel/assets/jpg/22.jpg", 267, 150),
 			("../skel/assets/jpg/23.jpg", 330, 313),
 			("../skel/assets/jpg/24.jpg", 1076, 1500),
+			("../skel/assets/jpg/25.jpg", 1400, 1400),
 			("../skel/assets/wolf.png", 600, 800),
 
 			// And because JPEGs are so weird, let's double-check our work
@@ -268,6 +263,7 @@ mod tests {
 			"../skel/assets/jpg/22.jpg" Some(ImageKind::Jpeg),
 			"../skel/assets/jpg/23.jpg" Some(ImageKind::Jpeg),
 			"../skel/assets/jpg/24.jpg" Some(ImageKind::Jpeg),
+			"../skel/assets/jpg/25.jpg" Some(ImageKind::Jpeg),
 			"../skel/assets/png/01.png" Some(ImageKind::Png),
 			"../skel/assets/png/02.png" Some(ImageKind::Png),
 			"../skel/assets/png/03.png" Some(ImageKind::Png),
