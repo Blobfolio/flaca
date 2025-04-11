@@ -93,10 +93,12 @@ use std::{
 	},
 	path::Path,
 	process::ExitCode,
-	sync::atomic::{
-		AtomicU32,
-		AtomicU64,
-		Ordering::SeqCst,
+	sync::{
+		atomic::{
+			AtomicU64,
+			Ordering::SeqCst,
+		},
+		OnceLock,
 	},
 	thread,
 };
@@ -107,7 +109,7 @@ use std::{
 include!(concat!(env!("OUT_DIR"), "/flaca-extensions.rs"));
 
 /// # Maximum Resolution.
-pub(crate) static MAX_RESOLUTION: AtomicU32 = AtomicU32::new(0);
+static MAX_RESOLUTION: OnceLock<NonZeroU32> =OnceLock::new();
 
 /// # Total Skipped.
 static SKIPPED: AtomicU64 = AtomicU64::new(0);
@@ -379,12 +381,12 @@ fn set_pixel_limit(raw: &[u8]) -> Result<(), FlacaError> {
 		};
 
 	let len = raw.len() - usize::from(multiplier != 1);
-	let limit = NonZeroU32::btou(&raw[..len])
-		.and_then(|n| n.get().checked_mul(multiplier))
+	let limit = u32::btou(&raw[..len])
+		.and_then(|n| n.checked_mul(multiplier))
+		.and_then(NonZeroU32::new)
 		.ok_or(FlacaError::MaxResolution)?;
 
-	MAX_RESOLUTION.store(limit, SeqCst);
-	Ok(())
+	MAX_RESOLUTION.set(limit).map_err(|_| FlacaError::MaxResolution)
 }
 
 /// # Summarize Results.
