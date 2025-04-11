@@ -9,10 +9,7 @@ pub(super) mod kind;
 
 use crate::MAX_RESOLUTION;
 use kind::ImageKind;
-use std::{
-	path::Path,
-	sync::atomic::Ordering::Relaxed,
-};
+use std::path::Path;
 use super::EncodingError;
 
 
@@ -94,8 +91,7 @@ fn check_resolution(kind: ImageKind, src: &[u8]) -> Result<(), EncodingError> {
 	let res = w.checked_mul(h).ok_or(EncodingError::Resolution)?;
 
 	// And finally check the limit.
-	let max = MAX_RESOLUTION.load(Relaxed);
-	if max == 0 || res.get() <= max { Ok(()) }
+	if MAX_RESOLUTION.get().is_none_or(|&max| res <= max) { Ok(()) }
 	else { Err(EncodingError::Resolution) }
 }
 

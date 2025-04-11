@@ -1,8 +1,8 @@
 # Project Dependencies
     Package:   flaca
-    Version:   3.3.1
+    Version:   3.3.2
     Target:    x86_64-unknown-linux-gnu
-    Generated: 2025-04-04 02:09:41 UTC
+    Generated: 2025-04-11 06:27:59 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -12,12 +12,12 @@
 | [bitflags](https://github.com/bitflags/bitflags) | 2.9.0 | The Rust Project Developers | MIT OR Apache-2.0 |
 | [bitvec](https://github.com/bitvecto-rs/bitvec) | 1.0.1 |  | MIT |
 | [bytemuck](https://github.com/Lokathor/bytemuck) | 1.22.0 | [Lokathor](mailto:zefria@gmail.com) | Zlib OR Apache-2.0 OR MIT |
-| [**cc**](https://github.com/rust-lang/cc-rs) ⚒️ | 1.2.17 | [Alex Crichton](mailto:alex@alexcrichton.com) | MIT OR Apache-2.0 |
+| [**cc**](https://github.com/rust-lang/cc-rs) ⚒️ | 1.2.18 | [Alex Crichton](mailto:alex@alexcrichton.com) | MIT OR Apache-2.0 |
 | [cexpr](https://github.com/jethrogb/rust-cexpr) ⚒️ | 0.6.0 | [Jethro Beekman](mailto:jethro@jbeekman.nl) | Apache-2.0 OR MIT |
 | [cfg-if](https://github.com/alexcrichton/cfg-if) | 1.0.0 | [Alex Crichton](mailto:alex@alexcrichton.com) | MIT OR Apache-2.0 |
 | [clang-sys](https://github.com/KyleMayes/clang-sys) ⚒️ | 1.8.1 | [Kyle Mayes](mailto:kyle@mayeses.com) | Apache-2.0 |
 | [**crc32fast**](https://github.com/srijs/rust-crc32fast) | 1.4.2 | [Sam Rijs](mailto:srijs@airpost.net) and [Alex Crichton](mailto:alex@alexcrichton.com) | MIT OR Apache-2.0 |
-| [**crossbeam-channel**](https://github.com/crossbeam-rs/crossbeam) | 0.5.14 |  | MIT OR Apache-2.0 |
+| [**crossbeam-channel**](https://github.com/crossbeam-rs/crossbeam) | 0.5.15 |  | MIT OR Apache-2.0 |
 | [crossbeam-utils](https://github.com/crossbeam-rs/crossbeam) | 0.8.21 |  | MIT OR Apache-2.0 |
 | [**dactyl**](https://github.com/Blobfolio/dactyl) | 0.10.1 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
 | [**dowser**](https://github.com/Blobfolio/dowser) | 0.12.0 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
@@ -25,19 +25,20 @@
 | [either](https://github.com/rayon-rs/either) ⚒️ | 1.15.0 | bluss | MIT OR Apache-2.0 |
 | [equivalent](https://github.com/indexmap-rs/equivalent) | 1.0.2 |  | Apache-2.0 OR MIT |
 | [fastrand](https://github.com/smol-rs/fastrand) | 2.3.0 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 OR MIT |
-| **flapfli** | 3.3.1 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
+| **flapfli** | 3.3.2 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
 | [funty](https://github.com/myrrlyn/funty) | 2.0.0 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
-| [**fyi_msg**](https://github.com/Blobfolio/fyi) | 2.0.0 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
+| [**fyi_ansi**](https://github.com/Blobfolio/fyi) | 2.0.2 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
+| [**fyi_msg**](https://github.com/Blobfolio/fyi) | 2.0.2 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
 | [getrandom](https://github.com/rust-random/getrandom) | 0.3.2 | The Rand Project Developers | MIT OR Apache-2.0 |
 | [glob](https://github.com/rust-lang/glob) ⚒️ | 0.3.2 | The Rust Project Developers | MIT OR Apache-2.0 |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.15.2 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | MIT OR Apache-2.0 |
-| [indexmap](https://github.com/indexmap-rs/indexmap) | 2.8.0 |  | Apache-2.0 OR MIT |
+| [indexmap](https://github.com/indexmap-rs/indexmap) | 2.9.0 |  | Apache-2.0 OR MIT |
 | [itertools](https://github.com/rust-itertools/itertools) ⚒️ | 0.13.0 | bluss | MIT OR Apache-2.0 |
 | [**libc**](https://github.com/rust-lang/libc) | 0.2.171 | The Rust Project Developers | MIT OR Apache-2.0 |
 | [libdeflate-sys](https://github.com/adamkewley/libdeflater) | 1.23.1 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [libdeflater](https://github.com/adamkewley/libdeflater) | 1.23.1 | [Adam Kewley](mailto:contact@adamkewley.com) | Apache-2.0 |
 | [libloading](https://github.com/nagisa/rust_libloading/) ⚒️ | 0.8.6 | [Simonas Kazlauskas](mailto:libloading@kazlauskas.me) | ISC |
-| [linux-raw-sys](https://github.com/sunfishcode/linux-raw-sys) | 0.9.3 | [Dan Gohman](mailto:dev@sunfishcode.online) | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
+| [linux-raw-sys](https://github.com/sunfishcode/linux-raw-sys) | 0.9.4 | [Dan Gohman](mailto:dev@sunfishcode.online) | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | [**lodepng**](https://github.com/lvandeve/lodepng) | 2024.12.28 | Lode Vandevenne | Zlib |
 | [log](https://github.com/rust-lang/log) | 0.4.27 | The Rust Project Developers | MIT OR Apache-2.0 |
 | [memchr](https://github.com/BurntSushi/memchr) ⚒️ | 2.7.4 | [Andrew Gallant](mailto:jamslam@gmail.com) and bluss | Unlicense OR MIT |
@@ -47,7 +48,7 @@
 | [nom](https://github.com/Geal/nom) ⚒️ | 7.1.3 | contact@geoffroycouprie.com | MIT |
 | [once_cell](https://github.com/matklad/once_cell) | 1.21.3 | [Aleksey Kladov](mailto:aleksey.kladov@gmail.com) | MIT OR Apache-2.0 |
 | [**oxipng**](https://github.com/shssoichiro/oxipng) | 9.1.4 | [Joshua Holmer](mailto:jholmer.in@gmail.com) | MIT |
-| [prettyplease](https://github.com/dtolnay/prettyplease) ⚒️ | 0.2.31 | [David Tolnay](mailto:dtolnay@gmail.com) | MIT OR Apache-2.0 |
+| [prettyplease](https://github.com/dtolnay/prettyplease) ⚒️ | 0.2.32 | [David Tolnay](mailto:dtolnay@gmail.com) | MIT OR Apache-2.0 |
 | [proc-macro2](https://github.com/dtolnay/proc-macro2) ⚒️ | 1.0.94 | [David Tolnay](mailto:dtolnay@gmail.com) and [Alex Crichton](mailto:alex@alexcrichton.com) | MIT OR Apache-2.0 |
 | [quote](https://github.com/dtolnay/quote) ⚒️ | 1.0.40 | [David Tolnay](mailto:dtolnay@gmail.com) | MIT OR Apache-2.0 |
 | [radium](https://github.com/bitvecto-rs/radium) | 0.7.0 | [Nika Layzell](mailto:nika@thelayzells.com) and [myrrlyn](mailto:self@myrrlyn.dev) | MIT |

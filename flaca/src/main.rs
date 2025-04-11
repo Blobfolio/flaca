@@ -76,6 +76,10 @@ use dactyl::{
 	},
 };
 use dowser::Extension;
+use fyi_ansi::{
+	ansi,
+	dim,
+};
 use fyi_msg::{
 	BeforeAfter,
 	Msg,
@@ -89,10 +93,12 @@ use std::{
 	},
 	path::Path,
 	process::ExitCode,
-	sync::atomic::{
-		AtomicU32,
-		AtomicU64,
-		Ordering::SeqCst,
+	sync::{
+		atomic::{
+			AtomicU64,
+			Ordering::SeqCst,
+		},
+		OnceLock,
 	},
 	thread,
 };
@@ -103,7 +109,7 @@ use std::{
 include!(concat!(env!("OUT_DIR"), "/flaca-extensions.rs"));
 
 /// # Maximum Resolution.
-pub(crate) static MAX_RESOLUTION: AtomicU32 = AtomicU32::new(0);
+static MAX_RESOLUTION: OnceLock<NonZeroU32> =OnceLock::new();
 
 /// # Total Skipped.
 static SKIPPED: AtomicU64 = AtomicU64::new(0);
@@ -297,7 +303,8 @@ fn crunch(rx: &Receiver::<&Path>, kinds: ImageKind, progress: Option<&Progless>)
 
 				if ! matches!(e, EncodingError::Skipped) && noteworthy(kinds, p) {
 					let _res = progress.push_msg(Msg::skipped(format!(
-						"{name} \x1b[2m({})\x1b[0m",
+						concat!("{} ", dim!("({})")),
+						name,
 						e.as_str(),
 					)));
 				}
@@ -326,8 +333,11 @@ fn dump_undone(undone: &[&Path]) {
 	let path = std::env::temp_dir().join(format!("flaca-{}.txt", utc2k::unixtime()));
 	if write_atomic::write_file(&path, dump.as_bytes()).is_ok() {
 		Msg::notice(format!(
-			"{} missed during the run; their paths have
-        been exported to \x1b[95;1m{}\x1b[0m for reference.",
+			concat!(
+				"{} missed during the run; their paths have\n        been exported to ",
+        		ansi!((bold, light_magenta) "{}"),
+        		" for reference.",
+        	),
 			undone.len().nice_inflect("image was", "images were"),
 			path.display(),
 		)).eprint();
@@ -371,12 +381,12 @@ fn set_pixel_limit(raw: &[u8]) -> Result<(), FlacaError> {
 		};
 
 	let len = raw.len() - usize::from(multiplier != 1);
-	let limit = NonZeroU32::btou(&raw[..len])
-		.and_then(|n| n.get().checked_mul(multiplier))
+	let limit = u32::btou(&raw[..len])
+		.and_then(|n| n.checked_mul(multiplier))
+		.and_then(NonZeroU32::new)
 		.ok_or(FlacaError::MaxResolution)?;
 
-	MAX_RESOLUTION.store(limit, SeqCst);
-	Ok(())
+	MAX_RESOLUTION.set(limit).map_err(|_| FlacaError::MaxResolution)
 }
 
 /// # Summarize Results.
@@ -389,7 +399,11 @@ fn summarize(progress: &Progless, total: u64) {
 	else {
 		// And summarize what we did do.
 		Msg::crunched(format!(
-			"{}\x1b[2m/\x1b[0m{} in {}.",
+			concat!(
+				"{}",
+				dim!("/"),
+				"{} in {}.",
+			),
 			NiceU64::from(total - skipped),
 			total.nice_inflect("image", "images"),
 			NiceElapsed::from(elapsed),

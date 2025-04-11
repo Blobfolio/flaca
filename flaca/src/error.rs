@@ -2,6 +2,11 @@
 # Flaca: Errors
 */
 
+use fyi_ansi::{
+	ansi,
+	csi,
+	dim,
+};
 use fyi_msg::ProglessError;
 use std::{
 	error::Error,
@@ -18,7 +23,7 @@ const HELP: &str = concat!(r"
  `.   `--'        \__,--'-.
    `--/       ,-.  ______/
      (o-.     ,o- /
-      `. ;        \    ", "\x1b[38;5;199mFlaca\x1b[0;38;5;69m v", env!("CARGO_PKG_VERSION"), "\x1b[0m", r#"
+      `. ;        \    ", csi!(199), "Flaca", ansi!((cornflower_blue) " v", env!("CARGO_PKG_VERSION")), r#"
        |:          \   Brute-force, lossless
       ,'`       ,   \  JPEG and PNG compression.
      (o o ,  --'     :
@@ -64,10 +69,10 @@ ARGS:
                       compress.
 
 EARLY EXIT:
-    Press "#, "\x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m once to quit as soon as the already-in-progress operations
+    Press "#, ansi!((dark_orange) "CTRL"), "+", ansi!((dark_orange) "C"), " once to quit as soon as the already-in-progress operations
     have finished (ignoring any pending images still in the queue).
 
-    Press \x1b[38;5;208mCTRL\x1b[0m+\x1b[38;5;208mC\x1b[0m a second time if you need to exit IMMEDIATELY, but note that
+    Press ", ansi!((dark_orange) "CTRL"), "+", ansi!((dark_orange) "C"), " a second time if you need to exit IMMEDIATELY, but note that
     doing so may leave artifacts (temporary files) behind, and in rare cases,
     lead to image corruption.
 
@@ -163,7 +168,12 @@ impl fmt::Display for FlacaError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let prefix = self.as_str();
 		match self {
-			Self::InvalidCli(s) => write!(f, "{prefix} \x1b[2m{s}\x1b[0m"),
+			Self::InvalidCli(s) => write!(
+				f,
+				concat!("{} ", dim!("{}")),
+				prefix,
+				s,
+			),
 			_ => f.write_str(prefix),
 		}
 	}

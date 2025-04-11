@@ -62,18 +62,18 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 	mv "{{ justfile_directory() }}/target" "{{ cargo_dir }}"
 
 
-# Bench PNG Compression.
+# Bench Compression.
 [no-cd]
-@bench-png BIN EXTRA="":
+@bench-bin BIN:
 	[ -f "{{ BIN }}" ] || exit 1
-	just _bench-reset "{{ EXTRA }}"
-	"{{ absolute_path(BIN) }}" -p --no-jpeg "{{ bench_dir }}"
+	just _bench-reset
+	"{{ absolute_path(BIN) }}" -p "{{ bench_dir }}"
 
 	# Checksum checks.
-	cd "{{ bench_dir }}" && b3sum -c png.b3 --quiet
-	[ -z "{{ EXTRA }}" ] || ( cd "{{ bench_dir }}" && b3sum -c pgo.b3 --quiet )
+	cd "{{ bench_dir }}" && b3sum -c --quiet assets.b3
 
 
+# Remove Cargo Crap.
 @clean:
 	# Most things go here.
 	[ ! -d "{{ cargo_dir }}" ] || rm -rf "{{ cargo_dir }}"
