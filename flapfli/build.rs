@@ -131,6 +131,7 @@ pub(crate) const DISTANCE_SYMBOLS: &[Dsym; 32_768] = &[");
 			};
 
 		// Add some line breaks, but not too many!
+		// TODO: use is_multiple_of once stable
 		if i % 128 == 0 { out.push('\n'); }
 		write!(&mut out, "Dsym::D{dsym:02}, ").unwrap();
 	}
@@ -152,6 +153,7 @@ pub(crate) const DISTANCE_VALUES: &[u16; 32_768] = &[");
 			};
 
 		// Add some line breaks, but not too many!
+		// TODO: use is_multiple_of once stable
 		if i % 128 == 0 { out.push('\n'); }
 		write!(&mut out, "{dvalue}, ").unwrap();
 	}
