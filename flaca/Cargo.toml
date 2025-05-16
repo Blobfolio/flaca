@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.3.2"
+version = "3.3.3"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -117,22 +117,22 @@ items = [
 
 [[package.metadata.bashman.credits]]
 name = "lodepng"
-version = "2024.12.28"
+version = "2025.5.6"
 license = "Zlib"
 authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
 argyle = "0.12.*"
-dowser = "0.12.*"
+dowser = "0.13.*"
 
 [dependencies]
 crossbeam-channel = "=0.5.*"
 dactyl = "0.10.*"
-dowser = "0.12.*"
-fyi_ansi = "2.0.*"
+dowser = "0.13.*"
+fyi_ansi = "2.1.*"
 libc = "0.2.*"
-utc2k = "0.12.*"
+utc2k = "0.13.*"
 write_atomic = "0.6.*"
 
 [dependencies.argyle]
@@ -144,7 +144,7 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.fyi_msg]
-version = "2.0.*"
+version = "2.1.*"
 features = [ "signals" ]
 
 [dependencies.mozjpeg-sys]
@@ -153,6 +153,6 @@ default-features = false
 features = [ "jpegtran", "nasm_simd", "unwinding" ]
 
 [dependencies.oxipng]
-version = "=9.1.4"
+version = "=9.1.5"
 default-features = false
 features = [ "freestanding" ]

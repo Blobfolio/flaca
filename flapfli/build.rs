@@ -68,7 +68,7 @@ fn build_ffi() {
 	let repo = Path::new("../skel/vendor");
 	let lodepng_src = repo.join("lodepng");
 
-	// Build Zopfli first.
+	// Build lodepng first.
 	let mut c = cc::Build::new();
 	c.includes([repo, &lodepng_src])
 		.cpp(false)
@@ -131,7 +131,7 @@ pub(crate) const DISTANCE_SYMBOLS: &[Dsym; 32_768] = &[");
 			};
 
 		// Add some line breaks, but not too many!
-		if i % 128 == 0 { out.push('\n'); }
+		if i.is_multiple_of(128) { out.push('\n'); }
 		write!(&mut out, "Dsym::D{dsym:02}, ").unwrap();
 	}
 	out.push_str("
@@ -152,7 +152,7 @@ pub(crate) const DISTANCE_VALUES: &[u16; 32_768] = &[");
 			};
 
 		// Add some line breaks, but not too many!
-		if i % 128 == 0 { out.push('\n'); }
+		if i.is_multiple_of(128) { out.push('\n'); }
 		write!(&mut out, "{dvalue}, ").unwrap();
 	}
 	out.push_str("\n];\n");
@@ -182,9 +182,6 @@ pub(crate) const {name}_F: [f64; {N}] = {:?};
 }
 
 /// # FFI Bindings.
-///
-/// These have been manually transcribed into the Rust sources, but this
-/// commented-out code can be re-enabled if they ever need to be updated.
 fn bindings(lodepng_src: &Path) {
 	bindgen::Builder::default()
 		.clang_args([

@@ -376,7 +376,6 @@ impl JpegDstInfo {
 
 
 
-#[expect(clippy::unnecessary_box_returns, reason = "We want a box.")]
 #[expect(unsafe_code, reason = "For FFI.")]
 /// # New Unwinding Error.
 ///

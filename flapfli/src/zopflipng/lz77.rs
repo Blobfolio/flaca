@@ -76,7 +76,7 @@ impl LZ77Store {
 	///
 	/// Same as `LZ77Store::range`, except the range is everything. This will
 	/// return an error if the store is empty or too large.
-	pub(crate) fn ranged_full(&self) -> Result<LZ77StoreRange, ZopfliError> {
+	pub(crate) const fn ranged_full(&self) -> Result<LZ77StoreRange, ZopfliError> {
 		let entries = self.entries.as_slice();
 		if entries.is_empty() || ZOPFLI_MASTER_BLOCK_SIZE < entries.len() {
 			Err(zopfli_error!())
@@ -123,7 +123,7 @@ impl LZ77Store {
 	/// # Is Small?
 	///
 	/// Returns true if there are a thousand or fewer entries.
-	pub(crate) fn is_small(&self) -> bool {
+	pub(crate) const fn is_small(&self) -> bool {
 		self.entries.len() <= Self::SMALL_STORE
 	}
 
@@ -131,7 +131,7 @@ impl LZ77Store {
 	///
 	/// Return the number of entries in the store. Unlike `LZ77StoreRange`,
 	/// this can return zero.
-	pub(crate) fn len(&self) -> usize { self.entries.len() }
+	pub(crate) const fn len(&self) -> usize { self.entries.len() }
 }
 
 
