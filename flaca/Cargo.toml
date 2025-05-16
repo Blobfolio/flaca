@@ -130,7 +130,7 @@ dowser = "0.12.*"
 crossbeam-channel = "=0.5.*"
 dactyl = "0.10.*"
 dowser = "0.12.*"
-fyi_ansi = "2.0.*"
+fyi_ansi = "2.1.*"
 libc = "0.2.*"
 utc2k = "0.12.*"
 write_atomic = "0.6.*"
@@ -144,7 +144,7 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.fyi_msg]
-version = "2.0.*"
+version = "2.1.*"
 features = [ "signals" ]
 
 [dependencies.mozjpeg-sys]
