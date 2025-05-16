@@ -132,7 +132,7 @@ dactyl = "0.10.*"
 dowser = "0.13.*"
 fyi_ansi = "2.1.*"
 libc = "0.2.*"
-utc2k = "0.12.*"
+utc2k = "0.13.*"
 write_atomic = "0.6.*"
 
 [dependencies.argyle]
