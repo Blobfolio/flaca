@@ -154,8 +154,7 @@ impl SymbolStats {
 				);
 			}
 			for i in const { 0..N } {
-				// TODO: use is_multiple_of once stable
-				if (state.randomize() >> 4) % 3 == 0 {
+				if (state.randomize() >> 4).is_multiple_of(3) {
 					let index = state.randomize() as usize % N;
 					counts[i] = counts[index];
 				}
