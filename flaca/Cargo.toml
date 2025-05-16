@@ -124,12 +124,12 @@ repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
 argyle = "0.12.*"
-dowser = "0.12.*"
+dowser = "0.13.*"
 
 [dependencies]
 crossbeam-channel = "=0.5.*"
 dactyl = "0.10.*"
-dowser = "0.12.*"
+dowser = "0.13.*"
 fyi_ansi = "2.1.*"
 libc = "0.2.*"
 utc2k = "0.12.*"
