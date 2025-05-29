@@ -60,6 +60,10 @@ long = "--no-symlinks"
 description = "Ignore symlinks (rather than following them)."
 
 [[package.metadata.bashman.switches]]
+long = "--preserve-times"
+description = "(Try to) preserve the original file access and modification times when resaving an image."
+
+[[package.metadata.bashman.switches]]
 short = "-p"
 long = "--progress"
 description = "Show pretty progress while minifying."
@@ -79,7 +83,7 @@ path = false
 short = "-l"
 long = "--list"
 label = "<FILE>"
-description = "Read (absolute) image and/or directory paths from this text file — or STDIN if '-' — one entry per line, instead of or in addition to (actually trailing) <PATH(S)>."
+description = "Read (absolute) image and/or directory paths from this text file — or STDIN if '-' — one entry per line, instead of or in addition to any trailing <PATH(S)>."
 path = true
 
 [[package.metadata.bashman.options]]
@@ -135,6 +139,7 @@ dowser = "0.13.*"
 crossbeam-channel = "=0.5.*"
 dactyl = "0.11.*"
 dowser = "0.13.*"
+filetime = "0.2.*"
 fyi_ansi = "2.1.*"
 gifsicle = "=1.95.0"
 libc = "0.2.*"

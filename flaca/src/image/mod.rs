@@ -79,7 +79,7 @@ pub(super) fn encode(file: &Path, settings: Settings)
 	// Save it if better.
 	let after = raw.len() as u64;
 	if after < before {
-		save_image(file, &raw).map(|()| (before, after))
+		save_image(file, &raw, settings).map(|()| (before, after))
 	}
 	else { Ok((before, before)) }
 }
@@ -117,7 +117,7 @@ pub(super) fn encode_gif(src: &Path, settings: Settings)
 	// Save it if better.
 	let after = raw.len() as u64;
 	if after < before {
-		save_image(src, &raw).map(|()| (before, after))
+		save_image(src, &raw, settings).map(|()| (before, after))
 	}
 	else { Ok((before, before)) }
 }
@@ -333,6 +333,28 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 }
 
 /// # Save Image!
-fn save_image(src: &Path, data: &[u8]) -> Result<(), EncodingError> {
-	write_atomic::write_file(src, data).map_err(|_| EncodingError::Write)
+fn save_image(src: &Path, data: &[u8], settings: Settings)
+-> Result<(), EncodingError> {
+	use filetime::FileTime;
+
+	// Grab the (current) metadata before saving in case the user wants to
+	// keep the original file times.
+	let times =
+		if settings.preserve_times() {
+			std::fs::metadata(src).ok().map(|meta| (
+				FileTime::from_last_access_time(&meta),
+				FileTime::from_last_modification_time(&meta),
+			))
+		}
+		else { None };
+
+	// Save it!
+	write_atomic::write_file(src, data).map_err(|_| EncodingError::Write)?;
+
+	// If we have metadata, try to sync the times.
+	if let Some((atime, mtime)) = times {
+		let _res = filetime::set_file_times(src, atime, mtime);
+	}
+
+	Ok(())
 }

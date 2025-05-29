@@ -67,7 +67,7 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 @bench-bin BIN:
 	[ -f "{{ BIN }}" ] || exit 1
 	just _bench-reset
-	"{{ absolute_path(BIN) }}" -p "{{ bench_dir }}"
+	"{{ absolute_path(BIN) }}" -p --preserve-times "{{ bench_dir }}"
 
 	# Checksum checks.
 	cd "{{ bench_dir }}" && b3sum -c --quiet assets.b3

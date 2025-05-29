@@ -21,6 +21,12 @@ pub(crate) struct Settings {
 	///
 	/// Images with more pixels than this will be ignored.
 	max_resolution: Option<NonZeroU32>,
+
+	/// # Preserve Times?
+	///
+	/// If true, the file access and modification times will (try) to be
+	/// preserved on re-save.
+	preserve_times: bool,
 }
 
 impl Settings {
@@ -30,21 +36,8 @@ impl Settings {
 		Self {
 			kinds: ImageKind::All,
 			max_resolution: None,
+			preserve_times: false,
 		}
-	}
-
-	/// # Unset (Disable) Image Kind.
-	///
-	/// Disable an image kind.
-	///
-	/// ## Errors
-	///
-	/// This will return an error if no kinds remain.
-	pub(super) const fn unset_kind(&mut self, kind: ImageKind)
-	-> Result<(), FlacaError> {
-		self.kinds.unset(kind);
-		if self.kinds.is_none() { Err(FlacaError::NoImages) }
-		else { Ok(()) }
 	}
 
 	/// # Set Max Resolution.
@@ -76,6 +69,25 @@ impl Settings {
 
 		Ok(())
 	}
+
+	/// # Preserve File Times.
+	pub(super) const fn set_preserve_times(&mut self) {
+		self.preserve_times = true;
+	}
+
+	/// # Unset (Disable) Image Kind.
+	///
+	/// Disable an image kind.
+	///
+	/// ## Errors
+	///
+	/// This will return an error if no kinds remain.
+	pub(super) const fn unset_kind(&mut self, kind: ImageKind)
+	-> Result<(), FlacaError> {
+		self.kinds.unset(kind);
+		if self.kinds.is_none() { Err(FlacaError::NoImages) }
+		else { Ok(()) }
+	}
 }
 
 impl Settings {
@@ -103,4 +115,8 @@ impl Settings {
 	#[must_use]
 	/// # Image Kinds.
 	pub(crate) const fn kinds(self) -> ImageKind { self.kinds }
+
+	#[must_use]
+	/// # Preserve File Times?
+	pub(crate) const fn preserve_times(self) -> bool { self.preserve_times }
 }

@@ -58,8 +58,9 @@ The following flags and options are available:
 | | `--no-jpeg` | | Skip JPEG images. |
 | | `--no-png` | | Skip PNG Images. |
 | | `--no-symlinks` | | Ignore symlinks (rather than following them). |
-| `-z` | `--zopfli-iterations` | `<NUM>` | Override the number of zopfli iterations when compressing PNGs. |
+| | `--preserve-times` | | Preserve file access/modification times. |
 | `-p` | `--progress` | | Show pretty progress while minifying. |
+| `-z` | `--zopfli-iterations` | `<NUM>` | Override the number of zopfli iterations when compressing PNGs. |
 | `-V` | `--version` | | Print version information and exit. |
 
 You can feed it any number of file or directory paths in one go, and/or toss it a text file using the `-l` option. Directories are searched recursively.

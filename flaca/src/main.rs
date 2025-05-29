@@ -163,6 +163,7 @@ fn main__() -> Result<(), FlacaError> {
 			Argument::Key("--no-jpg" | "--no-jpeg") => { settings.unset_kind(ImageKind::Jpeg)?; },
 			Argument::Key("--no-png") => { settings.unset_kind(ImageKind::Png)?; },
 			Argument::Key("--no-symlinks") => { paths.no_symlinks(); },
+			Argument::Key("--preserve-times") => { settings.set_preserve_times(); },
 			Argument::Key("-p" | "--progress") => { progress = true; },
 			Argument::Key("-V" | "--version") => return Err(FlacaError::PrintVersion),
 

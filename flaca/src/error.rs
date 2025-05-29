@@ -38,36 +38,38 @@ USAGE:
     flaca [FLAGS] [OPTIONS] <PATH(S)>...
 
 FLAGS:
-    -h, --help        Print help information and exit.
-        --no-gif      Skip GIF images.
-        --no-jpeg     Skip JPEG images.
-        --no-png      Skip PNG images.
-        --no-symlinks Ignore symlinks (rather than following them).
-    -p, --progress    Show pretty progress while minifying.
-    -V, --version     Print version information and exit.
+    -h, --help           Print help information and exit.
+        --no-gif         Skip GIF images.
+        --no-jpeg        Skip JPEG images.
+        --no-png         Skip PNG images.
+        --no-symlinks    Ignore symlinks (rather than following them).
+        --preserve-times (Try to) preserve the original file access and
+                         modification times when resaving an image.
+    -p, --progress       Show pretty progress while minifying.
+    -V, --version        Print version information and exit.
 
 OPTIONS:
-    -j <NUM>          Limit parallelization to this many threads (instead of
-                      giving each logical core its own image to work on). If
-                      negative, the value will be subtracted from the total
-                      number of logical cores.
-    -l, --list <FILE> Read (absolute) image and/or directory paths from this
-                      text file — or STDIN if "-" — one entry per line, instead
-                      of or in addition to (actually trailing) <PATH(S)>.
+    -j <NUM>             Limit parallelization to this many threads (instead of
+                         giving each logical core its own image to work on). If
+                         negative, the value will be subtracted from the total
+                         number of logical cores.
+    -l, --list <FILE>    Read (absolute) image and/or directory paths from this
+                         text file — or STDIN if "-" — one entry per line,
+                         instead of or in addition to any trailing <PATH(S)>.
         --max-resolution <NUM>
-                      Skip images containing more than <NUM> total pixels to
-                      avoid potential OOM errors during decompression.
-                      [default: ~4.29 billion]
-    -z <NUM>          Run NUM lz77 backward/forward iterations during zopfli
-                      PNG encoding passes. More iterations yield better
-                      compression (up to a point), but require *significantly*
-                      longer processing times. In practice, values beyond 500
-                      are unlikely to save more than a few bytes, and could
-                      take *days* to complete! Haha. [default: 20 or 60,
-                      depending on the file size]
+                         Skip images containing more than <NUM> total pixels to
+                         avoid potential OOM errors during decompression.
+                         [default: ~4.29 billion]
+    -z <NUM>             Run NUM lz77 backward/forward iterations during zopfli
+                         PNG encoding passes. More iterations yield better
+                         compression (up to a point), but require
+                         *significantly* longer processing times. In practice,
+                         values beyond 500 are unlikely to save more than a few
+                         bytes, and could take *days* to complete! Haha.
+                         [default: 20 or 60, depending on the file size]
 ARGS:
-    <PATH(S)>...      One or more image and/or directory paths to losslessly
-                      compress.
+    <PATH(S)>...         One or more image and/or directory paths to losslessly
+                         compress.
 
 EARLY EXIT:
     Press "#, ansi!((dark_orange) "CTRL"), "+", ansi!((dark_orange) "C"), " once to quit as soon as the already-in-progress operations
@@ -78,10 +80,10 @@ EARLY EXIT:
     lead to image corruption.
 
 OPTIMIZERS USED:
-    Gifsicle  <https://github.com/kohler/gifsicle>
-    MozJPEG   <https://github.com/mozilla/mozjpeg>
-    Oxipng    <https://github.com/shssoichiro/oxipng>
-    Zopflipng <https://github.com/google/zopfli>
+    Gifsicle  <", dim!("https://github.com/kohler/gifsicle"), ">
+    MozJPEG   <", dim!("https://github.com/mozilla/mozjpeg"), ">
+    Oxipng    <", dim!("https://github.com/shssoichiro/oxipng"), ">
+    Zopflipng <", dim!("https://github.com/google/zopfli"), ">
 ");
 
 
