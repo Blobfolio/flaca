@@ -24,8 +24,8 @@ const HELP: &str = concat!(r"
    `--/       ,-.  ______/
      (o-.     ,o- /
       `. ;        \    ", csi!(199), "Flaca", ansi!((cornflower_blue) " v", env!("CARGO_PKG_VERSION")), r#"
-       |:          \   Brute-force, lossless
-      ,'`       ,   \  JPEG and PNG compression.
+       |:          \   Brute-force, lossless GIF,
+      ,'`       ,   \  JPEG, and PNG compression.
      (o o ,  --'     :
       \--','.        ;
        `;;  :       /
@@ -39,6 +39,7 @@ USAGE:
 
 FLAGS:
     -h, --help        Print help information and exit.
+        --no-gif      Skip GIF images.
         --no-jpeg     Skip JPEG images.
         --no-png      Skip PNG images.
         --no-symlinks Ignore symlinks (rather than following them).
@@ -77,6 +78,7 @@ EARLY EXIT:
     lead to image corruption.
 
 OPTIMIZERS USED:
+    Gifsicle  <https://github.com/kohler/gifsicle>
     MozJPEG   <https://github.com/mozilla/mozjpeg>
     Oxipng    <https://github.com/shssoichiro/oxipng>
     Zopflipng <https://github.com/google/zopfli>
@@ -102,6 +104,9 @@ pub(super) enum EncodingError {
 	/// # Intentionally Skipped.
 	Skipped,
 
+	/// # TBD Gif.
+	TbdGif,
+
 	/// # Vanished.
 	Vanished,
 
@@ -118,7 +123,7 @@ impl EncodingError {
 			Self::Format => "invalid format",
 			Self::Read => "read error",
 			Self::Resolution => "too big",
-			Self::Skipped => "",
+			Self::Skipped | Self::TbdGif => "",
 			Self::Vanished => "vanished!",
 			Self::Write => "write error",
 		}

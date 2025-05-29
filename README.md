@@ -5,11 +5,11 @@
 [![license](https://img.shields.io/badge/license-wtfpl-ff1493?style=flat-square)](https://en.wikipedia.org/wiki/WTFPL)
 [![contributions welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square&label=contributions)](https://github.com/Blobfolio/flaca/issues)
 
-Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of maximally, **losslessly** compressing JPEG and PNG images for use in production **web environments**.
+Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of maximally, **losslessly** compressing GIF, JPEG, and PNG images for use in production **web environments**.
 
-It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a JPEG, but calculating the optimal construction for a PNG can take a lot of work!
+It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a GIF or JPEG, but calculating the optimal construction for a PNG can take a lot of work!
 
-Compression is mainly achieved through the removal of metadata and optimization of pixel tables. Under the hood, Flaca leverages the `jpegtran` functionality from [MozJPEG](https://github.com/mozilla/mozjpeg) for JPEG images, and a combination of [Oxipng](https://github.com/shssoichiro/oxipng) and [Zopflipng](https://github.com/google/zopfli) for PNG images.
+Compression is mainly achieved through the removal of metadata and optimization of pixel tables. Under the hood, flaca leverages [Gifsicle](https://github.com/kohler/gifsicle) for GIFs, the `jpegtran` functionality from [MozJPEG](https://github.com/mozilla/mozjpeg) for JPEG images, and a combination of [Oxipng](https://github.com/shssoichiro/oxipng) and [Zopflipng](https://github.com/google/zopfli) for PNG images.
 
 
 
@@ -21,7 +21,7 @@ And it helps close the [digital divide](https://en.wikipedia.org/wiki/Digital_di
 
 But in other contexts, _metadata may matter_.
 
-As a general rule, you should _not_ try to feed your entire personal media library or raw print/design assets to Flaca or it may eat something important.
+As a general rule, you should _not_ try to feed your entire personal media library or raw print/design assets to flaca or it may eat something important.
 
 
 
@@ -51,9 +51,10 @@ The following flags and options are available:
 | Short | Long | Value | Description |
 | ----- | ---- | ----- | ----------- |
 | `-h` | `--help` | | Print help information and exit. |
-| `-j` | | `<NUM>` | Limit parallelization to this many threads (instead of using all logical cores). |
+| `-j` | | `<NUM>` | Limit[^1] parallelization to this many threads (instead of using all logical cores). |
 | `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file — or STDIN if "-" — one entry per line, instead of or in addition to the trailing `<PATH(S)>`. |
 | | `--max-resolution` | `<NUM>` | Skip images containing more than `<NUM>` total pixels. |
+| | `--no-gif` | | Skip GIF images. |
 | | `--no-jpeg` | | Skip JPEG images. |
 | | `--no-png` | | Skip PNG Images. |
 | | `--no-symlinks` | | Ignore symlinks (rather than following them). |
@@ -61,9 +62,11 @@ The following flags and options are available:
 | `-p` | `--progress` | | Show pretty progress while minifying. |
 | `-V` | `--version` | | Print version information and exit. |
 
-You can feed it any number of file or directory paths in one go, and/or toss it a text file using the `-l` option. Directories are recursively searched.
+You can feed it any number of file or directory paths in one go, and/or toss it a text file using the `-l` option. Directories are searched recursively.
 
-Flaca can cross filesystem and user boundaries, provided the user running the program has the relevant read/write access. (Not that you should run it as `root`, but if you did, images would still be owned by `www-data` or whatever after compression.)
+To reduce pointless I/O, flaca will silently ignore file paths lacking an appropriate extension, i.e. `.gif`, `.jp(e)g`, or `.png` (case-insensitive).
+
+Flaca can cross filesystem and user boundaries, provided the user running the program has the relevant read/write access. (Not that you should run it as `root`, but if you did, images should still be owned by `www-data` or whatever after re-compression.)
 
 Some quick examples:
 
@@ -95,16 +98,4 @@ flaca -z 500 /path/to/favicon.png
 flaca /path/to/huge.png -z 1
 ```
 
-
-
-## Image Format Sanity
-
-Flaca only processes JPEG and PNG image files.
-
-To ease its potential workload, it first checks that each of provided paths end with an appropriate (case-insensitive) file extension: `.jpeg`, `.jpg`, or `.png`. If you pass it `file.exe`, for example, it will simply ignore it.
-
-Of course, file names are totally arbitrary, so during processing, it analyzes the file contents to determine the _actual_ type. If that type turns out to be anything other than `image/jpeg` or `image/png`, the file will likewise be ignored.
-
-In cases where a JPEG image is accidentally assigned a PNG extension, or vice versa, Flaca _will_ still correctly process the image for you, but _won't_ correct the file name. In other words, a PNG incorrectly named `image.jpg` will still be a PNG incorrectly named `image.jpg` after recompression; it might just be a bit smaller.
-
-This is also true when using the `--no-jpeg` or `--no-png` flags, except the true type must match the not-no type or it will be skipped.
+[^1] GIF images require a single, dedicated thread for optimization, separate from the `-j` limit applied to all other work. Unless/until a GIF turns up, it will just sit idle, so shouldn't noticeably impact most workloads.

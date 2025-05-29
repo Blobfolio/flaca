@@ -2,58 +2,58 @@
 # Flaca: Image Kind
 */
 
-use crate::FlacaError;
-use std::num::NonZeroU32;
+use crate::{
+	E_GIF,
+	E_JPEG,
+	E_JPG,
+	E_PNG,
+	FlacaError,
+};
+use dowser::Extension;
+use std::{
+	num::NonZeroU32,
+	path::Path,
+};
 
 
 
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-/// # Image Kind.
-///
-/// This evaluates the file type from its headers, ensuring we process images
-/// correctly even if they have the wrong extension (or don't process them if
-/// they're bunk).
-pub(crate) enum ImageKind {
-	/// # All.
-	All,
-
-	/// # Jpeg.
-	Jpeg,
-
-	/// # Png.
-	Png,
-}
+include!(concat!(env!("OUT_DIR"), "/flaca-kinds.rs"));
 
 impl ImageKind {
 	/// # Return the Difference.
 	///
 	/// Subtract `other` from `self`, returning an error if that leaves
 	/// nothing.
-	pub(crate) const fn diff(self, other: Self) -> Result<Self, FlacaError> {
-		match other {
-			Self::Jpeg if matches!(self, Self::All | Self::Png) => Ok(Self::Png),
-			Self::Png if matches!(self, Self::All | Self::Jpeg) => Ok(Self::Jpeg),
-			_ => Err(FlacaError::NoImages),
-		}
+	pub(crate) const fn diff(mut self, other: Self) -> Result<Self, FlacaError> {
+		self.set(other);
+		if self.is_none() { Err(FlacaError::NoImages) }
+		else { Ok(self) }
 	}
 
-	#[expect(clippy::inline_always, reason = "For performance.")]
-	#[inline(always)]
-	/// # Supports JPEG?
-	pub(crate) const fn supports_jpeg(self) -> bool {
-		matches!(self, Self::All | Self::Jpeg)
-	}
-
-	#[expect(clippy::inline_always, reason = "For performance.")]
-	#[inline(always)]
-	/// # Supports PNG?
-	pub(crate) const fn supports_png(self) -> bool {
-		matches!(self, Self::All | Self::Png)
+	/// # From Path (Naive).
+	///
+	/// Match a file extension to a type.
+	pub(crate) fn try_from_ext(p: &Path) -> Option<Self> {
+		Extension::try_from3(p).map_or_else(
+			|| (Some(E_JPEG) == Extension::try_from4(p)).then_some(Self::Jpeg),
+			|e|
+				if e == E_GIF       { Some(Self::Gif) }
+				else if e == E_JPG { Some(Self::Jpeg) }
+				else if e == E_PNG  { Some(Self::Png) }
+				else { None },
+		)
 	}
 }
 
 impl ImageKind {
+	#[expect(clippy::inline_always, reason = "For performance.")]
+	#[inline(always)]
+	/// # Is GIF?
+	pub(crate) fn is_gif(src: &[u8]) -> bool {
+		12 < src.len() &&
+		matches!(&src[..6], [b'G', b'I', b'F', b'8', b'7' | b'9', b'a'])
+	}
+
 	#[expect(clippy::inline_always, reason = "For performance.")]
 	#[inline(always)]
 	/// # Is JPEG?
@@ -71,6 +71,16 @@ impl ImageKind {
 }
 
 impl ImageKind {
+	/// # Gif Dimensions.
+	pub(crate) fn gif_dimensions(raw: &[u8]) -> Option<(NonZeroU32, NonZeroU32)> {
+		if 12 < raw.len() && raw.starts_with(b"GIF") {
+			let w = NonZeroU32::new(u32::from(u16::from_le_bytes([raw[6], raw[7]])))?;
+			let h = NonZeroU32::new(u32::from(u16::from_le_bytes([raw[8], raw[9]])))?;
+			Some((w, h))
+		}
+		else { None }
+	}
+
 	/// # Width and Height.
 	///
 	/// Parse the image's width and height from the headers.
@@ -134,6 +144,28 @@ impl ImageKind {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn t_gif_dimensions() {
+		let raw: &[(&str, u32, u32)] = &[
+			("../skel/assets/gif/01.gif", 496, 694),
+			("../skel/assets/gif/02.gif", 65, 65),
+			("../skel/assets/gif/03.gif", 500, 500),
+			("../skel/assets/gif/04.gif", 120, 150),
+			("../skel/assets/gif/small.gif", 32, 32),
+			("../skel/assets/gif/small-bw.gif", 50, 50),
+			("../skel/assets/gif/small-bwa.gif", 50, 50),
+			("../skel/assets/wolf.jpeg", 600, 800),
+		];
+		for &(file, w1, h1) in raw {
+			let Ok(raw) = std::fs::read(file) else { panic!("Unable to open {file}."); };
+			let Some((w2, h2)) = ImageKind::gif_dimensions(&raw) else {
+				panic!("Unable to parse dimensions from {file}.");
+			};
+			assert_eq!(w1, w2.get(), "Width mismatch {w1} / {w2} for {file}.");
+			assert_eq!(h1, h2.get(), "Height mismatch {h1} / {h2} for {file}.");
+		}
+	}
 
 	#[test]
 	fn t_jpeg_dimensions() {
@@ -211,6 +243,33 @@ mod tests {
 	}
 
 	#[test]
+	fn t_try_from_ext() {
+		for (src, kind) in [
+			("/assets/01.gif", ImageKind::Gif),
+			("/assets/01.jpeg", ImageKind::Jpeg),
+			("/assets/01.jpg", ImageKind::Jpeg),
+			("/assets/01.png", ImageKind::Png),
+		] {
+			assert_eq!(
+				ImageKind::try_from_ext(src.as_ref()),
+				Some(kind),
+			);
+
+			// Uppercase should match too.
+			assert_eq!(
+				ImageKind::try_from_ext(src.to_ascii_uppercase().as_ref()),
+				Some(kind),
+			);
+
+			// Any other extension should fail, even if the ext we're expecting
+			// appears somewhere in the middle.
+			assert!(
+				ImageKind::try_from_ext(format!("{src}.webp").as_ref()).is_none()
+			);
+		}
+	}
+
+	#[test]
 	#[expect(clippy::cognitive_complexity, reason = "It is what it is.")]
 	fn t_parse() {
 		macro_rules! test_kind {
@@ -219,15 +278,23 @@ mod tests {
 					panic!("Unable to open {}.", $file);
 				};
 				match $ty {
+					Some(ImageKind::Gif) => {
+						assert!(ImageKind::is_gif(&raw));
+						assert!(! ImageKind::is_jpeg(&raw));
+						assert!(! ImageKind::is_png(&raw));
+					},
 					Some(ImageKind::Jpeg) => {
+						assert!(! ImageKind::is_gif(&raw));
 						assert!(ImageKind::is_jpeg(&raw));
 						assert!(! ImageKind::is_png(&raw));
 					},
 					Some(ImageKind::Png) => {
+						assert!(! ImageKind::is_gif(&raw));
 						assert!(! ImageKind::is_jpeg(&raw));
 						assert!(ImageKind::is_png(&raw));
 					},
 					_ => {
+						assert!(! ImageKind::is_gif(&raw));
 						assert!(! ImageKind::is_jpeg(&raw));
 						assert!(! ImageKind::is_png(&raw));
 					},
@@ -239,6 +306,13 @@ mod tests {
 			"../skel/assets/empty.jpg" None,
 			"../skel/assets/executable.sh" None,
 			"../skel/assets/herring.png" None,
+			"../skel/assets/gif/01.gif" Some(ImageKind::Gif),
+			"../skel/assets/gif/02.gif" Some(ImageKind::Gif),
+			"../skel/assets/gif/03.gif" Some(ImageKind::Gif),
+			"../skel/assets/gif/04.gif" Some(ImageKind::Gif),
+			"../skel/assets/gif/small.gif" Some(ImageKind::Gif),
+			"../skel/assets/gif/small-bw.gif" Some(ImageKind::Gif),
+			"../skel/assets/gif/small-bwa.gif" Some(ImageKind::Gif),
 			"../skel/assets/jpg/01.jpg" Some(ImageKind::Jpeg),
 			"../skel/assets/jpg/02.jpg" Some(ImageKind::Jpeg),
 			"../skel/assets/jpg/03.jpg" Some(ImageKind::Jpeg),
@@ -274,6 +348,7 @@ mod tests {
 			"../skel/assets/png/small-bw.png" Some(ImageKind::Png),
 			"../skel/assets/png/small-bwa.png" Some(ImageKind::Png),
 			"../skel/assets/png/small.png" Some(ImageKind::Png),
+			"../skel/assets/wolf.jpeg" Some(ImageKind::Gif),
 			"../skel/assets/wolf.jpg" Some(ImageKind::Png),
 			"../skel/assets/wolf.png" Some(ImageKind::Jpeg)
 		);

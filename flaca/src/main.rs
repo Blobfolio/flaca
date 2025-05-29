@@ -66,7 +66,10 @@ pub(crate) use image::kind::ImageKind;
 
 use argyle::Argument;
 use crawl::Crawler;
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{
+	Receiver,
+	Sender,
+};
 use dactyl::{
 	NiceElapsed,
 	NiceU64,
@@ -160,6 +163,7 @@ fn main__() -> Result<(), FlacaError> {
 	for arg in args {
 		match arg {
 			Argument::Key("-h" | "--help") => return Err(FlacaError::PrintHelp),
+			Argument::Key("--no-gif") => { kinds = kinds.diff(ImageKind::Gif)?; },
 			Argument::Key("--no-jpg" | "--no-jpeg") => { kinds = kinds.diff(ImageKind::Jpeg)?; },
 			Argument::Key("--no-png") => { kinds = kinds.diff(ImageKind::Png)?; },
 			Argument::Key("--no-symlinks") => { paths.no_symlinks(); },
@@ -212,14 +216,23 @@ fn main__() -> Result<(), FlacaError> {
 	// Now onto the thread business!
 	let mut undone: Vec<&Path> = Vec::new(); // Skipped because of CTRL+C or tx fail.
 	let (tx, rx) = crossbeam_channel::bounded::<&Path>(threads.get());
+	let (gtx, grx) = crossbeam_channel::bounded::<&Path>(0); // For GIFs.
 	thread::scope(#[inline(always)] |s| {
 		// Set up the worker threads, either with or without progress.
-		let mut workers = Vec::with_capacity(threads.get());
+		let mut workers = Vec::with_capacity(threads.get() + 1);
 		for _ in 0..threads.get() {
+			let t_gtx = gtx.clone();
 			workers.push(
-				s.spawn(#[inline(always)] || crunch(&rx, kinds, progress.as_ref()))
+				s.spawn(#[inline(always)] || crunch(&rx, kinds, progress.as_ref(), t_gtx))
 			);
 		}
+
+		// GIFs require a dedicated worker/thread. Since it is fed by the other
+		// workers, it needs to come last.
+		drop(gtx);
+		workers.push(
+			s.spawn(#[inline(always)] || crunch_gif(grx, kinds, progress.as_ref()))
+		);
 
 		// Queue up all the image paths!
 		let mut already_dead = false;
@@ -254,6 +267,9 @@ fn main__() -> Result<(), FlacaError> {
 		for worker in workers { let _res = worker.join(); }
 	});
 
+	// Clean up.
+	drop(rx);
+
 	// Summarize!
 	if let Some(progress) = progress { summarize(&progress, total.get() as u64); }
 
@@ -266,21 +282,18 @@ fn main__() -> Result<(), FlacaError> {
 }
 
 #[inline(never)]
+#[expect(clippy::needless_pass_by_value, reason = "Required for lifetime.")]
 /// # Worker Callback.
 ///
 /// This is the worker callback for image crunching. It listens for "new" image
 /// paths and crunches them — and maybe updates the progress bar, etc. — then
 /// quits as soon as the work has dried up.
-fn crunch(rx: &Receiver::<&Path>, kinds: ImageKind, progress: Option<&Progless>) {
-	#[expect(clippy::inline_always, reason = "For performance.")]
-	#[inline(always)]
-	/// # Noteworthy Failure?
-	fn noteworthy(kinds: ImageKind, p: &Path) -> bool {
-		if matches!(kinds, ImageKind::All) { true }
-		else if Some(E_PNG) == Extension::try_from3(p) { kinds.supports_png() }
-		else { kinds.supports_jpeg() }
-	}
-
+fn crunch<'a>(
+	rx: &Receiver::<&'a Path>,
+	kinds: ImageKind,
+	progress: Option<&Progless>,
+	gtx: Sender::<&'a Path>,
+) {
 	// We might not need to do all the fancy pretty business.
 	let Some(progress) = progress else {
 		while let Ok(p) = rx.recv() { let _res = crate::image::encode(p, kinds); }
@@ -292,6 +305,51 @@ fn crunch(rx: &Receiver::<&Path>, kinds: ImageKind, progress: Option<&Progless>)
 		progress.add(&name);
 
 		match crate::image::encode(p, kinds) {
+			// Happy.
+			Ok((b, a)) => {
+				BEFORE.fetch_add(b, SeqCst);
+				AFTER.fetch_add(a, SeqCst);
+			},
+			// Skipped.
+			Err(e) => {
+				// Send GIFs to the dedicated GIF thread.
+				if matches!(e, EncodingError::TbdGif) && gtx.send(p).is_ok() {
+					continue;
+				}
+
+				SKIPPED.fetch_add(1, SeqCst);
+
+				if ! matches!(e, EncodingError::Skipped) && noteworthy(kinds, p) {
+					let _res = progress.push_msg(Msg::skipped(format!(
+						concat!("{} ", dim!("({})")),
+						name,
+						e.as_str(),
+					)));
+				}
+			}
+		}
+
+		progress.remove(&name);
+	}
+}
+
+#[inline(never)]
+#[expect(clippy::needless_pass_by_value, reason = "Required for lifetime.")]
+/// # Gif Cruncher.
+///
+/// Gifsicle crunching cannot be done simultaneously. This dedicated worker
+/// handles any GIFs that happen to come up, one at a time.
+fn crunch_gif(rx: Receiver::<&Path>, kinds: ImageKind, progress: Option<&Progless>) {
+	// We might not need to do all the fancy pretty business.
+	let Some(progress) = progress else {
+		while let Ok(p) = rx.recv() { let _res = crate::image::encode_gif(p); }
+		return;
+	};
+
+	while let Ok(p) = rx.recv() {
+		let name = p.to_string_lossy();
+
+		match crate::image::encode_gif(p) {
 			// Happy.
 			Ok((b, a)) => {
 				BEFORE.fetch_add(b, SeqCst);
@@ -311,6 +369,8 @@ fn crunch(rx: &Receiver::<&Path>, kinds: ImageKind, progress: Option<&Progless>)
 			}
 		}
 
+		// Note: this will have already been "added" (but not removed) by the
+		// referring worker thread. Removing it now will balance the numbers.
 		progress.remove(&name);
 	}
 }
@@ -367,6 +427,18 @@ fn max_threads(user: Option<String>, jobs: NonZeroUsize) -> NonZeroUsize {
 
 	// Return the smaller of the user/machine and job counts.
 	NonZeroUsize::min(threads, jobs)
+}
+
+#[expect(clippy::inline_always, reason = "For performance.")]
+#[inline(always)]
+/// # Noteworthy Failure?
+///
+/// This method is used by the worker threads to decide whether or not a
+/// failure is worth printing to the screen. (Errors related to disabled
+/// types are suppressed.)
+fn noteworthy(kinds: ImageKind, p: &Path) -> bool {
+	matches!(kinds, ImageKind::All) ||
+	ImageKind::try_from_ext(p).is_some_and(|k| kinds.contains(k))
 }
 
 /// # Set Pixel Limit.

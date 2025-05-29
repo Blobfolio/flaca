@@ -9,7 +9,11 @@ pub(super) mod kind;
 
 use crate::MAX_RESOLUTION;
 use kind::ImageKind;
-use std::path::Path;
+use std::{
+	ffi::CString,
+	io::Cursor,
+	path::Path,
+};
 use super::EncodingError;
 
 
@@ -36,7 +40,7 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 
 	// Do PNG stuff?
 	if ImageKind::is_png(&raw) {
-		if ! kinds.supports_png() { return Err(EncodingError::Skipped); }
+		if ! kinds.contains(ImageKind::Png) { return Err(EncodingError::Skipped); }
 		check_resolution(ImageKind::Png, &raw)?;
 
 		encode_oxipng(&mut raw);
@@ -44,7 +48,7 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
-		if ! kinds.supports_jpeg() { return Err(EncodingError::Skipped); }
+		if ! kinds.contains(ImageKind::Jpeg) { return Err(EncodingError::Skipped); }
 		check_resolution(ImageKind::Jpeg, &raw)?;
 
 		// Mozjpeg usually panics on error, so we have to do a weird little
@@ -63,6 +67,12 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 		// not redundant!
 		debug_assert!(ImageKind::is_jpeg(&raw), "BUG: raw was unexpectedly corrupted");
 	}
+	// Do GIF stuff?
+	else if ImageKind::is_gif(&raw) {
+		if ! kinds.contains(ImageKind::Gif) { return Err(EncodingError::Skipped); }
+		// The GIF thread will need to handle the actual compression.
+		return Err(EncodingError::TbdGif);
+	}
 	// Something else entirely?
 	else { return Err(EncodingError::Format); }
 
@@ -76,14 +86,61 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 	else { Ok((before, before)) }
 }
 
+/// # Encode Image (GIF).
+///
+/// This will attempt to losslessly re-encode the GIF, overriding the
+/// original if the compression results in savings.
+///
+/// The before and after sizes are returned, unless there's an error or the
+/// image is invalid. In cases where compression doesn't help, the before and
+/// after sizes will be identical.
+pub(super) fn encode_gif(src: &Path) -> Result<(u64, u64), EncodingError> {
+	// Read the original.
+	let mut raw = std::fs::read(src).map_err(|_|
+		if src.is_file() { EncodingError::Read }
+		else { EncodingError::Vanished }
+	)?;
+	let before = raw.len() as u64;
+	if before == 0 { return Err(EncodingError::Empty); }
+
+	// Check the type and resolution.
+	if ! ImageKind::is_gif(&raw) { return Err(EncodingError::Format); }
+	check_resolution(ImageKind::Gif, &raw)?;
+
+	encode_image_gif(&mut raw);
+	if let Some(new) = encode_gifsicle(src) {
+		if new.len() < raw.len() {
+			raw.truncate(new.len());
+			raw.copy_from_slice(new.as_slice());
+		}
+	}
+
+	// Save it if smaller!
+	let after = raw.len() as u64;
+	if after < before {
+		return write_atomic::write_file(src, &raw)
+			.map(|()| (before, after))
+			.map_err(|_| EncodingError::Write);
+	}
+
+	// Nothing doing.
+	Ok((before, before))
+}
+
+
+
 #[inline(never)]
 /// # Check Resolution.
+///
+/// Parse the image's dimensions and make sure they're within the
+/// `MAX_RESOLUTION` runtime constraint.
 fn check_resolution(kind: ImageKind, src: &[u8]) -> Result<(), EncodingError> {
 	// Get the width and height.
 	let (w, h) = match kind {
+		ImageKind::Gif => ImageKind::gif_dimensions(src),
 		ImageKind::Jpeg => ImageKind::jpeg_dimensions(src),
 		ImageKind::Png => ImageKind::png_dimensions(src),
-		ImageKind::All => None,
+		_ => None,
 	}
 		.ok_or(EncodingError::Format)?;
 
@@ -93,6 +150,102 @@ fn check_resolution(kind: ImageKind, src: &[u8]) -> Result<(), EncodingError> {
 	// And finally check the limit.
 	if MAX_RESOLUTION.get().is_none_or(|&max| res <= max) { Ok(()) }
 	else { Err(EncodingError::Resolution) }
+}
+
+/// # Encode w/ `image`.
+///
+/// Image optimization isn't a particular goal of the `image` crate, but most
+/// GIF images are pretty old and shitty and will benefit from a simple in/out,
+/// even if just to clear away comments and other metadata.
+fn encode_image_gif(raw: &mut Vec<u8>) {
+	/// # Try De/Encode.
+	fn dec_enc(src: &[u8]) -> Option<Vec<u8>> {
+		use image::{
+			AnimationDecoder,
+			codecs::gif::GifDecoder,
+			ImageFormat,
+			ImageReader,
+		};
+
+		// The image crate's animation-handling isn't robust enough for our
+		// purposes, so let's count up the frames and bail if there's more
+		// than one.
+		if GifDecoder::new(Cursor::new(src)).ok()?.into_frames().take(2).count() != 1 {
+			return None;
+		}
+
+		// Non-animated GIF frames can have weird settings, so let's start
+		// over and use DynamicImage as an agnostic go-between for the in/out
+		// pass.
+		let img = ImageReader::with_format(Cursor::new(src), ImageFormat::Gif)
+			.decode()
+			.ok()?;
+		let mut new = Cursor::new(Vec::with_capacity(src.len()));
+		img.write_to(&mut new, ImageFormat::Gif).ok()?;
+		let new = new.into_inner();
+
+		// Return it if non-empty.
+		if new.is_empty() { None }
+		else { Some(new) }
+	}
+
+	// Keep it if better (and still a gif).
+	if let Some(new) = dec_enc(raw) {
+		if new.len() < raw.len() && ImageKind::is_gif(new.as_slice()) {
+			raw.truncate(new.len());
+			raw.copy_from_slice(new.as_slice());
+		}
+	}
+}
+
+#[expect(
+	clippy::cast_possible_truncation,
+	clippy::cast_possible_wrap,
+	reason = "False positive.",
+)]
+#[expect(unsafe_code, reason = "For FFI.")]
+/// # Encode w/ `Gifsicle`.
+///
+/// The result is comparable to running:
+///
+/// ```bash
+/// gifsicle --no-comments SRC --optimize=3
+/// ```
+///
+/// Note: only one instance of this method can be active at any given time.
+/// We only call it from a dedicated thread to help with that.
+fn encode_gifsicle(src: &Path) -> Option<Vec<u8>> {
+	// This unfortunately writes the results to disk, so let's get a
+	// tempfile going to help with cleanup.
+	let dst = tempfile::Builder::new()
+		.prefix(".flaca__")
+		.rand_bytes(16)
+		.suffix(".gif")
+		.tempfile()
+		.ok()?;
+
+	// Set up the "args". Note `argv` _has_ to be a `Vec` or gifsicle
+	// will fail with a bunch of random not-found errors.
+	let args_raw: [CString; 6] = [
+		std::env::current_exe().ok()
+			.and_then(|c| c.as_os_str().to_str().and_then(|c| CString::new(c).ok()))?,
+		CString::new("--no-warnings").ok()?,
+		CString::new("--no-comments").ok()?,
+		src.as_os_str().to_str().and_then(|c| CString::new(c).ok())?,
+		CString::new(format!("--output={}", dst.path().display())).ok()?,
+		CString::new("--optimize=3").ok()?,
+	];
+	let argv = args_raw.iter().map(|v| v.as_ptr()).collect::<Vec<_>>();
+
+	// Safety: zero means success; anything else is grounds for bailing.
+	if 0 != unsafe { gifsicle::gifsicle_main(argv.len() as _, argv.as_ptr()) } {
+		return None;
+	}
+
+	// Read the results and return if not empty (and still a gif).
+	let out = std::fs::read(dst).ok()?;
+	if out.is_empty() || ! ImageKind::is_gif(&out) { None }
+	else { Some(out) }
 }
 
 #[inline(never)]
