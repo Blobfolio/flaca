@@ -7,7 +7,7 @@ pub(super) mod kind;
 
 
 
-use crate::MAX_RESOLUTION;
+use crate::Settings;
 use kind::ImageKind;
 use std::{
 	ffi::CString,
@@ -28,7 +28,7 @@ use super::EncodingError;
 /// The before and after sizes are returned, unless there's an error or the
 /// image is invalid. In cases where compression doesn't help, the before and
 /// after sizes will be identical.
-pub(super) fn encode(file: &Path, kinds: ImageKind)
+pub(super) fn encode(file: &Path, settings: Settings)
 -> Result<(u64, u64), EncodingError> {
 	// Read the file.
 	let mut raw = std::fs::read(file).map_err(|_|
@@ -40,16 +40,16 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 
 	// Do PNG stuff?
 	if ImageKind::is_png(&raw) {
-		if ! kinds.contains(ImageKind::Png) { return Err(EncodingError::Skipped); }
-		check_resolution(ImageKind::Png, &raw)?;
+		if ! settings.has_kind(ImageKind::Png) { return Err(EncodingError::Skipped); }
+		check_resolution(ImageKind::Png, &raw, settings)?;
 
 		encode_oxipng(&mut raw);
 		encode_zopflipng(&mut raw);
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
-		if ! kinds.contains(ImageKind::Jpeg) { return Err(EncodingError::Skipped); }
-		check_resolution(ImageKind::Jpeg, &raw)?;
+		if ! settings.has_kind(ImageKind::Jpeg) { return Err(EncodingError::Skipped); }
+		check_resolution(ImageKind::Jpeg, &raw, settings)?;
 
 		// Mozjpeg usually panics on error, so we have to do a weird little
 		// dance to keep it from killing the whole thread.
@@ -69,7 +69,7 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 	}
 	// Do GIF stuff?
 	else if ImageKind::is_gif(&raw) {
-		if ! kinds.contains(ImageKind::Gif) { return Err(EncodingError::Skipped); }
+		if ! settings.has_kind(ImageKind::Gif) { return Err(EncodingError::Skipped); }
 		// The GIF thread will need to handle the actual compression.
 		return Err(EncodingError::TbdGif);
 	}
@@ -79,9 +79,7 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 	// Save it if better.
 	let after = raw.len() as u64;
 	if after < before {
-		write_atomic::write_file(file, &raw)
-			.map(|()| (before, after))
-			.map_err(|_| EncodingError::Write)
+		save_image(file, &raw).map(|()| (before, after))
 	}
 	else { Ok((before, before)) }
 }
@@ -94,7 +92,8 @@ pub(super) fn encode(file: &Path, kinds: ImageKind)
 /// The before and after sizes are returned, unless there's an error or the
 /// image is invalid. In cases where compression doesn't help, the before and
 /// after sizes will be identical.
-pub(super) fn encode_gif(src: &Path) -> Result<(u64, u64), EncodingError> {
+pub(super) fn encode_gif(src: &Path, settings: Settings)
+-> Result<(u64, u64), EncodingError> {
 	// Read the original.
 	let mut raw = std::fs::read(src).map_err(|_|
 		if src.is_file() { EncodingError::Read }
@@ -105,7 +104,7 @@ pub(super) fn encode_gif(src: &Path) -> Result<(u64, u64), EncodingError> {
 
 	// Check the type and resolution.
 	if ! ImageKind::is_gif(&raw) { return Err(EncodingError::Format); }
-	check_resolution(ImageKind::Gif, &raw)?;
+	check_resolution(ImageKind::Gif, &raw, settings)?;
 
 	encode_image_gif(&mut raw);
 	if let Some(new) = encode_gifsicle(src) {
@@ -115,16 +114,12 @@ pub(super) fn encode_gif(src: &Path) -> Result<(u64, u64), EncodingError> {
 		}
 	}
 
-	// Save it if smaller!
+	// Save it if better.
 	let after = raw.len() as u64;
 	if after < before {
-		return write_atomic::write_file(src, &raw)
-			.map(|()| (before, after))
-			.map_err(|_| EncodingError::Write);
+		save_image(src, &raw).map(|()| (before, after))
 	}
-
-	// Nothing doing.
-	Ok((before, before))
+	else { Ok((before, before)) }
 }
 
 
@@ -134,7 +129,8 @@ pub(super) fn encode_gif(src: &Path) -> Result<(u64, u64), EncodingError> {
 ///
 /// Parse the image's dimensions and make sure they're within the
 /// `MAX_RESOLUTION` runtime constraint.
-fn check_resolution(kind: ImageKind, src: &[u8]) -> Result<(), EncodingError> {
+fn check_resolution(kind: ImageKind, src: &[u8], settings: Settings)
+-> Result<(), EncodingError> {
 	// Get the width and height.
 	let (w, h) = match kind {
 		ImageKind::Gif => ImageKind::gif_dimensions(src),
@@ -144,11 +140,7 @@ fn check_resolution(kind: ImageKind, src: &[u8]) -> Result<(), EncodingError> {
 	}
 		.ok_or(EncodingError::Format)?;
 
-	// Make sure the resolution fits u32.
-	let res = w.checked_mul(h).ok_or(EncodingError::Resolution)?;
-
-	// And finally check the limit.
-	if MAX_RESOLUTION.get().is_none_or(|&max| res <= max) { Ok(()) }
+	if settings.check_resolution(w, h) { Ok(()) }
 	else { Err(EncodingError::Resolution) }
 }
 
@@ -338,4 +330,9 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 			raw.copy_from_slice(slice);
 		}
 	}
+}
+
+/// # Save Image!
+fn save_image(src: &Path, data: &[u8]) -> Result<(), EncodingError> {
+	write_atomic::write_file(src, data).map_err(|_| EncodingError::Write)
 }

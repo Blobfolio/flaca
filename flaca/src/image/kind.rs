@@ -7,7 +7,6 @@ use crate::{
 	E_JPEG,
 	E_JPG,
 	E_PNG,
-	FlacaError,
 };
 use dowser::Extension;
 use std::{
@@ -20,16 +19,6 @@ use std::{
 include!(concat!(env!("OUT_DIR"), "/flaca-kinds.rs"));
 
 impl ImageKind {
-	/// # Return the Difference.
-	///
-	/// Subtract `other` from `self`, returning an error if that leaves
-	/// nothing.
-	pub(crate) const fn diff(mut self, other: Self) -> Result<Self, FlacaError> {
-		self.set(other);
-		if self.is_none() { Err(FlacaError::NoImages) }
-		else { Ok(self) }
-	}
-
 	/// # From Path (Naive).
 	///
 	/// Match a file extension to a type.
