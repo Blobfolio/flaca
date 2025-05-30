@@ -3,6 +3,7 @@
 */
 
 use crate::{
+	E_GIF,
 	E_JPEG,
 	E_JPG,
 	E_PNG,
@@ -90,7 +91,7 @@ impl Crawler {
 		let mut out: Vec<PathBuf> = raw.filter(|p|
 			Extension::try_from3(p).map_or_else(
 				|| Some(E_JPEG) == Extension::try_from4(p),
-				|e| e == E_JPG || e == E_PNG
+				|e| e == E_GIF || e == E_JPG || e == E_PNG,
 			)
 		)
 			.collect();

@@ -1,8 +1,8 @@
-.TH "FLACA" "1" "May 2025" "flaca v3.3.3" "User Commands"
+.TH "FLACA" "1" "May 2025" "flaca v3.4.0" "User Commands"
 .SH NAME
-FLACA \- Manual page for flaca v3.3.3.
+FLACA \- Manual page for flaca v3.4.0.
 .SH DESCRIPTION
-Brute\-force, lossless JPEG and PNG compression.
+Brute\-force, lossless GIF, JPEG, and PNG compression.
 .SS USAGE:
 .TP
 flaca [FLAGS] [OPTIONS] <PATH(s)…>
@@ -10,6 +10,9 @@ flaca [FLAGS] [OPTIONS] <PATH(s)…>
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help information and exit.
+.TP
+\fB\-\-no\-gif\fR
+Skip GIF images.
 .TP
 \fB\-\-no\-jpeg\fR
 Skip JPEG images.
@@ -19,6 +22,9 @@ Skip PNG images.
 .TP
 \fB\-\-no\-symlinks\fR
 Ignore symlinks (rather than following them).
+.TP
+\fB\-\-preserve\-times\fR
+(Try to) preserve the original file access and modification times when resaving an image.
 .TP
 \fB\-p\fR, \fB\-\-progress\fR
 Show pretty progress while minifying.
@@ -31,17 +37,17 @@ Print version information and exit.
 Limit parallelization to this many threads (instead of giving each logical core its own image to work on). If negative, the value will be subtracted from the total number of logical cores.
 .TP
 \fB\-l\fR, \fB\-\-list\fR <FILE>
-Read (absolute) image and/or directory paths from this text file — or STDIN if '\-' — one entry per line, instead of or in addition to (actually trailing) <PATH(S)>.
+Read (absolute) image and/or directory paths from this text file — or STDIN if '\-' — one entry per line, instead of or in addition to any trailing <PATH(S)>.
 .TP
 \fB\-\-max\-resolution\fR <NUM>
 Skip images containing more than <NUM> total pixels to avoid potential OOM errors during decompression. [default: ~4.29 billion]
 .TP
 \fB\-z\fR <NUM>
-Run NUM lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. In practice, values beyond 500 are unlikely to save more than a few bytes, and could take *days* to complete! Haha. [default: 20 or 60, depending on the file size]
+Run <NUM> lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. [default: 20 or 60, depending on the file size]
 .SS TRAILING:
 .TP
 \fB<PATH(s)…>\fR
-One or more image and/or directory paths to losslessly compress.
+One or more image and/or directory paths to losslessly re\-compress.
 .SH EARLY EXIT
 Press CTRL+C once to quit as soon as the already\-in\-progress operations have
 .RE
@@ -55,6 +61,9 @@ so may leave artifacts (temporary files) behind, and in rare cases, lead to
 .RE
 image corruption.
 .SS OPTIMIZERS:
+.TP
+\fBGifsicle\fR
+<https://github.com/kohler/gifsicle/>
 .TP
 \fBMozJPEG\fR
 <https://github.com/mozilla/mozjpeg>

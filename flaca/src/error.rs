@@ -24,8 +24,8 @@ const HELP: &str = concat!(r"
    `--/       ,-.  ______/
      (o-.     ,o- /
       `. ;        \    ", csi!(199), "Flaca", ansi!((cornflower_blue) " v", env!("CARGO_PKG_VERSION")), r#"
-       |:          \   Brute-force, lossless
-      ,'`       ,   \  JPEG and PNG compression.
+       |:          \   Brute-force, lossless GIF,
+      ,'`       ,   \  JPEG, and PNG compression.
      (o o ,  --'     :
       \--','.        ;
        `;;  :       /
@@ -33,53 +33,79 @@ const HELP: &str = concat!(r"
         ,','  :  '
         \ \   :
          `
-
-USAGE:
+"#, ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+USAGE:", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
     flaca [FLAGS] [OPTIONS] <PATH(S)>...
 
-FLAGS:
-    -h, --help        Print help information and exit.
-        --no-jpeg     Skip JPEG images.
-        --no-png      Skip PNG images.
-        --no-symlinks Ignore symlinks (rather than following them).
-    -p, --progress    Show pretty progress while minifying.
-    -V, --version     Print version information and exit.
-
-OPTIONS:
-    -j <NUM>          Limit parallelization to this many threads (instead of
-                      giving each logical core its own image to work on). If
-                      negative, the value will be subtracted from the total
-                      number of logical cores.
-    -l, --list <FILE> Read (absolute) image and/or directory paths from this
-                      text file — or STDIN if "-" — one entry per line, instead
-                      of or in addition to (actually trailing) <PATH(S)>.
-        --max-resolution <NUM>
-                      Skip images containing more than <NUM> total pixels to
-                      avoid potential OOM errors during decompression.
-                      [default: ~4.29 billion]
-    -z <NUM>          Run NUM lz77 backward/forward iterations during zopfli
-                      PNG encoding passes. More iterations yield better
-                      compression (up to a point), but require *significantly*
-                      longer processing times. In practice, values beyond 500
-                      are unlikely to save more than a few bytes, and could
-                      take *days* to complete! Haha. [default: 20 or 60,
-                      depending on the file size]
-ARGS:
-    <PATH(S)>...      One or more image and/or directory paths to losslessly
-                      compress.
-
-EARLY EXIT:
-    Press "#, ansi!((dark_orange) "CTRL"), "+", ansi!((dark_orange) "C"), " once to quit as soon as the already-in-progress operations
+", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+FLAGS:", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+    -h, --help             Print help information and exit.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --no-gif           Skip GIF images.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --no-jpeg          Skip JPEG images.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --no-png           Skip PNG images.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --no-symlinks      Ignore symlinks (rather than following them).", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --preserve-times   (Try to) preserve the original file access and
+                           modification times when resaving an image.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+    -p, --progress         Show pretty progress while minifying.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+    -V, --version          Print version information and exit.
+", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+OPTIONS:", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+    -j <NUM>               Limit parallelization to this many threads (instead
+                           of giving each logical core its own image to work
+                           on). If negative, the value will be subtracted from
+                           the total number of logical cores.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), r#"
+    -l, --list <FILE>      Read (absolute) image and/or directory paths from
+                           this text file — or STDIN if "-" — one entry per
+                           line, instead of or in addition to any trailing
+                           <PATH(S)>."#, ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --max-pixels <NUM> Skip images containing more than <NUM> total pixels
+                           to avoid potential OOM errors during decompression.
+                           [default: ~4.29 billion]", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+    -z <NUM>               Run <NUM> lz77 backward/forward iterations during
+                           zopfli PNG encoding passes. More iterations yield
+                           better compression (up to a point), but require
+                           *significantly* longer processing times.
+                           [default: 20 or 60, depending on the file size]
+", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+ARGS:", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+    <PATH(S)>...           One or more image and/or directory paths to
+                           losslessly re-compress.
+", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+EARLY EXIT:", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+    Press ", ansi!((dark_orange) "CTRL"), "+", ansi!((dark_orange) "C"), " once to quit as soon as the already-in-progress operations
     have finished (ignoring any pending images still in the queue).
 
     Press ", ansi!((dark_orange) "CTRL"), "+", ansi!((dark_orange) "C"), " a second time if you need to exit IMMEDIATELY, but note that
     doing so may leave artifacts (temporary files) behind, and in rare cases,
     lead to image corruption.
-
-OPTIMIZERS USED:
-    MozJPEG   <https://github.com/mozilla/mozjpeg>
-    Oxipng    <https://github.com/shssoichiro/oxipng>
-    Zopflipng <https://github.com/google/zopfli>
+", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+OPTIMIZERS USED:", ansi!((dim, violet) "
+-------------------------------------------------------------------------------"), "
+    Gifsicle  <", ansi!((cyan) "https://github.com/kohler/gifsicle"), ">
+    MozJPEG   <", ansi!((cyan) "https://github.com/mozilla/mozjpeg"), ">
+    Oxipng    <", ansi!((cyan) "https://github.com/shssoichiro/oxipng"), ">
+    Zopflipng <", ansi!((cyan) "https://github.com/google/zopfli"), ">
 ");
 
 
@@ -102,6 +128,9 @@ pub(super) enum EncodingError {
 	/// # Intentionally Skipped.
 	Skipped,
 
+	/// # TBD Gif.
+	TbdGif,
+
 	/// # Vanished.
 	Vanished,
 
@@ -118,7 +147,7 @@ impl EncodingError {
 			Self::Format => "invalid format",
 			Self::Read => "read error",
 			Self::Resolution => "too big",
-			Self::Skipped => "",
+			Self::Skipped | Self::TbdGif => "",
 			Self::Vanished => "vanished!",
 			Self::Write => "write error",
 		}
