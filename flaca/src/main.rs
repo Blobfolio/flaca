@@ -56,14 +56,14 @@
 
 mod crawl;
 mod error;
-mod image;
+mod img;
 mod opts;
 
 use error::{
 	EncodingError,
 	FlacaError,
 };
-use image::kind::ImageKind;
+use img::kind::ImageKind;
 use opts::Settings;
 
 use argyle::Argument;
@@ -293,7 +293,7 @@ fn crunch<'a>(
 ) {
 	// We might not need to do all the fancy pretty business.
 	let Some(progress) = progress else {
-		while let Ok(p) = rx.recv() { let _res = crate::image::encode(p, settings); }
+		while let Ok(p) = rx.recv() { let _res = crate::img::encode(p, settings); }
 		return;
 	};
 
@@ -301,7 +301,7 @@ fn crunch<'a>(
 		let name = p.to_string_lossy();
 		progress.add(&name);
 
-		match crate::image::encode(p, settings) {
+		match crate::img::encode(p, settings) {
 			// Happy.
 			Ok((b, a)) => {
 				BEFORE.fetch_add(b, SeqCst);
@@ -339,14 +339,14 @@ fn crunch<'a>(
 fn crunch_gif(rx: Receiver::<&Path>, settings: Settings, progress: Option<&Progless>) {
 	// We might not need to do all the fancy pretty business.
 	let Some(progress) = progress else {
-		while let Ok(p) = rx.recv() { let _res = crate::image::encode_gif(p, settings); }
+		while let Ok(p) = rx.recv() { let _res = crate::img::encode_gif(p, settings); }
 		return;
 	};
 
 	while let Ok(p) = rx.recv() {
 		let name = p.to_string_lossy();
 
-		match crate::image::encode_gif(p, settings) {
+		match crate::img::encode_gif(p, settings) {
 			// Happy.
 			Ok((b, a)) => {
 				BEFORE.fetch_add(b, SeqCst);
