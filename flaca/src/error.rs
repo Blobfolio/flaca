@@ -43,53 +43,51 @@ USAGE:", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
 FLAGS:", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
-    -h, --help           Print help information and exit.", ansi!((dim, violet) "
-                         ------------------------------------------------------"), "
-        --no-gif         Skip GIF images.", ansi!((dim, violet) "
-                         ------------------------------------------------------"), "
-        --no-jpeg        Skip JPEG images.", ansi!((dim, violet) "
-                         ------------------------------------------------------"), "
-        --no-png         Skip PNG images.", ansi!((dim, violet) "
-                         ------------------------------------------------------"), "
-        --no-symlinks    Ignore symlinks (rather than following them).", ansi!((dim, violet) "
-                         ------------------------------------------------------"), "
-        --preserve-times (Try to) preserve the original file access and
-                         modification times when resaving an image.", ansi!((dim, violet) "
-                         ------------------------------------------------------"), "
-    -p, --progress       Show pretty progress while minifying.", ansi!((dim, violet) "
-                         ------------------------------------------------------"), "
-    -V, --version        Print version information and exit.
+    -h, --help             Print help information and exit.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --no-gif           Skip GIF images.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --no-jpeg          Skip JPEG images.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --no-png           Skip PNG images.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --no-symlinks      Ignore symlinks (rather than following them).", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --preserve-times   (Try to) preserve the original file access and
+                           modification times when resaving an image.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+    -p, --progress         Show pretty progress while minifying.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+    -V, --version          Print version information and exit.
 ", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
 OPTIONS:", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
-    -j <NUM>             Limit parallelization to this many threads (instead of
-                         giving each logical core its own image to work on). If
-                         negative, the value will be subtracted from the total
-                         number of logical cores.", ansi!((dim, violet) "
-                         ------------------------------------------------------"), r#"
-    -l, --list <FILE>    Read (absolute) image and/or directory paths from this
-                         text file — or STDIN if "-" — one entry per line,
-                         instead of or in addition to any trailing <PATH(S)>."#, ansi!((dim, violet) "
-                         ------------------------------------------------------"), "
-        --max-resolution <NUM>
-                         Skip images containing more than <NUM> total pixels to
-                         avoid potential OOM errors during decompression.
-                         [default: ~4.29 billion]", ansi!((dim, violet) "
-                         ------------------------------------------------------"), "
-    -z <NUM>             Run NUM lz77 backward/forward iterations during zopfli
-                         PNG encoding passes. More iterations yield better
-                         compression (up to a point), but require
-                         *significantly* longer processing times. In practice,
-                         values beyond 500 are unlikely to save more than a few
-                         bytes, and could take *days* to complete! Haha.
-                         [default: 20 or 60, depending on the file size]
+    -j <NUM>               Limit parallelization to this many threads (instead
+                           of giving each logical core its own image to work
+                           on). If negative, the value will be subtracted from
+                           the total number of logical cores.", ansi!((dim, violet) "
+                           ----------------------------------------------------"), r#"
+    -l, --list <FILE>      Read (absolute) image and/or directory paths from
+                           this text file — or STDIN if "-" — one entry per
+                           line, instead of or in addition to any trailing
+                           <PATH(S)>."#, ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --max-pixels <NUM> Skip images containing more than <NUM> total pixels
+                           to avoid potential OOM errors during decompression.
+                           [default: ~4.29 billion]", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+    -z <NUM>               Run <NUM> lz77 backward/forward iterations during
+                           zopfli PNG encoding passes. More iterations yield
+                           better compression (up to a point), but require
+                           *significantly* longer processing times.
+                           [default: 20 or 60, depending on the file size]
 ", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
 ARGS:", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
-    <PATH(S)>...         One or more image and/or directory paths to losslessly
-                         compress.
+    <PATH(S)>...           One or more image and/or directory paths to
+                           losslessly re-compress.
 ", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
 EARLY EXIT:", ansi!((dim, violet) "

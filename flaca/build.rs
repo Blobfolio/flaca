@@ -48,7 +48,7 @@ fn build_cli() {
 	builder.push_keys_with_values([
 		"-j",
 		"-l", "--list",
-		"--max-resolution",
+		"--max-pixels",
 		"-z",
 	]);
 	builder.save(out_path("argyle.rs"));

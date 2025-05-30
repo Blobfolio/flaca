@@ -95,12 +95,12 @@ path = false
 [[package.metadata.bashman.options]]
 short = "-z"
 label = "<NUM>"
-description = "Run NUM lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. In practice, values beyond 500 are unlikely to save more than a few bytes, and could take *days* to complete! Haha. [default: 20 or 60, depending on the file size]"
+description = "Run <NUM> lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. [default: 20 or 60, depending on the file size]"
 path = false
 
 [[package.metadata.bashman.arguments]]
 label = "<PATH(s)…>"
-description = "One or more image and/or directory paths to losslessly compress."
+description = "One or more image and/or directory paths to losslessly re-compress."
 
 [[package.metadata.bashman.sections]]
 name = "EARLY EXIT"

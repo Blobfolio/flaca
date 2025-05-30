@@ -171,8 +171,8 @@ fn main__() -> Result<(), FlacaError> {
 
 			Argument::KeyWithValue("-l" | "--list", s) => { paths.push_list(s); },
 
-			Argument::KeyWithValue("--max-resolution", s) => {
-				settings.set_max_resolution_raw(s.trim().as_bytes())?;
+			Argument::KeyWithValue("--max-pixels", s) => {
+				settings.set_max_pixels_raw(s.trim().as_bytes())?;
 			},
 
 			Argument::KeyWithValue("-z", s) => {

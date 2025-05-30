@@ -20,7 +20,7 @@ pub(crate) struct Settings {
 	/// # Maximum Resolution.
 	///
 	/// Images with more pixels than this will be ignored.
-	max_resolution: Option<NonZeroU32>,
+	max_pixels: Option<NonZeroU32>,
 
 	/// # Preserve Times?
 	///
@@ -35,7 +35,7 @@ impl Settings {
 	pub(crate) const fn new() -> Self {
 		Self {
 			kinds: ImageKind::All,
-			max_resolution: None,
+			max_pixels: None,
 			preserve_times: false,
 		}
 	}
@@ -48,7 +48,7 @@ impl Settings {
 	/// ## Errors
 	///
 	/// An error is returned if the value is invalid.
-	pub(super) fn set_max_resolution_raw(&mut self, raw: &[u8])
+	pub(super) fn set_max_pixels_raw(&mut self, raw: &[u8])
 	-> Result<(), FlacaError> {
 		let multiplier: u32 =
 		match raw.last() {
@@ -60,7 +60,7 @@ impl Settings {
 		};
 
 		let len = raw.len() - usize::from(multiplier != 1);
-		self.max_resolution.replace(
+		self.max_pixels.replace(
 			u32::btou(raw[..len].trim_ascii())
 			.and_then(|n| n.checked_mul(multiplier))
 			.and_then(NonZeroU32::new)
@@ -98,7 +98,7 @@ impl Settings {
 	pub(crate) const fn check_resolution(self, width: NonZeroU32, height: NonZeroU32)
 	-> bool {
 		if let Some(res) = width.checked_mul(height) {
-			if let Some(max) = self.max_resolution { res.get() <= max.get() }
+			if let Some(max) = self.max_pixels { res.get() <= max.get() }
 			else { true }
 		}
 		else { false }
