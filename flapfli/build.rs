@@ -46,7 +46,7 @@ const ZOPFLI_WINDOW_SIZE: u16 = 32_768;
 
 
 /// # Build.
-pub fn main() {
+fn main() {
 	println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
 	println!("cargo:rerun-if-env-changed=TARGET_CPU");
 	println!("cargo:rerun-if-changed=../skel/vendor/");

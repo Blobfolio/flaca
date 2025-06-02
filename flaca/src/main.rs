@@ -81,15 +81,16 @@ use dactyl::{
 	},
 };
 use dowser::Extension;
-use fyi_ansi::{
-	ansi,
-	dim,
-};
 use fyi_msg::{
+	fyi_ansi::{
+		ansi,
+		dim,
+	},
 	BeforeAfter,
 	Msg,
 	MsgKind,
 	Progless,
+	ProglessTaskGuard,
 };
 use std::{
 	num::{
@@ -213,7 +214,7 @@ fn main__() -> Result<(), FlacaError> {
 	// Now onto the thread business!
 	let mut undone: Vec<&Path> = Vec::new(); // Skipped because of CTRL+C or tx fail.
 	let (tx, rx) = crossbeam_channel::bounded::<&Path>(threads.get());
-	let (gtx, grx) = crossbeam_channel::bounded::<&Path>(0); // For GIFs.
+	let (gtx, grx) = crossbeam_channel::bounded::<(&Path, Option<ProglessTaskGuard>)>(0); // For GIFs.
 	thread::scope(#[inline(always)] |s| {
 		// Set up the worker threads, either with or without progress.
 		let mut workers = Vec::with_capacity(threads.get() + 1);
@@ -285,21 +286,25 @@ fn main__() -> Result<(), FlacaError> {
 /// This is the worker callback for image crunching. It listens for "new" image
 /// paths and crunches them — and maybe updates the progress bar, etc. — then
 /// quits as soon as the work has dried up.
-fn crunch<'a>(
+fn crunch<'a, 'b>(
 	rx: &Receiver::<&'a Path>,
 	settings: Settings,
-	progress: Option<&Progless>,
-	gtx: Sender::<&'a Path>,
+	progress: Option<&'b Progless>,
+	gtx: Sender::<(&'a Path, Option<ProglessTaskGuard<'b>>)>,
 ) {
 	// We might not need to do all the fancy pretty business.
 	let Some(progress) = progress else {
-		while let Ok(p) = rx.recv() { let _res = crate::img::encode(p, settings); }
+		while let Ok(p) = rx.recv() {
+			if matches!(crate::img::encode(p, settings), Err(EncodingError::TbdGif)) {
+				let _res = gtx.send((p, None));
+			}
+		}
 		return;
 	};
 
 	while let Ok(p) = rx.recv() {
 		let name = p.to_string_lossy();
-		progress.add(&name);
+		let task = progress.task(&name);
 
 		match crate::img::encode(p, settings) {
 			// Happy.
@@ -310,7 +315,7 @@ fn crunch<'a>(
 			// Skipped.
 			Err(e) => {
 				// Send GIFs to the dedicated GIF thread.
-				if matches!(e, EncodingError::TbdGif) && gtx.send(p).is_ok() {
+				if matches!(e, EncodingError::TbdGif) && gtx.send((p, task)).is_ok() {
 					continue;
 				}
 
@@ -325,8 +330,6 @@ fn crunch<'a>(
 				}
 			}
 		}
-
-		progress.remove(&name);
 	}
 }
 
@@ -336,16 +339,18 @@ fn crunch<'a>(
 ///
 /// Gifsicle crunching cannot be done simultaneously. This dedicated worker
 /// handles any GIFs that happen to come up, one at a time.
-fn crunch_gif(rx: Receiver::<&Path>, settings: Settings, progress: Option<&Progless>) {
+fn crunch_gif<'a>(
+	rx: Receiver::<(&Path, Option<ProglessTaskGuard<'a>>)>,
+	settings: Settings,
+	progress: Option<&'a Progless>
+) {
 	// We might not need to do all the fancy pretty business.
 	let Some(progress) = progress else {
-		while let Ok(p) = rx.recv() { let _res = crate::img::encode_gif(p, settings); }
+		while let Ok((p, _)) = rx.recv() { let _res = crate::img::encode_gif(p, settings); }
 		return;
 	};
 
-	while let Ok(p) = rx.recv() {
-		let name = p.to_string_lossy();
-
+	while let Ok((p, task)) = rx.recv() {
 		match crate::img::encode_gif(p, settings) {
 			// Happy.
 			Ok((b, a)) => {
@@ -359,16 +364,15 @@ fn crunch_gif(rx: Receiver::<&Path>, settings: Settings, progress: Option<&Progl
 				if ! matches!(e, EncodingError::Skipped) && noteworthy(settings.kinds(), p) {
 					let _res = progress.push_msg(Msg::skipped(format!(
 						concat!("{} ", dim!("({})")),
-						name,
+						p.display(),
 						e.as_str(),
 					)));
 				}
 			}
 		}
 
-		// Note: this will have already been "added" (but not removed) by the
-		// referring worker thread. Removing it now will balance the numbers.
-		progress.remove(&name);
+		// Explicitly drop so Rust knows we're using it.
+		drop(task);
 	}
 }
 

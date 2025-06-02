@@ -209,7 +209,7 @@ fn encode_image_gif(raw: &mut Vec<u8>) {
 fn encode_gifsicle(src: &Path) -> Option<Vec<u8>> {
 	// This unfortunately writes the results to disk, so let's get a
 	// tempfile going to help with cleanup.
-	let dst = tempfile::Builder::new()
+	let dst = write_atomic::tempfile::Builder::new()
 		.prefix(".flaca__")
 		.rand_bytes(16)
 		.suffix(".gif")
@@ -335,7 +335,8 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 /// # Save Image!
 fn save_image(src: &Path, data: &[u8], settings: Settings)
 -> Result<(), EncodingError> {
-	use filetime::FileTime;
+	use write_atomic::filetime;
+	use write_atomic::filetime::FileTime;
 
 	// Grab the (current) metadata before saving in case the user wants to
 	// keep the original file times.

@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.4.0"
+version = "3.4.1"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -22,7 +22,7 @@ license-file = ["../LICENSE", "0"]
 extended-description = """\n\
 Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of losslessly compressing GIF, JPEG, and PNG images for use on the web.\n\
 .\n\
-Under the hood, it uses MozJPEG for lossless JPEG (re)compression, and Oxipng/Zopflipng for lossless PNG (re)compression."""
+Under the hood, it uses Gifsicle for lossless GIF (re)compression, MozJPEG for JPEGs, and Oxipng/Zopflipng for PNGs."""
 revision = "1"
 depends = "$auto"
 section = "graphics"
@@ -133,19 +133,16 @@ repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
 argyle = "0.12.*"
-dowser = "0.13.*"
+dowser = "0.14.*"
 
 [dependencies]
 crossbeam-channel = "=0.5.*"
-dactyl = "0.11.*"
-dowser = "0.13.*"
-filetime = "0.2.*"
-fyi_ansi = "2.1.*"
+dactyl = "0.12.*"
+dowser = "0.14.*"
 gifsicle = "=1.95.0"
 libc = "0.2.*"
-utc2k = "0.13.*"
-tempfile = "3.20.*"
-write_atomic = "0.6.*"
+utc2k = "0.14.*"
+write_atomic = "0.7.*"
 
 [dependencies.argyle]
 version = "0.12.*"
@@ -156,7 +153,7 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.fyi_msg]
-version = "2.1.*"
+version = "2.2.*"
 features = [ "signals" ]
 
 [dependencies.image]
