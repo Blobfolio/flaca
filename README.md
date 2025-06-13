@@ -27,9 +27,11 @@ As a general rule, you should _not_ try to feed your entire personal media libra
 
 ## Installation
 
-Debian and Ubuntu users can just grab the pre-built `.deb` package from the [latest release](https://github.com/Blobfolio/flaca/releases/latest).
+Pre-built packages for x86-64-v3 CPU architectures are available for Debian and Ubuntu users on the [release page](https://github.com/Blobfolio/flaca/releases/latest), and to Arch Linux users via [AUR](https://aur.archlinux.org/packages/flaca-bin) (thanks[@murlakatamenka](https://github.com/murlakatamenka)!).
 
-This application is written in [Rust](https://www.rust-lang.org/) and can alternatively be built/installed from source using [Cargo](https://github.com/rust-lang/cargo):
+To use flaca in other environments, it'll need to be built from source.
+
+Thankfully, [Rust](https://www.rust-lang.org/)/[Cargo](https://github.com/rust-lang/cargo) make this pretty easy:
 
 ```bash
 # See "cargo install --help" for more options.
