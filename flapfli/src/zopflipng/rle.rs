@@ -298,6 +298,8 @@ impl<const N: usize> ExactSizeIterator for DataSizeIter<'_, N> {
 	fn len(&self) -> usize { N - 2 - self.pos }
 }
 
+impl<const N: usize> std::iter::FusedIterator for DataSizeIter<'_, N> {}
+
 
 
 /// # RLE-Optimized Stretches.
@@ -391,6 +393,8 @@ impl Iterator for GoodForRle<'_> {
 impl ExactSizeIterator for GoodForRle<'_> {
 	fn len(&self) -> usize { self.good + self.bad + self.counts.len() }
 }
+
+impl std::iter::FusedIterator for GoodForRle<'_> {}
 
 
 

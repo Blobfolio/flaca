@@ -390,6 +390,8 @@ impl ExactSizeIterator for {name}Iter {{
 		usize::from({end}_{kind}.saturating_sub(self.0))
 	}}
 }}
+
+impl std::iter::FusedIterator for {name}Iter {{}}
 ",
 				name=self.name,
 				end=self.rng.end,

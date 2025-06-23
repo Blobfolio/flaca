@@ -679,6 +679,8 @@ impl ExactSizeIterator for SplitPointsIter<'_> {
 	}
 }
 
+impl std::iter::FusedIterator for SplitPointsIter<'_> {}
+
 
 
 #[cfg(test)]

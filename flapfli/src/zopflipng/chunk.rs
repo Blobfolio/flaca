@@ -247,6 +247,8 @@ impl ExactSizeIterator for ZopfliChunkIter<'_> {
 	fn len(&self) -> usize { self.0.arr.len() - self.0.from }
 }
 
+impl std::iter::FusedIterator for ZopfliChunkIter<'_> {}
+
 
 
 #[cfg(test)]

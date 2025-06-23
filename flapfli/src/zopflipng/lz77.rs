@@ -323,6 +323,8 @@ impl ExactSizeIterator for LZ77StoreRangeSplits<'_> {
 	fn len(&self) -> usize { self.splits.len() }
 }
 
+impl std::iter::FusedIterator for LZ77StoreRangeSplits<'_> {}
+
 
 
 /// # Chunked Ranged Store Splits.
@@ -449,6 +451,8 @@ impl<'a> Iterator for LZ77StoreRangeSplitsChunked<'a> {
 impl ExactSizeIterator for LZ77StoreRangeSplitsChunked<'_> {
 	fn len(&self) -> usize { Self::SPLITS.saturating_sub(self.pos) }
 }
+
+impl std::iter::FusedIterator for LZ77StoreRangeSplitsChunked<'_> {}
 
 
 
