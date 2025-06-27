@@ -132,7 +132,7 @@ authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
-argyle = "0.12.*"
+argyle = "0.13.*"
 dowser = "0.14.*"
 
 [dependencies]
@@ -145,7 +145,7 @@ utc2k = "0.14.*"
 write_atomic = "0.7.*"
 
 [dependencies.argyle]
-version = "0.12.*"
+version = "0.13.*"
 features = [ "try_paths" ]
 
 [dependencies.flapfli]
