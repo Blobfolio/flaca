@@ -173,13 +173,13 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 		jpeg_mem_src(&mut srcinfo.cinfo, srcinfo.raw.as_ptr(), src_size);
 
 		// Ignore markers.
-		jcopy_markers_setup(&mut srcinfo.cinfo, JCOPY_OPTION_JCOPYOPT_NONE);
+		jcopy_markers_setup(&raw mut srcinfo.cinfo, JCOPY_OPTION_JCOPYOPT_NONE);
 
 		// Read the file header to get to the goods.
 		jpeg_read_header(&mut srcinfo.cinfo, 1);
 
 		// Read a few more properties into the source struct.
-		if jtransform_request_workspace(&mut srcinfo.cinfo, &mut transformoption) == 0 {
+		if jtransform_request_workspace(&raw mut srcinfo.cinfo, &raw mut transformoption) == 0 {
 			return None;
 		}
 	}
@@ -199,10 +199,10 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 	// Safety: this is an FFI call…
 	let dst_coef_arrays: *mut jvirt_barray_ptr = unsafe {
 		jtransform_adjust_parameters(
-			&mut srcinfo.cinfo,
-			&mut dstinfo.cinfo,
+			&raw mut srcinfo.cinfo,
+			&raw mut dstinfo.cinfo,
 			src_coef_arrays,
-			&mut transformoption,
+			&raw mut transformoption,
 		)
 	};
 
@@ -217,20 +217,20 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 		jpeg_simple_progression(&mut dstinfo.cinfo);
 
 		// And load the destination file.
-		jpeg_mem_dest(&mut dstinfo.cinfo, &mut out.buf, &mut out.size);
+		jpeg_mem_dest(&mut dstinfo.cinfo, &raw mut out.buf, &raw mut out.size);
 
 		// Start the compressor. Note: no data is written here.
 		jpeg_write_coefficients(&mut dstinfo.cinfo, dst_coef_arrays);
 
 		// Make sure we aren't copying any markers.
-		jcopy_markers_execute(&mut srcinfo.cinfo, &mut dstinfo.cinfo, JCOPY_OPTION_JCOPYOPT_NONE);
+		jcopy_markers_execute(&raw mut srcinfo.cinfo, &raw mut dstinfo.cinfo, JCOPY_OPTION_JCOPYOPT_NONE);
 
 		// Execute and write the transformation, if any.
 		jtransform_execute_transform(
-			&mut srcinfo.cinfo,
-			&mut dstinfo.cinfo,
+			&raw mut srcinfo.cinfo,
+			&raw mut dstinfo.cinfo,
 			src_coef_arrays,
-			&mut transformoption,
+			&raw mut transformoption,
 		);
 	}
 
@@ -280,7 +280,7 @@ impl<'a> From<&'a [u8]> for JpegSrcInfo<'a> {
 		unsafe {
 			// Set up the error, then the struct.
 			out.cinfo.common.err = std::ptr::addr_of_mut!(*out.err);
-			jpeg_create_decompress(&mut out.cinfo);
+			jpeg_create_decompress(&raw mut out.cinfo);
 		}
 
 		out
@@ -330,7 +330,7 @@ impl From<&mut JpegSrcInfo<'_>> for JpegDstInfo {
 		unsafe {
 			// Set up the error, then the struct.
 			out.cinfo.common.err = out.err.as_ptr();
-			jpeg_CreateCompress(&mut out.cinfo, JPEG_LIB_VERSION, size_of_val(&out.cinfo));
+			jpeg_CreateCompress(&raw mut out.cinfo, JPEG_LIB_VERSION, size_of_val(&out.cinfo));
 
 			// Note: depending on the compiler/flags, JPEG compression can
 			// segfault if this isn't explicitly made null. Not sure why it

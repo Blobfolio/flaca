@@ -107,11 +107,9 @@ pub(super) fn encode_gif(src: &Path, settings: Settings)
 	check_resolution(ImageKind::Gif, &raw, settings)?;
 
 	encode_image_gif(&mut raw);
-	if let Some(new) = encode_gifsicle(src) {
-		if new.len() < raw.len() {
-			raw.truncate(new.len());
-			raw.copy_from_slice(new.as_slice());
-		}
+	if let Some(new) = encode_gifsicle(src) && new.len() < raw.len() {
+		raw.truncate(new.len());
+		raw.copy_from_slice(new.as_slice());
 	}
 
 	// Save it if better.
@@ -182,11 +180,13 @@ fn encode_image_gif(raw: &mut Vec<u8>) {
 	}
 
 	// Keep it if better (and still a gif).
-	if let Some(new) = dec_enc(raw) {
-		if new.len() < raw.len() && ImageKind::is_gif(new.as_slice()) {
-			raw.truncate(new.len());
-			raw.copy_from_slice(new.as_slice());
-		}
+	if
+		let Some(new) = dec_enc(raw) &&
+		new.len() < raw.len() &&
+		ImageKind::is_gif(new.as_slice())
+	{
+		raw.truncate(new.len());
+		raw.copy_from_slice(new.as_slice());
 	}
 }
 
@@ -307,10 +307,12 @@ fn encode_oxipng(raw: &mut Vec<u8>) {
 		}
 	);
 
-	if let Ok(mut new) = OXI.with(|opts| oxipng::optimize_from_memory(raw, opts)) {
-		if new.len() < raw.len() && ImageKind::is_png(&new) {
-			std::mem::swap(raw, &mut new);
-		}
+	if
+		let Ok(mut new) = OXI.with(|opts| oxipng::optimize_from_memory(raw, opts)) &&
+		new.len() < raw.len() &&
+		ImageKind::is_png(&new)
+	{
+		std::mem::swap(raw, &mut new);
 	}
 }
 

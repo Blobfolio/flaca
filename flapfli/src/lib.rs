@@ -102,17 +102,17 @@ pub fn optimize(src: &[u8]) -> Option<EncodedPNG> {
 
 	// For really small images, we might be able to save even more by
 	// nuking the palette.
-	if out.size < 4096 && LodePNGColorType::LCT_PALETTE.is_match(&out) {
-		if let Some(out2) = enc.try_small(&img) {
-			if out2.size < out.size && out2.size < src.len() {
-				// We improved again!
-				return Some(out2);
-			}
-		}
+	if
+		out.size < 4096 &&
+		LodePNGColorType::LCT_PALETTE.is_match(&out) &&
+		let Some(out2) = enc.try_small(&img) &&
+		out2.size < out.size &&
+		out2.size < src.len()
+	{
+		Some(out2)
 	}
-
 	// We improved!
-	if out.size < src.len() { Some(out) }
+	else if out.size < src.len() { Some(out) }
 	else { None }
 }
 

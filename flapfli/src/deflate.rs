@@ -375,6 +375,8 @@ impl ExactSizeIterator for DeflateIter<'_> {
 	}
 }
 
+impl std::iter::FusedIterator for DeflateIter<'_> {}
+
 impl<'a> DeflateIter<'a> {
 	/// # New.
 	const fn new(arr: &'a [u8]) -> Self {

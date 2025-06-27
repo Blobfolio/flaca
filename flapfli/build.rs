@@ -306,7 +306,7 @@ where Range<T>: ExactSizeIterator<Item=T> {
 		let width: usize = self.rng.end.to_string().len();
 		let prefix: String = self.name[..1].to_ascii_uppercase();
 		for i in self.rng.clone() {
-			writeln!(f, "\t{prefix}{i:0width$} = {i}_{kind},", width=width)?;
+			writeln!(f, "\t{prefix}{i:0width$} = {i}_{kind},")?;
 		}
 
 		// Closing.
@@ -390,6 +390,8 @@ impl ExactSizeIterator for {name}Iter {{
 		usize::from({end}_{kind}.saturating_sub(self.0))
 	}}
 }}
+
+impl std::iter::FusedIterator for {name}Iter {{}}
 ",
 				name=self.name,
 				end=self.rng.end,

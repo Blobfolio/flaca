@@ -39,6 +39,8 @@ impl<T> ExactSizeIterator for ReducingSlices<'_, T> {
 	fn len(&self) -> usize { self.0.len() }
 }
 
+impl<T> std::iter::FusedIterator for ReducingSlices<'_, T> {}
+
 
 
 #[cfg(test)]

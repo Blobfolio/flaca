@@ -421,9 +421,7 @@ fn max_threads(user: Option<String>, jobs: NonZeroUsize) -> NonZeroUsize {
 				.and_then(NonZeroUsize::new)
 				.unwrap_or(NonZeroUsize::MIN);
 		}
-		else if let Some(t) = NonZeroUsize::btou(t) {
-			if t < threads { threads = t; }
-		}
+		else if let Some(t) = NonZeroUsize::btou(t) && t < threads { threads = t; }
 	}
 
 	// Return the smaller of the user/machine and job counts.

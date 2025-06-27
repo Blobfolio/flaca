@@ -60,8 +60,6 @@ mod bindings {
 
 #[unsafe(no_mangle)]
 #[expect(unsafe_code, reason = "For FFI.")]
-#[expect(clippy::inline_always, reason = "For performance.")]
-#[inline(always)]
 /// # Lodepng CRC32.
 ///
 /// This override allows lodepng to use `crc32fast` for CRC hashing.
@@ -167,13 +165,11 @@ impl LodePNGState {
 
 		// Safety: a non-zero response is an error.
 		if 0 == unsafe {
-			lodepng_decode(&mut buf, &mut w, &mut h, self, src.as_ptr(), src.len())
+			lodepng_decode(&raw mut buf, &raw mut w, &raw mut h, self, src.as_ptr(), src.len())
 		} {
 			let buf = NonNull::new(buf)?;
-			if let Some(w) = NonZeroU32::new(w) {
-				if let Some(h) = NonZeroU32::new(h) {
-					return Some(DecodedImage { buf, w, h });
-				}
+			if let Some(w) = NonZeroU32::new(w) && let Some(h) = NonZeroU32::new(h) {
+				return Some(DecodedImage { buf, w, h });
 			}
 
 			// Safety: this may not actually be reachable, but if it is we'll
@@ -194,7 +190,7 @@ impl LodePNGState {
 
 		// Safety: a non-zero response is an error.
 		let res = unsafe {
-			lodepng_encode(&mut out.buf, &mut out.size, img.buf.as_ptr(), img.w.get(), img.h.get(), self)
+			lodepng_encode(&raw mut out.buf, &raw mut out.size, img.buf.as_ptr(), img.w.get(), img.h.get(), self)
 		};
 
 		if 0 == res && ! out.is_null() { Some(out) }
@@ -214,7 +210,7 @@ impl LodePNGState {
 		if dec.info_png.color.colortype == LodePNGColorType::LCT_PALETTE {
 			// Safety: a non-zero response indicates an error.
 			if 0 != unsafe {
-				lodepng_color_mode_copy(&mut enc.info_raw, &dec.info_png.color)
+				lodepng_color_mode_copy(&raw mut enc.info_raw, &raw const dec.info_png.color)
 			} { return None; }
 
 			enc.info_raw.colortype = LodePNGColorType::LCT_RGBA;
@@ -257,7 +253,7 @@ impl LodePNGState {
 		let mut stats = LodePNGColorStats::default();
 		// Safety: a non-zero response is an error.
 		if 0 != unsafe {
-			lodepng_compute_color_stats(&mut stats, img.buf.as_ptr(), img.w.get(), img.h.get(), &self.info_raw)
+			lodepng_compute_color_stats(&raw mut stats, img.buf.as_ptr(), img.w.get(), img.h.get(), &raw const self.info_raw)
 		} { return None; }
 
 		// The image is too small for tRNS chunk overhead.
