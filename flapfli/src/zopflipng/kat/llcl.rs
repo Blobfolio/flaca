@@ -205,14 +205,15 @@ macro_rules! llcl {
 				// Short circuit: if we've reached the end of the lists or the last leaf
 				// frequency is less than the weighted sum of the previous list, bump the
 				// count and stop the recursion.
-				if let Some(last_leaf) = leaves.get(last_count.get() as usize) {
-					if previous.is_none_or(|p| last_leaf.frequency < p.weight_sum()) {
-						// Rotate the lookaheads and add a new node to the end.
-						current.chain0 = current.chain1;
-						current.chain1.weight = last_leaf.frequency;
-						current.chain1.count = last_count.saturating_add(1);
-						return Ok(());
-					}
+				if
+					let Some(last_leaf) = leaves.get(last_count.get() as usize) &&
+					previous.is_none_or(|p| last_leaf.frequency < p.weight_sum())
+				{
+					// Rotate the lookaheads and add a new node to the end.
+					current.chain0 = current.chain1;
+					current.chain1.weight = last_leaf.frequency;
+					current.chain1.count = last_count.saturating_add(1);
+					return Ok(());
 				}
 
 				// The chains are used up; let's create more work for ourselves by

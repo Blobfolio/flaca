@@ -846,17 +846,12 @@ impl ZopfliHash {
 	) -> Result<(), ZopfliError> {
 		// Check the longest match cache first!
 		let pos = chunk.pos();
-		if let Some(blockstart) = cache {
-			if lmc.find(
-				pos - blockstart,
-				&mut limit,
-				sublen,
-				distance,
-				length,
-			)? {
-				if (*length as usize) <= chunk.block_size().get() { return Ok(()); }
-				return Err(zopfli_error!());
-			}
+		if
+			let Some(blockstart) = cache &&
+			lmc.find(pos - blockstart, &mut limit, sublen, distance, length)?
+		{
+			if (*length as usize) <= chunk.block_size().get() { return Ok(()); }
+			return Err(zopfli_error!());
 		}
 
 		// We'll need at least ZOPFLI_MIN_MATCH bytes for a search; if we don't
@@ -875,12 +870,8 @@ impl ZopfliHash {
 		let (bestdist, bestlength) = self.find_loop(chunk, limit, sublen);
 
 		// Cache the results for next time, maybe.
-		if limit.is_max() {
-			if let Some(blockstart) = cache {
-				if let Some(s) = sublen {
-					lmc.set_sublen(pos - blockstart, s, bestdist, bestlength)?;
-				}
-			}
+		if limit.is_max() && let Some(blockstart) = cache && let Some(s) = sublen {
+			lmc.set_sublen(pos - blockstart, s, bestdist, bestlength)?;
 		}
 
 		// Update the values.
