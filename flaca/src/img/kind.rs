@@ -23,15 +23,12 @@ impl ImageKind {
 	///
 	/// Match a file extension to a type.
 	pub(crate) fn try_from_ext(p: &Path) -> Option<Self> {
-		Extension::try_from3(p).map_or_else(
-			|| matches!(Extension::try_from4(p), Some(E_JPEG)).then_some(Self::Jpeg),
-			|e| match e {
-				E_GIF => { Some(Self::Gif) },
-				E_JPG => { Some(Self::Jpeg) },
-				E_PNG => { Some(Self::Png) },
-				_ => None,
-			},
-		)
+		match Extension::from_path(p) {
+			Some(E_GIF) => { Some(Self::Gif) },
+			Some(E_JPG | E_JPEG) => { Some(Self::Jpeg) },
+			Some(E_PNG) => { Some(Self::Png) },
+			_ => None,
+		}
 	}
 }
 

@@ -89,10 +89,7 @@ impl Crawler {
 
 		// Consume!
 		let mut out: Vec<PathBuf> = raw.filter(|p|
-			Extension::try_from3(p).map_or_else(
-				|| matches!(Extension::try_from4(p), Some(E_JPEG)),
-				|e| matches!(e, E_GIF | E_JPG | E_PNG),
-			)
+			matches!(Extension::from_path(p), Some(E_GIF | E_JPG | E_JPEG | E_PNG))
 		)
 			.collect();
 
