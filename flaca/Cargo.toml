@@ -140,7 +140,7 @@ dactyl = "0.13.*"
 dowser = "0.16.*"
 gifsicle = "=1.95.0"
 libc = "0.2.*"
-utc2k = "0.15.*"
+utc2k = "0.16.*"
 write_atomic = "0.7.*"
 
 [dependencies.argyle]
