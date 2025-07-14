@@ -16,7 +16,7 @@ exclude = [
 ]
 
 [dependencies]
-crc32fast = "=1.4.*"
+crc32fast = "=1.5.*"
 
 [build-dependencies]
 bindgen = "0.72.*"
