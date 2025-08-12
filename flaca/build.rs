@@ -48,6 +48,7 @@ fn build_cli() {
 /// # Build Image Kinds.
 fn build_kinds() {
 	FlagsBuilder::new("ImageKind")
+		.with_docs("# Image Kind.")
 		.with_flag("Gif", Some("# GIF."))
 		.with_flag("Jpeg", Some("# JPEG."))
 		.with_flag("Png", Some("# PNG."))
