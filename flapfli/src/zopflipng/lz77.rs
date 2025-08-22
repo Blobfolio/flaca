@@ -67,7 +67,7 @@ impl LZ77Store {
 	///
 	/// Return an immutable ranged view of the data, or an error if the range
 	/// is invalid.
-	pub(crate) fn ranged(&self, rng: ZopfliRange) -> Result<LZ77StoreRange, ZopfliError> {
+	pub(crate) fn ranged(&self, rng: ZopfliRange) -> Result<LZ77StoreRange<'_>, ZopfliError> {
 		let entries = self.entries.get(rng.rng()).ok_or(zopfli_error!())?;
 		Ok(LZ77StoreRange { entries })
 	}
@@ -76,7 +76,7 @@ impl LZ77Store {
 	///
 	/// Same as `LZ77Store::range`, except the range is everything. This will
 	/// return an error if the store is empty or too large.
-	pub(crate) const fn ranged_full(&self) -> Result<LZ77StoreRange, ZopfliError> {
+	pub(crate) const fn ranged_full(&self) -> Result<LZ77StoreRange<'_>, ZopfliError> {
 		let entries = self.entries.as_slice();
 		if entries.is_empty() || ZOPFLI_MASTER_BLOCK_SIZE < entries.len() {
 			Err(zopfli_error!())

@@ -6,15 +6,7 @@ use argyle::{
 	FlagsBuilder,
 	KeyWordsBuilder,
 };
-use dowser::Extension;
-use std::{
-	fs::File,
-	io::Write,
-	path::{
-		Path,
-		PathBuf,
-	},
-};
+use std::path::PathBuf;
 
 
 
@@ -28,7 +20,6 @@ fn main() {
 	panic!("Flaca requires a 64-bit CPU architecture.");
 
 	build_cli();
-	build_exts();
 	build_kinds();
 }
 
@@ -54,36 +45,10 @@ fn build_cli() {
 	builder.save(out_path("argyle.rs"));
 }
 
-/// # Pre-Compute Extensions.
-///
-/// We might as well generate the path-matching constants while we're here.
-fn build_exts() {
-	let out = format!(
-		r"
-/// # Extension: GIF.
-const E_GIF: Extension = {};
-
-/// # Extension: JPEG.
-const E_JPEG: Extension = {};
-
-/// # Extension: JPG.
-const E_JPG: Extension = {};
-
-/// # Extension: PNG.
-const E_PNG: Extension = {};
-",
-		Extension::codegen(b"gif"),
-		Extension::codegen(b"jpeg"),
-		Extension::codegen(b"jpg"),
-		Extension::codegen(b"png"),
-	);
-
-	write(&out_path("flaca-extensions.rs"), out.as_bytes());
-}
-
 /// # Build Image Kinds.
 fn build_kinds() {
 	FlagsBuilder::new("ImageKind")
+		.with_docs("# Image Kind.")
 		.with_flag("Gif", Some("# GIF."))
 		.with_flag("Jpeg", Some("# JPEG."))
 		.with_flag("Png", Some("# PNG."))
@@ -98,10 +63,4 @@ fn out_path(stub: &str) -> PathBuf {
 	std::fs::canonicalize(std::env::var("OUT_DIR").expect("Missing OUT_DIR."))
 		.expect("Missing OUT_DIR.")
 		.join(stub)
-}
-
-/// # Write File.
-fn write(path: &Path, data: &[u8]) {
-	File::create(path).and_then(|mut f| f.write_all(data).and_then(|_| f.flush()))
-		.expect("Unable to write file.");
 }
