@@ -13,8 +13,14 @@ use std::{
 	ffi::CString,
 	io::Cursor,
 	path::Path,
+	sync::OnceLock,
 };
 use super::EncodingError;
+
+
+
+/// # Oxipng Settings.
+static OXI: OnceLock<oxipng::Options> = OnceLock::new();
 
 
 
@@ -276,39 +282,37 @@ fn encode_oxipng(raw: &mut Vec<u8>) {
 		StripChunks,
 	};
 
-	thread_local!(
-		static OXI: Options = Options {
-			fix_errors: true,
-			force: false,
-			filter: IndexSet::from([
-				RowFilter::None,
-				RowFilter::Average,
-				RowFilter::BigEnt,
-				RowFilter::Bigrams,
-				RowFilter::Brute,
-				RowFilter::Entropy,
-				RowFilter::MinSum,
-				RowFilter::Paeth,
-				RowFilter::Sub,
-				RowFilter::Up,
-			]),
-			interlace: Some(Interlacing::None),
-			optimize_alpha: true,
-			bit_depth_reduction: true,
-			color_type_reduction: true,
-			palette_reduction: true,
-			grayscale_reduction: true,
-			idat_recoding: true,
-			scale_16: false,
-			strip: StripChunks::All,
-			deflate: Deflaters::Libdeflater { compression: 12 },
-			fast_evaluation: false,
-			timeout: None,
-		}
-	);
+	let opts = OXI.get_or_init(#[inline(always)] || Options {
+		fix_errors: true,
+		force: false,
+		filter: IndexSet::from([
+			RowFilter::None,
+			RowFilter::Average,
+			RowFilter::BigEnt,
+			RowFilter::Bigrams,
+			RowFilter::Brute,
+			RowFilter::Entropy,
+			RowFilter::MinSum,
+			RowFilter::Paeth,
+			RowFilter::Sub,
+			RowFilter::Up,
+		]),
+		interlace: Some(Interlacing::None),
+		optimize_alpha: true,
+		bit_depth_reduction: true,
+		color_type_reduction: true,
+		palette_reduction: true,
+		grayscale_reduction: true,
+		idat_recoding: true,
+		scale_16: false,
+		strip: StripChunks::All,
+		deflate: Deflaters::Libdeflater { compression: 12 },
+		fast_evaluation: false,
+		timeout: None,
+	});
 
 	if
-		let Ok(mut new) = OXI.with(|opts| oxipng::optimize_from_memory(raw, opts)) &&
+		let Ok(mut new) = oxipng::optimize_from_memory(raw, opts) &&
 		new.len() < raw.len() &&
 		ImageKind::is_png(&new)
 	{

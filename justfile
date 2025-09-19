@@ -28,11 +28,14 @@ doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
-export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Cllvm-args=--cost-kind=throughput -Clinker-plugin-lto -Clink-arg=-fuse-ld=lld"
-export CC := "clang"
-export CXX := "clang++"
-export CFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
-export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
+# -Clinker-plugin-lto breaks mozjpeg-sys in Rust 1.90
+export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Cllvm-args=--cost-kind=throughput -Clink-arg=-fuse-ld=lld"
+export CC        := "clang"
+export CXX       := "clang++"
+export CFLAGS    := `llvm-config --cflags` + " -march=x86-64-v3 -Wall -Wextra -flto"
+export CXXFLAGS  := `llvm-config --cxxflags` + " -march=x86-64-v3 -Wall -Wextra -flto"
+export LDFLAGS   := `llvm-config --ldflags` + " -fuse-ld=lld -flto"
+export AR        := "llvm-ar"
 
 
 
@@ -144,34 +147,27 @@ export CXXFLAGS := "-Wall -Wextra -flto -march=x86-64-v3"
 # Get/Set version.
 version:
 	#!/usr/bin/env bash
+	set -e
 
 	# Current version.
-	_ver1="$( toml get "{{ pkg_dir1 }}/Cargo.toml" package.version | \
-		sed 's/"//g' )"
+	_ver1="$( tomli query -f "{{ pkg_dir1 }}/Cargo.toml" package.version | \
+		sed 's/[" ]//g' )"
 
 	# Find out if we want to bump it.
+	set +e
 	_ver2="$( whiptail --inputbox "Set {{ pkg_name }} version:" --title "Release Version" 0 0 "$_ver1" 3>&1 1>&2 2>&3 )"
 
 	exitstatus=$?
 	if [ $exitstatus != 0 ] || [ "$_ver1" = "$_ver2" ]; then
 		exit 0
 	fi
-
-	fyi success "Setting version to $_ver2."
-
-	# Set the release version!
-	just _version "{{ pkg_dir1 }}" "$_ver2"
-	just _version "{{ pkg_dir2 }}" "$_ver2"
-
-
-# Set version for real.
-@_version DIR VER:
-	[ -f "{{ DIR }}/Cargo.toml" ] || exit 1
+	set -e
 
 	# Set the release version!
-	toml set "{{ DIR }}/Cargo.toml" package.version "{{ VER }}" > /tmp/Cargo.toml
-	just _fix-chown "/tmp/Cargo.toml"
-	mv "/tmp/Cargo.toml" "{{ DIR }}/Cargo.toml"
+	tomli set -f "{{ pkg_dir1 }}/Cargo.toml" -i package.version "$_ver2"
+	tomli set -f "{{ pkg_dir2 }}/Cargo.toml" -i package.version "$_ver2"
+
+	fyi success "Set version to $_ver2."
 
 
 # Reset bench.

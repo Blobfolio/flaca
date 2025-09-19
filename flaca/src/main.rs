@@ -68,7 +68,7 @@ use opts::Settings;
 
 use argyle::Argument;
 use crawl::Crawler;
-use crossbeam_channel::{
+use flume::{
 	Receiver,
 	Sender,
 };
@@ -222,8 +222,8 @@ fn main__() -> Result<(), FlacaError> {
 
 	// Now onto the thread business!
 	let mut undone: Vec<&Path> = Vec::new(); // Skipped because of CTRL+C or tx fail.
-	let (tx, rx) = crossbeam_channel::bounded::<&Path>(threads.get());
-	let (gtx, grx) = crossbeam_channel::bounded::<(&Path, Option<ProglessTaskGuard>)>(0); // For GIFs.
+	let (tx, rx) = flume::bounded::<&Path>(threads.get());
+	let (gtx, grx) = flume::bounded::<(&Path, Option<ProglessTaskGuard>)>(0); // For GIFs.
 	thread::scope(#[inline(always)] |s| {
 		// Set up the worker threads, either with or without progress.
 		let mut workers = Vec::with_capacity(threads.get() + 1);

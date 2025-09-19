@@ -40,7 +40,7 @@ cargo install \
     --bin flaca
 ```
 
-Note that when building from source, you'll need to have `make`, `nasm`, and the development headers for `libjpeg` and `libpng` installed beforehand or Cargo will pop an error. (If that happens, just install the missing thing and try again.)
+Note that when building from source, you'll need to have `clang`, `make`, `nasm`, and the development headers for `libjpeg` and `libpng` installed beforehand or Cargo will pop an error. (If that happens, just install the missing thing and try again.)
 
 
 
