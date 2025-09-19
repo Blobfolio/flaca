@@ -81,7 +81,7 @@ impl Crawler {
 
 		// Add lists?
 		for s in self.lists {
-			raw.read_paths_from_file(s).map_err(|_| FlacaError::ListFile)?;
+			raw.push_paths_from_file(s).map_err(|_| FlacaError::ListFile)?;
 		}
 
 		// Add paths?
