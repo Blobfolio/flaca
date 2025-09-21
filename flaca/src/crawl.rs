@@ -31,6 +31,9 @@ pub(super) struct Crawler {
 	/// # Follow Symlinks?
 	symlinks: bool,
 
+	/// # STDIN?
+	stdin: bool,
+
 	/// # Path Roots.
 	paths: Vec<OsString>,
 
@@ -45,6 +48,7 @@ impl Crawler {
 	pub(super) const fn new() -> Self {
 		Self {
 			symlinks: true,
+			stdin: false,
 			paths: Vec::new(),
 			lists: Vec::new(),
 		}
@@ -58,7 +62,10 @@ impl Crawler {
 	/// # Push List.
 	///
 	/// Add a new list path to the queue.
-	pub(super) fn push_list(&mut self, path: String) { self.lists.push(path); }
+	pub(super) fn push_list(&mut self, path: String) {
+		if path == "-" { self.stdin = true; }
+		else { self.lists.push(path); }
+	}
 
 	/// # Push Path.
 	///
@@ -80,6 +87,7 @@ impl Crawler {
 		if ! self.symlinks { raw = raw.without_symlinks(); }
 
 		// Add lists?
+		if self.stdin { raw.push_paths_from_stdin(); }
 		for s in self.lists {
 			raw.push_paths_from_file(s).map_err(|_| FlacaError::ListFile)?;
 		}
