@@ -35,7 +35,6 @@ export CXX       := "clang++"
 export CFLAGS    := `llvm-config --cflags` + " -march=x86-64-v3 -Wall -Wextra -flto"
 export CXXFLAGS  := `llvm-config --cxxflags` + " -march=x86-64-v3 -Wall -Wextra -flto"
 export LDFLAGS   := `llvm-config --ldflags` + " -fuse-ld=lld -flto"
-export AR        := "llvm-ar"
 
 
 
