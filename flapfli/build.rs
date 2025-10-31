@@ -76,7 +76,6 @@ fn build_ffi() {
 		.flag_if_supported("-ansi")
 		.flag_if_supported("-pedantic")
 		.pic(true)
-		.static_flag(true)
 		.files([
 			lodepng_src.join("lodepng.c"),
 		])
