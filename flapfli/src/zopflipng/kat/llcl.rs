@@ -82,7 +82,7 @@ macro_rules! llcl {
 			fn llcl(&self) -> Result<[DeflateSym; $size], ZopfliError> {
 				// Start the bitlengths at zero.
 				let mut bitlengths = [DeflateSym::D00; $size];
-				let bitcells = array_of_cells(&mut bitlengths);
+				let bitcells = Cell::from_mut(&mut bitlengths).as_array_of_cells();
 
 				// First build up the leaves by joining non-zero frequencies with
 				// their corresponding bitlengths. There will almost certainly be
@@ -472,20 +472,6 @@ impl<Count: NodeCount, const MAXBITS: usize> NodePair<Count, MAXBITS> {
 	const fn weight_sum(&self) -> NonZeroU32 {
 		self.chain0.weight.saturating_add(self.chain1.weight.get())
 	}
-}
-
-
-
-#[expect(unsafe_code, reason = "For array recast.")]
-/// Array of Cells.
-///
-/// Revisualize a mutable array as an array of cells.
-///
-/// TODO: use `Cell::as_array_of_cells` once that method is stabilized.
-fn array_of_cells<T, const N: usize>(arr: &mut [T; N]) -> &[Cell<T>; N] {
-	let cells = Cell::from_mut(arr);
-	// Safety: `Cell<T>` has the same memory layout as `T`.
-	unsafe { &*(std::ptr::from_ref(cells).cast::<[Cell<T>; N]>()) }
 }
 
 

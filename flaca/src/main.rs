@@ -23,6 +23,7 @@
 	clippy::format_push_string,
 	clippy::get_unwrap,
 	clippy::impl_trait_in_params,
+	clippy::implicit_clone,
 	clippy::lossy_float_literal,
 	clippy::missing_assert_message,
 	clippy::missing_docs_in_private_items,
@@ -32,7 +33,6 @@
 	clippy::rest_pat_in_fully_bound_structs,
 	clippy::semicolon_inside_block,
 	clippy::str_to_string,
-	clippy::string_to_string,
 	clippy::todo,
 	clippy::undocumented_unsafe_blocks,
 	clippy::unneeded_field_pattern,
@@ -66,7 +66,6 @@ use error::{
 use img::kind::ImageKind;
 use opts::Settings;
 
-use argyle::Argument;
 use crawl::Crawler;
 use flume::{
 	Receiver,
@@ -158,34 +157,47 @@ fn main() -> ExitCode {
 ///
 /// This is the actual main, allowing us to easily bubble errors.
 fn main__() -> Result<(), FlacaError> {
-	// Parse CLI arguments.
-	let args = argyle::args()
-		.with_keywords(include!(concat!(env!("OUT_DIR"), "/argyle.rs")));
+	argyle::argue! {
+		Help          "-h" "--help",
+		NoGif              "--no-gif",
+		NoJpg              "--no-jpg" "--no-jpeg",
+		NoPng              "--no-png",
+		NoSymlinks         "--no-symlinks",
+		PreserveTimes      "--preserve-times",
+		Progress      "-p" "--progress",
+		Version       "-V" "--version",
 
+		@options
+		Threads       "-j",
+		List          "-l" "--list",
+		MaxPixels          "--max-pixels",
+		ZopfliLoop    "-z",
+
+		@catchall-paths Path,
+	}
+
+	// Parse CLI arguments.
 	let mut settings = Settings::new();
 	let mut threads = None;
 	let mut paths = Crawler::new();
 	let mut progress = false;
-	for arg in args {
+	for arg in Argument::args_os() {
 		match arg {
-			Argument::Key("-h" | "--help") => return Err(FlacaError::PrintHelp),
-			Argument::Key("--no-gif") => { settings.unset_kind(ImageKind::Gif)?; },
-			Argument::Key("--no-jpg" | "--no-jpeg") => { settings.unset_kind(ImageKind::Jpeg)?; },
-			Argument::Key("--no-png") => { settings.unset_kind(ImageKind::Png)?; },
-			Argument::Key("--no-symlinks") => { paths.no_symlinks(); },
-			Argument::Key("--preserve-times") => { settings.set_preserve_times(); },
-			Argument::Key("-p" | "--progress") => { progress = true; },
-			Argument::Key("-V" | "--version") => return Err(FlacaError::PrintVersion),
+			Argument::Help => return Err(FlacaError::PrintHelp),
+			Argument::NoGif => { settings.unset_kind(ImageKind::Gif)?; },
+			Argument::NoJpg => { settings.unset_kind(ImageKind::Jpeg)?; },
+			Argument::NoPng => { settings.unset_kind(ImageKind::Png)?; },
+			Argument::NoSymlinks => { paths.no_symlinks(); },
+			Argument::PreserveTimes => { settings.set_preserve_times(); },
+			Argument::Progress => { progress = true; },
+			Argument::Version => return Err(FlacaError::PrintVersion),
 
-			Argument::KeyWithValue("-j", s) => { threads.replace(s); },
-
-			Argument::KeyWithValue("-l" | "--list", s) => { paths.push_list(s); },
-
-			Argument::KeyWithValue("--max-pixels", s) => {
+			Argument::Threads(s) => { threads.replace(s); },
+			Argument::List(s) => { paths.push_list(s); },
+			Argument::MaxPixels(s) => {
 				settings.set_max_pixels_raw(s.trim().as_bytes())?;
 			},
-
-			Argument::KeyWithValue("-z", s) => {
+			Argument::ZopfliLoop(s) => {
 				let s = NonZeroU32::btou(s.trim().as_bytes())
 					.ok_or(FlacaError::ZopfliIterations)?;
 				if ! flapfli::set_zopfli_iterations(s) {
@@ -196,11 +208,8 @@ fn main__() -> Result<(), FlacaError> {
 			Argument::Path(s) => { paths.push_path(s); },
 
 			// Mistakes?
-			Argument::Other(s) => return Err(FlacaError::InvalidCli(s)),
-			Argument::InvalidUtf8(s) => return Err(FlacaError::InvalidCli(s.to_string_lossy().into_owned())),
-
-			// Nothing else is relevant.
-			_ => {},
+			Argument::Other(s) =>   return Err(FlacaError::InvalidCli(s)),
+			Argument::OtherOs(s) => return Err(FlacaError::InvalidCli(s.to_string_lossy().into_owned())),
 		}
 	}
 
@@ -228,9 +237,10 @@ fn main__() -> Result<(), FlacaError> {
 		// Set up the worker threads, either with or without progress.
 		let mut workers = Vec::with_capacity(threads.get() + 1);
 		for _ in 0..threads.get() {
+			let rx2 = rx.clone();
 			let t_gtx = gtx.clone();
 			workers.push(
-				s.spawn(#[inline(always)] || crunch(&rx, settings, progress.as_ref(), t_gtx))
+				s.spawn(#[inline(always)] || crunch(rx2, settings, progress.as_ref(), t_gtx))
 			);
 		}
 
@@ -270,12 +280,10 @@ fn main__() -> Result<(), FlacaError> {
 		}
 
 		// Disconnect and wait for the threads to finish!
+		drop(rx);
 		drop(tx);
 		for worker in workers { let _res = worker.join(); }
 	});
-
-	// Clean up.
-	drop(rx);
 
 	// Summarize!
 	if let Some(progress) = progress { summarize(&progress, total.get() as u64); }
@@ -296,7 +304,7 @@ fn main__() -> Result<(), FlacaError> {
 /// paths and crunches them — and maybe updates the progress bar, etc. — then
 /// quits as soon as the work has dried up.
 fn crunch<'a, 'b>(
-	rx: &Receiver::<&'a Path>,
+	rx: Receiver::<&'a Path>,
 	settings: Settings,
 	progress: Option<&'b Progless>,
 	gtx: Sender::<(&'a Path, Option<ProglessTaskGuard<'b>>)>,

@@ -2,10 +2,7 @@
 # Flaca - Build
 */
 
-use argyle::{
-	FlagsBuilder,
-	KeyWordsBuilder,
-};
+use argyle::FlagsBuilder;
 use std::path::PathBuf;
 
 
@@ -19,30 +16,7 @@ fn main() {
 	#[cfg(not(target_pointer_width = "64"))]
 	panic!("Flaca requires a 64-bit CPU architecture.");
 
-	build_cli();
 	build_kinds();
-}
-
-/// # Build CLI Arguments.
-fn build_cli() {
-	let mut builder = KeyWordsBuilder::default();
-	builder.push_keys([
-		"-h", "--help",
-		"--no-gif",
-		"--no-jpg", "--no-jpeg",
-		"--no-png",
-		"--no-symlinks",
-		"--preserve-times",
-		"-p", "--progress",
-		"-V", "--version",
-	]);
-	builder.push_keys_with_values([
-		"-j",
-		"-l", "--list",
-		"--max-pixels",
-		"-z",
-	]);
-	builder.save(out_path("argyle.rs"));
 }
 
 /// # Build Image Kinds.
