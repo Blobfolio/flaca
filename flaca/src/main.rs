@@ -237,9 +237,10 @@ fn main__() -> Result<(), FlacaError> {
 		// Set up the worker threads, either with or without progress.
 		let mut workers = Vec::with_capacity(threads.get() + 1);
 		for _ in 0..threads.get() {
+			let rx2 = rx.clone();
 			let t_gtx = gtx.clone();
 			workers.push(
-				s.spawn(#[inline(always)] || crunch(&rx, settings, progress.as_ref(), t_gtx))
+				s.spawn(#[inline(always)] || crunch(rx2, settings, progress.as_ref(), t_gtx))
 			);
 		}
 
@@ -279,12 +280,10 @@ fn main__() -> Result<(), FlacaError> {
 		}
 
 		// Disconnect and wait for the threads to finish!
+		drop(rx);
 		drop(tx);
 		for worker in workers { let _res = worker.join(); }
 	});
-
-	// Clean up.
-	drop(rx);
 
 	// Summarize!
 	if let Some(progress) = progress { summarize(&progress, total.get() as u64); }
@@ -305,7 +304,7 @@ fn main__() -> Result<(), FlacaError> {
 /// paths and crunches them — and maybe updates the progress bar, etc. — then
 /// quits as soon as the work has dried up.
 fn crunch<'a, 'b>(
-	rx: &Receiver::<&'a Path>,
+	rx: Receiver::<&'a Path>,
 	settings: Settings,
 	progress: Option<&'b Progless>,
 	gtx: Sender::<(&'a Path, Option<ProglessTaskGuard<'b>>)>,
