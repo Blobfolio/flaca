@@ -28,7 +28,7 @@ doc_dir     := justfile_directory() + "/doc"
 release_dir := justfile_directory() + "/release"
 skel_dir    := justfile_directory() + "/skel"
 
-# -Clinker-plugin-lto breaks mozjpeg-sys in Rust 1.90
+# -Clinker-plugin-lto breaks mozjpeg-sys in Rust 1.90.
 export RUSTFLAGS := "-Ctarget-cpu=x86-64-v3 -Cllvm-args=--cost-kind=throughput -Clink-arg=-fuse-ld=lld"
 export CC        := "clang"
 export CXX       := "clang++"
