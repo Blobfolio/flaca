@@ -274,30 +274,32 @@ fn encode_mozjpeg(raw: &mut Vec<u8>) {
 /// ```
 fn encode_oxipng(raw: &mut Vec<u8>) {
 	use oxipng::{
-		Deflaters,
+		Deflater,
 		IndexSet,
-		Interlacing,
 		Options,
-		RowFilter,
+		FilterStrategy,
 		StripChunks,
 	};
 
 	let opts = OXI.get_or_init(#[inline(always)] || Options {
 		fix_errors: true,
 		force: false,
-		filter: IndexSet::from([
-			RowFilter::None,
-			RowFilter::Average,
-			RowFilter::BigEnt,
-			RowFilter::Bigrams,
-			RowFilter::Brute,
-			RowFilter::Entropy,
-			RowFilter::MinSum,
-			RowFilter::Paeth,
-			RowFilter::Sub,
-			RowFilter::Up,
+		filters: IndexSet::from([
+			FilterStrategy::NONE,
+			FilterStrategy::SUB,
+			FilterStrategy::UP,
+			FilterStrategy::AVERAGE,
+			FilterStrategy::PAETH,
+			FilterStrategy::MinSum,
+			FilterStrategy::Entropy,
+			FilterStrategy::Bigrams,
+			FilterStrategy::BigEnt,
+			FilterStrategy::Brute {
+				num_lines: 8,
+				level: 5,
+			},
 		]),
-		interlace: Some(Interlacing::None),
+		interlace: Some(false),
 		optimize_alpha: true,
 		bit_depth_reduction: true,
 		color_type_reduction: true,
@@ -306,9 +308,10 @@ fn encode_oxipng(raw: &mut Vec<u8>) {
 		idat_recoding: true,
 		scale_16: false,
 		strip: StripChunks::All,
-		deflate: Deflaters::Libdeflater { compression: 12 },
+		deflater: Deflater::Libdeflater { compression: 12 },
 		fast_evaluation: false,
 		timeout: None,
+		max_decompressed_size: None,
 	});
 
 	if
