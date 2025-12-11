@@ -45,6 +45,7 @@ use super::{
 	clippy::allow_attributes_without_reason,
 	clippy::missing_docs_in_private_items,
 	clippy::unseparated_literal_suffix,
+	clippy::use_self,
 	dead_code,
 	non_snake_case,
 	trivial_casts,
