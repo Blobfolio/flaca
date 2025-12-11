@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.5.2"
+version = "3.5.3"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -148,7 +148,7 @@ version = "*"
 path = "../flapfli"
 
 [dependencies.flume]
-version = "0.11.*"
+version = "0.12.*"
 default-features = false
 
 [dependencies.fyi_msg]
@@ -166,6 +166,6 @@ default-features = false
 features = [ "jpegtran", "nasm_simd", "unwinding" ]
 
 [dependencies.oxipng]
-version = "=9.1.5"
+version = "=10.0.0"
 default-features = false
 features = [ "freestanding" ]
