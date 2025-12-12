@@ -27,6 +27,11 @@ pub(crate) struct Settings {
 	/// If true, the file access and modification times will (try) to be
 	/// preserved on re-save.
 	preserve_times: bool,
+
+	/// # Zopfli Pass?
+	///
+	/// If false, PNGs will only be processed with oxipng.
+	zopfli: bool,
 }
 
 impl Settings {
@@ -37,6 +42,7 @@ impl Settings {
 			kinds: ImageKind::All,
 			max_pixels: None,
 			preserve_times: false,
+			zopfli: true,
 		}
 	}
 
@@ -88,6 +94,11 @@ impl Settings {
 		if self.kinds.is_none() { Err(FlacaError::NoImages) }
 		else { Ok(()) }
 	}
+
+	/// # Unset (Disable) Zopfli Pass.
+	pub(super) const fn unset_zopfli(&mut self) {
+		self.zopfli = false;
+	}
 }
 
 impl Settings {
@@ -119,4 +130,8 @@ impl Settings {
 	#[must_use]
 	/// # Preserve File Times?
 	pub(crate) const fn preserve_times(self) -> bool { self.preserve_times }
+
+	#[must_use]
+	/// # Zopfli Pass?
+	pub(crate) const fn zopfli(self) -> bool { self.zopfli }
 }
