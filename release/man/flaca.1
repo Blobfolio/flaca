@@ -1,6 +1,6 @@
-.TH "FLACA" "1" "December 2025" "flaca v3.5.3" "User Commands"
+.TH "FLACA" "1" "January 2026" "flaca v3.5.4" "User Commands"
 .SH NAME
-FLACA \- Manual page for flaca v3.5.3.
+FLACA \- Manual page for flaca v3.5.4.
 .SH DESCRIPTION
 Brute\-force, lossless GIF, JPEG, and PNG compression.
 .SS USAGE:
@@ -43,7 +43,7 @@ Read (absolute) image and/or directory paths from this text file — or STDIN if
 Skip images containing more than <NUM> total pixels to avoid potential OOM errors during decompression. [default: ~4.29 billion]
 .TP
 \fB\-z\fR <NUM>
-Run <NUM> lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. [default: 20 or 60, depending on the file size]
+Run <NUM> lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. Set to zero to disable zopfli altogether. [default: 20 or 60, depending on the file size]
 .SS TRAILING:
 .TP
 \fB<PATH(s)…>\fR
