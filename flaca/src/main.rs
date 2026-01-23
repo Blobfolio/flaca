@@ -198,11 +198,14 @@ fn main__() -> Result<(), FlacaError> {
 				settings.set_max_pixels_raw(s.trim().as_bytes())?;
 			},
 			Argument::ZopfliLoop(s) => {
-				let s = NonZeroU32::btou(s.trim().as_bytes())
-					.ok_or(FlacaError::ZopfliIterations)?;
-				if ! flapfli::set_zopfli_iterations(s) {
-					return Err(FlacaError::ZopfliIterations2);
+				let s = u32::btou(s.trim().as_bytes()).ok_or(FlacaError::ZopfliIterations)?;
+				if let Some(s) = NonZeroU32::new(s) {
+					if ! flapfli::set_zopfli_iterations(s) {
+						return Err(FlacaError::ZopfliIterations2);
+					}
 				}
+				// If zero, disable zopfli altogether.
+				else { settings.unset_zopfli(); }
 			},
 
 			Argument::Path(s) => { paths.push_path(s); },

@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.5.3"
+version = "3.5.4"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -95,7 +95,7 @@ path = false
 [[package.metadata.bashman.options]]
 short = "-z"
 label = "<NUM>"
-description = "Run <NUM> lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. [default: 20 or 60, depending on the file size]"
+description = "Run <NUM> lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. Set to zero to disable zopfli altogether. [default: 20 or 60, depending on the file size]"
 path = false
 
 [[package.metadata.bashman.arguments]]
@@ -126,21 +126,21 @@ items = [
 
 [[package.metadata.bashman.credits]]
 name = "lodepng"
-version = "2025.5.6"
+version = "2026.1.2"
 license = "Zlib"
 authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
-argyle = "0.14.*"
+argyle = "0.15.*"
 
 [dependencies]
-argyle = "0.14.*"
+argyle = "0.15.*"
 dactyl = "0.13.*"
 dowser = "0.18.*"
 gifsicle = "=1.95.0"
 libc = "0.2.*"
-utc2k = "0.18.*"
+utc2k = "0.19.*"
 write_atomic = "0.7.*"
 
 [dependencies.flapfli]

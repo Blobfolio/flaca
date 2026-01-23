@@ -82,7 +82,8 @@ OPTIONS:", ansi!((dim, violet) "
     -z <NUM>               Run <NUM> lz77 backward/forward iterations during
                            zopfli PNG encoding passes. More iterations yield
                            better compression (up to a point), but require
-                           *significantly* longer processing times.
+                           *significantly* longer processing times. Set to
+                           zero to disable zopfli altogether.
                            [default: 20 or 60, depending on the file size]
 ", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "

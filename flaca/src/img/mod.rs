@@ -50,7 +50,7 @@ pub(super) fn encode(file: &Path, settings: Settings)
 		check_resolution(ImageKind::Png, &raw, settings)?;
 
 		encode_oxipng(&mut raw);
-		encode_zopflipng(&mut raw);
+		if settings.zopfli() { encode_zopflipng(&mut raw); }
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
