@@ -132,10 +132,10 @@ authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
-argyle = "0.14.*"
+argyle = "0.15.*"
 
 [dependencies]
-argyle = "0.14.*"
+argyle = "0.15.*"
 dactyl = "0.13.*"
 dowser = "0.18.*"
 gifsicle = "=1.95.0"
