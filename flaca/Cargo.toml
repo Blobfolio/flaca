@@ -166,6 +166,6 @@ default-features = false
 features = [ "jpegtran", "nasm_simd", "unwinding" ]
 
 [dependencies.oxipng]
-version = "=10.0.0"
+version = "=10.1.0"
 default-features = false
 features = [ "freestanding" ]
