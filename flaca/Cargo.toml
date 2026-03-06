@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.5.4"
+version = "3.5.5"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -152,7 +152,7 @@ version = "0.12.*"
 default-features = false
 
 [dependencies.fyi_msg]
-version = "2.4.*"
+version = "2.5.*"
 features = [ "signals" ]
 
 [dependencies.image]
@@ -166,6 +166,6 @@ default-features = false
 features = [ "jpegtran", "nasm_simd", "unwinding" ]
 
 [dependencies.oxipng]
-version = "=10.0.0"
+version = "=10.1.0"
 default-features = false
 features = [ "freestanding" ]
