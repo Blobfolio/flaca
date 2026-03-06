@@ -215,11 +215,11 @@ impl MatchCache {
 		let mut dst = self.sublen.chunks_exact_mut(3).skip(pos * ZOPFLI_CACHE_LENGTH).take(ZOPFLI_CACHE_LENGTH);
 
 		// Start by writing all mismatched pairs, up to the limit.
-		for (i, pair) in (0_u8..=u8::MAX).zip(slice.windows(2)) {
-			if pair[0] != pair[1] {
+		for (i, [a, b]) in (0_u8..=u8::MAX).zip(slice.array_windows()) {
+			if a != b {
 				let Some([d0, d1, d2]) = dst.next() else { return Ok(()); };
 				*d0 = i;
-				[*d1, *d2] = pair[0].to_le_bytes();
+				[*d1, *d2] = a.to_le_bytes();
 			}
 		}
 
