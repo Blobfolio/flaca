@@ -1,6 +1,6 @@
-.TH "FLACA" "1" "March 2026" "flaca v3.5.5" "User Commands"
+.TH "FLACA" "1" "March 2026" "flaca v3.6.0" "User Commands"
 .SH NAME
-FLACA \- Manual page for flaca v3.5.5.
+FLACA \- Manual page for flaca v3.6.0.
 .SH DESCRIPTION
 Brute\-force, lossless GIF, JPEG, and PNG compression.
 .SS USAGE:
@@ -22,6 +22,9 @@ Skip PNG images.
 .TP
 \fB\-\-no\-symlinks\fR
 Ignore symlinks (rather than following them).
+.TP
+\fB\-\-preserve\-meta\fR
+(Try to) preserve EXIF, etc., metadata from source JPEG and PNG files. (Does *not* work for GIFs!)
 .TP
 \fB\-\-preserve\-times\fR
 (Try to) preserve the original file access and modification times when resaving an image.

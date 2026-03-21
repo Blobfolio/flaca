@@ -18,6 +18,7 @@ looked at to bring this all together were:
 use mozjpeg_sys::{
 	jcopy_markers_execute,
 	jcopy_markers_setup,
+	JCOPY_OPTION_JCOPYOPT_ALL,
 	JCOPY_OPTION_JCOPYOPT_NONE,
 	JCROP_CODE_JCROP_UNSET,
 	jpeg_common_struct,
@@ -134,7 +135,10 @@ impl EncodedJPEG {
 /// ## Safety
 ///
 /// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
+pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<EncodedJPEG> {
+	let copy_markers =
+		if preserve_meta { JCOPY_OPTION_JCOPYOPT_ALL }
+		else { JCOPY_OPTION_JCOPYOPT_NONE };
 	let mut transformoption = jpeg_transform_info {
 		transform: JXFORM_CODE_JXFORM_NONE,
 		perfect: 0,
@@ -173,7 +177,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 		jpeg_mem_src(&mut srcinfo.cinfo, srcinfo.raw.as_ptr(), src_size);
 
 		// Ignore markers.
-		jcopy_markers_setup(&raw mut srcinfo.cinfo, JCOPY_OPTION_JCOPYOPT_NONE);
+		jcopy_markers_setup(&raw mut srcinfo.cinfo, copy_markers);
 
 		// Read the file header to get to the goods.
 		jpeg_read_header(&mut srcinfo.cinfo, 1);
@@ -223,7 +227,7 @@ pub(super) fn optimize(src: &[u8]) -> Option<EncodedJPEG> {
 		jpeg_write_coefficients(&mut dstinfo.cinfo, dst_coef_arrays);
 
 		// Make sure we aren't copying any markers.
-		jcopy_markers_execute(&raw mut srcinfo.cinfo, &raw mut dstinfo.cinfo, JCOPY_OPTION_JCOPYOPT_NONE);
+		jcopy_markers_execute(&raw mut srcinfo.cinfo, &raw mut dstinfo.cinfo, copy_markers);
 
 		// Execute and write the transformation, if any.
 		jtransform_execute_transform(
