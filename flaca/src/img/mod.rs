@@ -49,8 +49,8 @@ pub(super) fn encode(file: &Path, settings: Settings)
 		if ! settings.has_kind(ImageKind::Png) { return Err(EncodingError::Skipped); }
 		check_resolution(ImageKind::Png, &raw, settings)?;
 
-		encode_oxipng(&mut raw);
-		if settings.zopfli() { encode_zopflipng(&mut raw); }
+		encode_oxipng(&mut raw, settings.preserve_meta());
+		if settings.zopfli() { encode_zopflipng(&mut raw, settings.preserve_meta()); }
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
@@ -60,7 +60,7 @@ pub(super) fn encode(file: &Path, settings: Settings)
 		// Mozjpeg usually panics on error, so we have to do a weird little
 		// dance to keep it from killing the whole thread.
 		let raw2 = std::panic::catch_unwind(move || {
-			encode_mozjpeg(&mut raw);
+			encode_mozjpeg(&mut raw, settings.preserve_meta());
 			raw
 		});
 
@@ -254,8 +254,8 @@ fn encode_gifsicle(src: &Path) -> Option<Vec<u8>> {
 /// ```bash
 /// jpegtran -copy none -optimize -progressive
 /// ```
-fn encode_mozjpeg(raw: &mut Vec<u8>) {
-	if let Some(new) = jpegtran::optimize(raw) {
+fn encode_mozjpeg(raw: &mut Vec<u8>, preserve_meta: bool) {
+	if let Some(new) = jpegtran::optimize(raw, preserve_meta) {
 		let slice: &[u8] = &new;
 		if slice.len() < raw.len() && ImageKind::is_jpeg(slice) {
 			raw.truncate(slice.len());
@@ -272,7 +272,7 @@ fn encode_mozjpeg(raw: &mut Vec<u8>) {
 /// ```bash
 /// oxipng -o 3 -s -a -i 0 --fix
 /// ```
-fn encode_oxipng(raw: &mut Vec<u8>) {
+fn encode_oxipng(raw: &mut Vec<u8>, preserve_meta: bool) {
 	use oxipng::{
 		Deflater,
 		IndexSet,
@@ -307,7 +307,7 @@ fn encode_oxipng(raw: &mut Vec<u8>) {
 		grayscale_reduction: true,
 		idat_recoding: true,
 		scale_16: false,
-		strip: StripChunks::All,
+		strip: if preserve_meta { StripChunks::None } else { StripChunks::All },
 		deflater: Deflater::Libdeflater { compression: 12 },
 		fast_evaluation: false,
 		timeout: None,
@@ -331,8 +331,8 @@ fn encode_oxipng(raw: &mut Vec<u8>) {
 /// ```bash
 /// zopflipng -m
 /// ```
-fn encode_zopflipng(raw: &mut Vec<u8>) {
-	if let Some(new) = flapfli::optimize(raw) {
+fn encode_zopflipng(raw: &mut Vec<u8>, preserve_meta: bool) {
+	if let Some(new) = flapfli::optimize(raw, preserve_meta) {
 		let slice: &[u8] = &new;
 		if slice.len() < raw.len() && ImageKind::is_png(slice) {
 			raw.truncate(slice.len());

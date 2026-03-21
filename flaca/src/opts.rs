@@ -22,6 +22,11 @@ pub(crate) struct Settings {
 	/// Images with more pixels than this will be ignored.
 	max_pixels: Option<NonZeroU32>,
 
+	/// # Preserve Metadata?
+	///
+	/// If true, EXIF/etc. metadata in JPG and PNG files will be preserved.
+	preserve_meta: bool,
+
 	/// # Preserve Times?
 	///
 	/// If true, the file access and modification times will (try) to be
@@ -41,6 +46,7 @@ impl Settings {
 		Self {
 			kinds: ImageKind::All,
 			max_pixels: None,
+			preserve_meta: false,
 			preserve_times: false,
 			zopfli: true,
 		}
@@ -74,6 +80,11 @@ impl Settings {
 		);
 
 		Ok(())
+	}
+
+	/// # Preserve Metadata.
+	pub(super) const fn set_preserve_meta(&mut self) {
+		self.preserve_meta = true;
 	}
 
 	/// # Preserve File Times.
@@ -126,6 +137,10 @@ impl Settings {
 	#[must_use]
 	/// # Image Kinds.
 	pub(crate) const fn kinds(self) -> ImageKind { self.kinds }
+
+	#[must_use]
+	/// # Preserve Metadata?
+	pub(crate) const fn preserve_meta(self) -> bool { self.preserve_meta }
 
 	#[must_use]
 	/// # Preserve File Times?

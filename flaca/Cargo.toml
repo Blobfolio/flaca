@@ -60,6 +60,10 @@ long = "--no-symlinks"
 description = "Ignore symlinks (rather than following them)."
 
 [[package.metadata.bashman.switches]]
+long = "--preserve-meta"
+description = "(Try to) preserve EXIF, etc., metadata from source JPEG and PNG files. (Does *not* work for GIFs!)"
+
+[[package.metadata.bashman.switches]]
 long = "--preserve-times"
 description = "(Try to) preserve the original file access and modification times when resaving an image."
 

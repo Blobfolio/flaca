@@ -55,6 +55,9 @@ FLAGS:", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
         --no-symlinks      Ignore symlinks (rather than following them).", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
+        --preserve-meta    (Try to) preserve EXIF, etc., metadata from source
+                           JPEG and PNG files. (Does *not* work for GIFs!)", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
         --preserve-times   (Try to) preserve the original file access and
                            modification times when resaving an image.", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
