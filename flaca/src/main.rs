@@ -96,11 +96,18 @@ use std::{
 		NonZeroU32,
 		NonZeroUsize,
 	},
-	path::Path,
+	path::{
+		Path,
+		PathBuf,
+	},
 	process::ExitCode,
-	sync::atomic::{
-		AtomicU64,
-		Ordering::SeqCst,
+	sync::{
+		Arc,
+		atomic::{
+			AtomicBool,
+			AtomicU64,
+			Ordering::SeqCst,
+		},
 	},
 	thread,
 };
@@ -233,6 +240,37 @@ fn main__() -> Result<(), FlacaError> {
 		else { None };
 
 	// Now onto the thread business!
+	let undone = crunch(
+		&paths,
+		settings,
+		threads,
+		progress.as_ref(),
+		killed,
+	);
+
+	// Summarize!
+	if let Some(progress) = progress { summarize(&progress, total.get() as u64); }
+
+	// Did anything get missed?
+	if ! undone.is_empty() { dump_undone(&undone); }
+
+	// Early abort?
+	if killed.load(SeqCst) { Err(FlacaError::Killed) }
+	else { Ok(()) }
+}
+
+#[must_use]
+/// # Crunch!
+///
+/// Set up worker threads and send images to them for crunching, returning a
+/// list of incomplete ones, if any.
+fn crunch<'a>(
+	paths: &'a [PathBuf],
+	settings: Settings,
+	threads: NonZeroUsize,
+	progress: Option<&Progless>,
+	killed: &Arc<AtomicBool>,
+) -> Vec<&'a Path> {
 	let mut undone: Vec<&Path> = Vec::new(); // Skipped because of CTRL+C or tx fail.
 	let (tx, rx) = flume::bounded::<&Path>(threads.get());
 	let (gtx, grx) = flume::bounded::<(&Path, Option<ProglessTaskGuard>)>(0); // For GIFs.
@@ -243,7 +281,7 @@ fn main__() -> Result<(), FlacaError> {
 			let rx2 = rx.clone();
 			let t_gtx = gtx.clone();
 			workers.push(
-				s.spawn(#[inline(always)] || crunch(rx2, settings, progress.as_ref(), t_gtx))
+				s.spawn(#[inline(always)] || crunch_cb(rx2, settings, progress, t_gtx))
 			);
 		}
 
@@ -251,12 +289,12 @@ fn main__() -> Result<(), FlacaError> {
 		// workers, it needs to come last.
 		drop(gtx);
 		workers.push(
-			s.spawn(#[inline(always)] || crunch_gif(grx, settings, progress.as_ref()))
+			s.spawn(#[inline(always)] || crunch_gif(grx, settings, progress))
 		);
 
 		// Queue up all the image paths!
 		let mut already_dead = false;
-		for path in &paths {
+		for path in paths {
 			// Early abort in progress; mark as skipped instead of giving it
 			// to a worker.
 			if killed.load(SeqCst) {
@@ -287,16 +325,7 @@ fn main__() -> Result<(), FlacaError> {
 		drop(tx);
 		for worker in workers { let _res = worker.join(); }
 	});
-
-	// Summarize!
-	if let Some(progress) = progress { summarize(&progress, total.get() as u64); }
-
-	// Did anything get missed?
-	if ! undone.is_empty() { dump_undone(&undone); }
-
-	// Early abort?
-	if killed.load(SeqCst) { Err(FlacaError::Killed) }
-	else { Ok(()) }
+	undone
 }
 
 #[inline(never)]
@@ -306,7 +335,7 @@ fn main__() -> Result<(), FlacaError> {
 /// This is the worker callback for image crunching. It listens for "new" image
 /// paths and crunches them — and maybe updates the progress bar, etc. — then
 /// quits as soon as the work has dried up.
-fn crunch<'a, 'b>(
+fn crunch_cb<'a, 'b>(
 	rx: Receiver::<&'a Path>,
 	settings: Settings,
 	progress: Option<&'b Progless>,
@@ -425,6 +454,7 @@ fn dump_undone(undone: &[&Path]) {
 	}
 }
 
+#[must_use]
 /// # Max Threads.
 ///
 /// Given the hardware, user preference, and total number of jobs, calculate
@@ -450,6 +480,7 @@ fn max_threads(user: Option<String>, jobs: NonZeroUsize) -> NonZeroUsize {
 
 #[expect(clippy::inline_always, reason = "For performance.")]
 #[inline(always)]
+#[must_use]
 /// # Noteworthy Failure?
 ///
 /// This method is used by the worker threads to decide whether or not a
