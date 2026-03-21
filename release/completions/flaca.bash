@@ -12,6 +12,7 @@ _basher___flaca() {
 	[[ " ${COMP_LINE} " =~ " --no-jpeg " ]] || opts+=("--no-jpeg")
 	[[ " ${COMP_LINE} " =~ " --no-png " ]] || opts+=("--no-png")
 	[[ " ${COMP_LINE} " =~ " --no-symlinks " ]] || opts+=("--no-symlinks")
+	[[ " ${COMP_LINE} " =~ " --preserve-meta " ]] || opts+=("--preserve-meta")
 	[[ " ${COMP_LINE} " =~ " --preserve-times " ]] || opts+=("--preserve-times")
 	if [[ ! " ${COMP_LINE} " =~ " -p " ]] && [[ ! " ${COMP_LINE} " =~ " --progress " ]]; then
 		opts+=("-p")
