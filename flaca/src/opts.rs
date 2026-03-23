@@ -148,5 +148,7 @@ impl Settings {
 
 	#[must_use]
 	/// # Zopfli Pass?
-	pub(crate) const fn zopfli(self) -> bool { self.zopfli }
+	pub(crate) const fn zopfli(self) -> bool {
+		! self.preserve_meta && self.zopfli
+	}
 }

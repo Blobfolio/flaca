@@ -80,7 +80,7 @@ fn build_ffi() {
 			lodepng_src.join("lodepng.c"),
 		])
 		.define("LODEPNG_NO_COMPILE_ALLOCATORS", None)
-		//.define("LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS", None)
+		.define("LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS", None)
 		.define("LODEPNG_NO_COMPILE_CPP", None)
 		.define("LODEPNG_NO_COMPILE_CRC", None)
 		.define("LODEPNG_NO_COMPILE_DISK", None)
@@ -185,7 +185,7 @@ fn bindings(lodepng_src: &Path) {
 	bindgen::Builder::default()
 		.clang_args([
 			"-DLODEPNG_NO_COMPILE_ALLOCATORS",
-			//"-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS",
+			"-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS",
 			"-DLODEPNG_NO_COMPILE_CPP",
 			"-DLODEPNG_NO_COMPILE_CRC",
 			"-DLODEPNG_NO_COMPILE_DISK",
