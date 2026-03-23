@@ -1,5 +1,5 @@
 /*
-LodePNG version 20260102
+LodePNG version 20260119
 
 Copyright (c) 2005-2026 Lode Vandevenne
 
@@ -906,7 +906,7 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
 typedef struct LodePNGEncoderSettings {
   LodePNGCompressSettings zlibsettings; /*settings for the zlib encoder, such as window size, ...*/
 
-  /*automatically choose output PNG color type. If false, must explicitely choose the output color
+  /*automatically choose output PNG color type. If false, must explicitly choose the output color
   type in state.info_png.color.colortype, info_png.color.bitdepth and optionally its palette.
   Default: true*/
   unsigned auto_convert;
@@ -926,7 +926,7 @@ typedef struct LodePNGEncoderSettings {
   const unsigned char* predefined_filters;
 
   /*force creating a PLTE chunk if colortype is 2 or 6 (= a suggested palette).
-  If colortype is 3, PLTE is always created. If color type is explicitely set
+  If colortype is 3, PLTE is always created. If color type is explicitly set
   to a grayscale type (1 or 4), this is not done and is ignored. If enabling this,
   a palette must be present in the info_png.
   NOTE: enabling this may worsen compression if auto_convert is used to choose
@@ -965,14 +965,15 @@ typedef struct LodePNGState {
 #endif /*LODEPNG_COMPILE_ENCODER*/
   LodePNGColorMode info_raw; /*specifies the format in which you would like to get the raw pixel buffer*/
   LodePNGInfo info_png; /*info of the PNG image obtained after decoding*/
-  unsigned error;
+  unsigned error; /*deprecated, use the return value of the encode/decode functions to check errors instead*/
 } LodePNGState;
 
 /*init, cleanup and copy functions to use with this struct*/
 void lodepng_state_init(LodePNGState* state);
 /*destructs the LodePNGState and brings it to invalid state, requiring lodepng_info_init again before reusing it*/
 void lodepng_state_cleanup(LodePNGState* state);
-void lodepng_state_copy(LodePNGState* dest, const LodePNGState* source);
+/*return value is error code (0 means no error)*/
+unsigned lodepng_state_copy(LodePNGState* dest, const LodePNGState* source);
 #endif /* defined(LODEPNG_COMPILE_DECODER) || defined(LODEPNG_COMPILE_ENCODER) */
 
 #ifdef LODEPNG_COMPILE_DECODER
@@ -1101,7 +1102,7 @@ unsigned lodepng_chunk_append(unsigned char** out, size_t* outsize, const unsign
 Appends new chunk to out. The chunk to append is given by giving its length, type
 and data separately. The type is a 4-letter string.
 The out variable and outsize are updated to reflect the new reallocated buffer.
-Returne error code (0 if it went ok)
+Returns error code (0 if it went ok)
 */
 unsigned lodepng_chunk_create(unsigned char** out, size_t* outsize, size_t length,
                               const char* type, const unsigned char* data);
@@ -1979,7 +1980,7 @@ state.decoder.remember_unknown_chunks: whether to read in unknown chunks
 state.info_raw.colortype: desired color type for decoded image
 state.info_raw.bitdepth: desired bit depth for decoded image
 state.info_raw....: more color settings, see struct LodePNGColorMode
-state.info_png....: no settings for decoder but ouput, see struct LodePNGInfo
+state.info_png....: no settings for decoder but output, see struct LodePNGInfo
 
 For encoding:
 
@@ -2017,10 +2018,10 @@ symbol.
 Not all changes are listed here, the commit history in github lists more:
 https://github.com/lvandeve/lodepng
 
-*) 6 may 2025: renamed mDCv to mDCV and cLLi to cLLI as per the recent rename
-   in the draft png third edition spec. Please note that while the third
-   edition is not finalized, backwards-incompatible changes to its features are
-   possible.
+*) 6 may 2025 (!): renamed mDCv to mDCV and cLLi to cLLI as per the recent
+   rename in the draft png third edition spec. Please note that as long as the
+   third edition is not finalized, backwards-incompatible changes to its
+   features are possible.
 *) 23 dec 2024: added support for the mDCv and cLLi chunks (for png third
    edition spec)
 *) 22 dec 2024: added support for the cICP chunk (for png third edition spec)

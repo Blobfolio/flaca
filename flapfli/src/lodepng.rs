@@ -225,12 +225,6 @@ impl LodePNGState {
 		Some(enc)
 	}
 
-	#[inline]
-	/// # Preserve Metadata.
-	pub(super) const fn preserve_metadata(&mut self) {
-		self.decoder.remember_unknown_chunks = 1;
-	}
-
 	/// # Change Strategies.
 	pub(super) const fn set_strategy(&mut self, strategy: LodePNGFilterStrategy) {
 		self.encoder.filter_strategy = strategy;

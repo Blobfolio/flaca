@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.6.0"
+version = "3.6.1"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -61,7 +61,7 @@ description = "Ignore symlinks (rather than following them)."
 
 [[package.metadata.bashman.switches]]
 long = "--preserve-meta"
-description = "(Try to) preserve EXIF, etc., metadata from source JPEG and PNG files. (Does *not* work for GIFs!)"
+description = "(Try to) preserve JPEG and PNG image metadata, at the cost of larger output sizes. GIF metadata is not currently supported."
 
 [[package.metadata.bashman.switches]]
 long = "--preserve-times"
@@ -130,7 +130,7 @@ items = [
 
 [[package.metadata.bashman.credits]]
 name = "lodepng"
-version = "2026.1.2"
+version = "2026.1.19"
 license = "Zlib"
 authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"

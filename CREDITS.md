@@ -1,8 +1,8 @@
 # Project Dependencies
     Package:   flaca
-    Version:   3.6.0
+    Version:   3.6.1
     Target:    x86_64-unknown-linux-gnu
-    Generated: 2026-03-21 21:58:03 UTC
+    Generated: 2026-03-23 01:50:08 UTC
 
 | Package | Version | Author(s) | License |
 | ---- | ---- | ---- | ---- |
@@ -29,7 +29,7 @@
 | [fastrand](https://github.com/smol-rs/fastrand) | 2.3.0 | [Stjepan Glavina](mailto:stjepang@gmail.com) | Apache-2.0 OR MIT |
 | [filetime](https://github.com/alexcrichton/filetime) | 0.2.27 | [Alex Crichton](mailto:alex@alexcrichton.com) | MIT OR Apache-2.0 |
 | [find-msvc-tools](https://github.com/rust-lang/cc-rs) ⚒️ | 0.1.9 |  | MIT OR Apache-2.0 |
-| **flapfli** | 3.6.0 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
+| **flapfli** | 3.6.1 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
 | [**flume**](https://github.com/zesterer/flume) | 0.12.0 | [Joshua Barretto](mailto:joshua.s.barretto@gmail.com) | Apache-2.0 OR MIT |
 | [funty](https://github.com/myrrlyn/funty) | 2.0.0 | [myrrlyn](mailto:self@myrrlyn.dev) | MIT |
 | [fyi_ansi](https://github.com/Blobfolio/fyi) | 2.5.0 | [Josh Stoik](mailto:josh@blobfolio.com) | WTFPL |
@@ -48,7 +48,7 @@
 | [libloading](https://github.com/nagisa/rust_libloading/) ⚒️ | 0.8.9 | [Simonas Kazlauskas](mailto:libloading@kazlauskas.me) | ISC |
 | [linux-raw-sys](https://github.com/sunfishcode/linux-raw-sys) | 0.12.1 | [Dan Gohman](mailto:dev@sunfishcode.online) | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | [lock_api](https://github.com/Amanieu/parking_lot) | 0.4.14 | [Amanieu d'Antras](mailto:amanieu@gmail.com) | MIT OR Apache-2.0 |
-| [**lodepng**](https://github.com/lvandeve/lodepng) | 2026.1.2 | Lode Vandevenne | Zlib |
+| [**lodepng**](https://github.com/lvandeve/lodepng) | 2026.1.19 | Lode Vandevenne | Zlib |
 | [log](https://github.com/rust-lang/log) | 0.4.29 | The Rust Project Developers | MIT OR Apache-2.0 |
 | [memchr](https://github.com/BurntSushi/memchr) ⚒️ | 2.8.0 | [Andrew Gallant](mailto:jamslam@gmail.com) and bluss | Unlicense OR MIT |
 | [minimal-lexical](https://github.com/Alexhuszagh/minimal-lexical) ⚒️ | 0.2.1 | [Alex Huszagh](mailto:ahuszagh@gmail.com) | MIT OR Apache-2.0 |

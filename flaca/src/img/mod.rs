@@ -50,7 +50,7 @@ pub(super) fn encode(file: &Path, settings: Settings)
 		check_resolution(ImageKind::Png, &raw, settings)?;
 
 		encode_oxipng(&mut raw, settings.preserve_meta());
-		if settings.zopfli() { encode_zopflipng(&mut raw, settings.preserve_meta()); }
+		if settings.zopfli() { encode_zopflipng(&mut raw); }
 	}
 	// Do JPEG stuff?
 	else if ImageKind::is_jpeg(&raw) {
@@ -331,8 +331,8 @@ fn encode_oxipng(raw: &mut Vec<u8>, preserve_meta: bool) {
 /// ```bash
 /// zopflipng -m
 /// ```
-fn encode_zopflipng(raw: &mut Vec<u8>, preserve_meta: bool) {
-	if let Some(new) = flapfli::optimize(raw, preserve_meta) {
+fn encode_zopflipng(raw: &mut Vec<u8>) {
+	if let Some(new) = flapfli::optimize(raw) {
 		let slice: &[u8] = &new;
 		if slice.len() < raw.len() && ImageKind::is_png(slice) {
 			raw.truncate(slice.len());

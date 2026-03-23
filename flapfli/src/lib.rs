@@ -86,10 +86,9 @@ use zopflipng::{
 ///
 /// Note: 16-bit transformations are not lossless; such images will have their
 /// bit depths reduced to a more typical 8 bits.
-pub fn optimize(src: &[u8], preserve_meta: bool) -> Option<EncodedPNG> {
+pub fn optimize(src: &[u8]) -> Option<EncodedPNG> {
 	// Start by decoding the source.
 	let mut dec = LodePNGState::default();
-	if preserve_meta { dec.preserve_metadata(); }
 	let img = dec.decode(src)?;
 
 	// Find the right strategy.
