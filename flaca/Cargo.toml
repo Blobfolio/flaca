@@ -156,7 +156,7 @@ version = "0.12.*"
 default-features = false
 
 [dependencies.fyi_msg]
-version = "2.5.*"
+version = "2.6.*"
 features = [ "signals" ]
 
 [dependencies.image]
