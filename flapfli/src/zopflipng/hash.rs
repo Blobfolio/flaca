@@ -467,7 +467,7 @@ impl ZopfliHash {
 		fn minimum_cost(stats: &SymbolStats) -> f64 {
 			// Find the minimum length cost.
 			let mut length_cost = f64::INFINITY;
-			for (lsym, lbits) in LENGTH_SYMBOLS.iter().copied().zip(LENGTH_SYMBOL_BITS_F.into_iter()).skip(3) {
+			for (lsym, lbits) in LENGTH_SYMBOLS.iter().copied().zip(LENGTH_SYMBOL_BITS_F).skip(3) {
 				let cost = lbits + stats.ll_symbols[lsym as usize];
 				if cost < length_cost { length_cost = cost; }
 			}

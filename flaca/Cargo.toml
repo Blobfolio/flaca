@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.6.1"
+version = "3.6.2"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -156,7 +156,7 @@ version = "0.12.*"
 default-features = false
 
 [dependencies.fyi_msg]
-version = "2.5.*"
+version = "2.6.*"
 features = [ "signals" ]
 
 [dependencies.image]
