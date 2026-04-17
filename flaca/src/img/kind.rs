@@ -68,6 +68,7 @@ impl ImageKind {
 		else { None }
 	}
 
+	#[expect(clippy::collapsible_match, reason = "For readability.")]
 	/// # Width and Height.
 	///
 	/// Parse the image's width and height from the headers.
