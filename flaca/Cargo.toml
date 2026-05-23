@@ -144,7 +144,7 @@ dactyl = "0.13.*"
 dowser = "0.18.*"
 gifsicle = "=1.95.0"
 libc = "0.2.*"
-utc2k = "0.19.*"
+utc2k = "0.20.*"
 write_atomic = "0.7.*"
 
 [dependencies.flapfli]
