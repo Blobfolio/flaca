@@ -57,21 +57,7 @@ pub(super) fn encode(file: &Path, settings: Settings)
 		if ! settings.has_kind(ImageKind::Jpeg) { return Err(EncodingError::Skipped); }
 		check_resolution(ImageKind::Jpeg, &raw, settings)?;
 
-		// Mozjpeg usually panics on error, so we have to do a weird little
-		// dance to keep it from killing the whole thread.
-		let raw2 = std::panic::catch_unwind(move || {
-			encode_mozjpeg(&mut raw, settings.preserve_meta());
-			raw
-		});
-
-		// Move it back.
-		if let Ok(r) = raw2 { raw = r; }
-		// Abort without changing anything; raw might be tainted.
-		else { return Ok((before, before)); }
-
-		// Encoding checks this explicitly, but debug asserts are nothing if
-		// not redundant!
-		debug_assert!(ImageKind::is_jpeg(&raw), "BUG: raw was unexpectedly corrupted");
+		encode_mozjpeg(&mut raw, settings.preserve_meta());
 	}
 	// Do GIF stuff?
 	else if ImageKind::is_gif(&raw) {
@@ -255,12 +241,13 @@ fn encode_gifsicle(src: &Path) -> Option<Vec<u8>> {
 /// jpegtran -copy none -optimize -progressive
 /// ```
 fn encode_mozjpeg(raw: &mut Vec<u8>, preserve_meta: bool) {
-	if let Some(new) = jpegtran::optimize(raw, preserve_meta) {
-		let slice: &[u8] = &new;
-		if slice.len() < raw.len() && ImageKind::is_jpeg(slice) {
-			raw.truncate(slice.len());
-			raw.copy_from_slice(slice);
-		}
+	if
+		let Some(new) = jpegtran::optimize(raw, preserve_meta) &&
+		new.len() < raw.len() &&
+		ImageKind::is_jpeg(&new)
+	{
+		raw.truncate(new.len());
+		raw.copy_from_slice(&new);
 	}
 }
 

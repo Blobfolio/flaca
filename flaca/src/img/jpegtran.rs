@@ -61,13 +61,30 @@ use std::{
 
 
 
+#[must_use]
+/// # Jpegtran (Memory Mode)
+///
+/// Losslessly recompress a JPEG image, returning the result if smaller than
+/// the original.
+pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<Vec<u8>> {
+	// MozJPEG loves a good panic attack. Let's execute all the C inside a
+	// catch/unwind block to make life easier on the caller.
+	let Ok(Some(res)) = std::panic::catch_unwind(move || {
+		let new = optimize__(src, preserve_meta)?;
+		Some(new.into())
+	}) else { return None; };
+	Some(res)
+}
+
+
+
 #[derive(Debug)]
 /// # Encoded Image.
 ///
 /// This holds a buffer pointer and size for an image allocated in C-land. It
 /// exists primarily to enforce cleanup at destruction, but also makes it easy
 /// to view the data as a slice.
-pub(super) struct EncodedJPEG {
+struct EncodedJPEG {
 	/// # Buffer.
 	buf: *mut c_uchar,
 
@@ -101,6 +118,14 @@ impl Drop for EncodedJPEG {
 	}
 }
 
+impl From<EncodedJPEG> for Vec<u8> {
+	#[inline]
+	fn from(src: EncodedJPEG) -> Self {
+		let slice: &[u8] = &src;
+		slice.to_vec()
+	}
+}
+
 impl EncodedJPEG {
 	/// # New.
 	const fn new() -> Self {
@@ -118,142 +143,6 @@ impl EncodedJPEG {
 	/// (The name was chosen to help avoid conflicts with dereferenced slice
 	/// methods.)
 	const fn is_null(&self) -> bool { self.size == 0 || self.buf.is_null() }
-}
-
-
-
-#[expect(clippy::inline_always, reason = "For performance.")]
-#[expect(unsafe_code, reason = "For FFI.")]
-#[inline(always)]
-/// # Jpegtran (Memory Mode)
-///
-/// ## Errors
-///
-/// An error is returned on failure, including cases where everything worked
-/// but no compression was possible.
-///
-/// ## Safety
-///
-/// The data should be valid JPEG data. Weird things could happen if it isn't.
-pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<EncodedJPEG> {
-	let copy_markers =
-		if preserve_meta { JCOPY_OPTION_JCOPYOPT_ALL }
-		else { JCOPY_OPTION_JCOPYOPT_NONE };
-	let mut transformoption = jpeg_transform_info {
-		transform: JXFORM_CODE_JXFORM_NONE,
-		perfect: 0,
-		trim: 0,
-		force_grayscale: 0,
-		crop: 0,
-		slow_hflip: 0,
-		crop_width: 0,
-		crop_width_set: JCROP_CODE_JCROP_UNSET,
-		crop_height: 0,
-		crop_height_set: JCROP_CODE_JCROP_UNSET,
-		crop_xoffset: 0,
-		crop_xoffset_set: JCROP_CODE_JCROP_UNSET,
-		crop_yoffset: 0,
-		crop_yoffset_set: JCROP_CODE_JCROP_UNSET,
-		drop_ptr: std::ptr::null_mut::<jpeg_decompress_struct>(),
-		drop_coef_arrays: std::ptr::null_mut::<jvirt_barray_ptr>(),
-		num_components: 0,
-		workspace_coef_arrays: std::ptr::null_mut::<jvirt_barray_ptr>(),
-		output_width: 0,
-		output_height: 0,
-		x_crop_offset: 0,
-		y_crop_offset: 0,
-		drop_width: 0,
-		drop_height: 0,
-		iMCU_sample_width: 0,
-		iMCU_sample_height: 0,
-	};
-
-	// Our original image length.
-	let src_size = src.len() as c_ulong; // We know this fits.
-
-	// Set up the decompression/compression structs.
-	let mut srcinfo = JpegSrcInfo::from(src);
-	let mut dstinfo = JpegDstInfo::from(&mut srcinfo);
-
-	// Safety: these are FFI calls…
-	unsafe {
-		// Load the source file.
-		jpeg_mem_src(&mut srcinfo.cinfo, srcinfo.raw.as_ptr(), src_size);
-
-		// Ignore markers.
-		jcopy_markers_setup(&raw mut srcinfo.cinfo, copy_markers);
-
-		// Read the file header to get to the goods.
-		jpeg_read_header(&mut srcinfo.cinfo, 1);
-
-		// Read a few more properties into the source struct.
-		if jtransform_request_workspace(&raw mut srcinfo.cinfo, &raw mut transformoption) == 0 {
-			return None;
-		}
-	}
-
-	// Read source file as DCT coefficients.
-	// Safety: this is an FFI call…
-	let src_coef_arrays: *mut jvirt_barray_ptr = unsafe {
-		jpeg_read_coefficients(&mut srcinfo.cinfo)
-	};
-
-	// Initialize destination compression parameters from source values.
-	// Safety: this is an FFI call…
-	unsafe { jpeg_copy_critical_parameters(&srcinfo.cinfo, &mut dstinfo.cinfo); }
-
-	// Adjust destination parameters if required by transform options, and sync
-	// the coefficient arrays.
-	// Safety: this is an FFI call…
-	let dst_coef_arrays: *mut jvirt_barray_ptr = unsafe {
-		jtransform_adjust_parameters(
-			&raw mut srcinfo.cinfo,
-			&raw mut dstinfo.cinfo,
-			src_coef_arrays,
-			&raw mut transformoption,
-		)
-	};
-
-	// Turn on "code optimizing".
-	dstinfo.cinfo.optimize_coding = 1;
-
-	// Compress!
-	let mut out = EncodedJPEG::new();
-	// Safety: these are FFI calls…
-	unsafe {
-		// Enable "progressive".
-		jpeg_simple_progression(&mut dstinfo.cinfo);
-
-		// And load the destination file.
-		jpeg_mem_dest(&mut dstinfo.cinfo, &raw mut out.buf, &raw mut out.size);
-
-		// Start the compressor. Note: no data is written here.
-		jpeg_write_coefficients(&mut dstinfo.cinfo, dst_coef_arrays);
-
-		// Make sure we aren't copying any markers.
-		jcopy_markers_execute(&raw mut srcinfo.cinfo, &raw mut dstinfo.cinfo, copy_markers);
-
-		// Execute and write the transformation, if any.
-		jtransform_execute_transform(
-			&raw mut srcinfo.cinfo,
-			&raw mut dstinfo.cinfo,
-			src_coef_arrays,
-			&raw mut transformoption,
-		);
-	}
-
-	// Finish it up, and note whether or not it (probably) worked.
-	let happy = dstinfo.finish();
-
-	// The decompression will have finished much earlier, but we had to wait
-	// to call this deconstructor until now because of all the shared
-	// references.
-	// Safety: this is an FFI call…
-	unsafe { jpeg_finish_decompress(&mut srcinfo.cinfo); }
-
-	// Return it if we got it!
-	if happy  && ! out.is_null() && out.size < src_size { Some(out) }
-	else { None }
 }
 
 
@@ -404,6 +293,139 @@ fn new_err() -> Box<jpeg_error_mgr> {
 		err.emit_message = Some(silence_message);
 		err
 	}
+}
+
+#[must_use]
+#[expect(clippy::inline_always, reason = "For performance.")]
+#[expect(unsafe_code, reason = "For FFI.")]
+#[inline(always)]
+/// # Jpegtran (Internal)
+///
+/// Losslessly recompress a JPEG image, returning the result if smaller than
+/// the original.
+///
+/// ## Safety
+///
+/// The data should be valid JPEG data. Weird things could happen if it isn't.
+fn optimize__(src: &[u8], preserve_meta: bool) -> Option<EncodedJPEG> {
+	let copy_markers =
+		if preserve_meta { JCOPY_OPTION_JCOPYOPT_ALL }
+		else { JCOPY_OPTION_JCOPYOPT_NONE };
+	let mut transformoption = jpeg_transform_info {
+		transform: JXFORM_CODE_JXFORM_NONE,
+		perfect: 0,
+		trim: 0,
+		force_grayscale: 0,
+		crop: 0,
+		slow_hflip: 0,
+		crop_width: 0,
+		crop_width_set: JCROP_CODE_JCROP_UNSET,
+		crop_height: 0,
+		crop_height_set: JCROP_CODE_JCROP_UNSET,
+		crop_xoffset: 0,
+		crop_xoffset_set: JCROP_CODE_JCROP_UNSET,
+		crop_yoffset: 0,
+		crop_yoffset_set: JCROP_CODE_JCROP_UNSET,
+		drop_ptr: std::ptr::null_mut::<jpeg_decompress_struct>(),
+		drop_coef_arrays: std::ptr::null_mut::<jvirt_barray_ptr>(),
+		num_components: 0,
+		workspace_coef_arrays: std::ptr::null_mut::<jvirt_barray_ptr>(),
+		output_width: 0,
+		output_height: 0,
+		x_crop_offset: 0,
+		y_crop_offset: 0,
+		drop_width: 0,
+		drop_height: 0,
+		iMCU_sample_width: 0,
+		iMCU_sample_height: 0,
+	};
+
+	// Our original image length.
+	let src_size = src.len() as c_ulong; // We know this fits.
+
+	// Set up the decompression/compression structs.
+	let mut srcinfo = JpegSrcInfo::from(src);
+	let mut dstinfo = JpegDstInfo::from(&mut srcinfo);
+
+	// Safety: these are FFI calls…
+	unsafe {
+		// Load the source file.
+		jpeg_mem_src(&mut srcinfo.cinfo, srcinfo.raw.as_ptr(), src_size);
+
+		// Ignore markers.
+		jcopy_markers_setup(&raw mut srcinfo.cinfo, copy_markers);
+
+		// Read the file header to get to the goods.
+		jpeg_read_header(&mut srcinfo.cinfo, 1);
+
+		// Read a few more properties into the source struct.
+		if jtransform_request_workspace(&raw mut srcinfo.cinfo, &raw mut transformoption) == 0 {
+			return None;
+		}
+	}
+
+	// Read source file as DCT coefficients.
+	// Safety: this is an FFI call…
+	let src_coef_arrays: *mut jvirt_barray_ptr = unsafe {
+		jpeg_read_coefficients(&mut srcinfo.cinfo)
+	};
+
+	// Initialize destination compression parameters from source values.
+	// Safety: this is an FFI call…
+	unsafe { jpeg_copy_critical_parameters(&srcinfo.cinfo, &mut dstinfo.cinfo); }
+
+	// Adjust destination parameters if required by transform options, and sync
+	// the coefficient arrays.
+	// Safety: this is an FFI call…
+	let dst_coef_arrays: *mut jvirt_barray_ptr = unsafe {
+		jtransform_adjust_parameters(
+			&raw mut srcinfo.cinfo,
+			&raw mut dstinfo.cinfo,
+			src_coef_arrays,
+			&raw mut transformoption,
+		)
+	};
+
+	// Turn on "code optimizing".
+	dstinfo.cinfo.optimize_coding = 1;
+
+	// Compress!
+	let mut out = EncodedJPEG::new();
+	// Safety: these are FFI calls…
+	unsafe {
+		// Enable "progressive".
+		jpeg_simple_progression(&mut dstinfo.cinfo);
+
+		// And load the destination file.
+		jpeg_mem_dest(&mut dstinfo.cinfo, &raw mut out.buf, &raw mut out.size);
+
+		// Start the compressor. Note: no data is written here.
+		jpeg_write_coefficients(&mut dstinfo.cinfo, dst_coef_arrays);
+
+		// Make sure we aren't copying any markers.
+		jcopy_markers_execute(&raw mut srcinfo.cinfo, &raw mut dstinfo.cinfo, copy_markers);
+
+		// Execute and write the transformation, if any.
+		jtransform_execute_transform(
+			&raw mut srcinfo.cinfo,
+			&raw mut dstinfo.cinfo,
+			src_coef_arrays,
+			&raw mut transformoption,
+		);
+	}
+
+	// Finish it up, and note whether or not it (probably) worked.
+	let happy = dstinfo.finish();
+
+	// The decompression will have finished much earlier, but we had to wait
+	// to call this deconstructor until now because of all the shared
+	// references.
+	// Safety: this is an FFI call…
+	unsafe { jpeg_finish_decompress(&mut srcinfo.cinfo); }
+
+	// Return it if we got it!
+	if happy  && ! out.is_null() && out.size < src_size { Some(out) }
+	else { None }
 }
 
 #[cold]
