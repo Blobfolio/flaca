@@ -162,7 +162,7 @@ features = [ "signals" ]
 [dependencies.image]
 version = "0.25.*"
 default-features = false
-features = [ "gif" ]
+features = [ "gif", "jpeg" ]
 
 [dependencies.mozjpeg-sys]
 git = "https://github.com/kornelski/mozjpeg-sys"
@@ -175,3 +175,8 @@ features = [ "jpegtran", "nasm_simd", "unwinding" ]
 version = "=10.1.1"
 default-features = false
 features = [ "freestanding" ]
+
+[dev-dependencies.image]
+version = "0.25.*"
+default-features = false
+features = [ "jpeg" ]
