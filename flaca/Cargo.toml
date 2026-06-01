@@ -165,7 +165,9 @@ default-features = false
 features = [ "gif" ]
 
 [dependencies.mozjpeg-sys]
-version = "=2.2.3"
+git = "https://github.com/kornelski/mozjpeg-sys"
+rev = "662cd76"
+version = "=2.2.4-beta.1"
 default-features = false
 features = [ "jpegtran", "nasm_simd", "unwinding" ]
 
