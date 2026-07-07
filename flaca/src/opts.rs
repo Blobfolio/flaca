@@ -22,21 +22,81 @@ pub(crate) struct Settings {
 	/// Images with more pixels than this will be ignored.
 	max_pixels: Option<NonZeroU32>,
 
+	/// # Flags.
+	flags: u8,
+}
+
+/// # Helper: Flags.
+macro_rules! flags {
+	(
+		$(
+			$( #[doc = $meta:expr] )*
+			$k:ident $v:literal $get:ident $( @set $set:ident )? $( @unset $unset:ident )?,
+		)+
+	) => (
+		/// # Sanity Checks.
+		const _: () = {
+			$(
+				assert!(
+					0 != Settings::$k && Settings::$k.is_power_of_two(),
+					"BUG: Flag(s) are not pow2!",
+				); )+
+			let mut all: &[u8] = &[$( $v, )+];
+			while let [next, rest @ ..] = all {
+				assert!(
+					rest.is_empty() || *next < rest[0],
+					"BUG: Flags are not unique!"
+				);
+				all = rest;
+			}
+		};
+
+		impl Settings {
+			$(
+				$( #[doc = $meta] )*
+				const $k: u8 = $v;
+			)+
+
+			$(
+				#[must_use]
+				/// # Get Flag.
+				pub(crate) const fn $get(self) -> bool {
+					$v == self.flags & Self::$k
+				}
+
+				$(
+					/// # Set Flag.
+					pub(crate) const fn $set(&mut self) {
+						self.flags |= Self::$k;
+					}
+				)?
+				$(
+					/// # Unset Flag.
+					pub(crate) const fn $unset(&mut self) {
+						self.flags &= ! Self::$k;
+					}
+				)?
+			)+
+		}
+	);
+}
+
+flags! {
 	/// # Preserve Metadata?
 	///
 	/// If true, EXIF/etc. metadata in JPG and PNG files will be preserved.
-	preserve_meta: bool,
+	PRESERVE_META  0b0001 preserve_meta  @set set_preserve_meta,
 
 	/// # Preserve Times?
 	///
 	/// If true, the file access and modification times will (try) to be
 	/// preserved on re-save.
-	preserve_times: bool,
+	PRESERVE_TIMES 0b0010 preserve_times @set set_preserve_times,
 
 	/// # Zopfli Pass?
 	///
 	/// If false, PNGs will only be processed with oxipng.
-	zopfli: bool,
+	ZOPFLI         0b0100 zopfli__       @unset unset_zopfli,
 }
 
 impl Settings {
@@ -46,9 +106,7 @@ impl Settings {
 		Self {
 			kinds: ImageKind::All,
 			max_pixels: None,
-			preserve_meta: false,
-			preserve_times: false,
-			zopfli: true,
+			flags: Self::ZOPFLI,
 		}
 	}
 
@@ -82,16 +140,6 @@ impl Settings {
 		Ok(())
 	}
 
-	/// # Preserve Metadata.
-	pub(super) const fn set_preserve_meta(&mut self) {
-		self.preserve_meta = true;
-	}
-
-	/// # Preserve File Times.
-	pub(super) const fn set_preserve_times(&mut self) {
-		self.preserve_times = true;
-	}
-
 	/// # Unset (Disable) Image Kind.
 	///
 	/// Disable an image kind.
@@ -104,11 +152,6 @@ impl Settings {
 		self.kinds.unset(kind);
 		if self.kinds.is_none() { Err(FlacaError::NoImages) }
 		else { Ok(()) }
-	}
-
-	/// # Unset (Disable) Zopfli Pass.
-	pub(super) const fn unset_zopfli(&mut self) {
-		self.zopfli = false;
 	}
 }
 
@@ -139,16 +182,10 @@ impl Settings {
 	pub(crate) const fn kinds(self) -> ImageKind { self.kinds }
 
 	#[must_use]
-	/// # Preserve Metadata?
-	pub(crate) const fn preserve_meta(self) -> bool { self.preserve_meta }
-
-	#[must_use]
-	/// # Preserve File Times?
-	pub(crate) const fn preserve_times(self) -> bool { self.preserve_times }
-
-	#[must_use]
 	/// # Zopfli Pass?
+	///
+	/// Note that zopfli is automatically disabled when preserving metadata.
 	pub(crate) const fn zopfli(self) -> bool {
-		! self.preserve_meta && self.zopfli
+		! self.preserve_meta() && self.zopfli__()
 	}
 }

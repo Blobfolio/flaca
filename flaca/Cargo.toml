@@ -164,6 +164,7 @@ version = "0.25.*"
 default-features = false
 features = [ "gif", "jpeg" ]
 
+# TODO: switch back to crates.io if/when it gets a new release.
 [dependencies.mozjpeg-sys]
 git = "https://github.com/kornelski/mozjpeg-sys"
 rev = "662cd76"
