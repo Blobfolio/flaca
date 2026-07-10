@@ -88,7 +88,7 @@ impl LZ77Store {
 	///
 	/// Remove all previously-collected entries, allowing the store to be
 	/// re-used for a new set of data.
-	pub(crate) fn clear(&mut self) { self.entries.truncate(0); }
+	pub(crate) fn clear(&mut self) { self.entries.clear(); }
 
 	/// # Push Values.
 	///
