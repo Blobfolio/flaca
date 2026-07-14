@@ -2,6 +2,7 @@
 # Flaca: Images!
 */
 
+mod gif;
 mod jpegtran;
 pub(super) mod kind;
 mod strip;
@@ -11,8 +12,6 @@ mod strip;
 use crate::Settings;
 use kind::ImageKind;
 use std::{
-	ffi::CString,
-	io::Cursor,
 	path::Path,
 	sync::OnceLock,
 };
@@ -106,10 +105,12 @@ pub(super) fn encode_gif(src: &Path, settings: Settings)
 	if ! ImageKind::is_gif(&raw) { return Err(EncodingError::Format); }
 	check_resolution(ImageKind::Gif, &raw, settings)?;
 
-	encode_image_gif(&mut raw);
-	if let Some(new) = encode_gifsicle(src) && new.len() < raw.len() {
-		raw.truncate(new.len());
-		raw.copy_from_slice(new.as_slice());
+	if
+		! encode_gif__(&mut raw, settings.preserve_meta()) &&
+		! settings.preserve_meta()
+	{
+		// Second chance to save by stripping metadata!
+		strip_gif_metadata(&mut raw);
 	}
 
 	// Save it if better.
@@ -142,102 +143,40 @@ fn check_resolution(kind: ImageKind, src: &[u8], settings: Settings)
 	else { Err(EncodingError::Resolution) }
 }
 
-/// # Encode w/ `image`.
+#[inline(never)]
+#[must_use]
+/// # Recompress GIF.
 ///
-/// Image optimization isn't a particular goal of the `image` crate, but most
-/// GIF images are pretty old and shitty and will benefit from a simple in/out,
-/// even if just to clear away comments and other metadata.
-fn encode_image_gif(raw: &mut Vec<u8>) {
-	/// # Try De/Encode.
-	fn dec_enc(src: &[u8]) -> Option<Vec<u8>> {
-		use image::{
-			AnimationDecoder,
-			codecs::gif::GifDecoder,
-			ImageFormat,
-			ImageReader,
-		};
-
-		// The image crate's animation-handling isn't robust enough for our
-		// purposes, so let's count up the frames and bail if there's more
-		// than one.
-		if GifDecoder::new(Cursor::new(src)).ok()?.into_frames().take(2).count() != 1 {
-			return None;
-		}
-
-		// Non-animated GIF frames can have weird settings, so let's start
-		// over and use DynamicImage as an agnostic go-between for the in/out
-		// pass.
-		let img = ImageReader::with_format(Cursor::new(src), ImageFormat::Gif)
-			.decode()
-			.ok()?;
-		let mut new = Cursor::new(Vec::with_capacity(src.len()));
-		img.write_to(&mut new, ImageFormat::Gif).ok()?;
-		let new = new.into_inner();
-
-		// Return it if non-empty.
-		if new.is_empty() { None }
-		else { Some(new) }
-	}
-
-	// Keep it if better (and still a gif).
+/// The result approximates what programs like `gifsicle` do, but doesn't play
+/// quite so fast and loose with the spec.
+///
+/// Returns `true` if changed.
+fn encode_gif__(raw: &mut Vec<u8>, preserve_meta: bool) -> bool {
 	if
-		let Some(new) = dec_enc(raw) &&
+		let Some(new) = gif::optimize(raw, preserve_meta) &&
 		new.len() < raw.len() &&
-		ImageKind::is_gif(new.as_slice())
+		ImageKind::is_gif(&new)
 	{
 		raw.truncate(new.len());
 		raw.copy_from_slice(new.as_slice());
+		true
 	}
+	else { false }
 }
 
-#[expect(
-	clippy::cast_possible_truncation,
-	clippy::cast_possible_wrap,
-	reason = "False positive.",
-)]
-#[expect(unsafe_code, reason = "For FFI.")]
-/// # Encode w/ `Gifsicle`.
+#[inline(never)]
+/// # Strip Metadata Extensions.
 ///
-/// The result is comparable to running:
-///
-/// ```bash
-/// gifsicle --no-comments SRC --optimize=3
-/// ```
-///
-/// Note: only one instance of this method can be active at any given time.
-/// We only call it from a dedicated thread to help with that.
-fn encode_gifsicle(src: &Path) -> Option<Vec<u8>> {
-	// This unfortunately writes the results to disk, so let's get a
-	// tempfile going to help with cleanup.
-	let dst = write_atomic::tempfile::Builder::new()
-		.prefix(".flaca__")
-		.rand_bytes(16)
-		.suffix(".gif")
-		.tempfile()
-		.ok()?;
-
-	// Set up the "args". Note `argv` _has_ to be a `Vec` or gifsicle
-	// will fail with a bunch of random not-found errors.
-	let args_raw: [CString; 6] = [
-		std::env::current_exe().ok()
-			.and_then(|c| c.as_os_str().to_str().and_then(|c| CString::new(c).ok()))?,
-		CString::new("--no-warnings").ok()?,
-		CString::new("--no-comments").ok()?,
-		src.as_os_str().to_str().and_then(|c| CString::new(c).ok())?,
-		CString::new(format!("--output={}", dst.path().display())).ok()?,
-		CString::new("--optimize=3").ok()?,
-	];
-	let argv = args_raw.iter().map(|v| v.as_ptr()).collect::<Vec<_>>();
-
-	// Safety: zero means success; anything else is grounds for bailing.
-	if 0 != unsafe { gifsicle::gifsicle_main(argv.len() as _, argv.as_ptr()) } {
-		return None;
+/// Strip comment/metadata from a GIF, leaving all the other data as-was.
+fn strip_gif_metadata(raw: &mut Vec<u8>) {
+	if
+		let Some(new) = gif::strip_metadata(raw) &&
+		new.len() < raw.len() &&
+		ImageKind::is_gif(&new)
+	{
+		raw.truncate(new.len());
+		raw.copy_from_slice(&new);
 	}
-
-	// Read the results and return if not empty (and still a gif).
-	let out = std::fs::read(dst).ok()?;
-	if out.is_empty() || ! ImageKind::is_gif(&out) { None }
-	else { Some(out) }
 }
 
 #[inline(never)]

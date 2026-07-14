@@ -108,7 +108,6 @@ EARLY EXIT:", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
 OPTIMIZERS USED:", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
-    Gifsicle  <", ansi!((cyan) "https://github.com/kohler/gifsicle"), ">
     MozJPEG   <", ansi!((cyan) "https://github.com/mozilla/mozjpeg"), ">
     Oxipng    <", ansi!((cyan) "https://github.com/shssoichiro/oxipng"), ">
     Zopflipng <", ansi!((cyan) "https://github.com/google/zopfli"), ">

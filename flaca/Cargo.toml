@@ -122,7 +122,6 @@ lines = [
 name = "OPTIMIZERS"
 inside = true
 items = [
-	[ "Gifsicle", "<https://github.com/kohler/gifsicle/>" ],
 	[ "MozJPEG", "<https://github.com/mozilla/mozjpeg>" ],
 	[ "Oxipng", "<https://github.com/shssoichiro/oxipng>" ],
 	[ "Zopflipng", "<https://github.com/google/zopfli>" ]
@@ -142,7 +141,8 @@ argyle = "0.15.*"
 argyle = "0.15.*"
 dactyl = "0.13.*"
 dowser = "0.18.*"
-gifsicle = "=1.95.0"
+gif-dispose = "=6.0.0"
+indexmap = "2.14.0"
 libc = "0.2.*"
 utc2k = "0.20.*"
 write_atomic = "0.7.*"
@@ -159,10 +159,15 @@ default-features = false
 version = "2.6.*"
 features = [ "signals" ]
 
+[dependencies.gif]
+version = "=0.14.2"
+default-features = false
+features = [ "raii_no_panic", "std" ]
+
 [dependencies.image]
 version = "0.25.*"
 default-features = false
-features = [ "gif", "jpeg" ]
+features = [ "jpeg" ]
 
 # TODO: switch back to crates.io if/when it gets a new release.
 [dependencies.mozjpeg-sys]
