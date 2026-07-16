@@ -132,9 +132,6 @@ pub(super) enum EncodingError {
 	/// # Intentionally Skipped.
 	Skipped,
 
-	/// # TBD Gif.
-	TbdGif,
-
 	/// # Vanished.
 	Vanished,
 
@@ -151,7 +148,7 @@ impl EncodingError {
 			Self::Format => "invalid format",
 			Self::Read => "read error",
 			Self::Resolution => "too big",
-			Self::Skipped | Self::TbdGif => "",
+			Self::Skipped => "",
 			Self::Vanished => "vanished!",
 			Self::Write => "write error",
 		}

@@ -69,8 +69,15 @@ pub(super) fn encode(file: &Path, settings: Settings)
 	// Do GIF stuff?
 	else if ImageKind::is_gif(&raw) {
 		if ! settings.has_kind(ImageKind::Gif) { return Err(EncodingError::Skipped); }
-		// The GIF thread will need to handle the actual compression.
-		return Err(EncodingError::TbdGif);
+		check_resolution(ImageKind::Gif, &raw, settings)?;
+
+		if
+			Some(false) == encode_gif(&mut raw, settings.preserve_meta()) &&
+			! settings.preserve_meta()
+		{
+			// Second chance to save by stripping metadata!
+			strip_gif_metadata(&mut raw);
+		}
 	}
 	// Something else entirely?
 	else { return Err(EncodingError::Format); }
@@ -79,44 +86,6 @@ pub(super) fn encode(file: &Path, settings: Settings)
 	let after = raw.len() as u64;
 	if after < before {
 		save_image(file, &raw, settings).map(|()| (before, after))
-	}
-	else { Ok((before, before)) }
-}
-
-/// # Encode Image (GIF).
-///
-/// This will attempt to losslessly re-encode the GIF, overriding the
-/// original if the compression results in savings.
-///
-/// The before and after sizes are returned, unless there's an error or the
-/// image is invalid. In cases where compression doesn't help, the before and
-/// after sizes will be identical.
-pub(super) fn encode_gif(src: &Path, settings: Settings)
--> Result<(u64, u64), EncodingError> {
-	// Read the original.
-	let mut raw = std::fs::read(src).map_err(|_|
-		if src.is_file() { EncodingError::Read }
-		else { EncodingError::Vanished }
-	)?;
-	let before = raw.len() as u64;
-	if before == 0 { return Err(EncodingError::Empty); }
-
-	// Check the type and resolution.
-	if ! ImageKind::is_gif(&raw) { return Err(EncodingError::Format); }
-	check_resolution(ImageKind::Gif, &raw, settings)?;
-
-	if
-		Some(false) == encode_gif__(&mut raw, settings.preserve_meta()) &&
-		! settings.preserve_meta()
-	{
-		// Second chance to save by stripping metadata!
-		strip_gif_metadata(&mut raw);
-	}
-
-	// Save it if better.
-	let after = raw.len() as u64;
-	if after < before {
-		save_image(src, &raw, settings).map(|()| (before, after))
 	}
 	else { Ok((before, before)) }
 }
@@ -151,7 +120,7 @@ fn check_resolution(kind: ImageKind, src: &[u8], settings: Settings)
 /// quite so fast and loose with the spec.
 ///
 /// Returns `true` if changed.
-fn encode_gif__(raw: &mut Vec<u8>, preserve_meta: bool) -> Option<bool> {
+fn encode_gif(raw: &mut Vec<u8>, preserve_meta: bool) -> Option<bool> {
 	let new = gif::optimize(raw, preserve_meta)?;
 	if
 		new.len() < raw.len() &&

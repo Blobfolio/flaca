@@ -53,7 +53,7 @@ The following flags and options are available:
 | Short | Long | Value | Description |
 | ----- | ---- | ----- | ----------- |
 | `-h` | `--help` | | Print help information and exit. |
-| `-j` | | `<NUM>` | Limit[^1] parallelization to this many threads (instead of using all logical cores). |
+| `-j` | | `<NUM>` | Limit parallelization to this many threads (instead of using all logical cores). |
 | `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file — or STDIN if "-" — one entry per line, instead of or in addition to the trailing `<PATH(S)>`. |
 | | `--max-resolution` | `<NUM>` | Skip images containing more than `<NUM>` total pixels. |
 | | `--no-gif` | | Skip GIF images. |
@@ -100,5 +100,3 @@ flaca -z 500 /path/to/favicon.png
 # few extra bytes, try dialing the count back:
 flaca /path/to/huge.png -z 1
 ```
-
-[^1] GIF images require a single, dedicated thread for optimization, separate from the `-j` limit applied to all other work. Unless/until a GIF turns up, it will just sit idle, so shouldn't noticeably impact most workloads.
