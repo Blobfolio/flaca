@@ -106,7 +106,7 @@ pub(super) fn encode_gif(src: &Path, settings: Settings)
 	check_resolution(ImageKind::Gif, &raw, settings)?;
 
 	if
-		! encode_gif__(&mut raw, settings.preserve_meta()) &&
+		Some(false) == encode_gif__(&mut raw, settings.preserve_meta()) &&
 		! settings.preserve_meta()
 	{
 		// Second chance to save by stripping metadata!
@@ -151,17 +151,17 @@ fn check_resolution(kind: ImageKind, src: &[u8], settings: Settings)
 /// quite so fast and loose with the spec.
 ///
 /// Returns `true` if changed.
-fn encode_gif__(raw: &mut Vec<u8>, preserve_meta: bool) -> bool {
+fn encode_gif__(raw: &mut Vec<u8>, preserve_meta: bool) -> Option<bool> {
+	let new = gif::optimize(raw, preserve_meta)?;
 	if
-		let Some(new) = gif::optimize(raw, preserve_meta) &&
 		new.len() < raw.len() &&
 		ImageKind::is_gif(&new)
 	{
 		raw.truncate(new.len());
 		raw.copy_from_slice(new.as_slice());
-		true
+		Some(true)
 	}
-	else { false }
+	else { Some(false) }
 }
 
 #[inline(never)]
