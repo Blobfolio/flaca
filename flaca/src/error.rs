@@ -54,9 +54,8 @@ FLAGS:", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
         --no-symlinks      Ignore symlinks (rather than following them).", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
-        --preserve-meta    (Try to) preserve JPEG and PNG image metadata, at
-                           the cost of larger output sizes. GIF metadata is not
-                           currently supported.", ansi!((dim, violet) "
+        --preserve-meta    (Try to) preserve image metadata, at the cost of
+                           larger output sizes.", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
         --preserve-times   (Try to) preserve the original file access and
                            modification times when resaving an image.", ansi!((dim, violet) "
