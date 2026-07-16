@@ -2,6 +2,8 @@
 # Flaca: GIF Work.
 */
 
+mod lzw;
+
 use dactyl::NoHash;
 use gif::{
 	AnyExtension,
@@ -36,7 +38,7 @@ type ExtensionLabelAndBlocks<'a> = (AnyExtension, Vec<&'a [u8]>);
 /// * Stripping metadata (unless `preserve_meta`)
 /// * Optimizing and/or merging color table(s)
 /// * Inter-frame blit/delta fuckery
-/// * Trying a couple different LZW variations
+/// * Exhaustive LZW
 ///
 /// Programs like `gifsicle` can usually achieve greater savings by appealing
 /// to "realworld" practice — assumed behaviors, etc. — but that's kinda
@@ -53,18 +55,11 @@ pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<Vec<u8>> {
 	let meta = if preserve_meta { find_extensions(src) } else { None };
 
 	// Encode it a few different ways, keeping whichever copy is best.
-	let mut out = Option::<Vec<u8>>::None;
-	for g in Palette::global_palettes(decoded.frames.iter()) {
-		let alt = decoded.encode(Some(&g), meta.as_deref())?;
-		if out.as_ref().is_none_or(|v| alt.len() < v.len()) {
-			out = Some(alt);
-		}
-	}
-
-	// Once more with per-frame palettes.
-	let alt = decoded.encode(None, meta.as_deref())?;
-	if out.as_ref().is_none_or(|v| alt.len() < v.len()) { Some(alt) }
-	else { out }
+	Palette::global_palettes(decoded.frames.iter()).iter()
+		.map(Some)
+		.chain(std::iter::once(None))
+		.filter_map(|g| decoded.encode(g, meta.as_deref()))
+		.min_by(|a, b| a.len().cmp(&b.len()))
 }
 
 #[must_use]
@@ -260,7 +255,7 @@ impl DecodedGif {
 		// Write the frames.
 		for frame in &self.frames {
 			let frame = frame.try_into_frame(global_palette)?;
-			enc.write_frame(&frame).ok()?;
+			enc.write_lzw_pre_encoded_frame(&frame).ok()?;
 		}
 
 		// Done!
@@ -818,7 +813,8 @@ impl ProtoFrame {
 impl ProtoFrame {
 	#[must_use]
 	/// # Into Frame.
-	fn try_into_frame(&self, mut global_palette: Option<&Palette>) -> Option<Frame<'static>> {
+	fn try_into_frame(&self, mut global_palette: Option<&Palette>)
+	-> Option<Frame<'static>> {
 		// Global is only global if it covers all of our colors.
 		if global_palette.is_some_and(|v| ! v.contains_all(&self.palette)) {
 			global_palette = None;
@@ -831,13 +827,16 @@ impl ProtoFrame {
 			buffer.push(ref_palette.lookup(px)?);
 		}
 
+		// Try LZW our way!
+		let lzw = lzw::encode_frame(&buffer);
+
 		// Palette for the frame.
 		let palette =
 			if global_palette.is_none() { Some(self.palette.flatten()?) }
 			else { None };
 
-		// Done!
-		Some(Frame {
+		// The frame.
+		let mut out = Frame {
 			delay: self.delay,
 			dispose: self.dispose,
 			transparent: ref_palette.transparent_idx(),
@@ -849,7 +848,16 @@ impl ProtoFrame {
 			palette,
 			interlaced: false,
 			buffer: Cow::Owned(buffer),
-		})
+		};
+		out.make_lzw_pre_encoded();
+
+		// Swap LZW if ours is better.
+		if let Some(lzw) = lzw && lzw.len() < out.buffer.len() {
+			lzw.clone_into(out.buffer.to_mut());
+		}
+
+		// Done!
+		Some(out)
 	}
 }
 
