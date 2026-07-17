@@ -4,7 +4,6 @@
 
 mod lzw;
 
-use dactyl::NoHash;
 use gif::{
 	AnyExtension,
 	ColorOutput,
@@ -15,11 +14,9 @@ use gif::{
 	Repeat,
 };
 use gif_dispose::Screen;
-use indexmap::IndexSet;
 use std::{
 	borrow::Cow,
-	cmp::Ordering,
-	collections::BTreeMap,
+	collections::BTreeSet,
 	hash,
 	io::Cursor,
 	num::NonZeroU16,
@@ -30,19 +27,19 @@ use std::{
 /// # Extension Label and Block(s).
 type ExtensionLabelAndBlocks<'a> = (AnyExtension, Vec<&'a [u8]>);
 
+/// # Max Palette Size.
+const MAX_COLOR_TABLE: usize = 256;
+
 
 
 /// # Optimize Gif.
 ///
 /// This method attempts to optimize a GIF image by:
 /// * Stripping metadata (unless `preserve_meta`)
-/// * Optimizing and/or merging color table(s)
+/// * Stripping unused palette colors
+/// * Sorting/merging palettes
 /// * Inter-frame blit/delta fuckery
 /// * Exhaustive LZW
-///
-/// Programs like `gifsicle` can usually achieve greater savings by appealing
-/// to "realworld" practice — assumed behaviors, etc. — but that's kinda
-/// dangerous, so we don't do that. Haha.
 pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<Vec<u8>> {
 	// First pass.
 	let decoded = DecodedGif::new(src)?;
@@ -54,8 +51,8 @@ pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<Vec<u8>> {
 	// Metadata?
 	let meta = if preserve_meta { find_extensions(src) } else { None };
 
-	// Encode it a few different ways, keeping whichever copy is best.
-	Palette::global_palettes(decoded.frames.iter()).iter()
+	// Encode it a few different ways, keeping whichever copy comes out best.
+	Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
 		.map(Some)
 		.chain(std::iter::once(None))
 		.filter_map(|g| decoded.encode(g, meta.as_deref()))
@@ -400,56 +397,58 @@ impl MinMaxXY {
 
 
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 /// # Color Palette.
 ///
 /// This struct holds a unique list of RGB colors.
-struct Palette(IndexSet<PixelColor, NoHash>);
+struct Palette(Vec<PixelColor>);
 
 impl Default for Palette {
 	#[inline]
 	fn default() -> Self {
-		Self(IndexSet::with_capacity_and_hasher(256, NoHash::default()))
+		Self(Vec::with_capacity(MAX_COLOR_TABLE))
 	}
 }
 
 impl From<PixelColor> for Palette {
 	#[inline]
 	fn from(px: PixelColor) -> Self {
-		let mut out = Self(IndexSet::with_capacity_and_hasher(1, NoHash::default()));
-		out.0.insert(px);
+		let mut out = Self(Vec::with_capacity(MAX_COLOR_TABLE));
+		out.0.push(px);
 		out
-	}
-}
-
-impl hash::Hash for Palette {
-	#[inline]
-	fn hash<H: hash::Hasher>(&self, state: &mut H) {
-		for px in &self.0 { px.hash(state); }
 	}
 }
 
 impl Palette {
 	/// # Push Color.
-	fn push(&mut self, px: PixelColor) { self.0.insert(px); }
-
-	/// # Sort Palette.
-	fn sort(&mut self) { self.0.sort(); }
+	fn push(&mut self, px: PixelColor) {
+		if let Err(idx) = self.0.binary_search(&px) { self.0.insert(idx, px); }
+	}
 
 	#[must_use]
 	/// # Contains All?
 	fn contains_all(&self, other: &Self) -> bool {
-		other.0.iter().all(|px| self.0.contains(px))
+		self.len() >= other.len() &&
+		other.0.iter().copied().all(|px| self.contains(px))
 	}
 
 	#[must_use]
 	/// # Length.
-	fn len(&self) -> usize { self.0.len() }
+	const fn len(&self) -> usize { self.0.len() }
+
+	#[must_use]
+	/// # Contains.
+	fn contains(&self, px: PixelColor) -> bool {
+		self.0.binary_search(&px).is_ok()
+	}
 
 	#[must_use]
 	/// # Flatten.
 	fn flatten(&self) -> Option<Vec<u8>> {
-		if 256 < self.len() { None }
+		if MAX_COLOR_TABLE < self.len() {
+			std::hint::cold_path();
+			None
+		}
 		else {
 			let mut out = Vec::with_capacity(self.len() * 3);
 			for px in self.0.iter().copied() {
@@ -467,7 +466,7 @@ impl Palette {
 	///
 	/// Return the index for the color, if any.
 	fn lookup(&self, px: PixelColor) -> Option<u8> {
-		self.0.get_index_of(&px).and_then(|v| u8::try_from(v).ok())
+		self.0.binary_search(&px).ok().and_then(|v| u8::try_from(v).ok())
 	}
 
 	#[must_use]
@@ -476,7 +475,7 @@ impl Palette {
 		// Try grayscale first.
 		for c in u8::MIN..=u8::MAX {
 			let px = PixelColor::Rgb([c, c, c]);
-			if ! self.0.contains(&px) { return [c, c, c]; }
+			if ! self.contains(px) { return [c, c, c]; }
 		}
 
 		// Try 'em all.
@@ -484,7 +483,7 @@ impl Palette {
 			for g in u8::MIN..=u8::MAX {
 				for b in u8::MIN..=u8::MAX {
 					let px = PixelColor::Rgb([r, g, b]);
-					if ! self.0.contains(&px) { return [r, g, b]; }
+					if ! self.contains(px) { return [r, g, b]; }
 				}
 			}
 		}
@@ -495,143 +494,112 @@ impl Palette {
 
 	#[must_use]
 	/// # Transparent Index.
-	fn transparent_idx(&self) -> Option<u8> {
-		self.0.get_index_of(&PixelColor::Transparent).and_then(|v| u8::try_from(v).ok())
-	}
+	fn transparent_idx(&self) -> Option<u8> { self.lookup(PixelColor::Transparent) }
 }
 
 impl Palette {
 	/// # Global Palette(s).
 	///
-	/// Merge the frame palette(s) by size — biggest to smallest and vice
-	/// versa — sorted by color, pixel frequency, and frame coverage.
+	/// Merge individual frame palettes together into a single global palette,
+	/// or multiple global palettes if they don't all fit.
 	///
-	/// The number of possibilities actually returned will vary by image.
-	fn global_palettes<'a, I: Iterator<Item=&'a ProtoFrame>>(frames: I) -> Vec<Self> {
-		/// # Insert Variations.
-		fn insert_variations(
-			mut palette: Palette,
-			set: &mut IndexSet<Palette>,
-			count: usize,
-			frame_freqs: &BTreeMap<PixelColor, usize>,
-			pixel_freqs: &BTreeMap<PixelColor, usize>,
-		) {
-			// By color.
-			set.insert(palette.clone());
-
-			// Sort by frame frequency, if we have more than one.
-			if 1 < count {
-				palette.0.sort_by(|a, b| match frame_freqs.get(b).cmp(&frame_freqs.get(a)) {
-					Ordering::Equal => a.cmp(b),
-					cmp => cmp,
-				});
-				set.insert(palette.clone());
+	/// All returned palettes are sorted by color.
+	fn global_palettes<'a, I: Iterator<Item=&'a Self>>(palettes: I) -> Vec<Self> {
+		/// # Merge Two Palettes.
+		///
+		/// Merge `other` into `self` if the total remains under the limit,
+		/// returning `true` if successful.
+		fn merge_one(base: &mut Palette, other: &Palette) -> bool {
+			let len_base = base.len();
+			let mut diff = Vec::with_capacity(other.len());
+			for px in other.0.iter().copied() {
+				if ! base.contains(px) { diff.push(px); }
 			}
 
-			// Sort by pixel frequency.
-			palette.0.sort_by(|a, b| match pixel_freqs.get(b).cmp(&pixel_freqs.get(a)) {
-				Ordering::Equal => a.cmp(b),
-				cmp => cmp,
-			});
-			set.insert(palette);
-		}
-
-		// Collect the palettes and counts.
-		let mut palettes = Vec::new();
-		let mut pixel_freqs = BTreeMap::<PixelColor, usize>::new();
-		let mut frame_freqs = BTreeMap::<PixelColor, usize>::new();
-		for v in frames {
-			// Impossible frames won't encode so fuck 'em.
-			if 256 < v.palette.len() { return Vec::new(); }
-
-			palettes.push(&v.palette);
-			for px in v.palette.0.iter().copied() {
-				*(frame_freqs.entry(px).or_default()) += 1;
-			}
-			for px in v.canvas.iter().copied() {
-				*(pixel_freqs.entry(px).or_default()) += 1;
-			}
-		}
-
-		// Possibilities.
-		let mut out = IndexSet::new();
-		match palettes.len().cmp(&1) {
-			// Noop.
-			Ordering::Less => {},
-
-			// Resort the main palette a few ways.
-			Ordering::Equal => {
-				insert_variations(
-					palettes[0].clone(),
-					&mut out,
-					1,
-					&frame_freqs,
-					&pixel_freqs,
-				);
-			},
-
-			// Merge by pallete size.
-			Ordering::Greater =>  if let Some((palette, n)) = Self::global_merged(&palettes, false) {
-				insert_variations(palette, &mut out, n, &frame_freqs, &pixel_freqs);
-
-				// If anything got left out, reverse the order.
-				if
-					n < palettes.len() &&
-					let Some((palette, n)) = Self::global_merged(&palettes, true)
-				{
-					insert_variations(palette, &mut out, n, &frame_freqs, &pixel_freqs);
+			let len_diff = diff.len();
+			if len_base + len_diff <= MAX_COLOR_TABLE {
+				if len_diff != 0 {
+					base.0.extend_from_slice(&diff);
+					base.0.sort();
 				}
+				true
+			}
+			else { false }
+		}
+
+		/// # Merge Multiple Palettes.
+		///
+		/// Try to merge one or more palettes into the first, returning the
+		/// result along with the number of frames included, or `None` if no
+		/// mergers happened.
+		fn merge_many(src: &[&Palette]) -> Option<(Palette, usize)> {
+			let mut iter = src.iter().copied();
+			let mut out = iter.next()?.clone();
+			let mut included = 1;
+
+			for next in iter {
+				if merge_one(&mut out, next) { included += 1; }
+			}
+
+			// Return if there was a merger.
+			if 1 < included { Some((out, included)) }
+			else { None }
+		}
+
+		// Collect the palettes.
+		let mut palettes: Vec<&Self> = palettes
+			.filter(|v| v.len() <= MAX_COLOR_TABLE)
+			.collect();
+
+		// Size-based short circuits.
+		match palettes.len() {
+			// Empty?
+			0 => {
+				std::hint::cold_path();
+				Vec::new()
+			},
+
+			// A single frame can be passed back as-is.
+			1 => vec![palettes[0].clone()],
+
+			// Two frames can only be combined one way, so return both or
+			// neither.
+			2 => {
+				let mut out = palettes[0].clone();
+				if merge_one(&mut out, palettes[1]) { vec![out] }
+				else { Vec::new() }
+			}
+
+			// Three or more frames might result in multiple combinations.
+			_ => {
+				// Potential mergers.
+				let mut out = BTreeSet::new();
+
+				// Start with the frames ordered smallest to largest.
+				palettes.sort_by_key(|v| v.len());
+				for _ in 0..palettes.len() {
+					if let Some((maybe, n)) = merge_many(&palettes) {
+						if n == palettes.len() { return vec![maybe]; }
+						out.insert(maybe);
+					}
+
+					// Rotate and back around again.
+					palettes.rotate_left(1);
+				}
+
+				// Reverse (largest to smallest) and repeat.
+				palettes.reverse();
+				for _ in 0..palettes.len() {
+					if let Some((maybe, _)) = merge_many(&palettes) {
+						out.insert(maybe);
+					}
+					palettes.rotate_left(1);
+				}
+
+				// Return 'em if we got 'em.
+				out.into_iter().collect()
 			},
 		}
-
-		// Return whatever we've got.
-		out.into_iter().collect()
-	}
-
-	/// # Global Palette: Merged by Palette Size.
-	fn global_merged(src: &[&Self], asc: bool) -> Option<(Self, usize)> {
-		if src.len() < 2 { return None; }
-		let mut src: Vec<&Self> = src.to_vec();
-
-		// Smallest to biggest.
-		if asc { src.sort_by_key(|v| v.len()); }
-		// Biggest to smallest.
-		else { src.sort_by_key(|v| std::cmp::Reverse(v.len())); }
-
-		// Start with the highest.
-		let mut iter = src.iter().copied();
-		let mut out = iter.next()?.clone();
-		let mut included = 1;
-
-		// Merge 'em if we got 'em.
-		for next in iter {
-			if Self::try_merge(&mut out, next) { included += 1; }
-		}
-
-		// Shouldn't be possible to go over, but let's double-check before
-		// suggesting it!
-		if 256 < out.len() { None }
-		else {
-			out.sort();
-			Some((out, included))
-		}
-	}
-
-	/// # Try Merge.
-	///
-	/// Merge `other` into `self` if the total remains under the limit,
-	/// returning `true` if successful.
-	fn try_merge(base: &mut Self, other: &Self) -> bool {
-		let len_base = base.len();
-		let diff = other.0.difference(&base.0)
-			.copied()
-			.collect::<Vec<PixelColor>>();
-
-		if len_base + diff.len() <= 256 {
-			base.0.extend(diff);
-			true
-		}
-		else { false }
 	}
 }
 
@@ -725,7 +693,6 @@ impl ProtoFrame {
 	) -> Self {
 		let mut palette = Palette::default();
 		for px in canvas { palette.push(*px); }
-		palette.sort();
 
 		Self {
 			delay,
@@ -794,7 +761,6 @@ impl ProtoFrame {
 				}
 			}
 		}
-		palette.sort();
 
 		Some(Self {
 			delay,
