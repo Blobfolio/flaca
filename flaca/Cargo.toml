@@ -146,6 +146,10 @@ libc = "0.2.*"
 utc2k = "0.20.*"
 write_atomic = "0.7.*"
 
+[dependencies.ahash]
+version = "0.8.*"
+default-features = false
+
 [dependencies.flapfli]
 version = "*"
 path = "../flapfli"

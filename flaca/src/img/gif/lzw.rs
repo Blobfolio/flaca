@@ -12,6 +12,8 @@ use std::{
 };
 use super::MAX_COLOR_TABLE;
 
+
+
 /// # Helper: Count.
 macro_rules! count {
 	() => ( 0 );
@@ -93,12 +95,6 @@ macro_rules! numenum {
 	);
 }
 
-/// # Alignment.
-///
-/// Only check slices at positions aligned to this value. One is ideal, but
-/// takes fucking forever.
-const ALIGNMENT: NonZeroUsize = NonZeroUsize::new(32).unwrap();
-
 /// # Minimum Non-Greedy Match Length.
 const MIN_NONGREEDY_MATCH: NonZeroUsize = NonZeroUsize::new(2).unwrap();
 
@@ -143,13 +139,13 @@ const _: () = {
 /// improving upon the "simpler" result produced by the `gif` encoder itself.
 ///
 /// `None` is returned if there are any problems.
-pub(super) fn encode_frame(src: &[u8]) -> Option<Vec<u8>> {
-	let mut encoder = LzwEncoder::new(src);
+pub(super) fn encode_frame(src: &[u8], alignment: NonZeroUsize) -> Option<Vec<u8>> {
+	let mut encoder = LzwEncoder::new(src, alignment);
 
 	// Crunch aligned sub-slices of the data to build up a sense of the "best"
 	// breakpoints.
 	for i in (0..src.len()).rev() {
-		if ! i.is_multiple_of(ALIGNMENT.get()) { continue; }
+		if ! i.is_multiple_of(alignment.get()) { continue; }
 
 		// Estimate cost.
 		encoder.optimize_partial(i, 0, None)?;
@@ -744,6 +740,9 @@ struct LzwEncoder<'a> {
 	/// # Data.
 	data: &'a [u8],
 
+	/// # Alignment.
+	alignment: NonZeroUsize,
+
 	/// # Min Code Size.
 	min_code_size: CodeSize,
 
@@ -788,11 +787,12 @@ flags! {
 impl<'a> LzwEncoder<'a> {
 	#[must_use]
 	/// # New.
-	fn new(data: &'a [u8]) -> Self {
+	fn new(data: &'a [u8], alignment: NonZeroUsize) -> Self {
 		let min_code_size = min_code_size(data);
-		let best = BestBlocks::new(data.len() / ALIGNMENT.get() + 1 + 1);
+		let best = BestBlocks::new(data.len() / alignment.get() + 1 + 1);
 		Self {
 			data,
+			alignment,
 			min_code_size,
 			best,
 			dictionary: Dictionary::default(),
@@ -911,7 +911,7 @@ impl LzwEncoder<'_> {
 		if max_len < len && max_len != 0 { len = max_len; }
 
 		// Current best index.
-		let best_idx = from / ALIGNMENT.get();
+		let best_idx = from / self.alignment.get();
 
 		// Short-circuit: skip the greedy/non-greedy pass if the last go-around
 		// was unsuccessful… unless we're saving the block this time.
@@ -982,12 +982,15 @@ impl LzwEncoder<'_> {
 
 			// If there were no optimizations for the current block, skip it.
 			let next_idx =
-				if 1 < ALIGNMENT.get() { (i + 1).div_ceil(ALIGNMENT.get()) }
+				if 1 < self.alignment.get() { (i + 1).div_ceil(self.alignment.get()) }
 				else { i + 1 };
 			if
 				i + 1 < self.data.len() &&
 				(
-					(1 < ALIGNMENT.get() && ! state.bytes.is_multiple_of(ALIGNMENT.get())) ||
+					(
+						1 < self.alignment.get() &&
+						! state.bytes.is_multiple_of(self.alignment.get())
+					) ||
 					self.best.bits(next_idx).is_none()
 				)
 			{
@@ -1028,7 +1031,7 @@ impl LzwEncoder<'_> {
 			let len = self.best.bytes(aligned)?;
 
 			pos += len.get();
-			aligned = pos / ALIGNMENT.get();
+			aligned = pos / self.alignment.get();
 			restarts.push(pos);
 		}
 
@@ -1060,7 +1063,7 @@ impl LzwEncoder<'_> {
 
 			// Switch to faster settings.
 			if self.best.is_empty() { std::hint::cold_path() }
-			else { self.set_greedy(! self.best.nongreedy(pos / ALIGNMENT.get())); }
+			else { self.set_greedy(! self.best.nongreedy(pos / self.alignment.get())); }
 			self.set_read_only_best(true);
 
 			// Compute the current block.

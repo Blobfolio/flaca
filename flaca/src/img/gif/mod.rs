@@ -4,6 +4,7 @@
 
 mod lzw;
 
+use dactyl::NoHash;
 use gif::{
 	AnyExtension,
 	ColorOutput,
@@ -16,10 +17,16 @@ use gif::{
 use gif_dispose::Screen;
 use std::{
 	borrow::Cow,
-	collections::BTreeSet,
+	collections::{
+		BTreeSet,
+		HashMap,
+	},
 	hash,
 	io::Cursor,
-	num::NonZeroU16,
+	num::{
+		NonZeroU16,
+		NonZeroUsize,
+	},
 };
 
 
@@ -29,6 +36,19 @@ type ExtensionLabelAndBlocks<'a> = (AnyExtension, Vec<&'a [u8]>);
 
 /// # Max Palette Size.
 const MAX_COLOR_TABLE: usize = 256;
+
+/// # Non-Zero Two.
+const NZ2: NonZeroUsize = NonZeroUsize::new(2).unwrap();
+
+/// # Static Hasher.
+///
+/// This is used for cheap collision detection. No need to get fancy with it.
+const AHASHER: ahash::RandomState = ahash::RandomState::with_seeds(
+	0x8596_cc44_bef0_1aa0,
+	0x98d4_0948_da60_19ae,
+	0x49f1_3013_c503_a6aa,
+	0xc4d7_82ff_3c9f_7bef,
+);
 
 
 
@@ -51,11 +71,13 @@ pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<Vec<u8>> {
 	// Metadata?
 	let meta = if preserve_meta { find_extensions(src) } else { None };
 
+	let mut cache = FrameCache::new(decoded.frames.len());
+
 	// Encode it a few different ways, keeping whichever copy comes out best.
 	Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
 		.map(Some)
 		.chain(std::iter::once(None))
-		.filter_map(|g| decoded.encode(g, meta.as_deref()))
+		.filter_map(|g| decoded.encode(g, meta.as_deref(), None, &mut cache))
 		.min_by(|a, b| a.len().cmp(&b.len()))
 }
 
@@ -227,7 +249,9 @@ impl DecodedGif {
 	fn encode(
 		&self,
 		global_palette: Option<&Palette>,
-		meta: Option<&[ExtensionLabelAndBlocks]>
+		meta: Option<&[ExtensionLabelAndBlocks]>,
+		alignment: Option<usize>,
+		cache: &mut FrameCache,
 	) -> Option<Vec<u8>> {
 		// Set up the encoder.
 		let mut enc = Encoder::new(
@@ -251,7 +275,7 @@ impl DecodedGif {
 
 		// Write the frames.
 		for frame in &self.frames {
-			let frame = frame.try_into_frame(global_palette)?;
+			let frame = frame.try_into_frame(global_palette, alignment, cache)?;
 			enc.write_lzw_pre_encoded_frame(&frame).ok()?;
 		}
 
@@ -778,13 +802,41 @@ impl ProtoFrame {
 
 impl ProtoFrame {
 	#[must_use]
+	/// # Recommended LZW Alignment.
+	///
+	/// Return a high-but-not-too-high alignment value for the number of pixels
+	/// comprising the frame.
+	const fn recommended_alignment(&self) -> NonZeroUsize {
+		// Align not-small images to the row size.
+		if
+			(u16::MAX as usize) < self.canvas.len() &&
+			let Some(alignment) = NonZeroUsize::new(self.width.get() as usize)
+		{
+			alignment
+		}
+		// Align small ones to every other byte.
+		else if (i16::MAX as usize) < self.canvas.len() { NZ2 }
+		// Tiny images can be tested exhaustively.
+		else { NonZeroUsize::MIN }
+	}
+
+	#[must_use]
 	/// # Into Frame.
-	fn try_into_frame(&self, mut global_palette: Option<&Palette>)
-	-> Option<Frame<'static>> {
+	fn try_into_frame(
+		&self,
+		mut global_palette: Option<&Palette>,
+		alignment: Option<usize>,
+		cache: &mut FrameCache,
+	) -> Option<Frame<'static>> {
 		// Global is only global if it covers all of our colors.
 		if global_palette.is_some_and(|v| ! v.contains_all(&self.palette)) {
 			global_palette = None;
 		}
+
+		let alignment = alignment.map_or_else(
+			|| Some(self.recommended_alignment()),
+			NonZeroUsize::new
+		);
 
 		// Build up an indexed buffer.
 		let ref_palette = global_palette.unwrap_or(&self.palette);
@@ -794,7 +846,7 @@ impl ProtoFrame {
 		}
 
 		// Try LZW our way!
-		let lzw = lzw::encode_frame(&buffer);
+		let lzw = alignment.and_then(|v| cache.encode_frame(&buffer, v));
 
 		// Palette for the frame.
 		let palette =
@@ -824,6 +876,43 @@ impl ProtoFrame {
 
 		// Done!
 		Some(out)
+	}
+}
+
+
+
+/// # LZW Frame Cache.
+///
+/// Images are potentially encoded multiple times to test different palette
+/// configurations, but those changes don't always affect the color indices
+/// compressed by LZW.
+///
+/// This cache ensures we don't waste time calculating the same thing twice.
+struct FrameCache(HashMap<u64, Option<Vec<u8>>, NoHash>);
+
+impl FrameCache {
+	#[must_use]
+	/// # New Instance.
+	fn new(capacity: usize) -> Self {
+		Self(HashMap::with_capacity_and_hasher(capacity, NoHash::default()))
+	}
+
+	#[must_use]
+	/// # Encode Frame.
+	///
+	/// Return an LZW-encoded canvas for the frame, whether new or cached.
+	fn encode_frame<'a>(
+		&'a mut self,
+		data: &[u8],
+		alignment: NonZeroUsize,
+	) -> Option<&'a [u8]> {
+		use std::collections::hash_map::Entry;
+
+		let key = AHASHER.hash_one((alignment, data));
+		match self.0.entry(key) {
+			Entry::Vacant(e) => e.insert(lzw::encode_frame(data, alignment)).as_deref(),
+			Entry::Occupied(e) => e.into_mut().as_deref(),
+		}
 	}
 }
 
