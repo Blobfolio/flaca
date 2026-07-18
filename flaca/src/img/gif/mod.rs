@@ -4,6 +4,7 @@
 
 mod lzw;
 
+use crate::Settings;
 use dactyl::NoHash;
 use gif::{
 	AnyExtension,
@@ -60,7 +61,7 @@ const AHASHER: ahash::RandomState = ahash::RandomState::with_seeds(
 /// * Sorting/merging palettes
 /// * Inter-frame blit/delta fuckery
 /// * Exhaustive LZW
-pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<Vec<u8>> {
+pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
 	// First pass.
 	let decoded = DecodedGif::new(src)?;
 	if decoded.frames.is_empty() {
@@ -68,16 +69,18 @@ pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<Vec<u8>> {
 		return None;
 	}
 
-	// Metadata?
-	let meta = if preserve_meta { find_extensions(src) } else { None };
+	// LZW alignment?
+	let lzw_alignment = settings.lzw_alignment();
 
-	let mut cache = FrameCache::new(decoded.frames.len());
+	// Metadata?
+	let meta = if settings.preserve_meta() { find_extensions(src) } else { None };
 
 	// Encode it a few different ways, keeping whichever copy comes out best.
+	let mut cache = FrameCache::new(decoded.frames.len());
 	Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
 		.map(Some)
 		.chain(std::iter::once(None))
-		.filter_map(|g| decoded.encode(g, meta.as_deref(), None, &mut cache))
+		.filter_map(|g| decoded.encode(g, meta.as_deref(), lzw_alignment, &mut cache))
 		.min_by(|a, b| a.len().cmp(&b.len()))
 }
 

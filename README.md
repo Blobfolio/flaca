@@ -7,9 +7,9 @@
 
 Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of maximally, **losslessly** compressing GIF, JPEG, and PNG images for use in production **web environments**.
 
-It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a GIF or JPEG, but calculating the optimal construction for a PNG can take a lot of work!
+It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a JPEG, but calculating the optimal construction for a GIF or PNG can take a lot of work!
 
-Compression is mainly achieved through the removal of metadata and optimization of pixel tables. Under the hood, flaca leverages the `jpegtran` functionality from [MozJPEG](https://github.com/mozilla/mozjpeg) for JPEG images, and a combination of [Oxipng](https://github.com/shssoichiro/oxipng) and (custom) [Zopflipng](https://github.com/google/zopfli) for PNG images.
+Compression is mainly achieved through the removal of metadata and optimization of pixel tables and block layouts/compression. Under the hood, flaca leverages the `jpegtran` functionality from [MozJPEG](https://github.com/mozilla/mozjpeg) for JPEG images and [Oxipng](https://github.com/shssoichiro/oxipng) for PNG images for additional savings.
 
 
 

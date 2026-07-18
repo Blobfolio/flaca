@@ -174,8 +174,9 @@ fn main__() -> Result<(), FlacaError> {
 		@options
 		Threads       "-j",
 		List          "-l" "--list",
+		Lz77Loop      "-z" "--lz77",
+		LzwLoop       "-g" "--lzw",
 		MaxPixels          "--max-pixels",
-		ZopfliLoop    "-z",
 
 		@catchall-paths Path,
 	}
@@ -199,10 +200,11 @@ fn main__() -> Result<(), FlacaError> {
 
 			Argument::Threads(s) => { threads.replace(s); },
 			Argument::List(s) => { paths.push_list(s); },
-			Argument::MaxPixels(s) => {
-				settings.set_max_pixels_raw(s.trim().as_bytes())?;
+			Argument::LzwLoop(s) => {
+				let s = u32::btou(s.trim().as_bytes()).ok_or(FlacaError::LzwAlignment)?;
+				settings.set_lzw_alignment(s);
 			},
-			Argument::ZopfliLoop(s) => {
+			Argument::Lz77Loop(s) => {
 				let s = u32::btou(s.trim().as_bytes()).ok_or(FlacaError::ZopfliIterations)?;
 				if let Some(s) = NonZeroU32::new(s) {
 					if ! flapfli::set_zopfli_iterations(s) {
@@ -211,6 +213,9 @@ fn main__() -> Result<(), FlacaError> {
 				}
 				// If zero, disable zopfli altogether.
 				else { settings.unset_zopfli(); }
+			},
+			Argument::MaxPixels(s) => {
+				settings.set_max_pixels_raw(s.trim().as_bytes())?;
 			},
 
 			Argument::Path(s) => { paths.push_path(s); },

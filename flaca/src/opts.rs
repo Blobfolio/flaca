@@ -11,11 +11,24 @@ use std::num::NonZeroU32;
 
 
 
+/// # Maximum LZW Alignment.
+///
+/// GIF dimensions are `u16`, so resolutions can only be so big.
+const MAX_LZW_ALIGNMENT: NonZeroU32 = NonZeroU32::new((u16::MAX as u32) * (u16::MAX as u32)).unwrap();
+
+
+
 #[derive(Debug, Clone, Copy)]
 /// # Encoding Settings.
 pub(crate) struct Settings {
 	/// # Image Kinds (to Optimize).
 	kinds: ImageKind,
+
+	/// # Exhaustive LZW (GIF) Alignment.
+	///
+	/// Limit exhaustive LZW benching to subslices aligned to this value. None
+	/// defers to frame-based logic. Zero disables.
+	lzw_alignment: Option<u32>,
 
 	/// # Maximum Resolution.
 	///
@@ -105,9 +118,16 @@ impl Settings {
 	pub(crate) const fn new() -> Self {
 		Self {
 			kinds: ImageKind::All,
+			lzw_alignment: None,
 			max_pixels: None,
 			flags: Self::ZOPFLI,
 		}
+	}
+
+	/// # Set Exhaustive LZW (GIF) Alignment.
+	pub(super) const fn set_lzw_alignment(&mut self, alignment: u32) {
+		// GIF dimensions are u16, so we don't need gigantic values.
+		self.lzw_alignment = Some(alignment);
 	}
 
 	/// # Set Max Resolution.
@@ -180,6 +200,16 @@ impl Settings {
 	#[must_use]
 	/// # Image Kinds.
 	pub(crate) const fn kinds(self) -> ImageKind { self.kinds }
+
+	#[must_use]
+	/// # Exhaustive LZW (GIF) Alignment.
+	pub(crate) const fn lzw_alignment(self) -> Option<usize> {
+		if let Some(alignment) = self.lzw_alignment {
+			if alignment < MAX_LZW_ALIGNMENT.get() { Some(alignment as usize) }
+			else { Some(MAX_LZW_ALIGNMENT.get() as usize) }
+		}
+		else { None }
+	}
 
 	#[must_use]
 	/// # Zopfli Pass?
