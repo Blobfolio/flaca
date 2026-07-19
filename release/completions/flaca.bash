@@ -27,8 +27,15 @@ _basher___flaca() {
 		opts+=("-l")
 		opts+=("--list")
 	fi
+	if [[ ! " ${COMP_LINE} " =~ " -z " ]] && [[ ! " ${COMP_LINE} " =~ " --lz77 " ]]; then
+		opts+=("-z")
+		opts+=("--lz77")
+	fi
+	if [[ ! " ${COMP_LINE} " =~ " -g " ]] && [[ ! " ${COMP_LINE} " =~ " --lzw " ]]; then
+		opts+=("-g")
+		opts+=("--lzw")
+	fi
 	[[ " ${COMP_LINE} " =~ " --max-resolution " ]] || opts+=("--max-resolution")
-	[[ " ${COMP_LINE} " =~ " -z " ]] || opts+=("-z")
 	opts=" ${opts[@]} "
 	if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
 		COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
