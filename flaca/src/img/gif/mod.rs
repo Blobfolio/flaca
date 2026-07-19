@@ -626,20 +626,21 @@ impl Palette {
 
 		/// # Merge Multiple Palettes.
 		///
-		/// Try to merge one or more palettes into the first, returning the
-		/// result along with the number of frames included, or `None` if no
-		/// mergers happened.
-		fn merge_many(src: &[&Palette]) -> Option<(Palette, usize)> {
+		/// Try to merge as many of the palettes together, working left to
+		/// right, returning the result if more than a third of all frames
+		/// are represented, otherwise `None`.
+		fn merge_many(src: &[&Palette]) -> Option<(Palette, NonZeroUsize)> {
+			let target = NonZeroUsize::new(src.len().wrapping_div(3))?;
 			let mut iter = src.iter().copied();
 			let mut out = iter.next()?.clone();
-			let mut included = 1;
+			let mut included = NonZeroUsize::MIN;
 
 			for next in iter {
-				if merge_one(&mut out, next) { included += 1; }
+				if merge_one(&mut out, next) { included = included.saturating_add(1); }
 			}
 
-			// Return if there was a merger.
-			if 1 < included { Some((out, included)) }
+			// Return if more than half the frames are included.
+			if target.get() < included.get() { Some((out, included)) }
 			else { None }
 		}
 
@@ -665,7 +666,7 @@ impl Palette {
 				let mut out = palettes[0].clone();
 				if merge_one(&mut out, palettes[1]) { vec![out] }
 				else { Vec::new() }
-			}
+			},
 
 			// Three or more frames might result in multiple combinations.
 			_ => {
@@ -676,7 +677,7 @@ impl Palette {
 				palettes.sort_by_key(|v| v.len());
 				for _ in 0..palettes.len() {
 					if let Some((maybe, n)) = merge_many(&palettes) {
-						if n == palettes.len() { return vec![maybe]; }
+						if n.get() == palettes.len() { return vec![maybe]; }
 						out.insert(maybe);
 					}
 
