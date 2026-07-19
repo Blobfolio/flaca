@@ -241,6 +241,10 @@ impl DecodedGif {
 				.pixels()
 				.map(PixelColor::from_rgba8)
 				.collect();
+			if canvas.len() != usize::from(width.get()) * usize::from(height.get()) {
+				std::hint::cold_path();
+				return None;
+			}
 
 			// If any of the composited pixels in this frame are newly
 			// transparent, or this frame contains no overlap with the last,
@@ -877,17 +881,25 @@ impl ProtoFrame {
 			}
 		}
 
-		Some(Self {
-			delay,
-			dispose: DisposalMethod::Keep,
-			needs_user_input,
-			top,
-			left,
-			width: bounds_width,
-			height: bounds_height,
-			palette,
-			canvas,
-		})
+		// Make sure we actually collected everything we were supposed to!
+		if canvas.len() == usize::from(bounds_width.get()) * usize::from(bounds_height.get()) {
+			Some(Self {
+				delay,
+				dispose: DisposalMethod::Keep,
+				needs_user_input,
+				top,
+				left,
+				width: bounds_width,
+				height: bounds_height,
+				palette,
+				canvas,
+			})
+		}
+		// This shouldn't happen.
+		else {
+			std::hint::cold_path();
+			None
+		}
 	}
 }
 
