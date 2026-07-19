@@ -54,9 +54,8 @@ FLAGS:", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
         --no-symlinks      Ignore symlinks (rather than following them).", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
-        --preserve-meta    (Try to) preserve JPEG and PNG image metadata, at
-                           the cost of larger output sizes. GIF metadata is not
-                           currently supported.", ansi!((dim, violet) "
+        --preserve-meta    (Try to) preserve image metadata, at the cost of
+                           larger output sizes.", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
         --preserve-times   (Try to) preserve the original file access and
                            modification times when resaving an image.", ansi!((dim, violet) "
@@ -78,16 +77,24 @@ OPTIONS:", ansi!((dim, violet) "
                            line, instead of or in addition to any trailing
                            <PATH(S)>."#, ansi!((dim, violet) "
                            ----------------------------------------------------"), "
-        --max-pixels <NUM> Skip images containing more than <NUM> total pixels
-                           to avoid potential OOM errors during decompression.
-                           [default: ~4.29 billion]", ansi!((dim, violet) "
-                           ----------------------------------------------------"), "
-    -z <NUM>               Run <NUM> lz77 backward/forward iterations during
+    -z, --lz77 <NUM>       Run <NUM> lz77 backward/forward iterations during
                            zopfli PNG encoding passes. More iterations yield
                            better compression (up to a point), but require
-                           *significantly* longer processing times. Set to
-                           zero to disable zopfli altogether.
-                           [default: 20 or 60, depending on the file size]
+                           *significantly* longer processing times. Set to zero
+                           to disable zopfli altogether.
+                           [default: 20 or 60, depending on the file size]", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+    -g, --lzw <NUM>        Limit exhaustive LZW GIF frame encoding to subslices
+                           aligned to <NUM> bytes. Lower values yield better
+                           (more exhaustive) compression, but require
+                           *significantly* longer processing times. (Even worse
+                           than zopfli! Haha.) Set to zero to disable this
+                           optimization altogether.
+                           [default: 1, 2, or row count, based on resolution.]", ansi!((dim, violet) "
+                           ----------------------------------------------------"), "
+        --max-pixels <NUM> Skip images containing more than <NUM> total pixels
+                           to avoid potential OOM errors during decompression.
+                           [default: ~4.29 billion]
 ", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
 ARGS:", ansi!((dim, violet) "
@@ -108,7 +115,6 @@ EARLY EXIT:", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
 OPTIMIZERS USED:", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
-    Gifsicle  <", ansi!((cyan) "https://github.com/kohler/gifsicle"), ">
     MozJPEG   <", ansi!((cyan) "https://github.com/mozilla/mozjpeg"), ">
     Oxipng    <", ansi!((cyan) "https://github.com/shssoichiro/oxipng"), ">
     Zopflipng <", ansi!((cyan) "https://github.com/google/zopfli"), ">
@@ -134,9 +140,6 @@ pub(super) enum EncodingError {
 	/// # Intentionally Skipped.
 	Skipped,
 
-	/// # TBD Gif.
-	TbdGif,
-
 	/// # Vanished.
 	Vanished,
 
@@ -153,7 +156,7 @@ impl EncodingError {
 			Self::Format => "invalid format",
 			Self::Read => "read error",
 			Self::Resolution => "too big",
-			Self::Skipped | Self::TbdGif => "",
+			Self::Skipped => "",
 			Self::Vanished => "vanished!",
 			Self::Write => "write error",
 		}
@@ -173,6 +176,9 @@ pub(super) enum FlacaError {
 
 	/// # List File.
 	ListFile,
+
+	/// # LZW Alignment.
+	LzwAlignment,
 
 	/// # No Images.
 	NoImages,
@@ -227,11 +233,12 @@ impl FlacaError {
 			Self::InvalidCli(_) => "Invalid/unknown argument:",
 			Self::Killed => "The process was killed. 🕱",
 			Self::ListFile => "Invalid -l/--list text file.",
+			Self::LzwAlignment => "LZW GIF alignment must be between 0..=4_294_836_225.",
 			Self::NoImages => "No images were found.",
 			Self::MaxResolution => "Pixel limits must be between 1..=4_294_967_295.",
 			Self::Progress(e) => e.as_str(),
 			Self::ZopfliIterations => "The number of (zopfli) lz77 iterations must be between 1..=2_147_483_647.",
-			Self::ZopfliIterations2 => "The -z option can only be set once.",
+			Self::ZopfliIterations2 => "The -z/--lz77 option can only be set once.",
 			Self::PrintHelp => HELP,
 			Self::PrintVersion => concat!("Flaca v", env!("CARGO_PKG_VERSION")),
 		}

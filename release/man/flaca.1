@@ -1,6 +1,6 @@
-.TH "FLACA" "1" "July 2026" "flaca v3.8.0" "User Commands"
+.TH "FLACA" "1" "July 2026" "flaca v3.9.0" "User Commands"
 .SH NAME
-FLACA \- Manual page for flaca v3.8.0.
+FLACA \- Manual page for flaca v3.9.0.
 .SH DESCRIPTION
 Brute\-force, lossless GIF, JPEG, and PNG compression.
 .SS USAGE:
@@ -24,7 +24,7 @@ Skip PNG images.
 Ignore symlinks (rather than following them).
 .TP
 \fB\-\-preserve\-meta\fR
-(Try to) preserve JPEG and PNG image metadata, at the cost of larger output sizes. GIF metadata is not currently supported.
+(Try to) preserve image metadata, at the cost of larger output sizes.
 .TP
 \fB\-\-preserve\-times\fR
 (Try to) preserve the original file access and modification times when resaving an image.
@@ -42,11 +42,14 @@ Limit parallelization to this many threads (instead of giving each logical core 
 \fB\-l\fR, \fB\-\-list\fR <FILE>
 Read (absolute) image and/or directory paths from this text file — or STDIN if '\-' — one entry per line, instead of or in addition to any trailing <PATH(S)>.
 .TP
+\fB\-z\fR, \fB\-\-lz77\fR <NUM>
+Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values yield better (more exhaustive) compression, but require *significantly* longer processing times. (Even worse than zopfli! Haha.) Set to zero to disable this optimization altogether. [default: 1, 2, or row count, based on resolution.]
+.TP
+\fB\-g\fR, \fB\-\-lzw\fR <NUM>
+Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values tend to yield better compression, but require *significantly* longer processing times. Set to zero to disable this optimization altogether. [default: 1, 2, or row count, based on resolution.]
+.TP
 \fB\-\-max\-resolution\fR <NUM>
 Skip images containing more than <NUM> total pixels to avoid potential OOM errors during decompression. [default: ~4.29 billion]
-.TP
-\fB\-z\fR <NUM>
-Run <NUM> lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. Set to zero to disable zopfli altogether. [default: 20 or 60, depending on the file size]
 .SS TRAILING:
 .TP
 \fB<PATH(s)…>\fR
@@ -64,9 +67,6 @@ so may leave artifacts (temporary files) behind, and in rare cases, lead to
 .RE
 image corruption.
 .SS OPTIMIZERS:
-.TP
-\fBGifsicle\fR
-<https://github.com/kohler/gifsicle/>
 .TP
 \fBMozJPEG\fR
 <https://github.com/mozilla/mozjpeg>

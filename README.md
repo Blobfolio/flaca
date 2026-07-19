@@ -7,9 +7,9 @@
 
 Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of maximally, **losslessly** compressing GIF, JPEG, and PNG images for use in production **web environments**.
 
-It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a GIF or JPEG, but calculating the optimal construction for a PNG can take a lot of work!
+It prioritizes compression over speed or resource modesty, and runs best on systems with multiple CPUs. There are only so many ways to be a JPEG, but calculating the optimal construction for a GIF or PNG can take a lot of work!
 
-Compression is mainly achieved through the removal of metadata and optimization of pixel tables. Under the hood, flaca leverages [Gifsicle](https://github.com/kohler/gifsicle) for GIFs, the `jpegtran` functionality from [MozJPEG](https://github.com/mozilla/mozjpeg) for JPEG images, and a combination of [Oxipng](https://github.com/shssoichiro/oxipng) and [Zopflipng](https://github.com/google/zopfli) for PNG images.
+Compression is mainly achieved through the removal of metadata and optimization of pixel tables and block layouts/compression. Under the hood, flaca leverages the `jpegtran` functionality from [MozJPEG](https://github.com/mozilla/mozjpeg) for JPEG images and [Oxipng](https://github.com/shssoichiro/oxipng) for PNG images for additional savings.
 
 
 
@@ -53,7 +53,7 @@ The following flags and options are available:
 | Short | Long | Value | Description |
 | ----- | ---- | ----- | ----------- |
 | `-h` | `--help` | | Print help information and exit. |
-| `-j` | | `<NUM>` | Limit[^1] parallelization to this many threads (instead of using all logical cores). |
+| `-j` | | `<NUM>` | Limit parallelization to this many threads (instead of using all logical cores). |
 | `-l` | `--list` | `<FILE>` | Read (absolute) image and/or directory paths from this text file — or STDIN if "-" — one entry per line, instead of or in addition to the trailing `<PATH(S)>`. |
 | | `--max-resolution` | `<NUM>` | Skip images containing more than `<NUM>` total pixels. |
 | | `--no-gif` | | Skip GIF images. |
@@ -100,5 +100,3 @@ flaca -z 500 /path/to/favicon.png
 # few extra bytes, try dialing the count back:
 flaca /path/to/huge.png -z 1
 ```
-
-[^1] GIF images require a single, dedicated thread for optimization, separate from the `-j` limit applied to all other work. Unless/until a GIF turns up, it will just sit idle, so shouldn't noticeably impact most workloads.

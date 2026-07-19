@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.8.0"
+version = "3.9.0"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -61,7 +61,7 @@ description = "Ignore symlinks (rather than following them)."
 
 [[package.metadata.bashman.switches]]
 long = "--preserve-meta"
-description = "(Try to) preserve JPEG and PNG image metadata, at the cost of larger output sizes. GIF metadata is not currently supported."
+description = "(Try to) preserve image metadata, at the cost of larger output sizes."
 
 [[package.metadata.bashman.switches]]
 long = "--preserve-times"
@@ -91,15 +91,23 @@ description = "Read (absolute) image and/or directory paths from this text file 
 path = true
 
 [[package.metadata.bashman.options]]
-long = "--max-resolution"
+short = "-z"
+long = "--lz77"
 label = "<NUM>"
-description = "Skip images containing more than <NUM> total pixels to avoid potential OOM errors during decompression. [default: ~4.29 billion]"
+description = " Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values yield better (more exhaustive) compression, but require *significantly* longer processing times. (Even worse than zopfli! Haha.) Set to zero to disable this optimization altogether. [default: 1, 2, or row count, based on resolution.]"
 path = false
 
 [[package.metadata.bashman.options]]
-short = "-z"
+short = "-g"
+long = "--lzw"
 label = "<NUM>"
-description = "Run <NUM> lz77 backward/forward iterations during zopfli PNG encoding passes. More iterations yield better compression (up to a point), but require *significantly* longer processing times. Set to zero to disable zopfli altogether. [default: 20 or 60, depending on the file size]"
+description = "Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values tend to yield better compression, but require *significantly* longer processing times. Set to zero to disable this optimization altogether. [default: 1, 2, or row count, based on resolution.]"
+path = false
+
+[[package.metadata.bashman.options]]
+long = "--max-resolution"
+label = "<NUM>"
+description = "Skip images containing more than <NUM> total pixels to avoid potential OOM errors during decompression. [default: ~4.29 billion]"
 path = false
 
 [[package.metadata.bashman.arguments]]
@@ -122,7 +130,6 @@ lines = [
 name = "OPTIMIZERS"
 inside = true
 items = [
-	[ "Gifsicle", "<https://github.com/kohler/gifsicle/>" ],
 	[ "MozJPEG", "<https://github.com/mozilla/mozjpeg>" ],
 	[ "Oxipng", "<https://github.com/shssoichiro/oxipng>" ],
 	[ "Zopflipng", "<https://github.com/google/zopfli>" ]
@@ -142,10 +149,14 @@ argyle = "0.15.*"
 argyle = "0.15.*"
 dactyl = "0.13.*"
 dowser = "0.18.*"
-gifsicle = "=1.95.0"
+gif-dispose = "=6.0.0"
 libc = "0.2.*"
 utc2k = "0.20.*"
 write_atomic = "0.7.*"
+
+[dependencies.ahash]
+version = "0.8.*"
+default-features = false
 
 [dependencies.flapfli]
 version = "*"
@@ -159,10 +170,15 @@ default-features = false
 version = "2.6.*"
 features = [ "signals" ]
 
+[dependencies.gif]
+version = "=0.14.2"
+default-features = false
+features = [ "raii_no_panic", "std" ]
+
 [dependencies.image]
 version = "0.25.*"
 default-features = false
-features = [ "gif", "jpeg" ]
+features = [ "jpeg" ]
 
 # TODO: switch back to crates.io if/when it gets a new release.
 [dependencies.mozjpeg-sys]
