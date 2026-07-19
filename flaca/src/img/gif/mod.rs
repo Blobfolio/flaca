@@ -218,13 +218,12 @@ impl DecodedGif {
 		// Parse the frames.
 		let mut screen = Screen::new_decoder(&dec);
 		let mut last_canvas: Option<Vec<PixelColor>> = None;
-		let mut composite_frames: Vec<ProtoFrame> = Vec::new();
-		let mut noncomposite_frames: Vec<ProtoFrame> = Vec::new();
 		let mut has_composites = false;
+		let mut frames: Vec<[ProtoFrame; 2]> = Vec::new();
 		while let Some(frame) = dec.read_next_frame().ok()? {
 			screen.blit_frame(frame).ok()?;
 
-			// Normalize transparent pixels.
+			// Collect the pixels.
 			let canvas: Vec<PixelColor> = screen.pixels_rgba()
 				.pixels()
 				.map(PixelColor::from_rgba8)
@@ -241,21 +240,25 @@ impl DecodedGif {
 					canvas.iter().zip(last.iter()).all(|(b, a)| a != b)
 				)
 			{
-				composite_frames.last_mut()?.dispose = DisposalMethod::Background;
+				frames.last_mut()?[0].dispose = DisposalMethod::Background;
 				last_canvas = None;
 			}
 
-			// One more time around.
-			let noncomposite_frame = ProtoFrame::new(
+			// We'll be storing two copies of the frame. The second is always
+			// stand alone, representing all pixels.
+			let frame_b = ProtoFrame::new(
 				width,
 				height,
 				frame.delay,
 				frame.needs_user_input,
 				&canvas,
 			);
-			let composite_frame =
-				if let Some(last) = last_canvas.take() {
-					has_composites = true;
+
+			// If there's a previous canvas, the other copy of the frame need
+			// only represent the _differences_.
+			if let Some(last) = last_canvas.take() {
+				has_composites = true;
+				frames.push([
 					ProtoFrame::new_composite(
 						width,
 						height,
@@ -263,52 +266,53 @@ impl DecodedGif {
 						frame.needs_user_input,
 						&canvas,
 						&last,
-					)?
-				}
-				else { noncomposite_frame.clone() };
+					)?,
+					frame_b,
+				]);
+			}
+			// Otherwise both copies are the whole shebang.
+			else { frames.push([frame_b.clone(), frame_b]) }
 
+			// This canvas is now the previous for the next.
 			last_canvas = Some(canvas);
-			composite_frames.push(composite_frame);
-			noncomposite_frames.push(noncomposite_frame);
 		}
 
 		// Finish it up!
-		if composite_frames.is_empty() { None }
+		if frames.is_empty() { None }
 		else {
-			// Make sure the last frame doesn't fuck up the first.
+			// Make sure the last composite frame doesn't fuck up the first
+			// frame on repeat.
 			if
-				1 < composite_frames.len() &&
+				1 < frames.len() &&
 				! matches!(repeat, Repeat::Finite(0)) &&
-				composite_frames[0].palette.transparent_idx().is_some()
+				frames[0][0].palette.transparent_idx().is_some() &&
+				let Some(last) = frames.last_mut() // This can't fail.
 			{
-				let last_idx = composite_frames.len() - 1;
-				composite_frames[last_idx].dispose = DisposalMethod::Background;
+				last[0].dispose = DisposalMethod::Background;
 			}
-			let composite_frames = Self { width, height, repeat, frames: composite_frames };
 
-			// Include the non-composited version if different than the
-			// composited one. (Only relevant for multi-frame GIFs.)
-			if
+			// Do the composites actually differ from the non-composites?
+			let has_composites =
 				has_composites &&
-				1 < composite_frames.frames.len() &&
-				composite_frames.frames.len() == noncomposite_frames.len() &&
-				composite_frames.frames.iter()
-					.zip(noncomposite_frames.iter())
-					.any(|(a, b)| ! same_frame(a, b))
-			{
-				// Set all to background.
-				for frame in &mut noncomposite_frames {
-					frame.dispose = DisposalMethod::Background;
-				}
+				1 < frames.len() &&
+				frames.iter().any(|[a, b]| ! same_frame(a, b));
 
-				// Make it so!
-				Some((
-					composite_frames,
-					Some(Self { width, height, repeat, frames: noncomposite_frames })
-				))
+			// Separate the two sets of chains.
+			let mut frames_a = Vec::with_capacity(frames.len());
+			let mut frames_b = if has_composites { Vec::with_capacity(frames.len()) } else { Vec::new() };
+			for [a, mut b] in frames {
+				frames_a.push(a);
+				if has_composites {
+					b.dispose = DisposalMethod::Background;
+					frames_b.push(b);
+				}
 			}
-			// Just send back the composites.
-			else { Some((composite_frames, None)) }
+
+			// Done!
+			Some((
+				Self { width, height, repeat, frames: frames_a },
+				has_composites.then_some(Self { width, height, repeat, frames: frames_b }),
+			))
 		}
 	}
 }
