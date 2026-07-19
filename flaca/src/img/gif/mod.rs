@@ -62,6 +62,27 @@ const AHASHER: ahash::RandomState = ahash::RandomState::with_seeds(
 /// * Inter-frame blit/delta fuckery
 /// * Exhaustive LZW
 pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
+	// # Encode w/ Palettes.
+	fn encode(
+		decoded: &DecodedGif,
+		cache: &mut FrameCache,
+		lzw_alignment: Option<usize>,
+		meta: Option<&[ExtensionLabelAndBlocks]>,
+	) -> Option<Vec<u8>> {
+		let mut out = Option::<Vec<u8>>::None;
+		for palette in Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette))
+			.iter()
+			.map(Some)
+			.chain(std::iter::once(None))
+		{
+			let maybe = decoded.encode(palette, meta, lzw_alignment, cache)?;
+			if out.as_ref().is_none_or(|v| maybe.len() < v.len()) {
+				out.replace(maybe);
+			}
+		}
+		out
+	}
+
 	// First pass.
 	let (decoded, dedcoded_noncomposite) = DecodedGif::new(src)?;
 	if decoded.frames.is_empty() {
@@ -77,27 +98,19 @@ pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
 
 	// Encode it a few different ways, keeping whichever copy comes out best.
 	let mut cache = FrameCache::new(decoded.frames.len());
-	let out = Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
-		.map(Some)
-		.chain(std::iter::once(None))
-		.filter_map(|g| decoded.encode(g, meta.as_deref(), lzw_alignment, &mut cache))
-		.min_by(|a, b| a.len().cmp(&b.len()));
+	let out = encode(&decoded, &mut cache, lzw_alignment, meta.as_deref())?;
 
 	// If we have a non-composited alternative, repeat the whole damn process,
 	// returning _this_ version if smaller than the first one.
 	if
 		let Some(decoded) = dedcoded_noncomposite &&
-		let Some(alt) = Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
-			.map(Some)
-			.chain(std::iter::once(None))
-			.filter_map(|g| decoded.encode(g, meta.as_deref(), lzw_alignment, &mut cache))
-			.min_by(|a, b| a.len().cmp(&b.len())) &&
-		out.as_ref().is_none_or(|v| alt.len() < v.len())
+		let Some(alt) = encode(&decoded, &mut cache, lzw_alignment, meta.as_deref()) &&
+		alt.len() < out.len()
 	{
 		Some(alt)
 	}
 	// The composited version was the best or only!
-	else { out }
+	else { Some(out) }
 }
 
 #[must_use]
