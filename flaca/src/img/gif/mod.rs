@@ -63,7 +63,7 @@ const AHASHER: ahash::RandomState = ahash::RandomState::with_seeds(
 /// * Exhaustive LZW
 pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
 	// First pass.
-	let decoded = DecodedGif::new(src)?;
+	let (decoded, dedcoded_noncomposite) = DecodedGif::new(src)?;
 	if decoded.frames.is_empty() {
 		std::hint::cold_path();
 		return None;
@@ -77,11 +77,27 @@ pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
 
 	// Encode it a few different ways, keeping whichever copy comes out best.
 	let mut cache = FrameCache::new(decoded.frames.len());
-	Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
+	let out = Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
 		.map(Some)
 		.chain(std::iter::once(None))
 		.filter_map(|g| decoded.encode(g, meta.as_deref(), lzw_alignment, &mut cache))
-		.min_by(|a, b| a.len().cmp(&b.len()))
+		.min_by(|a, b| a.len().cmp(&b.len()));
+
+	// If we have a non-composited alternative, repeat the whole damn process,
+	// returning _this_ version if smaller than the first one.
+	if
+		let Some(decoded) = dedcoded_noncomposite &&
+		let Some(alt) = Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
+			.map(Some)
+			.chain(std::iter::once(None))
+			.filter_map(|g| decoded.encode(g, meta.as_deref(), lzw_alignment, &mut cache))
+			.min_by(|a, b| a.len().cmp(&b.len())) &&
+		out.as_ref().is_none_or(|v| alt.len() < v.len())
+	{
+		Some(alt)
+	}
+	// The composited version was the best or only!
+	else { out }
 }
 
 #[must_use]
@@ -172,7 +188,25 @@ impl DecodedGif {
 	///
 	/// Decode the image, building up per-frame palettes and settings,
 	/// returning the results if successful.
-	fn new(src: &[u8]) -> Option<Self> {
+	///
+	/// Note that if any "composite" frames are made, a second non-composited
+	/// copy is also returned.
+	fn new(src: &[u8]) -> Option<(Self, Option<Self>)> {
+		/// # Same Prototypes.
+		///
+		/// Compare all properties of both frames except disposal method,
+		/// returning `true` if matched.
+		fn same_frame(a: &ProtoFrame, b: &ProtoFrame) -> bool {
+			a.delay == b.delay &&
+			a.needs_user_input == b.needs_user_input &&
+			a.top == b.top &&
+			a.left == b.left &&
+			a.width == b.width &&
+			a.height == b.height &&
+			a.palette == b.palette &&
+			a.canvas == b.canvas
+		}
+
 		// Set up the decoder.
 		let mut opts = DecodeOptions::new();
 		opts.set_color_output(ColorOutput::Indexed);
@@ -184,7 +218,9 @@ impl DecodedGif {
 		// Parse the frames.
 		let mut screen = Screen::new_decoder(&dec);
 		let mut last_canvas: Option<Vec<PixelColor>> = None;
-		let mut frames: Vec<ProtoFrame> = Vec::new();
+		let mut composite_frames: Vec<ProtoFrame> = Vec::new();
+		let mut noncomposite_frames: Vec<ProtoFrame> = Vec::new();
+		let mut has_composites = false;
 		while let Some(frame) = dec.read_next_frame().ok()? {
 			screen.blit_frame(frame).ok()?;
 
@@ -205,13 +241,21 @@ impl DecodedGif {
 					canvas.iter().zip(last.iter()).all(|(b, a)| a != b)
 				)
 			{
-				frames.last_mut()?.dispose = DisposalMethod::Background;
+				composite_frames.last_mut()?.dispose = DisposalMethod::Background;
 				last_canvas = None;
 			}
 
 			// One more time around.
-			let frame =
+			let noncomposite_frame = ProtoFrame::new(
+				width,
+				height,
+				frame.delay,
+				frame.needs_user_input,
+				&canvas,
+			);
+			let composite_frame =
 				if let Some(last) = last_canvas.take() {
+					has_composites = true;
 					ProtoFrame::new_composite(
 						width,
 						height,
@@ -221,24 +265,50 @@ impl DecodedGif {
 						&last,
 					)?
 				}
-				else {
-					ProtoFrame::new(
-						width,
-						height,
-						frame.delay,
-						frame.needs_user_input,
-						&canvas,
-					)
-				};
+				else { noncomposite_frame.clone() };
 
 			last_canvas = Some(canvas);
-			frames.push(frame);
+			composite_frames.push(composite_frame);
+			noncomposite_frames.push(noncomposite_frame);
 		}
 
 		// Finish it up!
-		if frames.is_empty() { None }
+		if composite_frames.is_empty() { None }
 		else {
-			Some(Self { width, height, repeat, frames })
+			// Make sure the last frame doesn't fuck up the first.
+			if
+				1 < composite_frames.len() &&
+				! matches!(repeat, Repeat::Finite(0)) &&
+				composite_frames[0].palette.transparent_idx().is_some()
+			{
+				let last_idx = composite_frames.len() - 1;
+				composite_frames[last_idx].dispose = DisposalMethod::Background;
+			}
+			let composite_frames = Self { width, height, repeat, frames: composite_frames };
+
+			// Include the non-composited version if different than the
+			// composited one. (Only relevant for multi-frame GIFs.)
+			if
+				has_composites &&
+				1 < composite_frames.frames.len() &&
+				composite_frames.frames.len() == noncomposite_frames.len() &&
+				composite_frames.frames.iter()
+					.zip(noncomposite_frames.iter())
+					.any(|(a, b)| ! same_frame(a, b))
+			{
+				// Set all to background.
+				for frame in &mut noncomposite_frames {
+					frame.dispose = DisposalMethod::Background;
+				}
+
+				// Make it so!
+				Some((
+					composite_frames,
+					Some(Self { width, height, repeat, frames: noncomposite_frames })
+				))
+			}
+			// Just send back the composites.
+			else { Some((composite_frames, None)) }
 		}
 	}
 }
@@ -677,7 +747,7 @@ impl PixelColor {
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 /// # Proto Frame.
 struct ProtoFrame {
 	/// # Animation: Delay.
