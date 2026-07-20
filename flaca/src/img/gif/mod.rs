@@ -231,7 +231,6 @@ impl DecodedGif {
 		// Parse the frames.
 		let mut screen = Screen::new_decoder(&dec);
 		let mut last_canvas: Option<Vec<PixelColor>> = None;
-		let mut has_composites = false;
 		let mut frames: Vec<[ProtoFrame; 2]> = Vec::new();
 		while let Some(frame) = dec.read_next_frame().ok()? {
 			screen.blit_frame(frame).ok()?;
@@ -246,49 +245,59 @@ impl DecodedGif {
 				return None;
 			}
 
-			// If any of the composited pixels in this frame are newly
-			// transparent, or this frame contains no overlap with the last,
-			// change the disposal method of the previous frame to
-			// "background".
-			if
-				let Some(last) = last_canvas.as_ref() &&
-				(
-					canvas.iter().zip(last.iter()).any(|(b, a)| b.is_transparent() && ! a.is_transparent()) ||
-					canvas.iter().zip(last.iter()).all(|(b, a)| a != b)
-				)
-			{
-				frames.last_mut()?[0].dispose = DisposalMethod::Background;
-				last_canvas = None;
-			}
-
 			// We'll be storing two copies of the frame. The second is always
 			// stand alone, representing all pixels.
-			let frame_b = ProtoFrame::new(
-				width,
-				height,
-				frame.delay,
-				frame.needs_user_input,
-				&canvas,
-			);
+			let frame_b = ProtoFrame::new(width, height, frame, &canvas);
 
-			// If there's a previous canvas, the other copy of the frame need
-			// only represent the _differences_.
-			if let Some(last) = last_canvas.take() {
-				has_composites = true;
-				frames.push([
-					ProtoFrame::new_composite(
-						width,
-						height,
-						frame.delay,
-						frame.needs_user_input,
-						&canvas,
-						&last,
-					)?,
-					frame_b,
-				]);
+			// If this is a new frame, make sure the last one (if any) is
+			// disposed.
+			match PfCategory::classify(&canvas, last_canvas.as_deref(), width)? {
+				// This and the previous frame are identical.
+				PfCategory::Redundant =>
+					// If possible, increase the previous frame's delay
+					// accordingly and drop the current frame.
+					if
+						let Some(last) = frames.last_mut() &&
+						let Some(delay) = last[0].delay.checked_add(frame.delay)
+					{
+						last[0].delay = delay;
+						last[1].delay = delay; // Change the non-composite too.
+					}
+					// Otherwise use a generic 1x1 transparent frame for the
+					// composite.
+					else {
+						frames.push([
+							ProtoFrame::new_empty(frame),
+							frame_b,
+						]);
+					},
+
+				// This frame stands on its own. Push the non-composite version
+				// to both slots.
+				PfCategory::Replacement => {
+					// If there's a previous frame, make sure it gets disposed.
+					if let Some(last) = frames.last_mut() {
+						last[0].dispose = DisposalMethod::Background;
+					}
+					frames.push([frame_b.clone(), frame_b]);
+				},
+
+				// This frame builds on the previous one. Push both a composite
+				// and non-composite version.
+				PfCategory::Composite(bounds, last) => {
+					frames.push([
+						ProtoFrame::new_composite(
+							width,
+							height,
+							frame,
+							&canvas,
+							last,
+							bounds,
+						)?,
+						frame_b,
+					]);
+				},
 			}
-			// Otherwise both copies are the whole shebang.
-			else { frames.push([frame_b.clone(), frame_b]) }
 
 			// This canvas is now the previous for the next.
 			last_canvas = Some(canvas);
@@ -310,7 +319,6 @@ impl DecodedGif {
 
 			// Do the composites actually differ from the non-composites?
 			let has_composites =
-				has_composites &&
 				1 < frames.len() &&
 				frames.iter().any(|[a, b]| ! same_frame(a, b));
 
@@ -382,7 +390,7 @@ impl DecodedGif {
 
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// # Bounding Box.
 ///
 /// This struct represents the draw area for a single frame in a GIF. For
@@ -401,53 +409,6 @@ impl MinMaxXY {
 
 	/// # Max Index.
 	const MAX_IDX: usize = Self::MAX_COORDINATE.checked_mul(Self::MAX_COORDINATE).unwrap();
-
-	/// # New.
-	fn new(
-		current: &[PixelColor],
-		last: &[PixelColor],
-		width: NonZeroU16,
-	) -> Option<Self> {
-		let mut min_x = u16::MAX;
-		let mut max_x = u16::MIN;
-		let mut min_y = u16::MAX;
-		let mut max_y = u16::MIN;
-
-		// We're working with composited values, so this shouldn't ever fail.
-		if Self::MAX_IDX < current.len() || current.len() != last.len() {
-			std::hint::cold_path();
-			return None;
-		}
-
-		// Find the first and last difference for each axis.
-		for (i, (b, a)) in current.iter().zip(last.iter()).enumerate() {
-			if a != b {
-				let (x, y) = Self::index_to_xy(i, width)?;
-
-				min_x = u16::min(min_x, x);
-				max_x = u16::max(max_x, x);
-
-				min_y = u16::min(min_y, y);
-				max_y = u16::max(max_y, y);
-			}
-		}
-
-		// Done!
-		Some(Self {
-			x: (min_x, max_x),
-			y: (min_y, max_y),
-		})
-	}
-
-	#[must_use]
-	/// # Is Empty?
-	///
-	/// The ranges are inclusive, so "empty" is represented internally by
-	/// min/max being in the wrong order.
-	const fn is_empty(self) -> bool {
-		self.x.1 < self.x.0 ||
-		self.y.1 < self.y.0
-	}
 
 	#[must_use]
 	/// # Left Position.
@@ -803,20 +764,15 @@ struct ProtoFrame {
 impl ProtoFrame {
 	#[must_use]
 	/// # New (Standalone).
-	fn new(
-		width: NonZeroU16,
-		height: NonZeroU16,
-		delay: u16,
-		needs_user_input: bool,
-		canvas: &[PixelColor],
-	) -> Self {
+	fn new(width: NonZeroU16, height: NonZeroU16, frame: &Frame, canvas: &[PixelColor])
+	-> Self {
 		let mut palette = Palette::default();
 		for px in canvas { palette.push(*px); }
 
 		Self {
-			delay,
+			delay: frame.delay,
 			dispose: DisposalMethod::Keep,
-			needs_user_input,
+			needs_user_input: frame.needs_user_input,
 			top: 0,
 			left: 0,
 			width,
@@ -827,34 +783,15 @@ impl ProtoFrame {
 	}
 
 	#[must_use]
-	/// # New (Standalone).
+	/// # New (Composite).
 	fn new_composite(
 		width: NonZeroU16,
 		height: NonZeroU16,
-		delay: u16,
-		needs_user_input: bool,
+		frame: &Frame,
 		current: &[PixelColor],
 		last: &[PixelColor],
+		bounds: MinMaxXY,
 	) -> Option<Self> {
-		// Draw a box around what's different.
-		let bounds = MinMaxXY::new(current, last, width)?;
-
-		// If nothing whatsoever is, submit the frame as a single transparent
-		// pixel.
-		if bounds.is_empty() {
-			return Some(Self {
-				delay,
-				dispose: DisposalMethod::Keep,
-				needs_user_input,
-				top: 0,
-				left: 0,
-				width: NonZeroU16::MIN,
-				height: NonZeroU16::MIN,
-				palette: Palette::from(PixelColor::Transparent),
-				canvas: vec![PixelColor::Transparent],
-			});
-		}
-
 		// Map the bounds to the canvas.
 		let top = bounds.top();
 		let left = bounds.left();
@@ -884,9 +821,9 @@ impl ProtoFrame {
 		// Make sure we actually collected everything we were supposed to!
 		if canvas.len() == usize::from(bounds_width.get()) * usize::from(bounds_height.get()) {
 			Some(Self {
-				delay,
+				delay: frame.delay,
 				dispose: DisposalMethod::Keep,
-				needs_user_input,
+				needs_user_input: frame.needs_user_input,
 				top,
 				left,
 				width: bounds_width,
@@ -899,6 +836,22 @@ impl ProtoFrame {
 		else {
 			std::hint::cold_path();
 			None
+		}
+	}
+
+	#[must_use]
+	/// # New (Empty).
+	fn new_empty(frame: &Frame) -> Self {
+		Self {
+			delay: frame.delay,
+			dispose: DisposalMethod::Keep,
+			needs_user_input: frame.needs_user_input,
+			top: 0,
+			left: 0,
+			width: NonZeroU16::MIN,
+			height: NonZeroU16::MIN,
+			palette: Palette::from(PixelColor::Transparent),
+			canvas: vec![PixelColor::Transparent],
 		}
 	}
 }
@@ -979,6 +932,101 @@ impl ProtoFrame {
 
 		// Done!
 		Some(out)
+	}
+}
+
+
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// # Proto Frame Categorization.
+///
+/// This enum is used to classify a frame canvas relative to the previous
+/// one's, if any.
+enum PfCategory<'a> {
+	/// # Totally Equal.
+	Redundant,
+
+	/// # All Different (or New Transparency).
+	Replacement,
+
+	/// # Some Different.
+	Composite(MinMaxXY, &'a [PixelColor]),
+}
+
+impl<'a> PfCategory<'a> {
+	/// # New.
+	fn classify(
+		current: &[PixelColor],
+		last: Option<&'a [PixelColor]>,
+		width: NonZeroU16,
+	) -> Option<Self> {
+		// This shouldn't ever fail.
+		if
+			MinMaxXY::MAX_IDX < current.len() ||
+			! current.len().is_multiple_of(usize::from(width.get()))
+		{
+			std::hint::cold_path();
+			return None;
+		}
+
+		// If there's no last frame, this one is totally unique!
+		let Some(last) = last else { return Some(Self::Replacement); };
+
+		// This also shouldn't fail.
+		if current.len() != last.len() {
+			std::hint::cold_path();
+			return None;
+		}
+
+		// Initialize.
+		let mut min_x = u16::MAX;
+		let mut max_x = u16::MIN;
+		let mut min_y = u16::MAX;
+		let mut max_y = u16::MIN;
+		let mut same = 0;
+
+		// Find the first and last difference for each axis.
+		for (i, (b, a)) in current.iter().zip(last.iter()).enumerate() {
+			// No change.
+			if a == b { same += 1; }
+
+			// A move from opaque to transparent requires a totally new frame.
+			else if b.is_transparent() && ! a.is_transparent() {
+				return Some(Self::Replacement);
+			}
+
+			// A difference.
+			else {
+				let (x, y) = MinMaxXY::index_to_xy(i, width)?;
+
+				min_x = u16::min(min_x, x);
+				max_x = u16::max(max_x, x);
+
+				min_y = u16::min(min_y, y);
+				max_y = u16::max(max_y, y);
+			}
+		}
+
+		// Every last pixel is identical.
+		if
+			same == current.len() ||
+			max_x < min_x ||
+			max_y < min_y
+		{ Some(Self::Redundant) }
+
+		// Every last pixel is different.
+		else if same == 0 { Some(Self::Replacement) }
+
+		// Something new and something old.
+		else {
+			Some(Self::Composite(
+				MinMaxXY {
+					x: (min_x, max_x),
+					y: (min_y, max_y),
+				},
+				last,
+			))
+		}
 	}
 }
 
