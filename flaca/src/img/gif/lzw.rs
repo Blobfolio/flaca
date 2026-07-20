@@ -1046,7 +1046,7 @@ impl LzwEncoder<'_> {
 		// We can finally start writing shit down!
 		let mut writer = LsbBitWriter::new(
 			self.min_code_size,
-			self.data.len() * 3 / 8
+			usize::max(3, self.data.len().wrapping_div(2).next_power_of_two()),
 		);
 
 		// The first clear code has a width one higher than the min_code_size.

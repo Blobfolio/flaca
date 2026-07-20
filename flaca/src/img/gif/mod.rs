@@ -68,6 +68,7 @@ pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
 		cache: &mut FrameCache,
 		lzw_alignment: Option<usize>,
 		meta: Option<&[ExtensionLabelAndBlocks]>,
+		mut size_hint: usize,
 	) -> Option<Vec<u8>> {
 		let mut out = Option::<Vec<u8>>::None;
 		for palette in Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette))
@@ -75,7 +76,8 @@ pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
 			.map(Some)
 			.chain(std::iter::once(None))
 		{
-			let maybe = decoded.encode(palette, meta, lzw_alignment, cache)?;
+			let maybe = decoded.encode(palette, meta, lzw_alignment, cache, size_hint)?;
+			size_hint = usize::max(size_hint, maybe.len());
 			if out.as_ref().is_none_or(|v| maybe.len() < v.len()) {
 				out.replace(maybe);
 			}
@@ -98,13 +100,13 @@ pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
 
 	// Encode it a few different ways, keeping whichever copy comes out best.
 	let mut cache = FrameCache::new(decoded.frames.len());
-	let out = encode(&decoded, &mut cache, lzw_alignment, meta.as_deref())?;
+	let out = encode(&decoded, &mut cache, lzw_alignment, meta.as_deref(), src.len())?;
 
 	// If we have a non-composited alternative, repeat the whole damn process,
 	// returning _this_ version if smaller than the first one.
 	if
 		let Some(decoded) = dedcoded_noncomposite &&
-		let Some(alt) = encode(&decoded, &mut cache, lzw_alignment, meta.as_deref()) &&
+		let Some(alt) = encode(&decoded, &mut cache, lzw_alignment, meta.as_deref(), src.len()) &&
 		alt.len() < out.len()
 	{
 		Some(alt)
@@ -354,13 +356,11 @@ impl DecodedGif {
 		meta: Option<&[ExtensionLabelAndBlocks]>,
 		alignment: Option<usize>,
 		cache: &mut FrameCache,
+		size_hint: usize,
 	) -> Option<Vec<u8>> {
 		// Set up the encoder.
 		let mut enc = Encoder::new(
-			Vec::with_capacity(
-				usize::from(self.width.get()) *
-				usize::from(self.height.get())
-			),
+			Vec::with_capacity(size_hint),
 			self.width.get(),
 			self.height.get(),
 			&if let Some(g) = global_palette { g.flatten()? }
