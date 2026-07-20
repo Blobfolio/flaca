@@ -178,6 +178,92 @@ pub(super) fn strip_metadata(src: &[u8]) -> Option<Vec<u8>> {
 
 
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// # Bounding Box.
+///
+/// This struct represents the draw area for a single frame in a GIF. For
+/// animations, this is often less than the full image area.
+struct CanvasBounds {
+	/// # X Range (Inclusive).
+	x: (u16, u16),
+
+	/// # Y Range (Inclusive).
+	y: (u16, u16),
+}
+
+impl CanvasBounds {
+	/// # Max Coordinate.
+	const MAX_COORDINATE: usize = u16::MAX as usize;
+
+	/// # Max Index.
+	const MAX_IDX: usize = Self::MAX_COORDINATE.checked_mul(Self::MAX_COORDINATE).unwrap();
+
+	#[must_use]
+	/// # Left Position.
+	const fn left(self) -> u16 { self.x.0 }
+
+	#[must_use]
+	/// # Top Position.
+	const fn top(self) -> u16 { self.y.0 }
+
+	#[must_use]
+	/// # Width.
+	const fn width(self) -> Option<NonZeroU16> {
+		if
+			let Some(sub) = self.x.1.checked_sub(self.x.0) &&
+			let Some(add) = sub.checked_add(1)
+		{
+			NonZeroU16::new(add)
+		}
+		else { None }
+	}
+
+	#[must_use]
+	/// # Height.
+	const fn height(self) -> Option<NonZeroU16> {
+		if
+			let Some(sub) = self.y.1.checked_sub(self.y.0) &&
+			let Some(add) = sub.checked_add(1)
+		{
+			NonZeroU16::new(add)
+		}
+		else { None }
+	}
+
+	#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
+	#[must_use]
+	/// # Index to Coordinates.
+	const fn index_to_xy(idx: usize, width: NonZeroU16) -> Option<(u16, u16)> {
+		if Self::MAX_IDX < idx {
+			std::hint::cold_path();
+			None
+		}
+		else {
+			let width = width.get() as usize;
+			let x = (idx % width) as u16;
+			let y = (idx / width) as u16;
+			Some((x, y))
+		}
+	}
+
+	#[must_use]
+	/// # Contains.
+	///
+	/// Returns a bool indicating if a given pixel falls within the bounding
+	/// box, or `None` if that pixel is impossibly big.
+	const fn contains(self, idx: usize, width: NonZeroU16) -> Option<bool> {
+		if let Some((x, y)) = Self::index_to_xy(idx, width) {
+			Some(
+				self.x.0 <= x && x <= self.x.1 &&
+				self.y.0 <= y && y <= self.y.1
+			)
+		}
+		else { None }
+	}
+}
+
+
+
 #[derive(Debug)]
 /// # First Pass.
 ///
@@ -385,92 +471,6 @@ impl DecodedGif {
 		let out = enc.into_inner().ok()?;
 		if out.is_empty() { None }
 		else { Some(out) }
-	}
-}
-
-
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-/// # Bounding Box.
-///
-/// This struct represents the draw area for a single frame in a GIF. For
-/// animations, this is often less than the full image area.
-struct MinMaxXY {
-	/// # X Range (Inclusive).
-	x: (u16, u16),
-
-	/// # Y Range (Inclusive).
-	y: (u16, u16),
-}
-
-impl MinMaxXY {
-	/// # Max Coordinate.
-	const MAX_COORDINATE: usize = u16::MAX as usize;
-
-	/// # Max Index.
-	const MAX_IDX: usize = Self::MAX_COORDINATE.checked_mul(Self::MAX_COORDINATE).unwrap();
-
-	#[must_use]
-	/// # Left Position.
-	const fn left(self) -> u16 { self.x.0 }
-
-	#[must_use]
-	/// # Top Position.
-	const fn top(self) -> u16 { self.y.0 }
-
-	#[must_use]
-	/// # Width.
-	const fn width(self) -> Option<NonZeroU16> {
-		if
-			let Some(sub) = self.x.1.checked_sub(self.x.0) &&
-			let Some(add) = sub.checked_add(1)
-		{
-			NonZeroU16::new(add)
-		}
-		else { None }
-	}
-
-	#[must_use]
-	/// # Height.
-	const fn height(self) -> Option<NonZeroU16> {
-		if
-			let Some(sub) = self.y.1.checked_sub(self.y.0) &&
-			let Some(add) = sub.checked_add(1)
-		{
-			NonZeroU16::new(add)
-		}
-		else { None }
-	}
-
-	#[expect(clippy::cast_possible_truncation, reason = "False positive.")]
-	#[must_use]
-	/// # Index to Coordinates.
-	const fn index_to_xy(idx: usize, width: NonZeroU16) -> Option<(u16, u16)> {
-		if Self::MAX_IDX < idx {
-			std::hint::cold_path();
-			None
-		}
-		else {
-			let width = width.get() as usize;
-			let x = (idx % width) as u16;
-			let y = (idx / width) as u16;
-			Some((x, y))
-		}
-	}
-
-	#[must_use]
-	/// # Contains.
-	///
-	/// Returns a bool indicating if a given pixel falls within the bounding
-	/// box, or `None` if that pixel is impossibly big.
-	const fn contains(self, idx: usize, width: NonZeroU16) -> Option<bool> {
-		if let Some((x, y)) = Self::index_to_xy(idx, width) {
-			Some(
-				self.x.0 <= x && x <= self.x.1 &&
-				self.y.0 <= y && y <= self.y.1
-			)
-		}
-		else { None }
 	}
 }
 
@@ -790,7 +790,7 @@ impl ProtoFrame {
 		frame: &Frame,
 		current: &[PixelColor],
 		last: &[PixelColor],
-		bounds: MinMaxXY,
+		bounds: CanvasBounds,
 	) -> Option<Self> {
 		// Map the bounds to the canvas.
 		let top = bounds.top();
@@ -950,7 +950,7 @@ enum PfCategory<'a> {
 	Replacement,
 
 	/// # Some Different.
-	Composite(MinMaxXY, &'a [PixelColor]),
+	Composite(CanvasBounds, &'a [PixelColor]),
 }
 
 impl<'a> PfCategory<'a> {
@@ -962,7 +962,7 @@ impl<'a> PfCategory<'a> {
 	) -> Option<Self> {
 		// This shouldn't ever fail.
 		if
-			MinMaxXY::MAX_IDX < current.len() ||
+			CanvasBounds::MAX_IDX < current.len() ||
 			! current.len().is_multiple_of(usize::from(width.get()))
 		{
 			std::hint::cold_path();
@@ -997,7 +997,7 @@ impl<'a> PfCategory<'a> {
 
 			// A difference.
 			else {
-				let (x, y) = MinMaxXY::index_to_xy(i, width)?;
+				let (x, y) = CanvasBounds::index_to_xy(i, width)?;
 
 				min_x = u16::min(min_x, x);
 				max_x = u16::max(max_x, x);
@@ -1008,11 +1008,9 @@ impl<'a> PfCategory<'a> {
 		}
 
 		// Every last pixel is identical.
-		if
-			same == current.len() ||
-			max_x < min_x ||
-			max_y < min_y
-		{ Some(Self::Redundant) }
+		if same == current.len() || max_x < min_x || max_y < min_y {
+			Some(Self::Redundant)
+		}
 
 		// Every last pixel is different.
 		else if same == 0 { Some(Self::Replacement) }
@@ -1020,7 +1018,7 @@ impl<'a> PfCategory<'a> {
 		// Something new and something old.
 		else {
 			Some(Self::Composite(
-				MinMaxXY {
+				CanvasBounds {
 					x: (min_x, max_x),
 					y: (min_y, max_y),
 				},
