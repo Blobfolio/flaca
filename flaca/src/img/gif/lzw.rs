@@ -158,12 +158,12 @@ pub(super) fn encode_frame(src: &[u8], alignment: NonZeroUsize) -> Option<Vec<u8
 		}
 	}
 
-	// One more time around to collect the results.
-	let out = encoder.optimize()?;
-
-	// Return the compressed data if any.
-	if out.len() < 2 { None }
-	else { Some(out) }
+	// One more time around to collect the results!
+	if let Some(out) = encoder.optimize() && 1 < out.len() { Some(out) }
+	else {
+		std::hint::cold_path();
+		None
+	}
 }
 
 
