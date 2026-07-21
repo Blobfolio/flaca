@@ -101,7 +101,7 @@ path = false
 short = "-g"
 long = "--lzw"
 label = "<NUM>"
-description = "Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values tend to yield better compression, but require *significantly* longer processing times. Set to zero to disable this optimization altogether. [default: 1, 2, or row count, based on resolution.]"
+description = "Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values tend to yield better compression, but require *significantly* longer processing times. Set to zero to disable this optimization altogether. [default: row size]"
 path = false
 
 [[package.metadata.bashman.options]]

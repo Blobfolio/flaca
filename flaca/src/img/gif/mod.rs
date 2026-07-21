@@ -38,9 +38,6 @@ type ExtensionLabelAndBlocks<'a> = (AnyExtension, Vec<&'a [u8]>);
 /// # Max Palette Size.
 const MAX_COLOR_TABLE: usize = 256;
 
-/// # Non-Zero Two.
-const NZ2: NonZeroUsize = NonZeroUsize::new(2).unwrap();
-
 /// # Static Hasher.
 ///
 /// This is used for cheap collision detection. No need to get fancy with it.
@@ -858,25 +855,6 @@ impl ProtoFrame {
 
 impl ProtoFrame {
 	#[must_use]
-	/// # Recommended LZW Alignment.
-	///
-	/// Return a high-but-not-too-high alignment value for the number of pixels
-	/// comprising the frame.
-	const fn recommended_alignment(&self) -> NonZeroUsize {
-		// Align not-small images to the row size.
-		if
-			(u16::MAX as usize) < self.canvas.len() &&
-			let Some(alignment) = NonZeroUsize::new(self.width.get() as usize)
-		{
-			alignment
-		}
-		// Align small ones to every other byte.
-		else if (i16::MAX as usize) < self.canvas.len() { NZ2 }
-		// Tiny images can be tested exhaustively.
-		else { NonZeroUsize::MIN }
-	}
-
-	#[must_use]
 	/// # Into Frame.
 	fn try_into_frame(
 		&self,
@@ -890,7 +868,7 @@ impl ProtoFrame {
 		}
 
 		let alignment = alignment.map_or_else(
-			|| Some(self.recommended_alignment()),
+			|| Some(NonZeroUsize::from(self.width)),
 			NonZeroUsize::new
 		);
 
