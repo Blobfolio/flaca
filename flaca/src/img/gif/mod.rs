@@ -606,10 +606,11 @@ impl Palette {
 		/// # Merge Multiple Palettes.
 		///
 		/// Try to merge as many of the palettes together, working left to
-		/// right, returning the result if more than a third of all frames
+		/// right, returning the result if more than a fifth of all frames
 		/// are represented, otherwise `None`.
 		fn merge_many(src: &[&Palette]) -> Option<(Palette, NonZeroUsize)> {
-			let target = NonZeroUsize::new(src.len().wrapping_div(3))?;
+			let target = NonZeroUsize::new(src.len().wrapping_div(5))
+				.unwrap_or(NonZeroUsize::MIN);
 			let mut iter = src.iter().copied();
 			let mut out = iter.next()?.clone();
 			let mut included = NonZeroUsize::MIN;
@@ -618,7 +619,7 @@ impl Palette {
 				if merge_one(&mut out, next) { included = included.saturating_add(1); }
 			}
 
-			// Return if more than half the frames are included.
+			// Return if enough frames got merged.
 			if target.get() < included.get() { Some((out, included)) }
 			else { None }
 		}
