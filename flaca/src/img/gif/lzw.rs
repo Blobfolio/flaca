@@ -144,9 +144,7 @@ pub(super) fn encode_frame(src: &[u8], alignment: NonZeroUsize) -> Option<Vec<u8
 
 	// Crunch aligned sub-slices of the data to build up a sense of the "best"
 	// breakpoints.
-	for i in (0..src.len()).rev() {
-		if ! i.is_multiple_of(alignment.get()) { continue; }
-
+	for i in (0..src.len()).step_by(alignment.get()).rev() {
 		// Estimate cost.
 		encoder.optimize_partial(i, 0, None)?;
 
