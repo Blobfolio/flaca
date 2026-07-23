@@ -66,7 +66,7 @@ use std::{
 ///
 /// Losslessly recompress a JPEG image, returning the result if smaller than
 /// the original.
-pub(super) fn optimize(src: &[u8], preserve_meta: bool) -> Option<Vec<u8>> {
+pub(crate) fn optimize(src: &[u8], preserve_meta: bool) -> Option<Vec<u8>> {
 	// MozJPEG loves a good panic attack. Let's execute all the C inside a
 	// catch/unwind block to make life easier on the caller.
 	let Ok(Some(res)) = std::panic::catch_unwind(move || {

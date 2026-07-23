@@ -3,19 +3,18 @@
 */
 
 mod gif;
-mod jpegtran;
+mod jpeg;
 pub(super) mod kind;
-mod strip;
 
 
 
 use crate::Settings;
+use jpeg::JpegMarker;
 use kind::ImageKind;
 use std::{
 	path::Path,
 	sync::OnceLock,
 };
-use strip::JpegMarker;
 use super::EncodingError;
 
 
@@ -159,7 +158,7 @@ fn strip_gif_metadata(raw: &mut Vec<u8>) {
 /// ```
 fn encode_mozjpeg(raw: &mut Vec<u8>, preserve_meta: bool) -> bool {
 	if
-		let Some(new) = jpegtran::optimize(raw, preserve_meta) &&
+		let Some(new) = jpeg::optimize(raw, preserve_meta) &&
 		new.len() < raw.len() &&
 		ImageKind::is_jpeg(&new)
 	{

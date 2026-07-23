@@ -153,6 +153,7 @@ gif-dispose = "=6.0.0"
 libc = "0.2.*"
 utc2k = "0.20.*"
 write_atomic = "0.7.*"
+zune-jpeg = "0.5.*"
 
 [dependencies.ahash]
 version = "0.8.*"
@@ -175,11 +176,6 @@ version = "=0.14.2"
 default-features = false
 features = [ "raii_no_panic", "std" ]
 
-[dependencies.image]
-version = "0.25.*"
-default-features = false
-features = [ "jpeg" ]
-
 # TODO: switch back to crates.io if/when it gets a new release.
 [dependencies.mozjpeg-sys]
 git = "https://github.com/kornelski/mozjpeg-sys"
@@ -192,8 +188,3 @@ features = [ "jpegtran", "nasm_simd", "unwinding" ]
 version = "=10.1.1"
 default-features = false
 features = [ "freestanding" ]
-
-[dev-dependencies.image]
-version = "0.25.*"
-default-features = false
-features = [ "jpeg" ]
