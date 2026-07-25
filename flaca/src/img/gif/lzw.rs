@@ -750,36 +750,8 @@ struct LzwEncoder<'a> {
 	/// # Dictionary.
 	dictionary: Dictionary,
 
-	/// # Flags.
-	flags: u8,
-}
-
-/// # Helper: Flags.
-macro_rules! flags {
-	( $( $k:ident $v:literal $get:ident $set:ident, )+ ) => (
-		#[expect(dead_code, reason = "Macro made me do it.")]
-		impl LzwEncoder<'_> {
-			$(
-				/// # Flag.
-				const $k: u8 = $v;
-
-				/// # Get Flag.
-				const fn $get(&self) -> bool { Self::$k == self.flags & Self::$k }
-
-				/// # Set Flag.
-				const fn $set(&mut self, v: bool) {
-					if v { self.flags |= Self::$k; }
-					else { self.flags &= ! Self::$k; }
-				}
-			)+
-		}
-	);
-}
-
-flags! {
-	GREEDY                0b0001 greedy                set_greedy,
-	READ_ONLY_BEST        0b0010 read_only_best        set_read_only_best,
-	AVOID_NONGREEDY_AGAIN 0b0100 avoid_nongreedy_again set_avoid_nongreedy_again,
+	/// # Greedy?
+	greedy: bool,
 }
 
 impl<'a> LzwEncoder<'a> {
@@ -794,9 +766,16 @@ impl<'a> LzwEncoder<'a> {
 			min_code_size,
 			best,
 			dictionary: Dictionary::default(),
-			flags: Self::AVOID_NONGREEDY_AGAIN,
+			greedy: false,
 		}
 	}
+
+	#[must_use]
+	/// # Greedy?
+	const fn greedy(&self) -> bool { self.greedy }
+
+	/// # Set Greedy.
+	const fn set_greedy(&mut self, v: bool) { self.greedy = v; }
 }
 
 impl LzwEncoder<'_> {
@@ -915,7 +894,6 @@ impl LzwEncoder<'_> {
 		// was unsuccessful… unless we're saving the block this time.
 		if
 			self.greedy() &&
-			self.avoid_nongreedy_again() &&
 			writer.is_none() &&
 			self.best.greedy(best_idx)
 		{
@@ -974,38 +952,32 @@ impl LzwEncoder<'_> {
 			// go-around.
 			match_len = match_len.saturating_sub(1);
 
-			// If we're not building up the blocks on this pass, we can jump
-			// back to the top.
-			if self.read_only_best() { continue; }
-
-			// If there were no optimizations for the current block, skip it.
-			let next_idx =
-				if 1 < self.alignment.get() { (i + 1).div_ceil(self.alignment.get()) }
-				else { i + 1 };
-			if
-				i + 1 < self.data.len() &&
-				(
+			// If we're not writing, save the findings for future reference.
+			if writer.is_none() {
+				let next_idx = (i + 1).div_ceil(self.alignment.get());
+				if
+					// We're at the end or…
+					self.data.len() <= i + 1 ||
 					(
-						1 < self.alignment.get() &&
-						! state.bytes.is_multiple_of(self.alignment.get())
-					) ||
-					self.best.bits(next_idx).is_none()
-				)
-			{
-				continue;
-			}
+						// Next is aligned and…
+						state.bytes.is_multiple_of(self.alignment.get()) &&
+						// Has non-zero bits recorded.
+						self.best.bits(next_idx).is_some()
+					)
+				{
+					// Compute final cost.
+					let bits =
+						state.true_bits(self.dictionary.new_pow2()) +
+						self.best.bits(next_idx).map_or(0, NonZeroUsize::get);
 
-			// Compute final cost.
-			let bits =
-				state.true_bits(self.dictionary.new_pow2()) +
-				self.best.bits(next_idx).map_or(0, NonZeroUsize::get);
-
-			// Record for posterity if we have a new best.
-			let best = self.best.get_mut(best_idx);
-			if 0 == best.bits || bits <= best.bits {
-				best.bits = bits;
-				best.bytes = state.bytes;
-				best.nongreedy = state.nongreedy;
+					// Record for posterity if we have a new best.
+					let best = self.best.get_mut(best_idx);
+					if 0 == best.bits || bits <= best.bits {
+						best.bits = bits;
+						best.bytes = state.bytes;
+						best.nongreedy = state.nongreedy;
+					}
+				}
 			}
 		} // Loop.
 
@@ -1062,7 +1034,6 @@ impl LzwEncoder<'_> {
 			// Switch to faster settings.
 			if self.best.is_empty() { std::hint::cold_path() }
 			else { self.set_greedy(! self.best.nongreedy(pos / self.alignment.get())); }
-			self.set_read_only_best(true);
 
 			// Compute the current block.
 			let code_size = self.optimize_partial(pos, len, Some(&mut writer))?;
