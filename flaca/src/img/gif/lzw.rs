@@ -818,6 +818,63 @@ impl Dictionary {
 	}
 
 	#[must_use]
+	/// # Find Match.
+	///
+	/// Find and return the longest match length for a subslice, or `None` if
+	/// none.
+	const fn find_match(&self, mut slice: &[u8]) -> usize {
+		let max_len = slice.len();
+
+		// There is alwayz an LZW code for the first byte, but if max_len is
+		// zero, there's no data to loop through, making it moot.
+		if let [ next, rest @ .. ] = slice {
+			let mut code = Code::from_u8(*next);
+			let mut len = 0;
+			slice = rest;
+			while let [ next, rest @ .. ] = slice {
+				len += 1;
+				code = match self.get_code_byte(code, *next) {
+					Some(v) => v,
+					None => return len,
+				};
+				slice = rest;
+			}
+		}
+
+		// Length exhausted, or empty.
+		max_len
+	}
+
+	#[must_use]
+	/// # Find Non-Greedy.
+	fn find_nongreedy_match(
+		&self,
+		slice: &[u8],
+		match_len: usize,
+	) -> Option<usize> {
+		// Short circuit.
+		if slice.len() <= match_len || match_len < 2 { return None; }
+
+		// Next greedy match.
+		let mut best = match_len + self.find_match(&slice[match_len..]);
+		let target = best + MIN_IMPROVEMENT.get();
+
+		// Check increasingly shorter distances for better matches.
+		let mut distance = match_len;
+		for i in (1..match_len).rev() {
+			let maybe = i + self.find_match(&slice[i..]);
+			if target <= maybe && best < maybe {
+				best = maybe;
+				distance = i;
+			}
+		}
+
+		// Found a closer one.
+		if distance < match_len { Some(distance) }
+		else { None }
+	}
+
+	#[must_use]
 	/// # Get Code Byte Count.
 	const fn get_code_byte(&self, code: Code, byte: u8) -> Option<Code> {
 		self.inner[code as usize][byte as usize].get()
@@ -910,77 +967,25 @@ impl LzwEncoder<'_> {
 	/// Add/update a code in the dictionary and bump the size counter. The
 	/// final code is returned.
 	fn add_code(&mut self, from: usize, len: usize) -> Option<Code> {
-		let to = from + len;
-		let slice = self.data.get(from..to)?;
-		let mut bytes = slice.iter().copied();
-
-		// First literal.
-		let mut code = Code::from_u8(bytes.next()?);
-
-		// Walk through the dictionary to find the code matching without the
-		// last byte.
-		for byte in bytes { code = self.dictionary.get_code_byte(code, byte)?; }
-
-		// Last byte.
-		if let Some(byte) = self.data.get(to).copied() {
-			self.dictionary.set_last_byte(code, byte);
-		}
-
-		Some(code)
-	}
-
-	#[must_use]
-	/// # Find Match.
-	///
-	/// Find and return the longest match length for a subslice, or `None` if
-	/// none.
-	fn find_match(&self, from: usize, max_len: usize) -> Option<usize> {
-		let slice = self.data.get(from..from + max_len)?;
-		let mut bytes = slice.iter().copied();
-
-		// There is alwayz an LZW code for the first byte.
-		let mut code = Code::from_u8(bytes.next()?);
-
-		let mut len = 0;
-		for byte in bytes {
-			len += 1;
-			code = match self.dictionary.get_code_byte(code, byte) {
-				Some(v) => v,
-				None => return Some(len),
-			};
-		}
-
-		// Made it all the way!
-		Some(max_len)
-	}
-
-	#[must_use]
-	/// # Find Non-Greedy.
-	fn find_nongreedy_match(
-		&self,
-		from: usize,
-		match_len: usize,
-		remaining: usize,
-	) -> Option<usize> {
-		if remaining < match_len { return None; }
-
-		// Next greedy match.
-		let mut best = match_len + self.find_match(from + match_len, remaining - match_len)?;
-		let target = best + MIN_IMPROVEMENT.get();
-
-		// Check increasingly shorter distances for better matches.
-		let mut distance = match_len;
-		for i in (1..match_len).rev() {
-			let maybe = i + self.find_match(from + i, remaining - i)?;
-			if target <= maybe && best < maybe {
-				best = maybe;
-				distance = i;
+		if len != 0 && from + len <= self.data.len() {
+			// Walk through the dictionary to find the existing matching codes.
+			let mut code = Code::from_u8(self.data[from]);
+			for &byte in &self.data[from + 1..from + len] {
+				code = self.dictionary.get_code_byte(code, byte)?;
 			}
-		}
 
-		// Found a closer one.
-		if distance < match_len { Some(distance) }
-		else { None }
+			// Insert the last byte, if any.
+			if from + len < self.data.len() {
+				self.dictionary.set_last_byte(code, self.data[from + len]);
+			}
+
+			// Return the code.
+			Some(code)
+		}
+		else {
+			std::hint::cold_path();
+			None
+		}
 	}
 
 	#[must_use]
@@ -996,9 +1001,9 @@ impl LzwEncoder<'_> {
 		max_len: usize,
 		mut writer: Option<&mut LsbBitWriter>,
 	) -> Option<CodeSize> {
-		// Length of current block.
-		let mut len = self.data.len().checked_sub(from)?;
-		if max_len < len && max_len != 0 { len = max_len; }
+		// Pluck a slice of the right length.
+		let mut slice = self.data.get(from..)?;
+		if max_len != 0 && max_len < slice.len() { slice = &slice[..max_len]; }
 
 		// Current best index.
 		let best_idx = from / self.alignment.get();
@@ -1019,7 +1024,8 @@ impl LzwEncoder<'_> {
 		let mut match_len = 0;
 
 		// Process input.
-		for i in from..from + len {
+		let mut i = from;
+		while ! slice.is_empty() {
 			// We haven't technically processed this byte yet, but by the time
 			// we reference this value we will have. (Bumping it early protects
 			// against `continue` jumps.
@@ -1030,16 +1036,17 @@ impl LzwEncoder<'_> {
 				// Can't do anything else.
 				if self.dictionary.is_full() || state.tokens_full() { break; }
 
-				let remaining = from + len - i;
-				match_len = self.find_match(i, remaining)?;
+				// Straight match.
+				match_len = self.dictionary.find_match(slice);
 
 				// Non-greedy lookahead.
 				if
 					! self.greedy() &&
 					MIN_NONGREEDY_MATCH.get() <= match_len &&
-					i + match_len + 4 < self.data.len() &&
-					! self.data.get(i..i + match_len)?.array_windows::<2>().all(|[a, b]| a == b) &&
-					let Some(next_match_len) = self.find_nongreedy_match(i, match_len, remaining)
+					i + match_len + 4 < self.data.len() && // Not worth it near the end of data.
+					match_len < slice.len() &&             // This can't fail.
+					! slice[..match_len].array_windows::<2>().all(|[a, b]| a == b) &&
+					let Some(next_match_len) = self.dictionary.find_nongreedy_match(slice, match_len)
 				{
 					match_len = next_match_len;
 					state.nongreedy = true;
@@ -1092,6 +1099,13 @@ impl LzwEncoder<'_> {
 					}
 				}
 			}
+
+			// Advance and shrink the slice.
+			if let [ _, rest @ .. ] = slice {
+				slice = rest;
+				i += 1;
+			}
+			else { slice = &[]; }
 		} // Loop.
 
 		// Return the final code size.
@@ -1110,18 +1124,18 @@ impl LzwEncoder<'_> {
 		let mut pos = 0;
 		let mut aligned = 0;
 		while pos < self.data.len() {
-			// If zero, there was no continuation.
 			let len = self.best.bytes(aligned)?;
-
 			pos += len.get();
 			aligned = pos / self.alignment.get();
 			restarts.push(pos);
 		}
 
-		// Bail if empty.
-		if restarts.is_empty() { return Some(Vec::new()); }
-
-		// If we fall short of the end, push one last restart.
+		// Bail if empty or overflow.
+		if restarts.is_empty() || self.data.len() < restarts[restarts.len() - 1] {
+			std::hint::cold_path();
+			return None;
+		}
+		// Push an extra restart for the final length.
 		if restarts[restarts.len() - 1] < self.data.len() {
 			restarts.push(self.data.len());
 		}
@@ -1137,10 +1151,7 @@ impl LzwEncoder<'_> {
 
 		// Rerun optimizations for each block, adding them to the list.
 		let mut pos = 0;
-		for (i, restart) in restarts.iter().copied().enumerate() {
-			// Dummy entry at zero.
-			if restart == 0 { continue; }
-
+		for restart in restarts {
 			// Block length.
 			let len = restart - pos;
 
@@ -1153,7 +1164,7 @@ impl LzwEncoder<'_> {
 
 			// Write a clear or EOI code.
 			writer.write_bits(
-				if i + 1 == restarts.len() { self.eoi_code() }
+				if restart == self.data.len() { self.eoi_code() }
 				else { self.clear_code() },
 				code_size,
 			);

@@ -868,11 +868,6 @@ impl ProtoFrame {
 			global_palette = None;
 		}
 
-		let alignment = alignment.map_or_else(
-			|| Some(NonZeroUsize::from(self.width)),
-			NonZeroUsize::new
-		);
-
 		// Build up an indexed buffer.
 		let ref_palette = global_palette.unwrap_or(&self.palette);
 		let mut buffer: Vec<u8> = Vec::with_capacity(self.canvas.len());
@@ -880,7 +875,17 @@ impl ProtoFrame {
 			buffer.push(ref_palette.lookup(px)?);
 		}
 
-		// Try LZW our way!
+		// If we're doing an exhaustive LZW pass, now's the time, but we need
+		// to set the result aside until after the `gif` crate does its pass
+		// so we can compare the two (and choose a winner).
+		let alignment =
+			if 1 < buffer.len() {
+				alignment.map_or_else(
+					|| Some(NonZeroUsize::from(self.width)),
+					NonZeroUsize::new,
+				)
+			}
+			else { None };
 		let lzw = alignment.and_then(|v| cache.encode_frame(&buffer, v));
 
 		// Palette for the frame.
@@ -904,7 +909,7 @@ impl ProtoFrame {
 		};
 		out.make_lzw_pre_encoded();
 
-		// Swap LZW if ours is better.
+		// Swap LZW versions if ours (happened and) came out better.
 		if let Some(lzw) = lzw && lzw.len() < out.buffer.len() {
 			lzw.clone_into(out.buffer.to_mut());
 		}
