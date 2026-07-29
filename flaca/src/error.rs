@@ -90,7 +90,7 @@ OPTIONS:", ansi!((dim, violet) "
                            *significantly* longer processing times. (Even worse
                            than zopfli! Haha.) Set to zero to disable this
                            optimization altogether.
-                           [default: 1, 2, or row count, based on resolution.]", ansi!((dim, violet) "
+                           [default: row size]", ansi!((dim, violet) "
                            ----------------------------------------------------"), "
         --max-pixels <NUM> Skip images containing more than <NUM> total pixels
                            to avoid potential OOM errors during decompression.

@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.9.0"
+version = "3.9.1"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -101,7 +101,7 @@ path = false
 short = "-g"
 long = "--lzw"
 label = "<NUM>"
-description = "Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values tend to yield better compression, but require *significantly* longer processing times. Set to zero to disable this optimization altogether. [default: 1, 2, or row count, based on resolution.]"
+description = "Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values tend to yield better compression, but require *significantly* longer processing times. Set to zero to disable this optimization altogether. [default: row size]"
 path = false
 
 [[package.metadata.bashman.options]]
@@ -153,6 +153,7 @@ gif-dispose = "=6.0.0"
 libc = "0.2.*"
 utc2k = "0.20.*"
 write_atomic = "0.7.*"
+zune-jpeg = "0.5.*"
 
 [dependencies.ahash]
 version = "0.8.*"
@@ -175,11 +176,6 @@ version = "=0.14.2"
 default-features = false
 features = [ "raii_no_panic", "std" ]
 
-[dependencies.image]
-version = "0.25.*"
-default-features = false
-features = [ "jpeg" ]
-
 # TODO: switch back to crates.io if/when it gets a new release.
 [dependencies.mozjpeg-sys]
 git = "https://github.com/kornelski/mozjpeg-sys"
@@ -192,8 +188,3 @@ features = [ "jpegtran", "nasm_simd", "unwinding" ]
 version = "=10.1.1"
 default-features = false
 features = [ "freestanding" ]
-
-[dev-dependencies.image]
-version = "0.25.*"
-default-features = false
-features = [ "jpeg" ]

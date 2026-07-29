@@ -2,7 +2,8 @@
 # Flaca: Metadata Stripping.
 */
 
-use super::ImageKind;
+use crate::ImageKind;
+use std::num::NonZeroU16;
 
 
 
@@ -23,7 +24,7 @@ macro_rules! jpeg_markers {
 		///
 		/// This enum is used to house the JPEG markers supported by the
 		/// `MozJPEG` decoder, and a few simple methods for dealing with them.
-		pub(super) enum JpegMarker {
+		pub(crate) enum JpegMarker {
 			$(
 				#[doc = concat!("# ", $doc)]
 				$k = $v,
@@ -85,7 +86,7 @@ macro_rules! jpeg_markers {
 			/// If no savings are found or the resulting image cannot be
 			/// decoded or is somehow different than the input, `None` is
 			/// returned.
-			pub(super) fn strip_metadata(raw: &[u8]) -> Option<Vec<u8>> {
+			pub(crate) fn strip_metadata(raw: &[u8]) -> Option<Vec<u8>> {
 				// Short circuit.
 				if
 					// Not a JPEG.
@@ -374,21 +375,49 @@ const fn post_stream_marker(pair: [u8; 2]) -> bool {
 /// This is not particularly efficient, but given the relative naivete of our
 /// segment traversal, is worth checking to avoid accidental corruption.
 fn same_jpeg_pixels(a: &[u8], b: &[u8]) -> bool {
-	use image::ImageFormat;
-	let Ok(b) = image::load_from_memory_with_format(b, ImageFormat::Jpeg) else {
-		return false;
+	use zune_jpeg::{
+		JpegDecoder,
+		zune_core::{
+			bytestream::ZCursor,
+			colorspace::ColorSpace,
+			options::DecoderOptions,
+		},
 	};
-	let b = b.to_rgb8();
 
-	let Ok(a) = image::load_from_memory_with_format(a, ImageFormat::Jpeg) else {
-		return false;
-	};
-	let a = a.to_rgb8();
+	// # Parse Dimensions.
+	fn dimensions(dec: &mut JpegDecoder<ZCursor<&[u8]>>)
+	-> Option<(NonZeroU16, NonZeroU16)> {
+		dec.decode_headers().ok()?;
+		let info = dec.info()?;
+		let width = NonZeroU16::new(info.width)?;
+		let height = NonZeroU16::new(info.height)?;
+		Some((width, height))
+	}
 
-	// Dimensions and pixels should match!
-	a.width() == b.width() &&
-	a.height() == b.height() &&
-	a.pixels().eq(b.pixels())
+	// Force RGB output to help comparison consistency.
+	let opts = DecoderOptions::default()
+		.jpeg_set_out_colorspace(ColorSpace::RGB);
+	let mut dec_a = JpegDecoder::new_with_options(ZCursor::new(a), opts);
+	let mut dec_b = JpegDecoder::new_with_options(ZCursor::new(b), opts);
+
+	if
+		// Parse and compare dimensions first.
+		let Some((width_a, height_a)) = dimensions(&mut dec_a) &&
+		let Some((width_b, height_b)) = dimensions(&mut dec_b) &&
+		width_a == width_b &&
+		height_a == height_b &&
+
+		// Decode the first's pixels and make sure the counts match.
+		let Ok(a) = dec_a.decode() &&
+		a.len() == usize::from(width_a.get()) * usize::from(height_a.get()) * 3 &&
+
+		// Decode the second's pixels and make sure they match the first's.
+		let Ok(b) = dec_b.decode() &&
+		a == b
+	{
+		true
+	}
+	else { false }
 }
 
 
@@ -396,10 +425,6 @@ fn same_jpeg_pixels(a: &[u8], b: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use image::{
-		RgbImage,
-		ImageFormat,
-	};
 
 	#[test]
 	fn t_post_stream_marker() {
@@ -423,36 +448,39 @@ mod tests {
 	}
 
 	#[test]
+	fn t_same_jpeg_pixels() {
+		// Two Lenas.
+		let a = std::fs::read("../skel/assets/jpg/17.jpg")
+			.expect("Unable to read 17.jpg");
+		let b = std::fs::read("../skel/assets/jpg/18.jpg")
+			.expect("Unable to read 18.jpg");
+
+		// The dimensions should be the same for both.
+		let dim_a = ImageKind::jpeg_dimensions(&a).unwrap();
+		let dim_b = ImageKind::jpeg_dimensions(&b).unwrap();
+		assert_eq!(dim_a, dim_b);
+
+		// Pixels are a little different, though.
+		assert!(! same_jpeg_pixels(&a, &b));
+
+		// The images should be identical to themselves.
+		assert!(same_jpeg_pixels(&a, &a));
+		assert!(same_jpeg_pixels(&b, &b));
+	}
+
+	#[test]
 	fn t_strip_jpeg() {
-		/// # Decode JPEG.
-		fn decode(raw: &[u8]) -> Option<RgbImage> {
-			let img = image::load_from_memory_with_format(raw, ImageFormat::Jpeg)
-				.ok()?
-				.to_rgb8();
-
-			// Verify the dimensions.
-			assert_eq!(img.width(), 1024);
-			assert_eq!(img.height(), 512);
-
-			// Simplify (to RGB) and return.
-			Some(img)
-		}
-
 		// Original image.
-		let raw = std::fs::read("../skel/assets/jpg/08.jpg")
-			.expect("Unable to read 08.jpg");
+		let raw = std::fs::read("../skel/assets/jpg/24.jpg")
+			.expect("Unable to read 24.jpg");
+		assert_eq!(raw.len(), 843_705);
 
 		// Strip it.
-		let stripped = JpegMarker::strip_metadata(&raw).expect("Stripping 08.jpg failed!");
+		let stripped = JpegMarker::strip_metadata(&raw)
+			.expect("Stripping 24.jpg failed!");
+		assert_eq!(stripped.len(), 266_952); // So much metadata gone!
 
-		// The stripped version should be slightly smaller.
-		assert!(stripped.len() < raw.len());
-
-		// Decode both images.
-		let raw = decode(&raw).expect("Unable to decode 08.jpg");
-		let stripped = decode(&stripped).expect("Unable to decode (stripped) 08.jpg");
-
-		// The pixels should be identical!
-		assert!(raw.pixels().eq(stripped.pixels()));
+		// Pixels should match.
+		assert!(same_jpeg_pixels(&raw, &stripped));
 	}
 }

@@ -38,9 +38,6 @@ type ExtensionLabelAndBlocks<'a> = (AnyExtension, Vec<&'a [u8]>);
 /// # Max Palette Size.
 const MAX_COLOR_TABLE: usize = 256;
 
-/// # Non-Zero Two.
-const NZ2: NonZeroUsize = NonZeroUsize::new(2).unwrap();
-
 /// # Static Hasher.
 ///
 /// This is used for cheap collision detection. No need to get fancy with it.
@@ -62,6 +59,29 @@ const AHASHER: ahash::RandomState = ahash::RandomState::with_seeds(
 /// * Inter-frame blit/delta fuckery
 /// * Exhaustive LZW
 pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
+	// # Encode w/ Palettes.
+	fn encode(
+		decoded: &DecodedGif,
+		cache: &mut FrameCache,
+		lzw_alignment: Option<usize>,
+		meta: Option<&[ExtensionLabelAndBlocks]>,
+		mut size_hint: usize,
+	) -> Option<Vec<u8>> {
+		let mut out = Option::<Vec<u8>>::None;
+		for palette in Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette))
+			.iter()
+			.map(Some)
+			.chain(std::iter::once(None))
+		{
+			let maybe = decoded.encode(palette, meta, lzw_alignment, cache, size_hint)?;
+			size_hint = usize::max(size_hint, maybe.len());
+			if out.as_ref().is_none_or(|v| maybe.len() < v.len()) {
+				out.replace(maybe);
+			}
+		}
+		out
+	}
+
 	// First pass.
 	let (decoded, dedcoded_noncomposite) = DecodedGif::new(src)?;
 	if decoded.frames.is_empty() {
@@ -77,27 +97,19 @@ pub(super) fn optimize(src: &[u8], settings: Settings) -> Option<Vec<u8>> {
 
 	// Encode it a few different ways, keeping whichever copy comes out best.
 	let mut cache = FrameCache::new(decoded.frames.len());
-	let out = Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
-		.map(Some)
-		.chain(std::iter::once(None))
-		.filter_map(|g| decoded.encode(g, meta.as_deref(), lzw_alignment, &mut cache))
-		.min_by(|a, b| a.len().cmp(&b.len()));
+	let out = encode(&decoded, &mut cache, lzw_alignment, meta.as_deref(), src.len())?;
 
 	// If we have a non-composited alternative, repeat the whole damn process,
 	// returning _this_ version if smaller than the first one.
 	if
 		let Some(decoded) = dedcoded_noncomposite &&
-		let Some(alt) = Palette::global_palettes(decoded.frames.iter().map(|v| &v.palette)).iter()
-			.map(Some)
-			.chain(std::iter::once(None))
-			.filter_map(|g| decoded.encode(g, meta.as_deref(), lzw_alignment, &mut cache))
-			.min_by(|a, b| a.len().cmp(&b.len())) &&
-		out.as_ref().is_none_or(|v| alt.len() < v.len())
+		let Some(alt) = encode(&decoded, &mut cache, lzw_alignment, meta.as_deref(), src.len()) &&
+		alt.len() < out.len()
 	{
 		Some(alt)
 	}
 	// The composited version was the best or only!
-	else { out }
+	else { Some(out) }
 }
 
 #[must_use]
@@ -163,210 +175,12 @@ pub(super) fn strip_metadata(src: &[u8]) -> Option<Vec<u8>> {
 
 
 
-#[derive(Debug)]
-/// # First Pass.
-///
-/// This struct is used to hold all the relevant deconstructed image data
-/// required for (eventual) encoding.
-struct DecodedGif {
-	/// # Width.
-	width: NonZeroU16,
-
-	/// # Height.
-	height: NonZeroU16,
-
-	/// # Repeat.
-	repeat: Repeat,
-
-	/// # Frames.
-	frames: Vec<ProtoFrame>,
-}
-
-impl DecodedGif {
-	#[must_use]
-	/// # New.
-	///
-	/// Decode the image, building up per-frame palettes and settings,
-	/// returning the results if successful.
-	///
-	/// Note that if any "composite" frames are made, a second non-composited
-	/// copy is also returned.
-	fn new(src: &[u8]) -> Option<(Self, Option<Self>)> {
-		/// # Same Prototypes.
-		///
-		/// Compare all properties of both frames except disposal method,
-		/// returning `true` if matched.
-		fn same_frame(a: &ProtoFrame, b: &ProtoFrame) -> bool {
-			a.delay == b.delay &&
-			a.needs_user_input == b.needs_user_input &&
-			a.top == b.top &&
-			a.left == b.left &&
-			a.width == b.width &&
-			a.height == b.height &&
-			a.palette == b.palette &&
-			a.canvas == b.canvas
-		}
-
-		// Set up the decoder.
-		let mut opts = DecodeOptions::new();
-		opts.set_color_output(ColorOutput::Indexed);
-		let mut dec = opts.read_info(Cursor::new(src)).ok()?;
-		let width = NonZeroU16::new(dec.width())?;
-		let height = NonZeroU16::new(dec.height())?;
-		let repeat = dec.repeat();
-
-		// Parse the frames.
-		let mut screen = Screen::new_decoder(&dec);
-		let mut last_canvas: Option<Vec<PixelColor>> = None;
-		let mut composite_frames: Vec<ProtoFrame> = Vec::new();
-		let mut noncomposite_frames: Vec<ProtoFrame> = Vec::new();
-		let mut has_composites = false;
-		while let Some(frame) = dec.read_next_frame().ok()? {
-			screen.blit_frame(frame).ok()?;
-
-			// Normalize transparent pixels.
-			let canvas: Vec<PixelColor> = screen.pixels_rgba()
-				.pixels()
-				.map(PixelColor::from_rgba8)
-				.collect();
-
-			// If any of the composited pixels in this frame are newly
-			// transparent, or this frame contains no overlap with the last,
-			// change the disposal method of the previous frame to
-			// "background".
-			if
-				let Some(last) = last_canvas.as_ref() &&
-				(
-					canvas.iter().zip(last.iter()).any(|(b, a)| b.is_transparent() && ! a.is_transparent()) ||
-					canvas.iter().zip(last.iter()).all(|(b, a)| a != b)
-				)
-			{
-				composite_frames.last_mut()?.dispose = DisposalMethod::Background;
-				last_canvas = None;
-			}
-
-			// One more time around.
-			let noncomposite_frame = ProtoFrame::new(
-				width,
-				height,
-				frame.delay,
-				frame.needs_user_input,
-				&canvas,
-			);
-			let composite_frame =
-				if let Some(last) = last_canvas.take() {
-					has_composites = true;
-					ProtoFrame::new_composite(
-						width,
-						height,
-						frame.delay,
-						frame.needs_user_input,
-						&canvas,
-						&last,
-					)?
-				}
-				else { noncomposite_frame.clone() };
-
-			last_canvas = Some(canvas);
-			composite_frames.push(composite_frame);
-			noncomposite_frames.push(noncomposite_frame);
-		}
-
-		// Finish it up!
-		if composite_frames.is_empty() { None }
-		else {
-			// Make sure the last frame doesn't fuck up the first.
-			if
-				1 < composite_frames.len() &&
-				! matches!(repeat, Repeat::Finite(0)) &&
-				composite_frames[0].palette.transparent_idx().is_some()
-			{
-				let last_idx = composite_frames.len() - 1;
-				composite_frames[last_idx].dispose = DisposalMethod::Background;
-			}
-			let composite_frames = Self { width, height, repeat, frames: composite_frames };
-
-			// Include the non-composited version if different than the
-			// composited one. (Only relevant for multi-frame GIFs.)
-			if
-				has_composites &&
-				1 < composite_frames.frames.len() &&
-				composite_frames.frames.len() == noncomposite_frames.len() &&
-				composite_frames.frames.iter()
-					.zip(noncomposite_frames.iter())
-					.any(|(a, b)| ! same_frame(a, b))
-			{
-				// Set all to background.
-				for frame in &mut noncomposite_frames {
-					frame.dispose = DisposalMethod::Background;
-				}
-
-				// Make it so!
-				Some((
-					composite_frames,
-					Some(Self { width, height, repeat, frames: noncomposite_frames })
-				))
-			}
-			// Just send back the composites.
-			else { Some((composite_frames, None)) }
-		}
-	}
-}
-
-impl DecodedGif {
-	#[must_use]
-	/// # Encode GIF.
-	///
-	/// Combine all the parts into a new GIF image, optionally using the
-	/// provided global palette and/or metadata.
-	fn encode(
-		&self,
-		global_palette: Option<&Palette>,
-		meta: Option<&[ExtensionLabelAndBlocks]>,
-		alignment: Option<usize>,
-		cache: &mut FrameCache,
-	) -> Option<Vec<u8>> {
-		// Set up the encoder.
-		let mut enc = Encoder::new(
-			Vec::with_capacity(
-				usize::from(self.width.get()) *
-				usize::from(self.height.get())
-			),
-			self.width.get(),
-			self.height.get(),
-			&if let Some(g) = global_palette { g.flatten()? }
-			else { Vec::new() },
-		).ok()?;
-		enc.set_repeat(self.repeat).ok()?;
-
-		// Write metadata, if any.
-		if let Some(meta) = meta {
-			for (label, blocks) in meta {
-				enc.write_raw_extension(*label, blocks).ok()?;
-			}
-		}
-
-		// Write the frames.
-		for frame in &self.frames {
-			let frame = frame.try_into_frame(global_palette, alignment, cache)?;
-			enc.write_lzw_pre_encoded_frame(&frame).ok()?;
-		}
-
-		// Done!
-		let out = enc.into_inner().ok()?;
-		if out.is_empty() { None }
-		else { Some(out) }
-	}
-}
-
-
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 /// # Bounding Box.
 ///
 /// This struct represents the draw area for a single frame in a GIF. For
 /// animations, this is often less than the full image area.
-struct MinMaxXY {
+struct CanvasBounds {
 	/// # X Range (Inclusive).
 	x: (u16, u16),
 
@@ -374,59 +188,12 @@ struct MinMaxXY {
 	y: (u16, u16),
 }
 
-impl MinMaxXY {
+impl CanvasBounds {
 	/// # Max Coordinate.
 	const MAX_COORDINATE: usize = u16::MAX as usize;
 
 	/// # Max Index.
 	const MAX_IDX: usize = Self::MAX_COORDINATE.checked_mul(Self::MAX_COORDINATE).unwrap();
-
-	/// # New.
-	fn new(
-		current: &[PixelColor],
-		last: &[PixelColor],
-		width: NonZeroU16,
-	) -> Option<Self> {
-		let mut min_x = u16::MAX;
-		let mut max_x = u16::MIN;
-		let mut min_y = u16::MAX;
-		let mut max_y = u16::MIN;
-
-		// We're working with composited values, so this shouldn't ever fail.
-		if Self::MAX_IDX < current.len() || current.len() != last.len() {
-			std::hint::cold_path();
-			return None;
-		}
-
-		// Find the first and last difference for each axis.
-		for (i, (b, a)) in current.iter().zip(last.iter()).enumerate() {
-			if a != b {
-				let (x, y) = Self::index_to_xy(i, width)?;
-
-				min_x = u16::min(min_x, x);
-				max_x = u16::max(max_x, x);
-
-				min_y = u16::min(min_y, y);
-				max_y = u16::max(max_y, y);
-			}
-		}
-
-		// Done!
-		Some(Self {
-			x: (min_x, max_x),
-			y: (min_y, max_y),
-		})
-	}
-
-	#[must_use]
-	/// # Is Empty?
-	///
-	/// The ranges are inclusive, so "empty" is represented internally by
-	/// min/max being in the wrong order.
-	const fn is_empty(self) -> bool {
-		self.x.1 < self.x.0 ||
-		self.y.1 < self.y.0
-	}
 
 	#[must_use]
 	/// # Left Position.
@@ -489,6 +256,218 @@ impl MinMaxXY {
 			)
 		}
 		else { None }
+	}
+}
+
+
+
+#[derive(Debug)]
+/// # First Pass.
+///
+/// This struct is used to hold all the relevant deconstructed image data
+/// required for (eventual) encoding.
+struct DecodedGif {
+	/// # Width.
+	width: NonZeroU16,
+
+	/// # Height.
+	height: NonZeroU16,
+
+	/// # Repeat.
+	repeat: Repeat,
+
+	/// # Frames.
+	frames: Vec<ProtoFrame>,
+}
+
+impl DecodedGif {
+	#[must_use]
+	/// # New.
+	///
+	/// Decode the image, building up per-frame palettes and settings,
+	/// returning the results if successful.
+	///
+	/// Note that if any "composite" frames are made, a second non-composited
+	/// copy is also returned.
+	fn new(src: &[u8]) -> Option<(Self, Option<Self>)> {
+		/// # Same Prototypes.
+		///
+		/// Compare all properties of both frames except disposal method,
+		/// returning `true` if matched.
+		fn same_frame(a: &ProtoFrame, b: &ProtoFrame) -> bool {
+			a.delay == b.delay &&
+			a.needs_user_input == b.needs_user_input &&
+			a.top == b.top &&
+			a.left == b.left &&
+			a.width == b.width &&
+			a.height == b.height &&
+			a.palette == b.palette &&
+			a.canvas == b.canvas
+		}
+
+		// Set up the decoder.
+		let mut opts = DecodeOptions::new();
+		opts.set_color_output(ColorOutput::Indexed);
+		let mut dec = opts.read_info(Cursor::new(src)).ok()?;
+		let width = NonZeroU16::new(dec.width())?;
+		let height = NonZeroU16::new(dec.height())?;
+		let repeat = dec.repeat();
+
+		// Parse the frames.
+		let mut screen = Screen::new_decoder(&dec);
+		let mut last_canvas: Option<Vec<PixelColor>> = None;
+		let mut frames: Vec<[ProtoFrame; 2]> = Vec::new();
+		while let Some(frame) = dec.read_next_frame().ok()? {
+			screen.blit_frame(frame).ok()?;
+
+			// Collect the pixels.
+			let canvas: Vec<PixelColor> = screen.pixels_rgba()
+				.pixels()
+				.map(PixelColor::from_rgba8)
+				.collect();
+			if canvas.len() != usize::from(width.get()) * usize::from(height.get()) {
+				std::hint::cold_path();
+				return None;
+			}
+
+			// We'll be storing two copies of the frame. The second is always
+			// stand alone, representing all pixels.
+			let frame_b = ProtoFrame::new(width, height, frame, &canvas);
+
+			// If this is a new frame, make sure the last one (if any) is
+			// disposed.
+			match PfCategory::classify(&canvas, last_canvas.as_deref(), width)? {
+				// This and the previous frame are identical.
+				PfCategory::Redundant =>
+					// If possible, increase the previous frame's delay
+					// accordingly and drop the current frame.
+					if
+						let Some(last) = frames.last_mut() &&
+						let Some(delay) = last[0].delay.checked_add(frame.delay)
+					{
+						last[0].delay = delay;
+						last[1].delay = delay; // Change the non-composite too.
+					}
+					// Otherwise use a generic 1x1 transparent frame for the
+					// composite.
+					else {
+						frames.push([
+							ProtoFrame::new_empty(frame),
+							frame_b,
+						]);
+					},
+
+				// This frame stands on its own. Push the non-composite version
+				// to both slots.
+				PfCategory::Replacement => {
+					// If there's a previous frame, make sure it gets disposed.
+					if let Some(last) = frames.last_mut() {
+						last[0].dispose = DisposalMethod::Background;
+					}
+					frames.push([frame_b.clone(), frame_b]);
+				},
+
+				// This frame builds on the previous one. Push both a composite
+				// and non-composite version.
+				PfCategory::Composite(bounds, last) => {
+					frames.push([
+						ProtoFrame::new_composite(
+							width,
+							height,
+							frame,
+							&canvas,
+							last,
+							bounds,
+						)?,
+						frame_b,
+					]);
+				},
+			}
+
+			// This canvas is now the previous for the next.
+			last_canvas = Some(canvas);
+		}
+
+		// Finish it up!
+		if frames.is_empty() { None }
+		else {
+			// Make sure the last composite frame doesn't fuck up the first
+			// frame on repeat.
+			if
+				1 < frames.len() &&
+				! matches!(repeat, Repeat::Finite(0)) &&
+				frames[0][0].palette.transparent_idx().is_some() &&
+				let Some(last) = frames.last_mut() // This can't fail.
+			{
+				last[0].dispose = DisposalMethod::Background;
+			}
+
+			// Do the composites actually differ from the non-composites?
+			let has_composites =
+				1 < frames.len() &&
+				frames.iter().any(|[a, b]| ! same_frame(a, b));
+
+			// Separate the two sets of chains.
+			let mut frames_a = Vec::with_capacity(frames.len());
+			let mut frames_b = if has_composites { Vec::with_capacity(frames.len()) } else { Vec::new() };
+			for [a, mut b] in frames {
+				frames_a.push(a);
+				if has_composites {
+					b.dispose = DisposalMethod::Background;
+					frames_b.push(b);
+				}
+			}
+
+			// Done!
+			Some((
+				Self { width, height, repeat, frames: frames_a },
+				has_composites.then_some(Self { width, height, repeat, frames: frames_b }),
+			))
+		}
+	}
+}
+
+impl DecodedGif {
+	#[must_use]
+	/// # Encode GIF.
+	///
+	/// Combine all the parts into a new GIF image, optionally using the
+	/// provided global palette and/or metadata.
+	fn encode(
+		&self,
+		global_palette: Option<&Palette>,
+		meta: Option<&[ExtensionLabelAndBlocks]>,
+		alignment: Option<usize>,
+		cache: &mut FrameCache,
+		size_hint: usize,
+	) -> Option<Vec<u8>> {
+		// Set up the encoder.
+		let mut enc = Encoder::new(
+			Vec::with_capacity(size_hint),
+			self.width.get(),
+			self.height.get(),
+			&if let Some(g) = global_palette { g.flatten()? }
+			else { Vec::new() },
+		).ok()?;
+		enc.set_repeat(self.repeat).ok()?;
+
+		// Write metadata, if any.
+		if let Some(meta) = meta {
+			for (label, blocks) in meta {
+				enc.write_raw_extension(*label, blocks).ok()?;
+			}
+		}
+
+		// Write the frames.
+		for frame in &self.frames {
+			let frame = frame.try_into_frame(global_palette, alignment, cache)?;
+			enc.write_lzw_pre_encoded_frame(&frame).ok()?;
+		}
+
+		// Done!
+		let out = enc.into_inner().ok()?;
+		if out.is_empty() { None }
+		else { Some(out) }
 	}
 }
 
@@ -626,20 +605,22 @@ impl Palette {
 
 		/// # Merge Multiple Palettes.
 		///
-		/// Try to merge one or more palettes into the first, returning the
-		/// result along with the number of frames included, or `None` if no
-		/// mergers happened.
-		fn merge_many(src: &[&Palette]) -> Option<(Palette, usize)> {
+		/// Try to merge as many of the palettes together, working left to
+		/// right, returning the result if more than a fifth of all frames
+		/// are represented, otherwise `None`.
+		fn merge_many(src: &[&Palette]) -> Option<(Palette, NonZeroUsize)> {
+			let target = NonZeroUsize::new(src.len().wrapping_div(5))
+				.unwrap_or(NonZeroUsize::MIN);
 			let mut iter = src.iter().copied();
 			let mut out = iter.next()?.clone();
-			let mut included = 1;
+			let mut included = NonZeroUsize::MIN;
 
 			for next in iter {
-				if merge_one(&mut out, next) { included += 1; }
+				if merge_one(&mut out, next) { included = included.saturating_add(1); }
 			}
 
-			// Return if there was a merger.
-			if 1 < included { Some((out, included)) }
+			// Return if enough frames got merged.
+			if target.get() < included.get() { Some((out, included)) }
 			else { None }
 		}
 
@@ -665,7 +646,7 @@ impl Palette {
 				let mut out = palettes[0].clone();
 				if merge_one(&mut out, palettes[1]) { vec![out] }
 				else { Vec::new() }
-			}
+			},
 
 			// Three or more frames might result in multiple combinations.
 			_ => {
@@ -676,7 +657,7 @@ impl Palette {
 				palettes.sort_by_key(|v| v.len());
 				for _ in 0..palettes.len() {
 					if let Some((maybe, n)) = merge_many(&palettes) {
-						if n == palettes.len() { return vec![maybe]; }
+						if n.get() == palettes.len() { return vec![maybe]; }
 						out.insert(maybe);
 					}
 
@@ -781,20 +762,15 @@ struct ProtoFrame {
 impl ProtoFrame {
 	#[must_use]
 	/// # New (Standalone).
-	fn new(
-		width: NonZeroU16,
-		height: NonZeroU16,
-		delay: u16,
-		needs_user_input: bool,
-		canvas: &[PixelColor],
-	) -> Self {
+	fn new(width: NonZeroU16, height: NonZeroU16, frame: &Frame, canvas: &[PixelColor])
+	-> Self {
 		let mut palette = Palette::default();
 		for px in canvas { palette.push(*px); }
 
 		Self {
-			delay,
+			delay: frame.delay,
 			dispose: DisposalMethod::Keep,
-			needs_user_input,
+			needs_user_input: frame.needs_user_input,
 			top: 0,
 			left: 0,
 			width,
@@ -805,34 +781,15 @@ impl ProtoFrame {
 	}
 
 	#[must_use]
-	/// # New (Standalone).
+	/// # New (Composite).
 	fn new_composite(
 		width: NonZeroU16,
 		height: NonZeroU16,
-		delay: u16,
-		needs_user_input: bool,
+		frame: &Frame,
 		current: &[PixelColor],
 		last: &[PixelColor],
+		bounds: CanvasBounds,
 	) -> Option<Self> {
-		// Draw a box around what's different.
-		let bounds = MinMaxXY::new(current, last, width)?;
-
-		// If nothing whatsoever is, submit the frame as a single transparent
-		// pixel.
-		if bounds.is_empty() {
-			return Some(Self {
-				delay,
-				dispose: DisposalMethod::Keep,
-				needs_user_input,
-				top: 0,
-				left: 0,
-				width: NonZeroU16::MIN,
-				height: NonZeroU16::MIN,
-				palette: Palette::from(PixelColor::Transparent),
-				canvas: vec![PixelColor::Transparent],
-			});
-		}
-
 		// Map the bounds to the canvas.
 		let top = bounds.top();
 		let left = bounds.left();
@@ -859,40 +816,45 @@ impl ProtoFrame {
 			}
 		}
 
-		Some(Self {
-			delay,
+		// Make sure we actually collected everything we were supposed to!
+		if canvas.len() == usize::from(bounds_width.get()) * usize::from(bounds_height.get()) {
+			Some(Self {
+				delay: frame.delay,
+				dispose: DisposalMethod::Keep,
+				needs_user_input: frame.needs_user_input,
+				top,
+				left,
+				width: bounds_width,
+				height: bounds_height,
+				palette,
+				canvas,
+			})
+		}
+		// This shouldn't happen.
+		else {
+			std::hint::cold_path();
+			None
+		}
+	}
+
+	#[must_use]
+	/// # New (Empty).
+	fn new_empty(frame: &Frame) -> Self {
+		Self {
+			delay: frame.delay,
 			dispose: DisposalMethod::Keep,
-			needs_user_input,
-			top,
-			left,
-			width: bounds_width,
-			height: bounds_height,
-			palette,
-			canvas,
-		})
+			needs_user_input: frame.needs_user_input,
+			top: 0,
+			left: 0,
+			width: NonZeroU16::MIN,
+			height: NonZeroU16::MIN,
+			palette: Palette::from(PixelColor::Transparent),
+			canvas: vec![PixelColor::Transparent],
+		}
 	}
 }
 
 impl ProtoFrame {
-	#[must_use]
-	/// # Recommended LZW Alignment.
-	///
-	/// Return a high-but-not-too-high alignment value for the number of pixels
-	/// comprising the frame.
-	const fn recommended_alignment(&self) -> NonZeroUsize {
-		// Align not-small images to the row size.
-		if
-			(u16::MAX as usize) < self.canvas.len() &&
-			let Some(alignment) = NonZeroUsize::new(self.width.get() as usize)
-		{
-			alignment
-		}
-		// Align small ones to every other byte.
-		else if (i16::MAX as usize) < self.canvas.len() { NZ2 }
-		// Tiny images can be tested exhaustively.
-		else { NonZeroUsize::MIN }
-	}
-
 	#[must_use]
 	/// # Into Frame.
 	fn try_into_frame(
@@ -906,11 +868,6 @@ impl ProtoFrame {
 			global_palette = None;
 		}
 
-		let alignment = alignment.map_or_else(
-			|| Some(self.recommended_alignment()),
-			NonZeroUsize::new
-		);
-
 		// Build up an indexed buffer.
 		let ref_palette = global_palette.unwrap_or(&self.palette);
 		let mut buffer: Vec<u8> = Vec::with_capacity(self.canvas.len());
@@ -918,7 +875,17 @@ impl ProtoFrame {
 			buffer.push(ref_palette.lookup(px)?);
 		}
 
-		// Try LZW our way!
+		// If we're doing an exhaustive LZW pass, now's the time, but we need
+		// to set the result aside until after the `gif` crate does its pass
+		// so we can compare the two (and choose a winner).
+		let alignment =
+			if 1 < buffer.len() {
+				alignment.map_or_else(
+					|| Some(NonZeroUsize::from(self.width)),
+					NonZeroUsize::new,
+				)
+			}
+			else { None };
 		let lzw = alignment.and_then(|v| cache.encode_frame(&buffer, v));
 
 		// Palette for the frame.
@@ -942,13 +909,106 @@ impl ProtoFrame {
 		};
 		out.make_lzw_pre_encoded();
 
-		// Swap LZW if ours is better.
+		// Swap LZW versions if ours (happened and) came out better.
 		if let Some(lzw) = lzw && lzw.len() < out.buffer.len() {
 			lzw.clone_into(out.buffer.to_mut());
 		}
 
 		// Done!
 		Some(out)
+	}
+}
+
+
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+/// # Proto Frame Categorization.
+///
+/// This enum is used to classify a frame canvas relative to the previous
+/// one's, if any.
+enum PfCategory<'a> {
+	/// # Totally Equal.
+	Redundant,
+
+	/// # All Different (or New Transparency).
+	Replacement,
+
+	/// # Some Different.
+	Composite(CanvasBounds, &'a [PixelColor]),
+}
+
+impl<'a> PfCategory<'a> {
+	/// # New.
+	fn classify(
+		current: &[PixelColor],
+		last: Option<&'a [PixelColor]>,
+		width: NonZeroU16,
+	) -> Option<Self> {
+		// This shouldn't ever fail.
+		if
+			CanvasBounds::MAX_IDX < current.len() ||
+			! current.len().is_multiple_of(usize::from(width.get()))
+		{
+			std::hint::cold_path();
+			return None;
+		}
+
+		// If there's no last frame, this one is totally unique!
+		let Some(last) = last else { return Some(Self::Replacement); };
+
+		// This also shouldn't fail.
+		if current.len() != last.len() {
+			std::hint::cold_path();
+			return None;
+		}
+
+		// Initialize.
+		let mut min_x = u16::MAX;
+		let mut max_x = u16::MIN;
+		let mut min_y = u16::MAX;
+		let mut max_y = u16::MIN;
+		let mut same = 0;
+
+		// Find the first and last difference for each axis.
+		for (i, (b, a)) in current.iter().zip(last.iter()).enumerate() {
+			// No change.
+			if a == b { same += 1; }
+
+			// A move from opaque to transparent requires a totally new frame.
+			else if b.is_transparent() && ! a.is_transparent() {
+				return Some(Self::Replacement);
+			}
+
+			// A difference.
+			else {
+				let (x, y) = CanvasBounds::index_to_xy(i, width)?;
+
+				min_x = u16::min(min_x, x);
+				max_x = u16::max(max_x, x);
+
+				min_y = u16::min(min_y, y);
+				max_y = u16::max(max_y, y);
+			}
+		}
+
+		// Every last pixel is identical.
+		if same == current.len() || max_x < min_x || max_y < min_y {
+			Some(Self::Redundant)
+		}
+
+		// Every last pixel is different.
+		else if same == 0 { Some(Self::Replacement) }
+
+		// Something new and something old.
+		else {
+			Some(Self::Composite(
+				CanvasBounds {
+					x: (min_x, max_x),
+					y: (min_y, max_y),
+				},
+				last,
+			))
+		}
 	}
 }
 

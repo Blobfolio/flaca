@@ -1,6 +1,6 @@
-.TH "FLACA" "1" "July 2026" "flaca v3.9.0" "User Commands"
+.TH "FLACA" "1" "July 2026" "flaca v3.9.1" "User Commands"
 .SH NAME
-FLACA \- Manual page for flaca v3.9.0.
+FLACA \- Manual page for flaca v3.9.1.
 .SH DESCRIPTION
 Brute\-force, lossless GIF, JPEG, and PNG compression.
 .SS USAGE:
@@ -46,7 +46,7 @@ Read (absolute) image and/or directory paths from this text file — or STDIN if
 Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values yield better (more exhaustive) compression, but require *significantly* longer processing times. (Even worse than zopfli! Haha.) Set to zero to disable this optimization altogether. [default: 1, 2, or row count, based on resolution.]
 .TP
 \fB\-g\fR, \fB\-\-lzw\fR <NUM>
-Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values tend to yield better compression, but require *significantly* longer processing times. Set to zero to disable this optimization altogether. [default: 1, 2, or row count, based on resolution.]
+Limit exhaustive LZW GIF frame encoding to subslices aligned to <NUM> bytes. Lower values tend to yield better compression, but require *significantly* longer processing times. Set to zero to disable this optimization altogether. [default: row size]
 .TP
 \fB\-\-max\-resolution\fR <NUM>
 Skip images containing more than <NUM> total pixels to avoid potential OOM errors during decompression. [default: ~4.29 billion]
