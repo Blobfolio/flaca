@@ -160,15 +160,8 @@ pub(super) fn encode_frame(src: &[u8], alignment: NonZeroUsize) -> Option<Vec<u8
 	// Crunch aligned sub-slices of the data to build up a sense of the "best"
 	// breakpoints.
 	for i in (0..src.len()).step_by(alignment.get()).rev() {
-		// Estimate cost.
-		encoder.optimize_partial(i, 0, None)?;
-
-		// Repeat non-greedy.
-		if ! encoder.greedy() {
-			encoder.set_greedy(true);
-			encoder.optimize_partial(i, 0, None)?;
-			encoder.set_greedy(false);
-		}
+		encoder.optimize_partial(i, 0, false, None)?; // Nongreedy.
+		encoder.optimize_partial(i, 0, true, None)?;  // Just greedy.
 	}
 
 	// One more time around to collect the results!
@@ -705,10 +698,6 @@ impl BestBlocks {
 	}
 
 	#[must_use]
-	/// # Is Empty?
-	fn is_empty(&self) -> bool { self.0.is_empty() }
-
-	#[must_use]
 	/// # Best Bits.
 	///
 	/// Return the number of bits for a best.
@@ -919,9 +908,6 @@ struct LzwEncoder<'a> {
 
 	/// # Dictionary.
 	dictionary: Dictionary,
-
-	/// # Greedy?
-	greedy: bool,
 }
 
 impl<'a> LzwEncoder<'a> {
@@ -936,13 +922,8 @@ impl<'a> LzwEncoder<'a> {
 			min_code_size,
 			best,
 			dictionary: Dictionary::default(),
-			greedy: false,
 		}
 	}
-
-	#[must_use]
-	/// # Greedy?
-	const fn greedy(&self) -> bool { self.greedy }
 
 	#[must_use]
 	/// # Min Code Size.
@@ -955,9 +936,6 @@ impl<'a> LzwEncoder<'a> {
 	#[must_use]
 	/// # EOI Code.
 	const fn eoi_code(&self) -> Code { self.min_code_size.eoi }
-
-	/// # Set Greedy.
-	const fn set_greedy(&mut self, v: bool) { self.greedy = v; }
 }
 
 impl LzwEncoder<'_> {
@@ -988,17 +966,18 @@ impl LzwEncoder<'_> {
 		}
 	}
 
-	#[must_use]
 	/// # Partial Optimization.
 	///
 	/// Calculate the LZW encoding cost for a subslice of the data, returning
 	/// the total data that would be written.
 	///
-	/// Unless `writer` is passed, the actual data is discarded after the run.
+	/// Unless `writer` is passed, the actual data is discarded after the run,
+	/// and the return value is unused.
 	fn optimize_partial(
 		&mut self,
 		from: usize,
 		max_len: usize,
+		greedy: bool,
 		mut writer: Option<&mut LsbBitWriter>,
 	) -> Option<CodeSize> {
 		// Pluck a slice of the right length.
@@ -1008,13 +987,14 @@ impl LzwEncoder<'_> {
 		// Current best index.
 		let best_idx = from / self.alignment.get();
 
-		// Short-circuit: skip the greedy/non-greedy pass if the last go-around
-		// was unsuccessful… unless we're saving the block this time.
+		// Short-circuit: no need to repeat a greedy stat-building pass if the
+		// corresponding non-greedy pass turned up a greedy result.
 		if
-			self.greedy() &&
+			greedy &&
 			writer.is_none() &&
 			self.best.greedy(best_idx)
 		{
+			// Note this value isn't actually used.
 			return Some(self.dictionary.idx().min_code_size());
 		}
 
@@ -1041,7 +1021,7 @@ impl LzwEncoder<'_> {
 
 				// Non-greedy lookahead.
 				if
-					! self.greedy() &&
+					! greedy &&
 					MIN_NONGREEDY_MATCH.get() <= match_len &&
 					i + match_len + 4 < self.data.len() && // Not worth it near the end of data.
 					match_len < slice.len() &&             // This can't fail.
@@ -1110,6 +1090,7 @@ impl LzwEncoder<'_> {
 
 		// Return the final code size.
 		if writer.is_some() { self.dictionary.idx().prev().map(Code::min_code_size) }
+		// Note this value isn't used.
 		else { Some(state.code_size) }
 	}
 
@@ -1135,7 +1116,7 @@ impl LzwEncoder<'_> {
 			std::hint::cold_path();
 			return None;
 		}
-		// Push an extra restart for the final length.
+		// Push an extra restart for the final length if missing.
 		if restarts[restarts.len() - 1] < self.data.len() {
 			restarts.push(self.data.len());
 		}
@@ -1155,12 +1136,13 @@ impl LzwEncoder<'_> {
 			// Block length.
 			let len = restart - pos;
 
-			// Switch to faster settings.
-			if self.best.is_empty() { std::hint::cold_path() }
-			else { self.set_greedy(! self.best.nongreedy(pos / self.alignment.get())); }
-
 			// Compute the current block.
-			let code_size = self.optimize_partial(pos, len, Some(&mut writer))?;
+			let code_size = self.optimize_partial(
+				pos,
+				len,
+				! self.best.nongreedy(pos / self.alignment.get()),
+				Some(&mut writer),
+			)?;
 
 			// Write a clear or EOI code.
 			writer.write_bits(
