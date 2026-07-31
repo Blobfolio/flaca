@@ -678,7 +678,9 @@ impl BestBlock {
 #[derive(Debug, Default)]
 /// # Best Blocks.
 ///
-/// This struct holds summaries of various LZW block configurations.
+/// This struct holds summaries of various LZW block configurations. This
+/// should really just be a `Vec` as the keys are contiguous from
+/// `0..=len/align`, but the compiler doesn't seem to believe it. Haha.
 struct BestBlocks(HashMap<usize, BestBlock, NoHash>);
 
 impl BestBlocks {
@@ -801,26 +803,28 @@ impl Dictionary {
 	}
 
 	#[must_use]
+	#[inline]
 	/// # Find Match.
 	///
-	/// Find and return the longest match length for a subslice, or `None` if
-	/// none.
-	const fn find_match(&self, mut slice: &[u8]) -> usize {
-		let max_len = slice.len();
+	/// Find and return the longest match length for a subslice.
+	const fn find_match(&self, mut slice: &[u8]) -> NonZeroUsize {
+		let Some(max_len) = NonZeroUsize::new(slice.len()) else {
+			unreachable!()
+		};
 
 		// There is alwayz an LZW code for the first byte, but if max_len is
 		// zero, there's no data to loop through, making it moot.
 		if let [ next, rest @ .. ] = slice {
 			let mut code = Code::from_u8(*next);
-			let mut len = 0;
+			let mut len = NonZeroUsize::MIN;
 			slice = rest;
 			while let [ next, rest @ .. ] = slice {
-				len += 1;
 				code = match self.get_code_byte(code, *next) {
 					Some(v) => v,
 					None => return len,
 				};
 				slice = rest;
+				len = len.saturating_add(1);
 			}
 		}
 
@@ -829,23 +833,26 @@ impl Dictionary {
 	}
 
 	#[must_use]
+	#[expect(clippy::suspicious_operation_groupings, reason = "False positive.")]
 	/// # Find Non-Greedy.
 	fn find_nongreedy_match(
 		&self,
 		slice: &[u8],
-		match_len: usize,
-	) -> Option<usize> {
+		match_len: NonZeroUsize,
+	) -> Option<NonZeroUsize> {
 		// Short circuit.
-		if slice.len() <= match_len || match_len < 2 { return None; }
+		if slice.len() <= match_len.get() || match_len < MIN_NONGREEDY_MATCH {
+			return None;
+		}
 
 		// Next greedy match.
-		let mut best = match_len + self.find_match(&slice[match_len..]);
+		let mut best = match_len.get() + self.find_match(&slice[match_len.get()..]).get();
 		let target = best + MIN_IMPROVEMENT.get();
 
 		// Check increasingly shorter distances for better matches.
 		let mut distance = match_len;
-		for i in (1..match_len).rev() {
-			let maybe = i + self.find_match(&slice[i..]);
+		for i in (NonZeroUsize::MIN..match_len).rev() {
+			let maybe = i.get() + self.find_match(&slice[i.get()..]).get();
 			if target <= maybe && best < maybe {
 				best = maybe;
 				distance = i;
@@ -937,22 +944,23 @@ impl LzwEncoder<'_> {
 	///
 	/// Add/update a code in the dictionary and bump the size counter. The
 	/// final code is returned.
-	fn add_code(&mut self, from: usize, len: usize) -> Option<Code> {
-		if len != 0 && from + len <= self.data.len() {
+	fn add_code(&mut self, from: usize, len: NonZeroUsize) -> Option<Code> {
+		if from + len.get() <= self.data.len() {
 			// Walk through the dictionary to find the existing matching codes.
 			let mut code = Code::from_u8(self.data[from]);
-			for &byte in &self.data[from + 1..from + len] {
+			for &byte in &self.data[from + 1..from + len.get()] {
 				code = self.dictionary.get_code_byte(code, byte)?;
 			}
 
 			// Insert the last byte, if any.
-			if from + len < self.data.len() {
-				self.dictionary.set_last_byte(code, self.data[from + len]);
+			if from + len.get() < self.data.len() {
+				self.dictionary.set_last_byte(code, self.data[from + len.get()]);
 			}
 
 			// Return the code.
 			Some(code)
 		}
+		// This shouldn't be reachable.
 		else {
 			std::hint::cold_path();
 			None
@@ -994,7 +1002,6 @@ impl LzwEncoder<'_> {
 		// Initialization.
 		self.dictionary.reset(self.min_code_size.dictionary_start);
 		let mut state = PartialOptimizationState::new(self.dictionary.idx().min_code_size());
-		let mut match_len = 0;
 
 		// Process input.
 		let mut i = from;
@@ -1005,23 +1012,23 @@ impl LzwEncoder<'_> {
 			state.bytes += 1;
 
 			// New match length?
-			if match_len == 0 {
+			if state.match_len == 0 {
 				// Can't do anything else.
 				if self.dictionary.is_full() || state.tokens_full() { break; }
 
 				// Straight match.
-				match_len = self.dictionary.find_match(slice);
+				let mut new_match_len = self.dictionary.find_match(slice);
 
 				// Non-greedy lookahead.
 				if
 					! greedy &&
-					MIN_NONGREEDY_MATCH.get() <= match_len &&
-					i + match_len + 4 < self.data.len() && // Not worth it near the end of data.
-					match_len < slice.len() &&             // This can't fail.
-					! slice[..match_len].array_windows::<2>().all(|[a, b]| a == b) &&
-					let Some(next_match_len) = self.dictionary.find_nongreedy_match(slice, match_len)
+					MIN_NONGREEDY_MATCH <= new_match_len &&
+					i + new_match_len.get() + 4 < self.data.len() && // Not worth it near the end of data.
+					new_match_len.get() < slice.len() &&             // This can't fail.
+					! slice[..new_match_len.get()].array_windows::<2>().all(|[a, b]| a == b) &&
+					let Some(next_match_len) = self.dictionary.find_nongreedy_match(slice, new_match_len)
 				{
-					match_len = next_match_len;
+					new_match_len = next_match_len;
 					state.nongreedy = true;
 				} // Non-greedy.
 
@@ -1035,15 +1042,17 @@ impl LzwEncoder<'_> {
 				}
 
 				// Record it!
-				let code = self.add_code(i, match_len)?;
+				let code = self.add_code(i, new_match_len)?;
 				if let Some(w) = &mut writer { w.write_bits(code, state.code_size); }
 				state.bits += state.code_size as usize;
 				state.tokens += 1;
-			} // New match.
+				state.match_len = new_match_len.get();
+			}
 
-			// We've looked at the last byte; decrease the length for the next
-			// go-around.
-			match_len = match_len.saturating_sub(1);
+			// The last byte of the match is dealt with below; decrease by
+			// one for the next go around (while the compiler still realizes
+			// this value has to be nonzero).
+			state.match_len -= 1;
 
 			// If we're not writing, save the findings for future reference.
 			if writer.is_none() {
@@ -1272,6 +1281,9 @@ struct PartialOptimizationState {
 	/// # Tokens.
 	tokens: usize,
 
+	/// # Match Length.
+	match_len: usize,
+
 	/// # Any Non-Greedy Matches?
 	nongreedy: bool,
 
@@ -1286,6 +1298,7 @@ impl PartialOptimizationState {
 			bits: 0,
 			bytes: 0,
 			tokens: 0,
+			match_len: 0,
 			nongreedy: false,
 			code_size,
 		}
