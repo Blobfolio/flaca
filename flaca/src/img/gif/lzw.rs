@@ -675,19 +675,13 @@ impl BestBlock {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// # Best Blocks.
 ///
 /// This struct holds summaries of various LZW block configurations.
 struct BestBlocks(HashMap<usize, BestBlock, NoHash>);
 
 impl BestBlocks {
-	#[must_use]
-	/// # New.
-	fn new(capacity: usize) -> Self {
-		Self(HashMap::with_capacity_and_hasher(capacity, NoHash::default()))
-	}
-
 	#[must_use]
 	/// # Get Mut.
 	///
@@ -915,12 +909,11 @@ impl<'a> LzwEncoder<'a> {
 	/// # New.
 	fn new(data: &'a [u8], alignment: NonZeroUsize) -> Self {
 		let min_code_size = MinCodeSize::new(data);
-		let best = BestBlocks::new(data.len() / alignment.get() + 1 + 1);
 		Self {
 			data,
 			alignment,
 			min_code_size,
-			best,
+			best: BestBlocks::default(),
 			dictionary: Dictionary::default(),
 		}
 	}
@@ -995,7 +988,7 @@ impl LzwEncoder<'_> {
 			self.best.greedy(best_idx)
 		{
 			// Note this value isn't actually used.
-			return Some(self.dictionary.idx().min_code_size());
+			return Some(CodeSize::MIN);
 		}
 
 		// Initialization.
@@ -1090,8 +1083,8 @@ impl LzwEncoder<'_> {
 
 		// Return the final code size.
 		if writer.is_some() { self.dictionary.idx().prev().map(Code::min_code_size) }
-		// Note this value isn't used.
-		else { Some(state.code_size) }
+		// This value isn't actually used.
+		else { Some(CodeSize::MIN) }
 	}
 
 	#[must_use]
