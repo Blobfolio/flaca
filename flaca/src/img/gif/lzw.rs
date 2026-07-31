@@ -5,10 +5,9 @@ This module contains an exhaustive greedy/non-greedy LZW encoder modeled after
 [flexiGIF](https://github.com/Kreeblah/flexiGIF/tree/main).
 */
 
-use dactyl::NoHash;
-use std::{
-	collections::HashMap,
-	num::NonZeroUsize,
+use std::num::{
+	NonZeroU16,
+	NonZeroUsize,
 };
 use super::MAX_COLOR_TABLE;
 
@@ -90,6 +89,14 @@ macro_rules! numenum {
 	);
 }
 
+/// # Max Bytes.
+///
+/// GIF dimensions are `u16`, so this represents the maximum possible canvas
+/// size we could be encoding.
+const MAX_BYTES: NonZeroUsize = NonZeroUsize::new(
+	(u16::MAX as usize).checked_mul(u16::MAX as usize).unwrap()
+).unwrap();
+
 /// # Minimum Non-Greedy Match Length.
 const MIN_NONGREEDY_MATCH: NonZeroUsize = NonZeroUsize::new(2).unwrap();
 
@@ -97,13 +104,18 @@ const MIN_NONGREEDY_MATCH: NonZeroUsize = NonZeroUsize::new(2).unwrap();
 const MIN_IMPROVEMENT: NonZeroUsize = NonZeroUsize::MIN;
 
 /// # Maximum Tokens Per Block.
-const MAX_TOKENS: NonZeroUsize = NonZeroUsize::new(10_000).unwrap();
+const MAX_TOKENS: NonZeroU16 = NonZeroU16::new(10_000).unwrap();
 
 /// # Dictionary Size.
 const DICTIONARY_SIZE: usize = 4096;
 
 /// # Sanity Checks.
 const _: () = {
+	assert!(
+		MAX_BYTES.get() < (u32::MAX as usize),
+		"BUG: maximum GIF frame doesn't fit u32.",
+	);
+
 	assert!(
 		(1_usize << CodeSize::MAX as u8) == DICTIONARY_SIZE &&
 		DICTIONARY_SIZE - 1 == Code::MAX as usize,
@@ -154,21 +166,72 @@ const _: () = {
 /// improving upon the "simpler" result produced by the `gif` encoder itself.
 ///
 /// `None` is returned if there are any problems.
-pub(super) fn encode_frame(src: &[u8], alignment: NonZeroUsize) -> Option<Vec<u8>> {
+pub(super) fn encode_frame(mut src: &[u8], alignment: NonZeroUsize) -> Option<Vec<u8>> {
+	// This shouldn't happen.
+	if src.is_empty() || MAX_BYTES.get() < src.len() {
+		std::hint::cold_path();
+		return None;
+	}
+
 	let mut encoder = LzwEncoder::new(src, alignment);
+	let mut bests = Vec::<BestBlock>::with_capacity(src.len() / alignment.get() + 2);
+	bests.push(BestBlock::new()); // Start with an empty tail.
 
 	// Crunch aligned sub-slices of the data to build up a sense of the "best"
 	// breakpoints.
 	for i in (0..src.len()).step_by(alignment.get()).rev() {
-		encoder.optimize_partial(i, 0, false, None)?; // Nongreedy.
-		encoder.optimize_partial(i, 0, true, None)?;  // Just greedy.
+		let slice = &src[i..];
+		let mut best = BestBlock::new();
+		encoder.optimize_bench(i, slice, false, &mut best, &bests)?; // Nongreedy.
+		if ! best.greedy() {
+			encoder.optimize_bench(i, slice, true, &mut best, &bests)?; // Greedy.
+		}
+		bests.insert(0, best);
 	}
 
-	// One more time around to collect the results!
-	if let Some(out) = encoder.optimize() && 1 < out.len() { Some(out) }
-	else {
-		std::hint::cold_path();
-		None
+	// We can finally start writing shit down!
+	let mut writer = LsbBitWriter::new(
+		encoder.min_code_size(),
+		usize::max(3, src.len().wrapping_div(2).next_power_of_two()),
+	);
+
+	// The first clear code has a width one higher than the min_code_size.
+	writer.write_bits(encoder.clear_code(), encoder.min_code_size.next);
+
+	// Find the best block restarts.
+	let mut pos = 0;
+	loop {
+		// None of this should ever fail.
+		if
+			let Some(b) = bests.get(pos / alignment.get()) &&
+			let Some(len) = b.bytes() &&
+			let Some((chunk, rest)) = src.split_at_checked(len.get())
+		{
+			// Compute the current block.
+			let code_size = encoder.optimize_partial(
+				pos,
+				chunk,
+				! b.nongreedy(),
+				&mut writer,
+			)?;
+
+			// Done!
+			if rest.is_empty() {
+				writer.write_bits(encoder.eoi_code(), code_size);
+				return Some(writer.finish());
+			}
+
+			// Clear code.
+			writer.write_bits(encoder.clear_code(), code_size);
+
+			// Bump.
+			pos += len.get();
+			src = rest;
+		}
+		else {
+			std::hint::cold_path();
+			return None;
+		}
 	}
 }
 
@@ -657,7 +720,7 @@ struct BestBlock {
 	bits: usize,
 
 	/// # Total Bytes.
-	bytes: usize,
+	bytes: u32,
 
 	/// # Any Non-Greedy Matches?
 	nongreedy: bool,
@@ -673,56 +736,29 @@ impl BestBlock {
 			nongreedy: false,
 		}
 	}
-}
-
-#[derive(Debug, Default)]
-/// # Best Blocks.
-///
-/// This struct holds summaries of various LZW block configurations. This
-/// should really just be a `Vec` as the keys are contiguous from
-/// `0..=len/align`, but the compiler doesn't seem to believe it. Haha.
-struct BestBlocks(HashMap<usize, BestBlock, NoHash>);
-
-impl BestBlocks {
-	#[must_use]
-	/// # Get Mut.
-	///
-	/// Return a mutable reference to the underlying stats, creating them
-	/// on-the-fly if they don't already exist.
-	fn get_mut(&mut self, idx: usize) -> &mut BestBlock {
-		self.0.entry(idx).or_insert_with(BestBlock::new)
-	}
-
-	#[must_use]
-	/// # Best Bits.
-	///
-	/// Return the number of bits for a best.
-	fn bits(&self, idx: usize) -> Option<NonZeroUsize> {
-		self.0.get(&idx).and_then(|v| NonZeroUsize::new(v.bits))
-	}
 
 	#[must_use]
 	/// # Best Bytes.
 	///
 	/// Return the number of bytes for a best.
-	fn bytes(&self, idx: usize) -> Option<NonZeroUsize> {
-		self.0.get(&idx).and_then(|v| NonZeroUsize::new(v.bytes))
+	const fn bytes(&self) -> Option<NonZeroUsize> {
+		NonZeroUsize::new(self.bytes as usize)
 	}
 
 	#[must_use]
 	/// # Greedy-Only.
 	///
 	/// Returns `true` if the best is non-empty without any non-greedy wins.
-	fn greedy(&self, idx: usize) -> bool {
-		self.0.get(&idx).is_some_and(|v| ! v.nongreedy && 0 != v.bytes)
+	const fn greedy(&self) -> bool {
+		! self.nongreedy && 0 != self.bytes
 	}
 
 	#[must_use]
 	/// # Non-Greedy Wins?
 	///
 	/// Returns `true` if the best is non-empty and has any non-greedy wins.
-	fn nongreedy(&self, idx: usize) -> bool {
-		self.0.get(&idx).is_some_and(|v| v.nongreedy)
+	const fn nongreedy(&self) -> bool {
+		self.nongreedy
 	}
 }
 
@@ -841,7 +877,11 @@ impl Dictionary {
 		match_len: NonZeroUsize,
 	) -> Option<NonZeroUsize> {
 		// Short circuit.
-		if slice.len() <= match_len.get() || match_len < MIN_NONGREEDY_MATCH {
+		if
+			match_len < MIN_NONGREEDY_MATCH ||
+			slice.len() <= match_len.get() ||
+			slice[..match_len.get()].array_windows::<2>().all(|[a, b]| a == b)
+		{
 			return None;
 		}
 
@@ -904,9 +944,6 @@ struct LzwEncoder<'a> {
 	/// # Min Code Size.
 	min_code_size: MinCodeSize,
 
-	/// # Best Block(s).
-	best: BestBlocks,
-
 	/// # Dictionary.
 	dictionary: Dictionary,
 }
@@ -920,7 +957,6 @@ impl<'a> LzwEncoder<'a> {
 			data,
 			alignment,
 			min_code_size,
-			best: BestBlocks::default(),
 			dictionary: Dictionary::default(),
 		}
 	}
@@ -967,50 +1003,27 @@ impl LzwEncoder<'_> {
 		}
 	}
 
-	/// # Partial Optimization.
+	/// # Bench Optimization.
 	///
-	/// Calculate the LZW encoding cost for a subslice of the data, returning
-	/// the total data that would be written.
-	///
-	/// Unless `writer` is passed, the actual data is discarded after the run,
-	/// and the return value is unused.
-	fn optimize_partial(
+	/// Calculate the LZW encoding cost for a subslice of the data, keeping track
+	/// of the ideal match lengths.
+	fn optimize_bench(
 		&mut self,
-		from: usize,
-		max_len: usize,
+		mut pos: usize,
+		mut slice: &[u8],
 		greedy: bool,
-		mut writer: Option<&mut LsbBitWriter>,
-	) -> Option<CodeSize> {
+		best: &mut BestBlock,
+		already: &[BestBlock],
+	) -> Option<()> {
 		// Pluck a slice of the right length.
-		let mut slice = self.data.get(from..)?;
-		if max_len != 0 && max_len < slice.len() { slice = &slice[..max_len]; }
-
-		// Current best index.
-		let best_idx = from / self.alignment.get();
-
-		// Short-circuit: no need to repeat a greedy stat-building pass if the
-		// corresponding non-greedy pass turned up a greedy result.
-		if
-			greedy &&
-			writer.is_none() &&
-			self.best.greedy(best_idx)
-		{
-			// Note this value isn't actually used.
-			return Some(CodeSize::MIN);
-		}
+		let best_offset = pos / self.alignment.get() + 1;
 
 		// Initialization.
 		self.dictionary.reset(self.min_code_size.dictionary_start);
 		let mut state = PartialOptimizationState::new(self.dictionary.idx().min_code_size());
 
 		// Process input.
-		let mut i = from;
 		while ! slice.is_empty() {
-			// We haven't technically processed this byte yet, but by the time
-			// we reference this value we will have. (Bumping it early protects
-			// against `continue` jumps.
-			state.bytes += 1;
-
 			// New match length?
 			if state.match_len == 0 {
 				// Can't do anything else.
@@ -1022,143 +1035,112 @@ impl LzwEncoder<'_> {
 				// Non-greedy lookahead.
 				if
 					! greedy &&
-					MIN_NONGREEDY_MATCH <= new_match_len &&
-					i + new_match_len.get() + 4 < self.data.len() && // Not worth it near the end of data.
-					new_match_len.get() < slice.len() &&             // This can't fail.
-					! slice[..new_match_len.get()].array_windows::<2>().all(|[a, b]| a == b) &&
+					pos + new_match_len.get() + 4 < self.data.len() &&
 					let Some(next_match_len) = self.dictionary.find_nongreedy_match(slice, new_match_len)
 				{
 					new_match_len = next_match_len;
 					state.nongreedy = true;
-				} // Non-greedy.
-
-				// Bump the code size.
-				if
-					! self.dictionary.is_full() &&
-					self.dictionary.new_pow2() &&
-					let Some(next_code_size) = state.code_size.next()
-				{
-					state.code_size = next_code_size;
 				}
 
 				// Record it!
-				let code = self.add_code(i, new_match_len)?;
-				if let Some(w) = &mut writer { w.write_bits(code, state.code_size); }
-				state.bits += state.code_size as usize;
-				state.tokens += 1;
-				state.match_len = new_match_len.get();
+				state.bump_code_size(&self.dictionary);
+				self.add_code(pos, new_match_len)?;
+				state.set_new_match_len(new_match_len);
 			}
+			// Otherwise pop the last byte.
+			else { state.match_len -= 1; }
 
-			// The last byte of the match is dealt with below; decrease by
-			// one for the next go around (while the compiler still realizes
-			// this value has to be nonzero).
-			state.match_len -= 1;
-
-			// If we're not writing, save the findings for future reference.
-			if writer.is_none() {
-				let next_idx = (i + 1).div_ceil(self.alignment.get());
-				if
-					// We're at the end or…
-					self.data.len() <= i + 1 ||
-					(
-						// Next is aligned and…
-						state.bytes.is_multiple_of(self.alignment.get()) &&
-						// Has non-zero bits recorded.
-						self.best.bits(next_idx).is_some()
-					)
-				{
-					// Compute final cost.
-					let bits =
-						state.true_bits(self.dictionary.new_pow2()) +
-						self.best.bits(next_idx).map_or(0, NonZeroUsize::get);
-
-					// Record for posterity if we have a new best.
-					let best = self.best.get_mut(best_idx);
-					if 0 == best.bits || bits <= best.bits {
-						best.bits = bits;
-						best.bytes = state.bytes;
-						best.nongreedy = state.nongreedy;
-					}
+			// Save the findings, if…
+			state.bytes += 1;
+			let known_bits = (pos + 1).div_ceil(self.alignment.get())
+				.checked_sub(best_offset)     // Can't fail.
+				.and_then(|v| already.get(v)) // Might fail.
+				.map_or(0, |v| v.bits);
+			if
+				// We're at the end or…
+				self.data.len() <= pos + 1 ||
+				(
+					// Next byte is aligned and…
+					(state.bytes as usize).is_multiple_of(self.alignment.get()) &&
+					// Its best had non-zero bits.
+					known_bits != 0
+				)
+			{
+				// Actual bits for this round include what comes after (that
+				// we checked before).
+				let bits = state.true_bits(self.dictionary.new_pow2()) + known_bits;
+				if 0 == best.bits || bits <= best.bits {
+					best.bits = bits;
+					best.bytes = state.bytes;
+					best.nongreedy = state.nongreedy;
 				}
 			}
 
 			// Advance and shrink the slice.
 			if let [ _, rest @ .. ] = slice {
 				slice = rest;
-				i += 1;
+				pos += 1;
+			}
+			else { slice = &[]; }
+		} // Loop.
+
+		// Done!
+		Some(())
+	}
+
+	#[must_use]
+	/// # Final Segment Optimization.
+	///
+	/// LZW-encode a subslice of the data, returning the final code size.
+	fn optimize_partial(
+		&mut self,
+		mut pos: usize,
+		mut slice: &[u8],
+		greedy: bool,
+		writer: &mut LsbBitWriter,
+	) -> Option<CodeSize> {
+		// Initialization.
+		self.dictionary.reset(self.min_code_size.dictionary_start);
+		let mut state = PartialOptimizationState::new(self.dictionary.idx().min_code_size());
+
+		// Process input.
+		while ! slice.is_empty() {
+			// New match length?
+			if state.match_len == 0 {
+				// Can't do anything else.
+				if self.dictionary.is_full() || state.tokens_full() { break; }
+
+				// Straight match.
+				let mut new_match_len = self.dictionary.find_match(slice);
+
+				// Non-greedy lookahead.
+				if
+					! greedy &&
+					pos + new_match_len.get() + 4 < self.data.len() &&
+					let Some(next_match_len) = self.dictionary.find_nongreedy_match(slice, new_match_len)
+				{
+					new_match_len = next_match_len;
+				}
+
+				// Record it!
+				state.bump_code_size(&self.dictionary);
+				let code = self.add_code(pos, new_match_len)?;
+				writer.write_bits(code, state.code_size);
+				state.set_new_match_len(new_match_len);
+			}
+			// Otherwise pop the last byte.
+			else { state.match_len -= 1; }
+
+			// Advance and shrink the slice.
+			if let [ _, rest @ .. ] = slice {
+				slice = rest;
+				pos += 1;
 			}
 			else { slice = &[]; }
 		} // Loop.
 
 		// Return the final code size.
-		if writer.is_some() { self.dictionary.idx().prev().map(Code::min_code_size) }
-		// This value isn't actually used.
-		else { Some(CodeSize::MIN) }
-	}
-
-	#[must_use]
-	/// # Optimize.
-	///
-	/// Optimize and return an LZW-encoded image frame — with leading min code
-	/// size byte — or `None` if any issues are encountered.
-	fn optimize(&mut self) -> Option<Vec<u8>> {
-		// Find the best block restarts.
-		let mut restarts = Vec::new();
-		let mut pos = 0;
-		let mut aligned = 0;
-		while pos < self.data.len() {
-			let len = self.best.bytes(aligned)?;
-			pos += len.get();
-			aligned = pos / self.alignment.get();
-			restarts.push(pos);
-		}
-
-		// Bail if empty or overflow.
-		if restarts.is_empty() || self.data.len() < restarts[restarts.len() - 1] {
-			std::hint::cold_path();
-			return None;
-		}
-		// Push an extra restart for the final length if missing.
-		if restarts[restarts.len() - 1] < self.data.len() {
-			restarts.push(self.data.len());
-		}
-
-		// We can finally start writing shit down!
-		let mut writer = LsbBitWriter::new(
-			self.min_code_size(),
-			usize::max(3, self.data.len().wrapping_div(2).next_power_of_two()),
-		);
-
-		// The first clear code has a width one higher than the min_code_size.
-		writer.write_bits(self.clear_code(), self.min_code_size.next);
-
-		// Rerun optimizations for each block, adding them to the list.
-		let mut pos = 0;
-		for restart in restarts {
-			// Block length.
-			let len = restart - pos;
-
-			// Compute the current block.
-			let code_size = self.optimize_partial(
-				pos,
-				len,
-				! self.best.nongreedy(pos / self.alignment.get()),
-				Some(&mut writer),
-			)?;
-
-			// Write a clear or EOI code.
-			writer.write_bits(
-				if restart == self.data.len() { self.eoi_code() }
-				else { self.clear_code() },
-				code_size,
-			);
-
-			// One more time around.
-			pos = restart;
-		}
-
-		// Done!
-		Some(writer.finish())
+		self.dictionary.idx().prev().map(Code::min_code_size)
 	}
 }
 
@@ -1275,14 +1257,14 @@ struct PartialOptimizationState {
 	/// # Bits.
 	bits: usize,
 
-	/// # Bytes.
-	bytes: usize,
-
-	/// # Tokens.
-	tokens: usize,
-
 	/// # Match Length.
 	match_len: usize,
+
+	/// # Bytes.
+	bytes: u32,
+
+	/// # Tokens.
+	tokens: u16,
 
 	/// # Any Non-Greedy Matches?
 	nongreedy: bool,
@@ -1296,12 +1278,35 @@ impl PartialOptimizationState {
 	const fn new(code_size: CodeSize) -> Self {
 		Self {
 			bits: 0,
+			match_len: 0,
 			bytes: 0,
 			tokens: 0,
-			match_len: 0,
 			nongreedy: false,
 			code_size,
 		}
+	}
+
+	/// # (Maybe) Bump Code Size.
+	///
+	/// Increase the code size if the dictionary index has entered a new
+	/// power of two.
+	const fn bump_code_size(&mut self, dictionary: &Dictionary) {
+		if
+			dictionary.new_pow2() &&
+			let Some(next_code_size) = self.code_size.next()
+		{
+			self.code_size = next_code_size;
+		}
+	}
+
+	/// # Set New Match Length.
+	///
+	/// Update the match length, increasing the bit and token counts
+	/// accordingly.
+	const fn set_new_match_len(&mut self, match_len: NonZeroUsize) {
+		self.bits += self.code_size as usize;
+		self.tokens += 1;
+		self.match_len = match_len.get() - 1; // Don't count the last byte.
 	}
 
 	/// # "True" Bits.
@@ -1316,7 +1321,5 @@ impl PartialOptimizationState {
 
 	#[must_use]
 	/// # Tokens Full?
-	const fn tokens_full(&self) -> bool {
-		MAX_TOKENS.get() <= self.tokens
-	}
+	const fn tokens_full(&self) -> bool { MAX_TOKENS.get() <= self.tokens }
 }
