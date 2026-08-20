@@ -6,7 +6,7 @@ use std::{
 	fmt,
 	fs::File,
 	io::Write,
-	ops::Range,
+	range::legacy::Range,
 	path::{
 		Path,
 		PathBuf,

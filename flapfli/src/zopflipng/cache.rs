@@ -212,7 +212,7 @@ impl MatchCache {
 
 		// The cache gets written three bytes at a time; this iterator will
 		// help us eliminate the bounds checks we'd otherwise run into.
-		let mut dst = self.sublen.chunks_exact_mut(3).skip(pos * ZOPFLI_CACHE_LENGTH).take(ZOPFLI_CACHE_LENGTH);
+		let mut dst = self.sublen.as_chunks_mut::<3>().0.iter_mut().skip(pos * ZOPFLI_CACHE_LENGTH).take(ZOPFLI_CACHE_LENGTH);
 
 		// Start by writing all mismatched pairs, up to the limit.
 		for (i, [a, b]) in (0_u8..=u8::MAX).zip(slice.array_windows()) {
@@ -410,7 +410,7 @@ const fn max_sublen(slice: &[u8; SUBLEN_CACHED_LEN]) -> LitLen {
 fn write_sublen(src: &[u8; SUBLEN_CACHED_LEN], dst: &mut [u16; SUBLEN_LEN]) {
 	let maxlength = max_sublen(src);
 	let mut old = 0;
-	for chunk in src.chunks_exact(3) {
+	for chunk in src.as_chunks::<3>().0 {
 		let length = LitLen::from_packed_u8(chunk[0]);
 		if old <= (length as usize) {
 			let value = u16::from_le_bytes([chunk[1], chunk[2]]);
