@@ -7,7 +7,7 @@ use std::{
 		NonZeroU32,
 		NonZeroUsize,
 	},
-	ops::Range,
+	range::legacy::Range,
 };
 use super::{
 	LZ77StoreRange,
