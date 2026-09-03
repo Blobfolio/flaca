@@ -152,7 +152,7 @@ dowser = "0.18.*"
 gif-dispose = "=6.0.0"
 libc = "0.2.*"
 utc2k = "0.21.*"
-write_atomic = "0.7.*"
+write_atomic = "0.8.*"
 zune-jpeg = "0.5.*"
 
 [dependencies.ahash]
