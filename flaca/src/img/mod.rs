@@ -12,6 +12,10 @@ use crate::Settings;
 use jpeg::JpegMarker;
 use kind::ImageKind;
 use std::{
+	fs::{
+		File,
+		FileTimes,
+	},
 	path::Path,
 	sync::OnceLock,
 };
@@ -265,17 +269,21 @@ fn encode_zopflipng(raw: &mut Vec<u8>) {
 /// # Save Image!
 fn save_image(src: &Path, data: &[u8], settings: Settings)
 -> Result<(), EncodingError> {
-	use write_atomic::filetime;
-	use write_atomic::filetime::FileTime;
-
 	// Grab the (current) metadata before saving in case the user wants to
 	// keep the original file times.
 	let times =
-		if settings.preserve_times() {
-			std::fs::metadata(src).ok().map(|meta| (
-				FileTime::from_last_access_time(&meta),
-				FileTime::from_last_modification_time(&meta),
-			))
+		if settings.preserve_times() && let Ok(meta) = std::fs::metadata(src) {
+			let mut any = false;
+			let mut times = FileTimes::new();
+			if let Ok(atime) = meta.accessed() {
+				times = times.set_accessed(atime);
+				any = true;
+			}
+			if let Ok(mtime) = meta.modified() {
+				times = times.set_modified(mtime);
+				any = true;
+			}
+			any.then_some(times)
 		}
 		else { None };
 
@@ -283,8 +291,8 @@ fn save_image(src: &Path, data: &[u8], settings: Settings)
 	write_atomic::write_file(src, data).map_err(|_| EncodingError::Write)?;
 
 	// If we have metadata, try to sync the times.
-	if let Some((atime, mtime)) = times {
-		let _res = filetime::set_file_times(src, atime, mtime);
+	if let Some(times) = times && let Ok(dst) = File::open(src) {
+		let _res = dst.set_times(times);
 	}
 
 	Ok(())

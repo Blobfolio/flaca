@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.9.2"
+version = "3.9.3"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -143,16 +143,16 @@ authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
-argyle = "0.15.*"
+argyle = "0.16.*"
 
 [dependencies]
-argyle = "0.15.*"
-dactyl = "0.13.*"
-dowser = "0.18.*"
+argyle = "0.16.*"
+dactyl = "0.14.*"
+dowser = "0.19.*"
 gif-dispose = "=6.0.0"
 libc = "0.2.*"
-utc2k = "0.20.*"
-write_atomic = "0.7.*"
+utc2k = "0.21.*"
+write_atomic = "0.9.*"
 zune-jpeg = "0.5.*"
 
 [dependencies.ahash]
@@ -185,6 +185,6 @@ default-features = false
 features = [ "jpegtran", "nasm_simd", "unwinding" ]
 
 [dependencies.oxipng]
-version = "=10.2.0"
+version = "=10.2.1"
 default-features = false
 features = [ "freestanding" ]
