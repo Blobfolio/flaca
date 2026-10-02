@@ -802,12 +802,11 @@ impl Default for Dictionary {
 		// happened.
 		let out: NonNull<DictionaryInner> = NonNull::new(unsafe { alloc_zeroed(LAYOUT).cast() })
 			.unwrap_or_else(|| handle_alloc_error(LAYOUT));
-		let ptr = out.as_ptr();
 
 		// Safety: zeroes are valid for all primitives (and arrays of
 		// primitives), including `MaybeCode`, which shares size/alignment
 		// with `u16`.
-		let inner = unsafe { Box::from_raw(ptr) };
+		let inner = unsafe { Box::from_non_null(out) };
 
 		// Done!
 		Self {

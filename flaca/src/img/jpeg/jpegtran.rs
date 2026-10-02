@@ -218,8 +218,7 @@ impl From<&mut JpegSrcInfo<'_>> for JpegDstInfo {
 		let mut out = Self {
 			// Safety: the subsequent FFI call requires zeroed memory.
 			cinfo: unsafe { std::mem::zeroed() },
-			// Safety: boxes point somewhere!
-			err: unsafe { NonNull::new_unchecked(Box::into_raw(new_err())) },
+			err: Box::into_non_null(new_err()),
 			_pin: PhantomPinned,
 		};
 
@@ -248,7 +247,7 @@ impl Drop for JpegDstInfo {
 		// Safety: mozjpeg handles deallocation itself.
 		unsafe {
 			jpeg_destroy_compress(&mut self.cinfo);
-			let _ = Box::from_raw(self.err.as_ptr());
+			let _ = Box::from_non_null(self.err);
 		}
 	}
 }

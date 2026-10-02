@@ -131,7 +131,7 @@ impl ZopfliState {
 			// stage, validity is sufficient.
 
 			// Done!
-			Box::from_raw(ptr)
+			Box::from_non_null(out)
 		}
 	}
 
