@@ -148,7 +148,7 @@ argyle = "0.16.*"
 [dependencies]
 argyle = "0.16.*"
 dactyl = "0.14.*"
-dowser = "0.18.*"
+dowser = "0.19.*"
 gif-dispose = "=6.0.0"
 libc = "0.2.*"
 utc2k = "0.21.*"
