@@ -143,10 +143,10 @@ authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
-argyle = "0.15.*"
+argyle = "0.16.*"
 
 [dependencies]
-argyle = "0.15.*"
+argyle = "0.16.*"
 dactyl = "0.13.*"
 dowser = "0.18.*"
 gif-dispose = "=6.0.0"
