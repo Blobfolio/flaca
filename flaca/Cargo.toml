@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.9.3"
+version = "3.9.4"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -22,7 +22,7 @@ license-file = ["../LICENSE", "0"]
 extended-description = """\n\
 Flaca is a CLI tool for x86-64 Linux machines that simplifies the task of losslessly compressing GIF, JPEG, and PNG images for use on the web.\n\
 .\n\
-Under the hood, it uses Gifsicle for lossless GIF (re)compression, MozJPEG for JPEGs, and Oxipng/Zopflipng for PNGs."""
+Compression is mainly achieved through the removal of metadata and optimization of pixel tables and block layouts/compression. Under the hood, flaca leverages the `jpegtran` functionality from MozJPEG for JPEG images and Oxipng for PNG images for additional savings."""
 revision = "1"
 depends = "$auto"
 section = "graphics"
@@ -126,18 +126,9 @@ lines = [
 	"image corruption.",
 ]
 
-[[package.metadata.bashman.sections]]
-name = "OPTIMIZERS"
-inside = true
-items = [
-	[ "MozJPEG", "<https://github.com/mozilla/mozjpeg>" ],
-	[ "Oxipng", "<https://github.com/shssoichiro/oxipng>" ],
-	[ "Zopflipng", "<https://github.com/google/zopfli>" ]
-]
-
 [[package.metadata.bashman.credits]]
 name = "lodepng"
-version = "2026.1.19"
+version = "2026.10.6"
 license = "Zlib"
 authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
