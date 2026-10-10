@@ -19,8 +19,8 @@ exclude = [
 crc32fast = "=1.5.*"
 
 [build-dependencies]
-bindgen = "0.73.*"
-cc = "1.5.*"
+bindgen = "0.73.0"
+cc = "1.5.0"
 
 [lib]
 name = "flapfli"
