@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.9.3"
+version = "3.9.4"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -137,7 +137,7 @@ items = [
 
 [[package.metadata.bashman.credits]]
 name = "lodepng"
-version = "2026.10.06"
+version = "2026.10.6"
 license = "Zlib"
 authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
