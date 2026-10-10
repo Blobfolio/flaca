@@ -50,11 +50,11 @@ jobs:
 
     - name: Build (Debug)
       run: |
-        cargo build --bin flaca --target ${{ matrix.target }}
+        cargo build --target ${{ matrix.target }}
 
     - name: Build (Release)
       run: |
-        cargo build --bin flaca --release --target ${{ matrix.target }}
+        cargo build --release --target ${{ matrix.target }}
 
     - name: Clippy
       run: |
