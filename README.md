@@ -27,13 +27,16 @@ As a general rule, you should _not_ try to feed your entire personal media libra
 
 ## Installation
 
-Pre-built packages for x86-64-v3 CPU architectures are available for Debian and Ubuntu users on the [release page](https://github.com/Blobfolio/flaca/releases/latest), and to Arch Linux users via [AUR](https://aur.archlinux.org/packages/flaca-bin) (thanks[@murlakatamenka](https://github.com/murlakatamenka)!).
+Pre-built x86-64-v3 `.deb` packages for Debian and Ubuntu are attached to the [latest release](https://github.com/Blobfolio/flaca/releases/latest), and Arch Linux users can install the same through [AUR](https://aur.archlinux.org/packages/flaca-bin) (thanks @murlakatamenka!).
 
 To use flaca in other environments, it'll need to be built from source.
 
 Thankfully, [Rust](https://www.rust-lang.org/)/[Cargo](https://github.com/rust-lang/cargo) make this pretty easy:
 
 ```bash
+# Make sure you've got the latest stable Rust.
+rustup update stable
+
 # See "cargo install --help" for more options.
 cargo install \
     --git https://github.com/Blobfolio/flaca.git \
@@ -41,6 +44,28 @@ cargo install \
 ```
 
 Note that when building from source, you'll need to have `clang`, `make`, `nasm`, and the development headers for `libjpeg` and `libpng` installed beforehand or Cargo will pop an error. (If that happens, just install the missing thing and try again.)
+
+
+### Offline/Vendored Builds
+
+If your build environment lacks networking support, pre-download the `Source code (tar.gz)` and `vendored-sources.tar.zst` assets attached to the [release](https://github.com/Blobfolio/flaca/releases/latest), then:
+
+```bash
+# Extract the source code.
+tar -xf flaca-VERSION.tar.gz
+
+# Move into the source root.
+cd flaca-VERSION
+
+# Extract the vendored sources (into the source root).
+tar -xf ../vendored-sources.tar.zst
+
+# Build! See `cargo build --help` for more options.
+cargo build \
+    --release \
+    --locked \
+    --offline
+```
 
 
 
