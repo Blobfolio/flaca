@@ -16,11 +16,11 @@ exclude = [
 ]
 
 [dependencies]
-crc32fast = "=1.5.*"
+crc32fast = { workspace = true }
 
 [build-dependencies]
-bindgen = "0.73.0"
-cc = "1.5.0"
+bindgen = { workspace = true }
+cc =      { workspace = true }
 
 [lib]
 name = "flapfli"

@@ -5,6 +5,46 @@ members = [
 	"flapfli",
 ]
 
+[workspace.dependencies]
+argyle = "0.16.*"
+bindgen = "0.73.0"
+cc = "1.5.0"
+crc32fast = "=1.5"
+dactyl = "0.14.*"
+dowser = "0.19.*"
+fyi_msg = "2.7.*"
+gif-dispose = "=6.0.0"
+libc = "0.2.*"
+utc2k = "0.21.*"
+write_atomic = "0.9.*"
+zune-jpeg = "0.5.*"
+
+[workspace.dependencies.ahash]
+version = "0.8.*"
+default-features = false
+
+[workspace.dependencies.flapfli]
+path = "flapfli"
+
+[workspace.dependencies.flume]
+version = "0.12.*"
+default-features = false
+
+[workspace.dependencies.gif]
+version = "=0.14.2"
+default-features = false
+
+# TODO: move back to crates.io if a new version ever gets released.
+[workspace.dependencies.mozjpeg-sys]
+version = "=2.2.4-beta.1"
+git = "https://github.com/kornelski/mozjpeg-sys"
+rev = "662cd76"
+default-features = false
+
+[workspace.dependencies.oxipng]
+version = "=10.2.1"
+default-features = false
+
 [profile.release]
 lto = true
 codegen-units = 1
