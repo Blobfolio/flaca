@@ -128,7 +128,7 @@ lines = [
 
 [[package.metadata.bashman.credits]]
 name = "lodepng"
-version = "2026.10.6"
+version = "2026.11.2"
 license = "Zlib"
 authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"

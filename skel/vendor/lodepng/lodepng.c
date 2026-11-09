@@ -1,5 +1,5 @@
 /*
-LodePNG version 20261006
+LodePNG version 20261102
 
 Copyright (c) 2005-2026 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20261006";
+const char* LODEPNG_VERSION_STRING = "20261102";
 
 /*
 This source file is divided into the following large parts. The code sections
@@ -2999,19 +2999,27 @@ LodePNGColorMode lodepng_color_mode_make(LodePNGColorType colortype, unsigned bi
   return result;
 }
 
+/* checks if two color modes are equal. colortype and bitdepth are always checked, but color key and
+palette are only checked if explicitely given on both sides. If empty on one side, it's assumed to
+mean 'same as the other side'. This function is used to check when a color mode conversion on the
+pixel data is needed, and it should support e.g. asking to decode to 1-bit palette without providing
+the palette color data by only providing 'LCT_PALETTE, 1' as arguments to the decode function)*/
 static int lodepng_color_mode_equal(const LodePNGColorMode* a, const LodePNGColorMode* b) {
-  size_t i;
   if(a->colortype != b->colortype) return 0;
   if(a->bitdepth != b->bitdepth) return 0;
-  if(a->key_defined != b->key_defined) return 0;
-  if(a->key_defined) {
+  /*only check color key if explicitely given on both sides.*/
+  if(a->key_defined && b->key_defined) {
     if(a->key_r != b->key_r) return 0;
     if(a->key_g != b->key_g) return 0;
     if(a->key_b != b->key_b) return 0;
   }
-  if(a->palettesize != b->palettesize) return 0;
-  for(i = 0; i != a->palettesize * 4; ++i) {
-    if(a->palette[i] != b->palette[i]) return 0;
+  /*only check palette values if a palette is explicitely given on both sides.*/
+  if(a->palettesize != 0 && b->palettesize != 0) {
+    size_t i;
+    if(a->palettesize != b->palettesize) return 0;
+    for(i = 0; i != a->palettesize * 4; ++i) {
+      if(a->palette[i] != b->palette[i]) return 0;
+    }
   }
   return 1;
 }
@@ -5526,14 +5534,14 @@ unsigned lodepng_decode(unsigned char** out, unsigned* w, unsigned* h,
                         const unsigned char* in, size_t insize) {
   *out = 0;
   decodeGeneric(out, w, h, state, in, insize);
-  if(state->error) return state->error;
+  if(state->error) goto cleanup;
   if(!state->decoder.color_convert || lodepng_color_mode_equal(&state->info_raw, &state->info_png.color)) {
     /*same color type, no copying or converting of data needed*/
     /*store the info_png color settings on the info_raw so that the info_raw still reflects what colortype
     the raw image has to the end user*/
     if(!state->decoder.color_convert) {
       state->error = lodepng_color_mode_copy(&state->info_raw, &state->info_png.color);
-      if(state->error) return state->error;
+      if(state->error) goto cleanup;
     }
   } else { /*color conversion needed*/
     unsigned char* data = *out;
@@ -5543,17 +5551,25 @@ unsigned lodepng_decode(unsigned char** out, unsigned* w, unsigned* h,
     from grayscale input color type, to 8-bit grayscale or grayscale with alpha"*/
     if(!(state->info_raw.colortype == LCT_RGB || state->info_raw.colortype == LCT_RGBA)
        && !(state->info_raw.bitdepth == 8)) {
-      return 56; /*unsupported color mode conversion*/
+      state->error = 56; /*unsupported color mode conversion*/
+      goto cleanup;
     }
 
     outsize = lodepng_get_raw_size(*w, *h, &state->info_raw);
     *out = (unsigned char*)lodepng_malloc(outsize);
     if(!(*out)) {
       state->error = 83; /*alloc fail*/
+    } else {
+      state->error = lodepng_convert(*out, data, &state->info_raw,
+                                     &state->info_png.color, *w, *h);
     }
-    else state->error = lodepng_convert(*out, data, &state->info_raw,
-                                        &state->info_png.color, *w, *h);
     lodepng_free(data);
+  }
+
+cleanup:
+  if(state->error) {
+    lodepng_free(*out);
+    *out = 0;
   }
   return state->error;
 }
