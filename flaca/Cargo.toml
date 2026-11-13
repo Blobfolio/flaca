@@ -1,6 +1,6 @@
 [package]
 name = "flaca"
-version = "3.9.4"
+version = "3.9.5"
 license = "WTFPL"
 authors = ["Josh Stoik <josh@blobfolio.com>"]
 edition = "2024"
@@ -128,54 +128,27 @@ lines = [
 
 [[package.metadata.bashman.credits]]
 name = "lodepng"
-version = "2026.10.6"
+version = "2026.11.2"
 license = "Zlib"
 authors = [ "Lode Vandevenne" ]
 repository = "https://github.com/lvandeve/lodepng"
 
 [build-dependencies]
-argyle = "0.16.*"
+argyle = { workspace = true }
 
 [dependencies]
-argyle = "0.16.*"
-dactyl = "0.14.*"
-dowser = "0.19.*"
-gif-dispose = "=6.0.0"
-libc = "0.2.*"
-utc2k = "0.21.*"
-write_atomic = "0.9.*"
-zune-jpeg = "0.5.*"
-
-[dependencies.ahash]
-version = "0.8.*"
-default-features = false
-
-[dependencies.flapfli]
-version = "*"
-path = "../flapfli"
-
-[dependencies.flume]
-version = "0.12.*"
-default-features = false
-
-[dependencies.fyi_msg]
-version = "2.7.*"
-features = [ "signals" ]
-
-[dependencies.gif]
-version = "=0.14.2"
-default-features = false
-features = [ "raii_no_panic", "std" ]
-
-# TODO: switch back to crates.io if/when it gets a new release.
-[dependencies.mozjpeg-sys]
-git = "https://github.com/kornelski/mozjpeg-sys"
-rev = "662cd76"
-version = "=2.2.4-beta.1"
-default-features = false
-features = [ "jpegtran", "nasm_simd", "unwinding" ]
-
-[dependencies.oxipng]
-version = "=10.2.1"
-default-features = false
-features = [ "freestanding" ]
+ahash =        { workspace = true }
+argyle =       { workspace = true }
+dactyl =       { workspace = true }
+dowser =       { workspace = true }
+flapfli =      { workspace = true }
+flume =        { workspace = true }
+fyi_msg =      { workspace = true, features = ["signals"] }
+gif =          { workspace = true, features = ["raii_no_panic", "std"] }
+gif-dispose =  { workspace = true }
+libc =         { workspace = true }
+mozjpeg-sys =  { workspace = true, features = ["jpegtran", "nasm_simd", "unwinding"] }
+oxipng =       { workspace = true, features = ["freestanding"] }
+utc2k =        { workspace = true }
+write_atomic = { workspace = true }
+zune-jpeg =    { workspace = true }

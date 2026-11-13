@@ -174,7 +174,7 @@ pub(super) fn encode_frame(mut src: &[u8], alignment: NonZeroUsize) -> Option<Ve
 	}
 
 	let mut encoder = LzwEncoder::new(src, alignment);
-	let mut bests = Vec::<BestBlock>::with_capacity(src.len() / alignment.get() + 2);
+	let mut bests = Vec::<BestBlock>::with_capacity(src.len() / alignment + 2);
 	bests.push(BestBlock::new()); // Start with an empty tail.
 
 	// Crunch aligned sub-slices of the data to build up a sense of the "best"
@@ -203,7 +203,7 @@ pub(super) fn encode_frame(mut src: &[u8], alignment: NonZeroUsize) -> Option<Ve
 	loop {
 		// None of this should ever fail.
 		if
-			let Some(b) = bests.get(pos / alignment.get()) &&
+			let Some(b) = bests.get(pos / alignment) &&
 			let Some(len) = b.bytes() &&
 			let Some((chunk, rest)) = src.split_at_checked(len.get())
 		{
@@ -1015,7 +1015,7 @@ impl LzwEncoder<'_> {
 		already: &[BestBlock],
 	) -> Option<()> {
 		// Pluck a slice of the right length.
-		let best_offset = pos / self.alignment.get() + 1;
+		let best_offset = pos / self.alignment + 1;
 
 		// Initialization.
 		self.dictionary.reset(self.min_code_size.dictionary_start);

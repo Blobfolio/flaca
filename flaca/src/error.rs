@@ -117,7 +117,6 @@ OPTIMIZERS USED:", ansi!((dim, violet) "
 -------------------------------------------------------------------------------"), "
     MozJPEG   <", ansi!((cyan) "https://github.com/mozilla/mozjpeg"), ">
     Oxipng    <", ansi!((cyan) "https://github.com/shssoichiro/oxipng"), ">
-    Zopflipng <", ansi!((cyan) "https://github.com/google/zopfli"), ">
 ");
 
 
